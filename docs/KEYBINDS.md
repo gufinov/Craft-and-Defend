@@ -2,6 +2,8 @@
 
 Canonical fixture: [keybinds.json](../contracts/keybinds.json). Bind named actions through Godot InputMap, using physical QWERTY positions for movement. Runtime rebinding must persist, detect conflicts by active context and provide reset defaults.
 
+F1 implementation status: every currently implemented action below except reserved `reload` has a visible scrollable editor row and accepts keyboard or mouse input. Changes persist across a full process restart. Invalid/conflicting stored maps recover to the complete safe default map; the UI explains live conflicts without mutating either action.
+
 | Action ID | Default | Context |
 |---|---|---|
 | move_forward | E | gameplay |

@@ -1,6 +1,6 @@
 # Coding-agent handoff
 
-> **Checkpoint update (2026-09-10):** This was the original F0 commission. F0 is implemented, recorded as PASS, physically accepted by Tony, and promoted to `main`; use [current status](STATUS.md) and [the F0 evidence record](evidence/F0_WINDOWS_INTEGRATION.md) for current truth. Do not repeat or expand beyond F0 without owner authorization.
+> **Checkpoint update (2026-09-10):** This was the original F0 commission and is retained for provenance. F0 is physically accepted on `main`. The isolated F1 interaction-hardening candidate passed automated Windows T13–T18 and full F0 regression on `feature/f1-interaction-hardening`; owner graphical acceptance is pending. Use [current status](STATUS.md), [roadmap](ROADMAP.md), [F0 evidence](evidence/F0_WINDOWS_INTEGRATION.md) and [F1 evidence](evidence/F1_INTERACTION_HARDENING.md) for current truth. Do not repeat F0/F1 or begin F2 without owner direction. The historical instructions below are not a fresh commission.
 
 You are implementing Craft-and-Defend, an independent first-person voxel survival fortress game. This repo already contains the supervisory foundation. **Do not restart Deep Research or rewrite the groundwork before implementing the next gate.**
 

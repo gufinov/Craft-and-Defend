@@ -23,10 +23,11 @@
   "release_id": 283101615,
   "release_url": "https://github.com/Zylann/godot_voxel/releases/tag/v1.6",
   "schema_version": 1,
-  "status": "f0_runtime_validated",
+  "status": "f1_runtime_validated",
   "target": "windows-x86_64",
   "verified_metadata_date": "2026-09-10",
   "voxel_source_commit": "595f52ee4e23203a865eeb981f115909f7aa92f4",
   "voxel_tools": "1.6",
-  "windows_runtime_gate": "PASS_2026-09-10"
+  "windows_runtime_gate": "PASS_2026-09-10",
+  "f1_runtime_gate": "PASS_2026-09-10"
 }

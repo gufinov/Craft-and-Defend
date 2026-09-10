@@ -1,6 +1,6 @@
 # Documentation index
 
-Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [engine decision](ENGINE_DECISION.md) → [scope](PROTOTYPE_SCOPE.md) → [Windows setup](WINDOWS_SETUP.md) → [F0 backlog](BACKLOG.md).
+Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadmap](ROADMAP.md) → [backlog](BACKLOG.md) → [engine decision](ENGINE_DECISION.md) → [Windows setup](WINDOWS_SETUP.md).
 
 ## Product
 
@@ -31,5 +31,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [engin
 - [Test plan](TEST_PLAN.md)
 - [Coding-agent handoff](CODING_AGENT_HANDOFF.md)
 - [Evidence template](evidence/TEMPLATE.md)
+- [F0 Windows integration evidence](evidence/F0_WINDOWS_INTEGRATION.md)
+- [F1 interaction-hardening evidence](evidence/F1_INTERACTION_HARDENING.md)
 - [Tool usage](../tools/README.md)
 - [Current status](STATUS.md)

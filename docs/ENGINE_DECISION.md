@@ -1,6 +1,6 @@
 # Engine decision — ADR 001
 
-Date: 2026-09-10. Status: **selected for prototype; runtime validation pending**.
+Date: 2026-09-10. Status: **selected and runtime-validated for F0/F1 on the recorded Windows machine**.
 
 Use Godot + Zylann Voxel Tools Module edition for Windows x86-64. Foundation uses GDScript, blocky `VoxelTerrain`, `VoxelMesherBlocky`, `VoxelBlockyLibrary`, and `VoxelStreamSQLite`. Start with a simple `CharacterBody3D` and collision-enabled `VoxelViewer`.
 

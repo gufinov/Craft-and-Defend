@@ -1,6 +1,6 @@
 # Coding-agent backlog
 
-G0 and the bounded F0 integration slice exist in this branch. Each card is independently reviewable with a checkpoint and evidence. Do not rebuild these documents or create a second bootstrap.
+G0 and the owner-accepted F0 integration slice exist on `main`. The F1 candidate is isolated on its implementation worktree. Each card is independently reviewable with a checkpoint and evidence. Do not rebuild these documents or create a second bootstrap.
 
 ## F0 — Windows integration spike (PASS 2026-09-10)
 
@@ -19,9 +19,11 @@ G0 and the bounded F0 integration slice exist in this branch. Each card is indep
 
 **Outputs:** small runtime, exact setup/export commands, F0 evidence, source notices, status checkpoint. **Tests:** T01–T12. **Stop condition:** unexplained save corruption, missing module export, or collision failure. Preserve the reproduction; avoid crafting to conceal the blocker.
 
-## F1 — shell and interaction hardening
+## F1 — shell and interaction hardening (AUTOMATED PASS; OWNER REVIEW PENDING 2026-09-10)
 
 Complete keybind UI/reset/conflicts, settings with display rollback, mouse capture/focus loss, window close, inventory overlay, boundary feedback and edit reason codes. Add entity footprint service with synthetic tests. Run T13–T18. Deliver no new content beyond that needed to validate contracts.
+
+**Recorded candidate result:** T13–T18, real Windows close, visible close-save failure, the complete F0 exported regression and static tests passed on the recorded Windows machine. The keybind screen exposes all 21 implemented actions and supports keyboard/mouse capture, conflict explanation, reset, persistence and corrupt-map recovery. See [F1 evidence](evidence/F1_INTERACTION_HARDENING.md). Do not merge or begin F2 until owner review.
 
 ## F2 — inventory, progression and workstations
 

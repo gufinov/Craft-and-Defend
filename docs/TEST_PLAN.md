@@ -1,6 +1,6 @@
 # Test and acceptance plan
 
-Runtime rows begin **NOT RUN** and change only through recorded runtime evidence. T01–T12 are PASS as of 2026-09-10 in [the F0 evidence record](evidence/F0_WINDOWS_INTEGRATION.md); T13 onward remain NOT RUN. Passing repository checks alone does not change a runtime gate. Record later results per test ID in an evidence file copied from [the template](evidence/TEMPLATE.md), including actual/expected behavior and artifacts. Use isolated disposable saves for failure injection.
+Runtime rows begin **NOT RUN** and change only through recorded runtime evidence. T01–T12 are owner-accepted PASS as of 2026-09-10 in [the F0 evidence record](evidence/F0_WINDOWS_INTEGRATION.md). T13–T18 are automated Windows PASS in [the F1 candidate evidence](evidence/F1_INTERACTION_HARDENING.md), with owner graphical acceptance pending. Passing repository checks alone does not change a runtime gate. Record later results per test ID in an evidence file copied from [the template](evidence/TEMPLATE.md), including actual/expected behavior and artifacts. Use isolated disposable saves for failure injection.
 
 ## Existing repository checks (G0)
 
