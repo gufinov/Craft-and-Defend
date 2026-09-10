@@ -270,6 +270,7 @@ func _build_settings(canvas: CanvasLayer) -> void:
 	box.add_child(_button("Back", _close_settings, Vector2(360, 42)))
 	sensitivity_slider.value_changed.connect(_on_sensitivity_value_changed)
 	volume_slider.value_changed.connect(_on_volume_value_changed)
+	window_mode_option.item_selected.connect(_on_window_mode_selected)
 
 
 func _build_inventory(canvas: CanvasLayer) -> void:
@@ -461,7 +462,7 @@ func _show_settings() -> void:
 	menu_panel.hide()
 	pause_panel.hide()
 	_refresh_settings_controls()
-	settings_message.text = "Display changes require confirmation and automatically roll back."
+	settings_message.text = _display_mode_help(window_mode_option.selected)
 	settings_panel.show()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -481,6 +482,7 @@ func _refresh_settings_controls() -> void:
 	window_mode_option.select(1 if settings.window_mode == "fullscreen" else 0)
 	var resolution_index := SettingsStore.RESOLUTION_OPTIONS.find(settings.resolution)
 	resolution_option.select(maxi(0, resolution_index))
+	resolution_option.disabled = window_mode_option.selected == 1
 	_on_sensitivity_value_changed(sensitivity_slider.value)
 	_on_volume_value_changed(volume_slider.value)
 
@@ -532,6 +534,18 @@ func _on_sensitivity_value_changed(value: float) -> void:
 func _on_volume_value_changed(value: float) -> void:
 	if volume_value_label != null:
 		volume_value_label.text = "%d%%" % roundi(value)
+
+
+func _on_window_mode_selected(index: int) -> void:
+	resolution_option.disabled = index == 1
+	if settings_message != null:
+		settings_message.text = _display_mode_help(index)
+
+
+func _display_mode_help(index: int) -> String:
+	if index == 1:
+		return "Fullscreen uses the monitor's native resolution and expands to fill the entire screen."
+	return "Windowed resolution changes the app window. Display previews revert automatically unless confirmed."
 
 
 func _unhandled_input(event: InputEvent) -> void:

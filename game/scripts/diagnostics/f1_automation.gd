@@ -17,6 +17,8 @@ func run(application: CraftAndDefendApp, mode: String) -> void:
 			await _run_phase2()
 		"visual":
 			await _run_visual()
+		"display-runtime":
+			await _run_display_runtime()
 		_:
 			_record("HARNESS", false, "known F1 automation mode", mode)
 			_finish(2)
@@ -269,6 +271,52 @@ func _run_visual() -> void:
 	else:
 		_record("T18_INVENTORY_ULTRAWIDE", false, "session ready", "timeout")
 	_finish(0 if not failed else 1)
+
+
+func _run_display_runtime() -> void:
+	await _settle_frames(5)
+	var window := get_window()
+	_record("T18_EXPAND_CONFIG", window.content_scale_aspect == Window.CONTENT_SCALE_ASPECT_EXPAND, "root content scale aspect expands across non-16:9 windows", window.content_scale_aspect)
+	app._show_settings()
+	var windowed_target := Vector2i(1600, 900)
+	var windowed_preview := app.settings.begin_display_preview("windowed", windowed_target)
+	await _settle_frames(20)
+	var windowed_actual := DisplayServer.window_get_size()
+	_record("T18_WINDOWED_NATIVE_SIZE", windowed_preview.get("ok", false) and windowed_actual == windowed_target, "windowed resolution changes the native client area to 1600 × 900", windowed_actual)
+	app.settings.rollback_display_preview()
+	await _settle_frames(10)
+
+	var fullscreen_preview := app.settings.begin_display_preview("fullscreen", Vector2i(1280, 720))
+	await _settle_frames(20)
+	app._refresh_settings_controls()
+	app.settings_message.text = app._display_mode_help(1)
+	await RenderingServer.frame_post_draw
+	var image := get_viewport().get_texture().get_image()
+	var screen_index := DisplayServer.window_get_current_screen()
+	var screen_size := DisplayServer.screen_get_size(screen_index)
+	var fullscreen_size := DisplayServer.window_get_size()
+	var screenshot_path := app.data_root.path_join("f1-fullscreen-native-fill.png")
+	var screenshot_error := image.save_png(screenshot_path)
+	var edge_y := floori(float(image.get_height()) * 0.5)
+	var native_fullscreen: bool = fullscreen_preview.get("ok", false) \
+		and DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN \
+		and fullscreen_size == screen_size
+	_record("T18_FULLSCREEN_NATIVE_SIZE", native_fullscreen, "fullscreen uses the current monitor's native size", {"screen": screen_size, "window": fullscreen_size})
+	_record("T18_FULLSCREEN_UI_CONTRACT", app.resolution_option.disabled and app.settings_message.text.contains("native resolution"), "windowed-resolution control is disabled and fullscreen behavior is explained", {"disabled": app.resolution_option.disabled, "message": app.settings_message.text})
+	_record("T18_FULLSCREEN_FILL", screenshot_error == OK and image.get_size() == fullscreen_size and _image_edges_have_content(image), "rendered canvas fills both horizontal edges without pillarboxes", {"path": screenshot_path, "image": image.get_size(), "left": image.get_pixel(1, edge_y), "right": image.get_pixel(image.get_width() - 2, edge_y)})
+	app.settings.rollback_display_preview()
+	await _settle_frames(10)
+	app._close_settings()
+	_finish(0 if not failed else 1)
+
+
+func _image_edges_have_content(image: Image) -> bool:
+	if image.get_width() < 4 or image.get_height() < 4:
+		return false
+	var sample_y := floori(float(image.get_height()) * 0.5)
+	var left := image.get_pixel(1, sample_y)
+	var right := image.get_pixel(image.get_width() - 2, sample_y)
+	return left.r + left.g + left.b > 0.05 and right.r + right.g + right.b > 0.05
 
 
 func _fake_query(cell: Vector3i) -> Dictionary:
