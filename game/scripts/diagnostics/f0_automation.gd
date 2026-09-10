@@ -19,6 +19,10 @@ func run(application: CraftAndDefendApp, mode: String) -> void:
 			await _run_wait_close()
 		"verify-close":
 			await _run_verify_close()
+		"close-failure":
+			await _run_close_failure()
+		"visual":
+			await _run_visual()
 		_:
 			_record("HARNESS", false, "known automation mode", mode)
 			_finish(2)
@@ -66,11 +70,11 @@ func _run_phase1() -> void:
 	app.session.player.deactivate()
 	app.session.player.position = Vector3(0.5, 0.0, 40.5)
 	await _wait_cell_loaded(Vector3i(2, -1, 38))
-	var break_one := app.session.interaction.try_break_cell(Vector3i(0, -1, 38))
+	var break_one := app.session.interaction.break_from_view(Vector3(0.5, 2.0, 38.5), Vector3.DOWN)
 	_record("T05_BREAK_GATHER", break_one.get("ok", false) and app.session.inventory.dirt == 1 and int(app.session.world.query_cell(Vector3i(0, -1, 38)).get("voxel_id", -1)) == 0, "one block removed and one dirt gathered", break_one)
-	var place_one := app.session.interaction.try_place_dirt(Vector3i(1, 0, 38))
+	var place_one := app.session.interaction.place_from_view(Vector3(1.5, 2.0, 38.5), Vector3.DOWN)
 	_record("T05_PLACE_CONSUME", place_one.get("ok", false) and app.session.inventory.dirt == 0 and int(app.session.world.query_cell(Vector3i(1, 0, 38)).get("voxel_id", -1)) == 2, "one dirt placed and one consumed", place_one)
-	var break_two := app.session.interaction.try_break_cell(Vector3i(2, -1, 38))
+	var break_two := app.session.interaction.break_from_view(Vector3(2.5, 2.0, 38.5), Vector3.DOWN)
 	_record("T05_EXACT_ACCOUNTING", break_two.get("ok", false) and app.session.inventory.dirt == 1, "second break leaves exactly one dirt", break_two)
 
 	var before_invalid := _mutation_snapshot()
@@ -88,13 +92,22 @@ func _run_phase1() -> void:
 	app.session.player.activate(false)
 	app._pause_game()
 	_record("T07_PAUSE", app.state == app.AppState.PAUSED and get_tree().paused, "Escape pause state freezes gameplay", app.state)
+	app._show_keybinds()
+	app._capture_forward_key()
+	var conflict_event := InputEventKey.new()
+	conflict_event.pressed = true
+	conflict_event.physical_keycode = KEY_D
+	app._unhandled_input(conflict_event)
+	_record("T08_CONFLICT", app.settings.get_keycode("move_forward") == KEY_E and app.keybind_message.text.contains("CONFLICT"), "keybind UI rejects the backward-key conflict", app.keybind_message.text)
+	app._capture_forward_key()
+	var rebind_event := InputEventKey.new()
+	rebind_event.pressed = true
+	rebind_event.physical_keycode = KEY_R
+	app._unhandled_input(rebind_event)
+	_record("T08_REBIND_SAVE", app.settings.get_keycode("move_forward") == KEY_R and app.forward_binding_label.text.contains("R"), "keybind UI saves physical R for Forward", {"message": app.keybind_message.text, "label": app.forward_binding_label.text})
+	app._close_keybinds()
 	app._resume_game()
 	_record("T07_RESUME", app.state == app.AppState.PLAYING and not get_tree().paused, "Resume restores play state", app.state)
-
-	var conflict := app.settings.rebind_key("move_forward", KEY_D)
-	_record("T08_CONFLICT", conflict.get("reason") == "CONFLICT", "conflicting backward key rejected", conflict)
-	var rebind := app.settings.rebind_key("move_forward", KEY_R)
-	_record("T08_REBIND_SAVE", rebind.get("ok", false) and app.settings.get_keycode("move_forward") == KEY_R, "forward rebound to physical R and persisted", rebind)
 
 	app.session.player.deactivate()
 	app.session.player.position = Vector3(0.5, 0.0, -40.5)
@@ -165,6 +178,52 @@ func _run_verify_close() -> void:
 	await get_tree().process_frame
 	_record("T12_CLOSE_CHECKPOINT", app.saves.has_checkpoint(), "WM_CLOSE path published a valid checkpoint", app.saves.has_checkpoint())
 	_finish(0 if not failed else 1)
+
+
+func _run_close_failure() -> void:
+	await get_tree().process_frame
+	app.start_button.pressed.emit()
+	if not await _wait_for_session_ready():
+		_record("T12_FAILURE_READY", false, "session ready for failure injection", "timeout")
+		_finish(1)
+		return
+	app.session.world.working_database_path = app.data_root.path_join("deliberately-missing/world.sqlite")
+	app._handle_close_request()
+	for frame in range(600):
+		if app.state == app.AppState.ERROR:
+			break
+		await get_tree().process_frame
+	var stayed_open := app.state == app.AppState.ERROR and app.status_label.visible \
+		and app.status_label.text.contains("WORKING_DATABASE_MISSING")
+	_record("T12_FAILURE_VISIBLE", stayed_open, "failed close-save stays open with visible exact error", {"state": app.state, "message": app.status_label.text})
+	_finish(0 if not failed else 1)
+
+
+func _run_visual() -> void:
+	for frame in range(3):
+		await get_tree().process_frame
+	await _capture_frame("menu.png", "VISUAL_MENU")
+	app.start_button.pressed.emit()
+	if not await _wait_for_session_ready():
+		_record("VISUAL_WORLD_READY", false, "rendered world ready", "timeout")
+		_finish(1)
+		return
+	for frame in range(30):
+		await get_tree().process_frame
+	await _capture_frame("gameplay.png", "VISUAL_GAMEPLAY")
+	app._pause_game()
+	await get_tree().process_frame
+	await _capture_frame("pause.png", "VISUAL_PAUSE")
+	app._resume_game()
+	_finish(0 if not failed else 1)
+
+
+func _capture_frame(filename: String, test_id: String) -> void:
+	await RenderingServer.frame_post_draw
+	var image := get_viewport().get_texture().get_image()
+	var path := app.data_root.path_join(filename)
+	var error := image.save_png(path)
+	_record(test_id, error == OK and FileAccess.file_exists(path), "PNG screenshot from rendered application", {"path": path, "error": error, "size": image.get_size()})
 
 
 func _wait_for_session_ready(max_frames: int = 1200) -> bool:

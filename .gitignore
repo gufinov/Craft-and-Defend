@@ -24,3 +24,4 @@ __pycache__/
 .DS_Store
 Thumbs.db
 export_presets.local.cfg
+/game/export_presets.cfg

@@ -1,7 +1,6 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://scripts/app/app.gd" id="1_app"]
+[ext_resource type="Script" path="res://scripts/app/bootstrap.gd" id="1_bootstrap"]
 
-[node name="CraftAndDefend" type="Node"]
-script = ExtResource("1_app")
-
+[node name="Bootstrap" type="Node"]
+script = ExtResource("1_bootstrap")
