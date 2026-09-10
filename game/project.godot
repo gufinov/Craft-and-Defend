@@ -8,6 +8,7 @@ config/description="Finite voxel-world F0 integration spike"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/use_custom_user_dir=true
 config/custom_user_dir_name="CraftAndDefend"
+run/main_scene="res://scenes/app/main.tscn"
 
 [display]
 
@@ -22,4 +23,3 @@ window/stretch/mode="canvas_items"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/default_filters/use_nearest_mipmap_filter=false
-
