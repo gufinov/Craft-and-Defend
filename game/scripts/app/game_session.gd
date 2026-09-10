@@ -4,6 +4,23 @@ extends Node3D
 signal ready_for_play
 signal hud_changed(text: String)
 signal status_changed(message: String)
+signal feedback_changed(message: String)
+
+const REASON_TEXT := {
+	"OK": "Edit complete.",
+	"OUT_OF_BOUNDS": "World boundary — that cell is outside the finite test world.",
+	"UNLOADED": "That area is still loading; try again in a moment.",
+	"OCCUPIED": "Placement rejected — that cell is occupied.",
+	"PLAYER_OVERLAP": "Placement rejected — move out of the target cell.",
+	"UNSUPPORTED": "Placement rejected — the block needs support below it.",
+	"WRONG_TOOL": "That block needs a different tool.",
+	"OUT_OF_REACH": "That target is out of reach.",
+	"NO_RESOURCE": "No dirt is available to place.",
+	"INVENTORY_FULL": "Inventory is full; the block was not removed.",
+	"STALE_REVISION": "The world changed before that edit; try again.",
+	"PROTECTED": "The bottom bedrock layer is protected.",
+	"NO_TARGET": "No editable block is targeted.",
+}
 
 var world: WorldAdapter
 var player: PlayerController
@@ -60,9 +77,19 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	world.status_changed.connect(status_changed.emit)
 	inventory.changed.connect(_on_inventory_changed)
 	player.interaction_feedback.connect(_on_interaction_feedback)
+	player.boundary_feedback.connect(_on_boundary_feedback)
 	player.deactivate()
 	_on_inventory_changed(inventory.snapshot())
 	return {"ok": true}
+
+
+func apply_input_settings(settings_store: SettingsStore) -> void:
+	if player != null:
+		player.configure_input(settings_store.mouse_sensitivity, settings_store.invert_y)
+
+
+func inventory_text() -> String:
+	return "Dirt\n%d / %d" % [inventory.dirt, F0Inventory.MAX_DIRT]
 
 
 func _on_spawn_area_ready() -> void:
@@ -101,8 +128,15 @@ func snapshot() -> Dictionary:
 
 
 func _on_inventory_changed(data: Dictionary) -> void:
-	hud_changed.emit("Dirt: %d   |   ESDF move · Space jump · Esc pause" % int(data.get("dirt", 0)))
+	hud_changed.emit("Dirt: %d / %d   |   ESDF move · A sprint · Z crouch · Space jump · Tab inventory · Esc pause" % [int(data.get("dirt", 0)), F0Inventory.MAX_DIRT])
 
 
 func _on_interaction_feedback(message: String) -> void:
-	status_changed.emit(message.replace("_", " ").capitalize())
+	var friendly := str(REASON_TEXT.get(message, message.replace("_", " ").capitalize()))
+	status_changed.emit(friendly)
+	feedback_changed.emit(friendly)
+
+
+func _on_boundary_feedback(message: String) -> void:
+	status_changed.emit(message)
+	feedback_changed.emit(message)

@@ -2,19 +2,22 @@ class_name PlayerController
 extends CharacterBody3D
 
 signal interaction_feedback(message: String)
+signal boundary_feedback(message: String)
 
 const WALK_SPEED := 5.0
 const SPRINT_SPEED := 8.0
 const CROUCH_SPEED := 2.5
 const JUMP_VELOCITY := 5.0
 const GRAVITY := 14.0
-const MOUSE_SENSITIVITY := 0.0025
 
 var camera: Camera3D
 var collision_shape: CollisionShape3D
 var interaction: InteractionService
 var active := false
 var look_pitch := 0.0
+var mouse_sensitivity := SettingsStore.DEFAULT_MOUSE_SENSITIVITY
+var invert_y := false
+var _last_boundary_notice_msec := -1000
 
 
 func _ready() -> void:
@@ -48,6 +51,11 @@ func deactivate() -> void:
 	velocity = Vector3.ZERO
 	set_physics_process(false)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func configure_input(sensitivity: float, inverted: bool) -> void:
+	mouse_sensitivity = clampf(sensitivity, SettingsStore.MIN_MOUSE_SENSITIVITY, SettingsStore.MAX_MOUSE_SENSITIVITY)
+	invert_y = inverted
 
 
 func _physics_process(delta: float) -> void:
@@ -90,8 +98,9 @@ func get_body_aabb() -> AABB:
 
 
 func apply_mouse_look(relative: Vector2) -> void:
-	rotate_y(-relative.x * MOUSE_SENSITIVITY)
-	look_pitch = clampf(look_pitch - relative.y * MOUSE_SENSITIVITY, -1.5, 1.5)
+	rotate_y(-relative.x * mouse_sensitivity)
+	var vertical_direction := -1.0 if invert_y else 1.0
+	look_pitch = clampf(look_pitch - relative.y * mouse_sensitivity * vertical_direction, -1.5, 1.5)
 	camera.rotation.x = look_pitch
 
 
@@ -116,8 +125,14 @@ func restore(data: Dictionary) -> bool:
 
 
 func _position_inside_world() -> void:
+	var before := position
 	position.x = clampf(position.x, -31.65, 31.65)
 	position.z = clampf(position.z, -63.65, 63.65)
+	if not position.is_equal_approx(before):
+		var now := Time.get_ticks_msec()
+		if now - _last_boundary_notice_msec >= 800:
+			_last_boundary_notice_msec = now
+			boundary_feedback.emit("World boundary — the finite F1 test world ends here.")
 
 
 func _report(result: Dictionary) -> void:

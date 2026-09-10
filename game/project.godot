@@ -1,10 +1,10 @@
-; Craft-and-Defend F0 Windows integration spike
+; Craft-and-Defend F1 interaction hardening
 config_version=5
 
 [application]
 
 config/name="Craft and Defend"
-config/description="Finite voxel-world F0 integration spike"
+config/description="Finite voxel-world Foundation prototype"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/use_custom_user_dir=true
 config/custom_user_dir_name="CraftAndDefend"

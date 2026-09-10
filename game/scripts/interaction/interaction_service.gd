@@ -6,6 +6,7 @@ signal result_reported(result: Dictionary)
 const AIR := 0
 const GRASS := 1
 const DIRT := 2
+const STONE := 3
 const BEDROCK := 9
 
 var world: WorldAdapter
@@ -92,4 +93,3 @@ func _finish(ok: bool, reason: String, changes: Dictionary = {}) -> Dictionary:
 	}
 	result_reported.emit(result)
 	return result
-
