@@ -227,7 +227,8 @@ def validate_repo(root=ROOT):
 if __name__ == "__main__":
     try:
         print("PASS: foundation static validation", json.dumps(validate_repo(), sort_keys=True))
-        print("Runtime, Windows export and gameplay acceptance: NOT RUN")
+        runtime_gate = read_json(ROOT / "tools/versions.json")["windows_runtime_gate"]
+        print(f"Recorded runtime, Windows export and gameplay gate: {runtime_gate}")
     except (ValidationError, KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         sys.exit(1)

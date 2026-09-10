@@ -1,8 +1,10 @@
 # Coding-agent backlog
 
-Only G0 exists in this commit. Each card is independently reviewable with a checkpoint and evidence. Do not start by rebuilding these documents or creating a second bootstrap.
+G0 and the bounded F0 integration slice exist in this branch. Each card is independently reviewable with a checkpoint and evidence. Do not rebuild these documents or create a second bootstrap.
 
-## F0 — Windows integration spike (next)
+## F0 — Windows integration spike (PASS 2026-09-10)
+
+**Recorded result:** T01–T12 passed on the recorded Windows machine. See [the F0 evidence record](evidence/F0_WINDOWS_INTEGRATION.md). Stop for owner review before F1.
 
 **Objective:** prove the stack can support the intended loop before content investment.
 

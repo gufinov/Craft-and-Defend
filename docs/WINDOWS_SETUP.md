@@ -53,3 +53,22 @@ Create a Windows Desktop export preset named `Windows Desktop`, x86-64, with its
 Use `--export-release 'Windows Desktop'` with a destination under the ignored `builds` directory. Do not use a vanilla template or assume a debug template exists. Document the exact tested export command once implemented; do not report an export preset as working merely because it parses.
 
 Close the editor, run the exported executable from a portable folder, and perform F0. Record engine/template hashes, build hash, Windows version, renderer, resolution, actual save directory and results. An installer, code signing, Steam account and store submission are not prerequisites.
+
+## Verified F0 setup — 2026-09-10
+
+The candidate pair was downloaded from the recorded official v1.6 URLs and extracted without changing PATH:
+
+```text
+D:\CODEX\_tools\GodotVoxel\4.6-1.6\editor\godot.windows.editor.x86_64.exe
+D:\CODEX\_tools\GodotVoxel\4.6-1.6\template\godot.windows.template_release.x86_64.exe
+```
+
+The archive verifier passed both publisher hashes. `--version` returned `4.6.stable.custom_build.89cea1439`; the runtime probe returned Voxel Tools `1.6.0 Module` at `595f52ee4e23203a865eeb981f115909f7aa92f4`. Official Godot 4.7.2 was deliberately tested only as the negative control and was rejected with `FATAL_TOOLCHAIN_MISMATCH`.
+
+The tested export path is:
+
+```powershell
+& .\tools\build_windows_f0.ps1
+```
+
+This generates ignored `game\export_presets.cfg` from `game\export_presets.cfg.in`, inserts the verified local custom release-template path, and runs `--export-release "Windows Desktop"`. The portable output is `builds\CraftAndDefend\CraftAndDefend.exe` plus `CraftAndDefend.pck`. Exact hashes and runtime results are in [F0 evidence](evidence/F0_WINDOWS_INTEGRATION.md).
