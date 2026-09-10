@@ -7,7 +7,8 @@ if exist "%APP%" (
   exit /b 0
 )
 
-set "GODOT=%~dp0..\..\..\_tools\GodotVoxel\4.6-1.6\editor\godot.windows.editor.x86_64.exe"
+set "GODOT="
+for %%D in ("%~dp0.." "%~dp0..\.." "%~dp0..\..\..") do if exist "%%~fD\_tools\GodotVoxel\4.6-1.6\editor\godot.windows.editor.x86_64.exe" set "GODOT=%%~fD\_tools\GodotVoxel\4.6-1.6\editor\godot.windows.editor.x86_64.exe"
 if exist "%GODOT%" (
   start "Craft and Defend" "%GODOT%" --path "%~dp0game"
   exit /b 0

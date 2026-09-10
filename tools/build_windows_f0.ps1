@@ -6,13 +6,32 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$codexRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot '..\..\..'))
+
+function Find-PinnedToolRoot {
+    $cursor = [System.IO.DirectoryInfo]::new($repositoryRoot)
+    while ($null -ne $cursor) {
+        $candidate = Join-Path $cursor.FullName '_tools\GodotVoxel\4.6-1.6'
+        if (Test-Path -LiteralPath $candidate -PathType Container) {
+            return $candidate
+        }
+        $cursor = $cursor.Parent
+    }
+    return $null
+}
+
+$pinnedToolRoot = $null
+if ([string]::IsNullOrWhiteSpace($GodotExe) -or [string]::IsNullOrWhiteSpace($TemplateExe)) {
+    $pinnedToolRoot = Find-PinnedToolRoot
+    if ([string]::IsNullOrWhiteSpace($pinnedToolRoot)) {
+        throw 'Pinned Godot/Voxel Tools folder was not found in any repository ancestor. Set GODOT_VOXEL_EXE and GODOT_VOXEL_TEMPLATE for a custom location.'
+    }
+}
 
 if ([string]::IsNullOrWhiteSpace($GodotExe)) {
-    $GodotExe = Join-Path $codexRoot '_tools\GodotVoxel\4.6-1.6\editor\godot.windows.editor.x86_64.exe'
+    $GodotExe = Join-Path $pinnedToolRoot 'editor\godot.windows.editor.x86_64.exe'
 }
 if ([string]::IsNullOrWhiteSpace($TemplateExe)) {
-    $TemplateExe = Join-Path $codexRoot '_tools\GodotVoxel\4.6-1.6\template\godot.windows.template_release.x86_64.exe'
+    $TemplateExe = Join-Path $pinnedToolRoot 'template\godot.windows.template_release.x86_64.exe'
 }
 
 $GodotExe = [System.IO.Path]::GetFullPath($GodotExe)
