@@ -1,6 +1,6 @@
 # Coding-agent handoff
 
-> **Checkpoint update (2026-09-10):** This was the original F0 commission. F0 is now implemented and recorded as PASS on `prototype/foundation`; use [current status](STATUS.md) and [the F0 evidence record](evidence/F0_WINDOWS_INTEGRATION.md) for current truth. Do not repeat or expand beyond F0 without owner authorization.
+> **Checkpoint update (2026-09-10):** This was the original F0 commission. F0 is implemented, recorded as PASS, physically accepted by Tony, and promoted to `main`; use [current status](STATUS.md) and [the F0 evidence record](evidence/F0_WINDOWS_INTEGRATION.md) for current truth. Do not repeat or expand beyond F0 without owner authorization.
 
 You are implementing Craft-and-Defend, an independent first-person voxel survival fortress game. This repo already contains the supervisory foundation. **Do not restart Deep Research or rewrite the groundwork before implementing the next gate.**
 

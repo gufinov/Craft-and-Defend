@@ -32,4 +32,4 @@ python -m unittest discover -s tests -v
 
 These validate documentation links and starter data invariants. Windows runtime/export evidence is separate in `docs/evidence/F0_WINDOWS_INTEGRATION.md`.
 
-Local convention: `D:\CODEX\Craft-and-Defend\main` is canonical; implementation lives under `D:\CODEX\Craft-and-Defend\worktrees`. This foundation is on `docs/foundation-groundwork`; branch `prototype/foundation` from it while it awaits review. No unvalidated gameplay goes into `main`.
+Local convention: `D:\CODEX\Craft_and_Defend\main` is canonical; later commissioned implementation belongs under `D:\CODEX\Craft_and_Defend\worktrees`. F0 is owner accepted on `main`. No later milestone or unvalidated gameplay goes directly into `main`.

@@ -19,7 +19,7 @@
 | Permission | Repo foundation authorized; no store publishing, purchases, content licensing or gameplay merge implied | Authorization scope |
 | Costs | MIT engine components; no mandatory engine royalty. Development, agent usage, art and distribution costs unpriced | License fact + budget unknown |
 | Lifecycle | Worktree → test/evidence → review → portable Windows prototype; installer/store later | User workflow + proposal |
-| Success evidence | Static repo checks now; Windows F0 next; full Foundation later | Explicit gates |
+| Success evidence | Static repository checks and owner-accepted Windows F0 complete; later Foundation gates remain | Explicit gates |
 
 The cloud session cannot verify the user's Windows folders, installed engine, GPU performance or disk space. The local agent inspects them read-only. Standard root: `D:\CODEX\Craft-and-Defend`; if a differently named checkout already has the correct remote, reuse it and record its path instead of creating duplicates.
 

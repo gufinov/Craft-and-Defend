@@ -38,6 +38,10 @@ Recorded runtime, Windows export and gameplay gate: PASS_2026-09-10
 
 Visual capture from the exported executable used the actual Windows/OpenGL renderer at 1280×720. Menu, gameplay and pause PNGs were opened and inspected; controls were legible and unclipped.
 
+### Owner physical acceptance — 2026-09-10
+
+Tony ran the Windows build directly and reported the F0 slice “100% working.” He verified navigation into and out of the game and world, running, movement, jumping and collision. Four supplied screenshots visibly confirm the native main menu, active ESDF world, pause menu, and a subsequent main menu with Continue enabled after saving. The screenshots remain in Tony's personal screenshots folder and are not copied into the repository.
+
 ## Toolchain and hashes
 
 | Artifact | Bytes | SHA-256 |
@@ -70,7 +74,7 @@ Pinned Voxel Tools source/API was inspected at `595f52e`. `voxelgame` blocky pat
 ## LIMITATIONS / FAILURES
 
 - This proves coherent normal saves and prior-checkpoint refusal behavior for the F0 path; it is not a power-loss/filesystem durability guarantee. Denied writes, full disk, interrupted publication, A/B slots and migrations remain F3.
-- Automated Windows input/action events and actual rendered output were verified; Tony's separate hands-on exploratory playtest is still useful.
+- Automated Windows input/action events, actual rendered output and Tony's hands-on Windows playtest were verified.
 - The world is intentionally flat and functionally colored. Art production, richer terrain and performance targets are outside F0.
 - The first class-probe script used a reserved loop variable and failed parsing; it was corrected and rerun. The first export wrapper exited early on an unset native exit code; explicit `Start-Process -Wait` fixed it. The first hidden WM_CLOSE attempt had handle `0` and was terminated; a visible real-window run accepted WM_CLOSE and passed.
 
@@ -83,8 +87,7 @@ Pinned Voxel Tools source/API was inspected at `595f52e`. `voxelgame` blocky pat
 ## GIT / REPRODUCIBILITY
 
 - Repo: `gufinov/Craft-and-Defend`.
-- Canonical checkout: `D:\CODEX\Craft_and_Defend\main`, clean `main`, `1a94cffc82280f485f6f877a5e64567159ddd3af`.
-- Implementation worktree: `D:\CODEX\Craft_and_Defend\worktrees\foundation`.
-- Branch: `prototype/foundation`, based on `origin/docs/foundation-groundwork` `c72c9bb084fe4487fb36f068d52be63a6f459c5d`.
-- Checkpoints: `57f5676` toolchain probe, `07211b7` gameplay/persistence, `81f075a` export/lifecycle. Final evidence is the commit containing this file.
-- Export and local evidence are intentionally ignored; no merge, push, release or engine repin occurred.
+- Accepted checkout: `D:\CODEX\Craft_and_Defend\main`; the commit containing this file is the owner-accepted F0 main checkpoint.
+- Development lineage: `prototype/foundation`, based on `origin/docs/foundation-groundwork` `c72c9bb084fe4487fb36f068d52be63a6f459c5d`.
+- Checkpoints: `57f5676` toolchain probe, `07211b7` gameplay/persistence, `81f075a` export/lifecycle, `c92c091` automated evidence closeout, followed by this owner-acceptance checkpoint.
+- Export and local runtime artifacts are intentionally ignored; no release or engine repin occurred.
