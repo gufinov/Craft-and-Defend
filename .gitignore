@@ -1,0 +1,26 @@
+# Engine cache, generated output and local state
+.godot/
+builds/*
+!builds/.gitkeep
+artifacts/*
+!artifacts/README.md
+*.tmp
+*.log
+__pycache__/
+*.pyc
+.venv/
+.env
+.env.*
+!.env.example
+*.exe
+*.dll
+*.pck
+*.zip
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.save
+.DS_Store
+Thumbs.db
+export_presets.local.cfg

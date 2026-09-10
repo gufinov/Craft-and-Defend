@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "generator_version": "flat_fixture_1",
+  "seed": 41026,
+  "min_cell": [
+    -32,
+    -16,
+    -64
+  ],
+  "size": [
+    64,
+    32,
+    128
+  ],
+  "chunk_size": 16,
+  "sea_level": 0,
+  "surface_y": -1,
+  "spawn_feet": [
+    0.5,
+    2.0,
+    40.5
+  ],
+  "interaction_reach": 5,
+  "day_length_seconds": 1200,
+  "initial_day_phase": 0.25,
+  "layers": [
+    {
+      "min_y": -16,
+      "max_y_exclusive": -15,
+      "block": 9
+    },
+    {
+      "min_y": -15,
+      "max_y_exclusive": -3,
+      "block": 3
+    },
+    {
+      "min_y": -3,
+      "max_y_exclusive": -1,
+      "block": 2
+    },
+    {
+      "min_y": -1,
+      "max_y_exclusive": 0,
+      "block": 1
+    },
+    {
+      "min_y": 0,
+      "max_y_exclusive": 16,
+      "block": 0
+    }
+  ],
+  "patches": [
+    {
+      "block": 4,
+      "min_cell": [
+        4,
+        0,
+        40
+      ],
+      "size": [
+        1,
+        4,
+        1
+      ]
+    },
+    {
+      "block": 4,
+      "min_cell": [
+        7,
+        0,
+        40
+      ],
+      "size": [
+        1,
+        4,
+        1
+      ]
+    },
+    {
+      "block": 6,
+      "min_cell": [
+        8,
+        -4,
+        35
+      ],
+      "size": [
+        3,
+        2,
+        3
+      ]
+    },
+    {
+      "block": 7,
+      "min_cell": [
+        -8,
+        -4,
+        35
+      ],
+      "size": [
+        3,
+        2,
+        3
+      ]
+    }
+  ]
+}

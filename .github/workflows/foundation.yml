@@ -1,0 +1,28 @@
+name: Foundation contracts
+
+on:
+  push:
+    branches: [main, docs/foundation-groundwork, prototype/foundation]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-foundation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: '3.12'
+      - name: Validate documents and data contracts
+        run: python tools/validate_foundation.py
+      - name: Exercise validator failure cases
+        run: python -m unittest discover -s tests -v

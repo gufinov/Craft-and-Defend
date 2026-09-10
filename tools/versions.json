@@ -1,0 +1,32 @@
+{
+  "assets": [
+    {
+      "local_download_verified": false,
+      "name": "godot.windows.editor.x86_64.exe.zip",
+      "sha256": "dae425d64dbf3b4f9e06f05a5f108f1f27eca708856e93bc46490151b0ffac0c",
+      "size_bytes": 83340016,
+      "url": "https://github.com/Zylann/godot_voxel/releases/download/v1.6/godot.windows.editor.x86_64.exe.zip"
+    },
+    {
+      "local_download_verified": false,
+      "name": "godot.windows.template_release.x86_64.exe.zip",
+      "sha256": "9556c3893a07f39451c654789e16a057eec3d344428044b0d3e7ed44ae905857",
+      "size_bytes": 30773070,
+      "url": "https://github.com/Zylann/godot_voxel/releases/download/v1.6/godot.windows.template_release.x86_64.exe.zip"
+    }
+  ],
+  "edition": "module",
+  "godot": "4.6.stable.custom_build.89cea1439",
+  "language": "GDScript",
+  "newer_release_observed": "Godot 4.7.2 / Voxel Tools 1.7",
+  "precision": "single",
+  "release_id": 283101615,
+  "release_url": "https://github.com/Zylann/godot_voxel/releases/tag/v1.6",
+  "schema_version": 1,
+  "status": "candidate_not_runtime_validated",
+  "target": "windows-x86_64",
+  "verified_metadata_date": "2026-09-10",
+  "voxel_source_commit": "595f52ee4e23203a865eeb981f115909f7aa92f4",
+  "voxel_tools": "1.6",
+  "windows_runtime_gate": "NOT_RUN"
+}

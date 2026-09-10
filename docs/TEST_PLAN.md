@@ -1,0 +1,50 @@
+# Test and acceptance plan
+
+All runtime rows start **NOT RUN**. Passing repository checks does not change them. Record results per test ID in an evidence file copied from [the template](evidence/TEMPLATE.md), including actual/expected behavior and artifacts. Use isolated disposable saves for failure injection.
+
+## Existing repository checks (G0)
+
+`python tools/validate_foundation.py` checks JSON structure/cross-references, unique stable IDs, tool/station progression reachability, default control conflicts, bounds/placement fixture expectations, release manifest shape, original-report hash and local Markdown link targets. `python -m unittest discover -s tests -v` tests rejection of invalid variants. These are static contract checks only; the reachability proof ignores finite resource quantities and spatial accessibility.
+
+## Runtime gates
+
+| ID | Gate | Test / required result |
+|---|---|---|
+| T01 | F0 | Record archive hashes, editor version, module classes and renderer; wrong editor fails clearly |
+| T02 | F0 | Clean launch opens menu; player enters only by Start; Quit from menu works |
+| T03 | F0 | Start loads correct finite bounds; collision-ready spawn never falls through unloaded terrain |
+| T04 | F0 | E/D/S/F, jump, mouse look work; keyboard/pointer usable after pause/resume |
+| T05 | F0 | Break dirt, receive exactly one dirt, place it elsewhere, consume exactly one |
+| T06 | F0 | Outside-bounds, occupied and player-overlap placements fail without inventory/world mutation |
+| T07 | F0 | Escape pauses; menu/settings stay responsive; Resume restores intended state |
+| T08 | F0 | Rebind forward, save settings, fully restart; new key works and default/reset behavior is clear |
+| T09 | F0 | Save/exit/restart/Continue preserves edited cells, player transform and exact inventory counts |
+| T10 | F0 | Move far enough to unload an edited chunk, reload it, save/quit/restart; edits remain |
+| T11 | F0 | Export with custom release template; launch outside editor; repeat T02–T09 |
+| T12 | F0 | Window-close/Alt-F4 during play follows coherent save workflow; failure stays visible |
+| T13 | F1 | All defaults, conflict rejection, cancel capture and reset work; UI actions never mine/place |
+| T14 | F1 | Inventory/settings/focus-loss pause; mouse capture restored only on explicit resume |
+| T15 | F1 | Negative coordinates and all six bound faces/corners use half-open bounds; bottom protected |
+| T16 | F1 | Rapid clicks/stale request/full inventory/wrong tool cause no duplication or resource loss |
+| T17 | F1 | Multi-cell synthetic footprints reject partial overlap, unloaded cells, unsupported cells and player overlap; removal releases all owned cells once |
+| T18 | F1 | Display changes revert if unconfirmed; 16:9/ultrawide/high-DPI menus remain usable |
+| T19 | F2 | Empty-inventory player reaches wood pick → stone pick → smelted iron → iron pick with no debug grants |
+| T20 | F2 | Insufficient input/tool/workstation/output capacity leaves inventory unchanged; recipe output exact |
+| T21 | F2 | Bench/furnace placement consumes one item; support/dismantle rules prevent orphans/duplicates |
+| T22 | F2 | Furnace consumes input/fuel once, pauses correctly, reserves output and completes once |
+| T23 | F3 | A/B save slots and rapid menu/new/continue cycles have no terrain/state contamination |
+| T24 | F3 | Inject denied write/full disk and interruption around checkpoint publication; previous complete checkpoint remains loadable |
+| T25 | F3 | Malformed/newer/missing-content save is refused clearly without replacement; supported migration copies original |
+| T26 | F3 | Save/restart midway through furnace job preserves remaining time and produces exactly one output |
+| T27 | F4 | Day/night advances during play, freezes in overlays/pause, resumes from saved phase; no offline catch-up |
+| T28 | F4 | Blocks/resources distinguishable; selection, craft feedback and key help visible; no placeholder functional claims |
+| T29 | F4 | Measure frame times, edit latency, memory, save size/latency in fixed scenario; record hardware/build/renderer/resolution |
+| T30 | F4 | Fresh portable folder launch with editor closed runs full Foundation loop; README run/save-location instructions accurate |
+
+## Performance evidence, not invented guarantees
+
+Use the 64×32×128 fixture and a scripted or documented route with at least 100 edits and a save/reload. Record median/p95 frame time, longest edit hitch, memory and save duration. Suggested initial usability targets are 60 FPS with ordinary movement and visible edit response under 100 ms on the designated test PC; these are **provisional targets**, not a tested minimum specification. Record failures and determine cause before tuning or enlarging the world.
+
+## Runtime test layers
+
+Automate pure inventory/crafting/occupancy rules in GDScript tests; integration-test actual VoxelTerrain edits and save/load in the pinned engine. Add manual Windows tests for pointer, UI, export and failure recovery. Reuse or add a small test runner only when needed; no testing framework dependency has been selected. Port static placement fixtures into runtime tests, but do not mistake the Python oracle for a test of Godot physics or collision meshes.

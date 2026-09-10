@@ -1,0 +1,408 @@
+{
+  "schema_version": 1,
+  "note": "Static specification oracle only; not a Godot physics test. Offsets already rotated.",
+  "cases": [
+    {
+      "id": "minimum_inclusive",
+      "anchor": [
+        -32,
+        -15,
+        -64
+      ],
+      "offsets": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "occupied": [],
+      "unloaded": [],
+      "player_cells": [],
+      "required_support": [],
+      "expected": "OK"
+    },
+    {
+      "id": "maximum_exclusive",
+      "anchor": [
+        32,
+        0,
+        0
+      ],
+      "offsets": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "occupied": [],
+      "unloaded": [],
+      "player_cells": [],
+      "required_support": [],
+      "expected": "OUT_OF_BOUNDS"
+    },
+    {
+      "id": "below_minimum",
+      "anchor": [
+        0,
+        -17,
+        0
+      ],
+      "offsets": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "occupied": [],
+      "unloaded": [],
+      "player_cells": [],
+      "required_support": [],
+      "expected": "OUT_OF_BOUNDS"
+    },
+    {
+      "id": "multicell_valid",
+      "anchor": [
+        0,
+        0,
+        0
+      ],
+      "offsets": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "occupied": [],
+      "unloaded": [],
+      "player_cells": [],
+      "required_support": [],
+      "expected": "OK"
+    },
+    {
+      "id": "multicell_cross_boundary",
+      "anchor": [
+        31,
+        0,
+        0
+      ],
+      "offsets": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "occupied": [],
+      "unloaded": [],
+      "player_cells": [],
+      "required_support": [],
+      "expected": "OUT_OF_BOUNDS"
+    },
+    {
+      "id": "multicell_partial_overlap",
+      "anchor": [
+        0,
+        0,
+        0
+      ],
+      "offsets": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "occupied": [
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "unloaded": [],
+      "player_cells": [],
+      "required_support": [],
+      "expected": "OCCUPIED"
+    },
+    {
+      "id": "unloaded_not_air",
+      "anchor": [
+        0,
+        0,
+        0
+      ],
+      "offsets": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "occupied": [],
+      "unloaded": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "player_cells": [],
+      "required_support": [],
+      "expected": "UNLOADED"
+    },
+    {
+      "id": "player_overlap",
+      "anchor": [
+        0,
+        0,
+        0
+      ],
+      "offsets": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "occupied": [],
+      "unloaded": [],
+      "player_cells": [
+        [
+          1,
+          0,
+          0
+        ]
+      ],
+      "required_support": [],
+      "expected": "PLAYER_OVERLAP"
+    },
+    {
+      "id": "thin_tile_occupies_cell",
+      "anchor": [
+        0,
+        0,
+        0
+      ],
+      "offsets": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "occupied": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "unloaded": [],
+      "player_cells": [],
+      "required_support": [],
+      "expected": "OCCUPIED"
+    },
+    {
+      "id": "missing_support",
+      "anchor": [
+        0,
+        0,
+        0
+      ],
+      "offsets": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "occupied": [],
+      "unloaded": [],
+      "player_cells": [],
+      "required_support": [
+        [
+          0,
+          -1,
+          0
+        ]
+      ],
+      "expected": "UNSUPPORTED"
+    },
+    {
+      "id": "supported_station",
+      "anchor": [
+        0,
+        0,
+        0
+      ],
+      "offsets": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "occupied": [
+        [
+          0,
+          -1,
+          0
+        ]
+      ],
+      "unloaded": [],
+      "player_cells": [],
+      "required_support": [
+        [
+          0,
+          -1,
+          0
+        ]
+      ],
+      "expected": "OK"
+    }
+  ]
+}

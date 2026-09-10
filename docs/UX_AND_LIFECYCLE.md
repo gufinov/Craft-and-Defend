@@ -1,0 +1,25 @@
+# User experience and application lifecycle
+
+The landing page is the **native game's main menu**, not a separate marketing website. The player chooses when to start and always has a route to settings, pause and exit. Build this shell before survival content.
+
+| State | Behavior and allowed routes |
+|---|---|
+| Boot | Validate configuration/toolchain; route to main menu or readable diagnostic |
+| Main menu | New Game/Start, Continue if a valid checkpoint exists, Settings, Keybinds, Quit |
+| Loading | Show progress; block gameplay input; on failure return to menu without changing good saves |
+| Playing | Capture pointer; movement and interaction enabled; HUD shows hotbar and current target |
+| Inventory/workstation overlay | Release pointer; block world actions; pause simulation for Foundation single player |
+| Paused | Resume, Settings, Keybinds, Save and Exit to Menu, Save and Quit |
+| Settings/keybind overlay | Preserve return state; gameplay stays paused until explicitly resumed |
+| Saving | Disable edits and conflicting navigation; responsive feedback; success follows intended destination |
+| Save/load error | Preserve last good checkpoint; Retry or safe return; no silent success |
+
+Escape closes the top ordinary overlay first; from gameplay it pauses. Tab toggles inventory during gameplay. Key-capture mode treats Escape as cancel rather than accidentally changing the pause binding. Pause and settings freeze clock, furnace jobs and gameplay timers, not just character movement. UI and the save coordinator continue processing while the scene tree is paused. Focus loss pauses the single-player session; focus return does not silently resume.
+
+New Game must not overwrite an existing slot without a concrete confirmation. F0 can expose one user slot, but automated/manual isolation testing must exercise two distinct slots. Continue is disabled with a reason when no valid save exists. Quit from main menu requires no world save. Window close during play follows the same save workflow as the menu.
+
+Settings minimum: mouse sensitivity, invert Y, master volume, windowed/fullscreen and resolution selection appropriate to the current monitor. Risky display changes use a confirmation countdown with automatic rollback; defer complex graphics options. Inspect ultrawide/high-DPI behavior without assuming the user's resolution is a target minimum. Avoid stretching HUD elements to the screen edges; test 16:9 and ultrawide layouts.
+
+Keybind screen: action label, current key, change, conflict explanation, reset defaults and back. A conflicting assignment cannot silently displace a required action. Support physical QWERTY defaults and show readable key names. Controls appear in a compact in-game help surface. See [keybind contract](KEYBINDS.md).
+
+No decorative fake buttons, forced tutorial lock-in, unexplained blank world, hidden save failures, or gameplay actions leaking through UI. F0 uses plain functional UI; polished visual branding follows validated interaction.

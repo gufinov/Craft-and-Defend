@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "keyboard_mode": "physical_qwerty",
+  "escape_recovery": true,
+  "actions": [
+    {
+      "id": "move_forward",
+      "key": "E",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "move_backward",
+      "key": "D",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "strafe_left",
+      "key": "S",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "strafe_right",
+      "key": "F",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "sprint",
+      "key": "A",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "crouch",
+      "key": "Z",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "jump",
+      "key": "Space",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "interact",
+      "key": "Shift",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "inventory",
+      "key": "Tab",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "pause",
+      "key": "Escape",
+      "context": "system",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "hotbar_1",
+      "key": "1",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "hotbar_2",
+      "key": "2",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "hotbar_3",
+      "key": "3",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "hotbar_4",
+      "key": "4",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "hotbar_5",
+      "key": "5",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "hotbar_6",
+      "key": "6",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "hotbar_7",
+      "key": "7",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "hotbar_8",
+      "key": "8",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "hotbar_9",
+      "key": "9",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "reload",
+      "key": "G",
+      "context": "gameplay",
+      "implemented_in_foundation": false
+    },
+    {
+      "id": "primary",
+      "key": "MouseLeft",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "secondary",
+      "key": "MouseRight",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    }
+  ]
+}
