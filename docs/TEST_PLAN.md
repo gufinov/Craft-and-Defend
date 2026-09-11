@@ -1,6 +1,6 @@
 # Test and acceptance plan
 
-Runtime rows begin **NOT RUN** and change only through recorded runtime evidence. T01–T12 are owner-accepted PASS as of 2026-09-10 in [the F0 evidence record](evidence/F0_WINDOWS_INTEGRATION.md). Tony confirmed T13–T17 and the non-display F1 paths on 2026-09-11. His ultrawide screenshots invalidated the original T18 claim by proving native fullscreen pillarboxing; the corrected export now passes a stronger native-size and edge-fill test, with owner retest pending. Passing repository checks alone does not change a runtime gate. Record later results per test ID in an evidence file copied from [the template](evidence/TEMPLATE.md), including actual/expected behavior and artifacts. Use isolated disposable saves for failure injection.
+Runtime rows begin **NOT RUN** and change only through recorded runtime evidence. T01–T12 are owner-accepted PASS as of 2026-09-10 in [the F0 evidence record](evidence/F0_WINDOWS_INTEGRATION.md). Tony confirmed T13–T17 and the non-display F1 paths on 2026-09-11. His ultrawide tests exposed two successive T18 defects: fixed-aspect pillarboxing, then window placement that ignored a nonzero monitor origin. The corrected export now tests native fill, active-monitor identity, decorated bounds and negative virtual-desktop coordinates; owner window-placement retest remains pending. Passing repository checks alone does not change a runtime gate. Record later results per test ID in an evidence file copied from [the template](evidence/TEMPLATE.md), including actual/expected behavior and artifacts. Use isolated disposable saves for failure injection.
 
 ## Existing repository checks (G0)
 
@@ -27,7 +27,7 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T15 | F1 | Negative coordinates and all six bound faces/corners use half-open bounds; bottom protected |
 | T16 | F1 | Rapid clicks/stale request/full inventory/wrong tool cause no duplication or resource loss |
 | T17 | F1 | Multi-cell synthetic footprints reject partial overlap, unloaded cells, unsupported cells and player overlap; removal releases all owned cells once |
-| T18 | F1 | Display changes revert if unconfirmed; 16:9/ultrawide/high-DPI menus remain usable |
+| T18 | F1 | Display changes revert if unconfirmed; fullscreen reports/fills the active monitor; windowed previews stay within that monitor's usable decorated bounds; 16:9/ultrawide/high-DPI menus remain usable |
 | T19 | F2 | Empty-inventory player reaches wood pick → stone pick → smelted iron → iron pick with no debug grants |
 | T20 | F2 | Insufficient input/tool/workstation/output capacity leaves inventory unchanged; recipe output exact |
 | T21 | F2 | Bench/furnace placement consumes one item; support/dismantle rules prevent orphans/duplicates |

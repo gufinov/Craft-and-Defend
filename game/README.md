@@ -11,7 +11,7 @@ From the worktree root, double-click `START_GAME.cmd`. It prefers the ignored po
 3. Aim at grass or dirt and left-click to break/gather exactly one dirt. Right-click a supported empty cell to place it.
 4. Try placing into an occupied cell or the player's body; the world and dirt count must remain unchanged.
 5. Press **Escape**, open **Keybinds**, and scroll through all implemented actions. Any keyboard or mouse binding can be changed; conflicts are explained and change nothing. **Reset Defaults** restores the exact ESDF contract. Escape always cancels capture.
-6. Open **Settings** to change look sensitivity, vertical inversion, master volume or window mode. Fullscreen uses the monitor's native resolution and fills ultrawide displays; explicit resolution choices apply to Windowed mode. Display changes require confirmation and revert after ten seconds.
+6. Open **Settings** to change look sensitivity, vertical inversion, master volume or window mode. Fullscreen reports and uses the active monitor's native resolution and fills ultrawide displays. Explicit resolution choices apply to Windowed mode; previews remain centered within the active monitor's usable area. Display changes require confirmation and revert after ten seconds.
 7. Press **Tab** in play to open the inventory overlay. Gameplay pauses and mouse input cannot edit the world until the overlay closes.
 8. Choose **Save and Quit**, relaunch with `START_GAME.cmd`, and choose **Continue**. The edits, dirt count, transform, and bindings must return.
 
