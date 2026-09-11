@@ -14,6 +14,7 @@ const BINDING_ACTIONS: Array[String] = [
 	"sprint", "crouch", "jump", "interact", "inventory", "pause",
 	"hotbar_1", "hotbar_2", "hotbar_3", "hotbar_4", "hotbar_5",
 	"hotbar_6", "hotbar_7", "hotbar_8", "hotbar_9", "primary", "secondary",
+	"capture_screenshot",
 ]
 
 const ACTION_LABELS := {
@@ -25,6 +26,7 @@ const ACTION_LABELS := {
 	"hotbar_4": "Hotbar 4", "hotbar_5": "Hotbar 5", "hotbar_6": "Hotbar 6",
 	"hotbar_7": "Hotbar 7", "hotbar_8": "Hotbar 8", "hotbar_9": "Hotbar 9",
 	"primary": "Break / Primary", "secondary": "Place / Secondary",
+	"capture_screenshot": "Capture Screenshot",
 }
 
 const ACTION_CONTEXTS := {
@@ -36,6 +38,7 @@ const ACTION_CONTEXTS := {
 	"hotbar_4": "gameplay", "hotbar_5": "gameplay", "hotbar_6": "gameplay",
 	"hotbar_7": "gameplay", "hotbar_8": "gameplay", "hotbar_9": "gameplay",
 	"primary": "gameplay", "secondary": "gameplay",
+	"capture_screenshot": "gameplay",
 }
 
 const DEFAULT_BINDINGS := {
@@ -60,6 +63,7 @@ const DEFAULT_BINDINGS := {
 	"hotbar_9": {"kind": "key", "code": KEY_9},
 	"primary": {"kind": "mouse", "code": MOUSE_BUTTON_LEFT},
 	"secondary": {"kind": "mouse", "code": MOUSE_BUTTON_RIGHT},
+	"capture_screenshot": {"kind": "key", "code": KEY_F2},
 }
 
 const RESOLUTION_OPTIONS: Array[Vector2i] = [

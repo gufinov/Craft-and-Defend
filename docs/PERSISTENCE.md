@@ -10,7 +10,7 @@ Use a dedicated custom Godot user-data directory such as `CraftAndDefend` and sa
 |---|---|
 | Voxel edits | VoxelStreamSQLite database, fresh stream per active session |
 | Slot identity/config | Versioned metadata: slot ID, schema, seed, generator version, bounds, content version |
-| Gameplay snapshot | Player transform, inventory/hotbar, equipment, entities/workstations, jobs, clock, snapshot revision |
+| Gameplay snapshot | Player transform, inventory/hotbar, equipment, entities/workstations, jobs, simulation clock phase/day, snapshot revision |
 | Settings | ConfigFile/equivalent outside slots: bindings, audio, video, sensitivity |
 
 Store explicit schema and content versions. Keep block numeric IDs stable; never reorder them across existing saves. Unknown/newer schema or missing content produces a readable refusal, not an empty replacement world. A migration copies the slot and reports a new version; it does not mutate the sole original copy.

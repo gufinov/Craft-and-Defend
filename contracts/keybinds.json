@@ -134,6 +134,12 @@
       "key": "MouseRight",
       "context": "gameplay",
       "implemented_in_foundation": true
+    },
+    {
+      "id": "capture_screenshot",
+      "key": "F2",
+      "context": "gameplay",
+      "implemented_in_foundation": true
     }
   ]
 }

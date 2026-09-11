@@ -61,7 +61,7 @@ func _run_phase2() -> void:
 
 func _test_keybind_editor() -> void:
 	app._show_keybinds()
-	_record("T13_COMPLETE_EDITOR", app.binding_labels.size() == SettingsStore.BINDING_ACTIONS.size() and app.binding_labels.size() == 21, "all 21 implemented actions have visible binding rows", app.binding_labels.size())
+	_record("T13_COMPLETE_EDITOR", app.binding_labels.size() == SettingsStore.BINDING_ACTIONS.size() and app.binding_labels.size() == 22, "all 22 implemented actions have visible binding rows", app.binding_labels.size())
 
 	var original_forward := app.settings.get_binding("move_forward")
 	app._capture_binding("move_forward")

@@ -8,7 +8,7 @@ const PRINT_SCREEN_FOCUS_WINDOW_MSEC := 2000
 const SCREENSHOT_CLICK_GUARD_SECONDS := 0.20
 const BINDING_GROUPS: Array[Dictionary] = [
 	{"title": "MOVEMENT", "actions": ["move_forward", "move_backward", "strafe_left", "strafe_right", "sprint", "crouch", "jump"]},
-	{"title": "WORLD & MENUS", "actions": ["primary", "secondary", "interact", "inventory", "pause"]},
+	{"title": "WORLD & MENUS", "actions": ["primary", "secondary", "interact", "inventory", "pause", "capture_screenshot"]},
 	{"title": "HOTBAR", "actions": ["hotbar_1", "hotbar_2", "hotbar_3", "hotbar_4", "hotbar_5", "hotbar_6", "hotbar_7", "hotbar_8", "hotbar_9"]},
 ]
 
@@ -16,6 +16,7 @@ var state := AppState.MAIN_MENU
 var data_root := ""
 var settings: SettingsStore
 var saves: SaveCoordinator
+var screenshots: GameplayScreenshotService
 var session: GameSession
 
 var menu_panel: Control
@@ -80,6 +81,7 @@ func _ready() -> void:
 	settings = SettingsStore.new(data_root)
 	settings.load_and_apply()
 	saves = SaveCoordinator.new(data_root)
+	screenshots = GameplayScreenshotService.new(data_root)
 	_build_interface()
 	_show_main_menu()
 	print("DATA_ROOT %s" % data_root)
@@ -103,6 +105,11 @@ func _ready() -> void:
 		var f3_automation := F3Automation.new()
 		add_child(f3_automation)
 		f3_automation.call_deferred("run", self, f3_mode)
+	var f4_mode := _argument_value("--f4-automation=")
+	if not f4_mode.is_empty():
+		var f4_automation := F4Automation.new()
+		add_child(f4_automation)
+		f4_automation.call_deferred("run", self, f4_mode)
 
 
 func _process(delta: float) -> void:
@@ -880,6 +887,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		_print_screen_pressed_msec = Time.get_ticks_msec()
 		return
 
+	if state == AppState.PLAYING and event.is_action_pressed("capture_screenshot") and not (event is InputEventKey and event.echo):
+		get_viewport().set_input_as_handled()
+		_capture_gameplay_screenshot()
+		return
+
 	if _is_escape_press(event):
 		get_viewport().set_input_as_handled()
 		_handle_escape_recovery()
@@ -1012,7 +1024,24 @@ func _set_status(message: String) -> void:
 
 
 func _set_hud(text: String) -> void:
-	hud_label.text = text
+	hud_label.text = "%s · %s capture" % [text, settings.get_binding_label("capture_screenshot")]
+
+
+func _capture_gameplay_screenshot() -> void:
+	if state != AppState.PLAYING or session == null:
+		return
+	var state_before := state
+	var tree_paused_before := get_tree().paused
+	var session_paused_before := session.simulation_paused
+	var result := await screenshots.capture_viewport(get_viewport())
+	if state != state_before or get_tree().paused != tree_paused_before or session == null or session.simulation_paused != session_paused_before:
+		push_error("Gameplay capture changed session state unexpectedly")
+	if result.get("ok", false):
+		_set_feedback("Screenshot saved: %s" % result.filename)
+		print("SCREENSHOT %s" % JSON.stringify(result))
+	else:
+		_set_feedback("Screenshot failed: %s" % str(result.get("reason", "UNKNOWN")).replace("_", " ").capitalize())
+		push_error("Screenshot failed: %s" % JSON.stringify(result))
 
 
 func _set_feedback(text: String) -> void:

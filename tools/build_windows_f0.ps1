@@ -48,6 +48,8 @@ $buildRoot = Join-Path $repositoryRoot 'builds\CraftAndDefend'
 $buildExe = Join-Path $buildRoot 'CraftAndDefend.exe'
 $buildPck = Join-Path $buildRoot 'CraftAndDefend.pck'
 $manifestPath = Join-Path $buildRoot 'build_manifest.json'
+$portableLauncherSource = Join-Path $repositoryRoot 'tools\portable\START_GAME.cmd'
+$portableReadmeSource = Join-Path $repositoryRoot 'tools\portable\README.txt'
 $logPath = Join-Path $repositoryRoot 'artifacts\windows_export.log'
 New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 New-Item -ItemType Directory -Path (Split-Path -Parent $logPath) -Force | Out-Null
@@ -101,7 +103,10 @@ $manifest = [ordered]@{
 $temporaryManifest = "$manifestPath.tmp"
 [System.IO.File]::WriteAllText($temporaryManifest, ($manifest | ConvertTo-Json) + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
 Move-Item -LiteralPath $temporaryManifest -Destination $manifestPath -Force
+Copy-Item -LiteralPath $portableLauncherSource -Destination (Join-Path $buildRoot 'START_GAME.cmd') -Force
+Copy-Item -LiteralPath $portableReadmeSource -Destination (Join-Path $buildRoot 'README.txt') -Force
 Write-Output "Windows export PASS: $buildExe"
 Write-Output "Executable SHA-256: $exeHash"
 Write-Output "PCK SHA-256: $pckHash"
 Write-Output "Build manifest: $manifestPath"
+Write-Output "Portable launcher: $(Join-Path $buildRoot 'START_GAME.cmd')"

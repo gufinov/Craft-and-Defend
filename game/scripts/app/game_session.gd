@@ -41,12 +41,16 @@ var inventory: F0Inventory
 var crafting: CraftingService
 var workstations: WorkstationService
 var interaction: InteractionService
+var clock: DayNightClock
 var open_data: Dictionary
 var world_ready := false
 var saving := false
-var simulation_paused := false
+var simulation_paused := true
 var _pending_workstation_snapshot: Dictionary = {}
 var _station_visuals: Dictionary = {}
+var _environment: Environment
+var _sun: DirectionalLight3D
+var _last_clock_second := -1
 
 
 func initialize(session_data: Dictionary) -> Dictionary:
@@ -61,21 +65,22 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	crafting = CraftingService.new(registry, inventory)
 	workstations = WorkstationService.new(registry, inventory)
 	_pending_workstation_snapshot = snapshot.get("workstations", {})
+	clock = DayNightClock.new()
+	if not clock.load_error.is_empty():
+		return {"ok": false, "reason": clock.load_error}
+	if not clock.restore(snapshot.get("clock", {})):
+		return {"ok": false, "reason": "INVALID_CLOCK_SNAPSHOT"}
 
 	var world_environment := WorldEnvironment.new()
-	var environment := Environment.new()
-	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = Color("91b8d4")
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color("c8dded")
-	environment.ambient_light_energy = 0.65
-	world_environment.environment = environment
+	_environment = Environment.new()
+	_environment.background_mode = Environment.BG_COLOR
+	_environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	world_environment.environment = _environment
 	add_child(world_environment)
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-55.0, -35.0, 0.0)
-	sun.shadow_enabled = true
-	sun.light_energy = 1.1
-	add_child(sun)
+	_sun = DirectionalLight3D.new()
+	_sun.shadow_enabled = true
+	add_child(_sun)
+	clock.apply_visuals(_environment, _sun)
 
 	player = PlayerController.new()
 	player.name = "Player"
@@ -115,6 +120,12 @@ func initialize(session_data: Dictionary) -> Dictionary:
 func _process(delta: float) -> void:
 	if workstations != null and not saving:
 		workstations.advance(delta, simulation_paused)
+	if clock != null and not saving and clock.advance(delta, simulation_paused):
+		clock.apply_visuals(_environment, _sun)
+		var clock_second := floori(clock.phase * clock.day_length_seconds)
+		if clock_second != _last_clock_second:
+			_last_clock_second = clock_second
+			_emit_hud()
 
 
 func apply_input_settings(settings_store: SettingsStore) -> void:
@@ -183,6 +194,7 @@ func _on_spawn_area_ready() -> void:
 		for record: Dictionary in workstations.stations.values():
 			_spawn_station_visual(record)
 	world_ready = true
+	simulation_paused = false
 	player.activate(not DisplayServer.get_name().contains("headless"))
 	status_changed.emit("Ready — mine resources, craft in Tab, select hotbar items, place with right click, interact with Shift")
 	ready_for_play.emit()
@@ -221,16 +233,23 @@ func snapshot() -> Dictionary:
 		"world": world.snapshot(),
 		"inventory": inventory.snapshot(),
 		"workstations": workstations.snapshot(),
+		"clock": clock.snapshot(),
 		"player": player.snapshot(),
 		"session_id": open_data.get("session_id", ""),
 	}
 
 
 func _on_inventory_changed(data: Dictionary) -> void:
+	_emit_hud()
+	inventory_changed.emit(data)
+
+
+func _emit_hud() -> void:
+	if inventory == null or registry == null or clock == null:
+		return
 	var selected := inventory.active_item_id()
 	var selected_text := "Empty" if selected.is_empty() else registry.display_name(selected)
-	hud_changed.emit("Slot %d: %s   |   ESDF move · A sprint · Z crouch · Shift use · Tab inventory · Esc pause" % [inventory.selected_hotbar + 1, selected_text])
-	inventory_changed.emit(data)
+	hud_changed.emit("Slot %d: %s   |   %s %s   |   ESDF move · A sprint · Z crouch · Shift use · Tab inventory · Esc pause" % [inventory.selected_hotbar + 1, selected_text, clock.period_label(), clock.time_label()])
 
 
 func _on_interaction_feedback(message: String) -> void:

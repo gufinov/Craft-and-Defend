@@ -37,7 +37,7 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T25 | F3 | Malformed/newer/missing-content save is refused clearly without replacement; supported migration copies original |
 | T26 | F3 | Save/restart midway through furnace job preserves remaining time and produces exactly one output |
 | T27 | F4 | Day/night advances during play, freezes in overlays/pause, resumes from saved phase; no offline catch-up |
-| T28 | F4 | Blocks/resources distinguishable; selection, craft feedback and key help visible; no placeholder functional claims |
+| T28 | F4 | Blocks/resources distinguishable; selection, craft feedback and key help visible; rebindable F2 captures the rendered viewport in the background without pausing; no placeholder functional claims |
 | T29 | F4 | Measure frame times, edit latency, memory, save size/latency in fixed scenario; record hardware/build/renderer/resolution |
 | T30 | F4 | Fresh portable folder launch with editor closed runs full Foundation loop; README run/save-location instructions accurate |
 

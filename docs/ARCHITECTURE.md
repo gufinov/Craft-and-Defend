@@ -14,7 +14,7 @@ These are implementation contracts, not claims that modules already exist. Prefe
 | Simulation clock | Day phase and gameplay time | unpaused delta → time; timer events | Wall-clock catch-up |
 | Persistence | Slot identity, snapshot capture, terrain flush, metadata, recovery | save/load intents → completed snapshot or error | Inventing missing content |
 | Content registry | Stable blocks/items/recipes; validated lookup | JSON/resources → immutable definitions | Per-save state |
-| Presentation/UI | Menus, HUD, selection, inventory and feedback | state snapshots → display; user intent → commands | Authoritative game rules |
+| Presentation/UI | Menus, HUD, selection, inventory, feedback and game-viewport screenshots | state snapshots → display/files; user intent → commands | Authoritative game rules, desktop capture |
 
 ## Command flow
 
@@ -39,6 +39,8 @@ Error reasons should be stable symbols such as OUT_OF_BOUNDS, UNLOADED, OCCUPIED
 ## Scene responsibilities
 
 A persistent app root owns menu overlays and the save coordinator. A session root owns world, player, inventory, workstations and clock. Pause disables gameplay processing, while menus and persistence coordination remain responsive. Create a **new** terrain stream per session, never a scene-embedded shared stream reused by altering its path.
+
+The screenshot service captures only the rendered game viewport after a completed draw and writes outside save slots under the global data root. It must not change application state, tree pause, simulation pause or mouse capture. Windows Print Screen focus handling remains a separate system path.
 
 Use a small flat deterministic generator before procedural hills/trees. Generator callbacks must not access mutable scene state or global random state from worker threads. Snapshot immutable generation parameters. Do not hot-edit a script generator while engine worker threads are using it.
 
