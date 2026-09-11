@@ -10,6 +10,7 @@ DONE:
 - Refused malformed, newer-schema and missing-content saves without changing them; copied the supported legacy `slots/default` layout to Slot A while preserving the original.
 - Persisted active furnace identity, reservation and remaining simulation time so restart completes the job exactly once.
 - Preserved the F2 Print Screen focus repair and all established F0–F2 behavior.
+- Repaired the one-click launcher/build provenance checks for sandbox-created worktree ownership by applying Git trust only to the resolved repository and only for each internal command.
 
 EXPECT:
 
@@ -30,7 +31,8 @@ TEST:
 | F2 regression | Progression, slots, crafting, stations and Continue remain valid | Gate and separate Continue process returned `F2_AUTOMATION_PASS T19-T22` | PASS | `artifacts/f3-final-f2-*.log` |
 | F1 regression | Keybind/settings/focus/boundary/transaction behavior remains valid | phase1/phase2 passed; `T14_PRINT_SCREEN` and ordinary `T14_FOCUS_LOSS` both PASS | PASS | `artifacts/f3-final-f1-*.log` |
 | F0 regression | Menu, ESDF, edits, rejection, coherent save/restart remain valid | phase1/phase2 result payloads report `passed:true` | PASS | `artifacts/f3-final-f0-*.log` |
-| Static | Foundation contracts and negative cases remain valid | validator PASS; 18/18 unittest PASS | PASS | commands below |
+| Launcher ownership | Tony-owned double-click process can inspect the sandbox-created worktree without global Git changes | Builder, `-PrepareOnly`, direct launch and exact `START_GAME.cmd` each passed with `GIT_CONFIG_*` trust overrides removed; one game process launched and closed cleanly | PASS | launcher-fix commit and console evidence; `test_git_ownership_exception_is_repository_scoped` |
+| Static | Foundation contracts and negative cases remain valid | validator PASS; 19/19 unittest PASS | PASS | commands below |
 | Visual | New menu, gameplay and pause render at 1280×720 | All three GPU PNG captures saved at expected size; menu shows slot selector/status with no clipping | PASS | `artifacts/f3-visual-20260911a/*.png`, `artifacts/f3-visual.log` |
 | Windows export | Matching custom release template builds exact committed game tree | Export PASS; manifest records source/game tree; all runtime gates ran with matching editor process count `0` | PASS | `builds/CraftAndDefend/build_manifest.json` |
 
@@ -49,7 +51,7 @@ LIMITATIONS/FAILURES:
 - Tony must retest the real Print Screen/Snipping Tool overlay; automation proves the intended focus-event sequence but cannot invoke the OS overlay.
 - Tony has not yet accepted the visible F3 slot/recovery experience.
 - Failure injection validates application boundaries, not sudden physical power removal, filesystem hardware guarantees or large-world performance.
-- The first export attempt correctly failed its provenance guard because elevated Git did not trust the worktree. The successful retry used a process-local `safe.directory` override; global Git configuration was not changed.
+- The initial `dubious ownership` failure came from Tony's launcher process reading Git metadata owned by the isolated Codex sandbox account. Commit `a1172cb` makes the launcher and builder pass the exact resolved worktree as a command-scoped trust value; no global Git configuration or filesystem owner was changed.
 - Two orphaned headless Godot processes from an earlier parse-error run were identified by exact command line and terminated before editor-closed export validation.
 
 NEXT:
@@ -60,7 +62,7 @@ GIT/REPRODUCIBILITY:
 
 - Canonical repo: `D:\CODEX\Craft_and_Defend\main`; clean `main` and `origin/main` at `c085c013d39b2b64321ea6c5a696b96fe2efd45c`.
 - Worktree/branch: `D:\CODEX\Craft_and_Defend\worktrees\f3-persistence`; `feature/f3-persistence-hardening`.
-- Built source commit: `b001fce728227705bb4e44bc972f2e63a21c6ee4`; game tree `498ad7ea30fd5066aa659b2c7c50e174e2c5f1a1`.
+- Built source commit: `a1172cbc3d6b5041077aab85428eb227f9ccd3da`; game tree `498ad7ea30fd5066aa659b2c7c50e174e2c5f1a1`.
 - Platform: Windows 11 Pro `10.0.26200`, AMD Ryzen 9 7900X3D, 64 GB RAM, NVIDIA GeForce RTX 5090 driver `32.0.16.1088`; owner display 3440×1440; visual evidence OpenGL 3.3 Compatibility at 1280×720.
 - Engine/Voxel Tools: `4.6.stable.custom_build.89cea1439`; Voxel Tools `1.6.0 Module`, source commit `595f52ee4e23203a865eeb981f115909f7aa92f4`.
 - Editor archive SHA-256: `dae425d64dbf3b4f9e06f05a5f108f1f27eca708856e93bc46490151b0ffac0c`; extracted editor SHA-256: `e41a056ab022e600ec400767bfe9e80cf8dcda122512622a58dbff27a38b3d5b`.
