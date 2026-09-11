@@ -256,6 +256,21 @@ func get_settings_path() -> String:
 	return _settings_path
 
 
+func get_active_screen() -> int:
+	if DisplayServer.get_name().contains("headless"):
+		return 0
+	var screen := DisplayServer.window_get_current_screen()
+	if screen < 0 or screen >= DisplayServer.get_screen_count():
+		screen = DisplayServer.get_primary_screen()
+	return screen
+
+
+func get_active_screen_size() -> Vector2i:
+	if DisplayServer.get_name().contains("headless"):
+		return resolution
+	return DisplayServer.screen_get_size(get_active_screen())
+
+
 func _binding_from_event(event: InputEvent) -> Dictionary:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var code: int = event.physical_keycode if event.physical_keycode > 0 else event.keycode
@@ -327,13 +342,28 @@ func _apply_non_display_settings() -> void:
 func _apply_display(mode: String, target_resolution: Vector2i) -> void:
 	if DisplayServer.get_name().contains("headless"):
 		return
+	var target_screen := get_active_screen()
 	if mode == "fullscreen":
+		DisplayServer.window_set_current_screen(target_screen)
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	else:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		DisplayServer.window_set_current_screen(target_screen)
 		DisplayServer.window_set_size(target_resolution)
-		var screen_size := DisplayServer.screen_get_size()
-		DisplayServer.window_set_position((screen_size - target_resolution) / 2)
+		_center_window_on_screen(target_screen)
+
+
+func _center_window_on_screen(screen: int) -> void:
+	var usable_rect := DisplayServer.screen_get_usable_rect(screen)
+	var decorated_size := DisplayServer.window_get_size_with_decorations()
+	var decorated_position := _centered_decorated_position(usable_rect, decorated_size)
+	var decoration_offset := DisplayServer.window_get_position() - DisplayServer.window_get_position_with_decorations()
+	DisplayServer.window_set_position(decorated_position + decoration_offset)
+
+
+static func _centered_decorated_position(usable_rect: Rect2i, decorated_size: Vector2i) -> Vector2i:
+	var free_space := usable_rect.size - decorated_size
+	return usable_rect.position + Vector2i(maxi(0, free_space.x / 2), maxi(0, free_space.y / 2))
 
 
 func _save() -> Error:

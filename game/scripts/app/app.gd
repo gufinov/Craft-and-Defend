@@ -35,6 +35,9 @@ var volume_slider: HSlider
 var volume_value_label: Label
 var window_mode_option: OptionButton
 var resolution_option: OptionButton
+var windowed_resolution_row: HBoxContainer
+var fullscreen_resolution_row: HBoxContainer
+var fullscreen_resolution_value_label: Label
 var display_confirm_label: Label
 var binding_labels: Dictionary = {}
 var capture_action := ""
@@ -255,13 +258,19 @@ func _build_settings(canvas: CanvasLayer) -> void:
 	window_mode_option.custom_minimum_size = Vector2(350, 36)
 	mode_row.add_child(window_mode_option)
 	box.add_child(mode_row)
-	var resolution_row := _settings_row("Windowed resolution")
+	windowed_resolution_row = _settings_row("Windowed resolution")
 	resolution_option = OptionButton.new()
 	for option in SettingsStore.RESOLUTION_OPTIONS:
 		resolution_option.add_item("%d × %d" % [option.x, option.y])
 	resolution_option.custom_minimum_size = Vector2(350, 36)
-	resolution_row.add_child(resolution_option)
-	box.add_child(resolution_row)
+	windowed_resolution_row.add_child(resolution_option)
+	box.add_child(windowed_resolution_row)
+	fullscreen_resolution_row = _settings_row("Fullscreen resolution")
+	fullscreen_resolution_value_label = Label.new()
+	fullscreen_resolution_value_label.custom_minimum_size = Vector2(350, 36)
+	fullscreen_resolution_value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	fullscreen_resolution_row.add_child(fullscreen_resolution_value_label)
+	box.add_child(fullscreen_resolution_row)
 	box.add_child(_button("Preview Display Changes", _preview_display_changes, Vector2(360, 42)))
 	settings_message = _centered_label("")
 	settings_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -482,7 +491,7 @@ func _refresh_settings_controls() -> void:
 	window_mode_option.select(1 if settings.window_mode == "fullscreen" else 0)
 	var resolution_index := SettingsStore.RESOLUTION_OPTIONS.find(settings.resolution)
 	resolution_option.select(maxi(0, resolution_index))
-	resolution_option.disabled = window_mode_option.selected == 1
+	_refresh_display_mode_controls(window_mode_option.selected)
 	_on_sensitivity_value_changed(sensitivity_slider.value)
 	_on_volume_value_changed(volume_slider.value)
 
@@ -537,9 +546,19 @@ func _on_volume_value_changed(value: float) -> void:
 
 
 func _on_window_mode_selected(index: int) -> void:
-	resolution_option.disabled = index == 1
+	_refresh_display_mode_controls(index)
 	if settings_message != null:
 		settings_message.text = _display_mode_help(index)
+
+
+func _refresh_display_mode_controls(index: int) -> void:
+	var fullscreen_selected := index == 1
+	resolution_option.disabled = fullscreen_selected
+	windowed_resolution_row.visible = not fullscreen_selected
+	fullscreen_resolution_row.visible = fullscreen_selected
+	if fullscreen_selected:
+		var native_size := settings.get_active_screen_size()
+		fullscreen_resolution_value_label.text = "%d × %d (monitor native)" % [native_size.x, native_size.y]
 
 
 func _display_mode_help(index: int) -> String:
