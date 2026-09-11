@@ -10,7 +10,7 @@ Use a dedicated custom Godot user-data directory such as `CraftAndDefend` and sa
 |---|---|
 | Voxel edits | VoxelStreamSQLite database, fresh stream per active session |
 | Slot identity/config | Versioned metadata: slot ID, schema, seed, generator version, bounds, content version |
-| Gameplay snapshot | Player transform, inventory/hotbar, equipment, entities/workstations, jobs, simulation clock phase/day, snapshot revision |
+| Gameplay snapshot | Player transform, inventory/hotbar, equipment, entities/workstations, jobs, simulation clock phase/day/cycle-enabled state, snapshot revision |
 | Settings | ConfigFile/equivalent outside slots: bindings, audio, video, sensitivity |
 
 Store explicit schema and content versions. Keep block numeric IDs stable; never reorder them across existing saves. Unknown/newer schema or missing content produces a readable refusal, not an empty replacement world. A migration copies the slot and reports a new version; it does not mutate the sole original copy.
@@ -35,7 +35,7 @@ The [stream documentation](https://voxel-tools.readthedocs.io/en/latest/streams/
 
 Show Saving with a responsive progress/status surface; block repeated save/load requests. On error/timeout, keep the session recoverable and the previous completed checkpoint intact. Offer Retry or return to the paused session. A forced discard/quit must explicitly say unsaved progress will be lost; never mark a failed save successful. Window-close/Alt-F4 uses the same coordinator as Quit; the editor Stop button is a force-kill, not a normal save test.
 
-Furnace inputs/fuel are consumed once when a job starts. Save job identity, reserved output, remaining simulation time and completion status so reload neither duplicates output nor consumes inputs twice. No offline catch-up in Foundation. Settings changes do not need a world save and must survive a restart independently.
+Furnace inputs/fuel are consumed once when a job starts. Save job identity, reserved output, remaining simulation time and completion status so reload neither duplicates output nor consumes inputs twice. No offline catch-up in Foundation. Global input/audio/display settings persist independently; World Settings deliberately mutate the active slot and persist through its next coherent world checkpoint.
 
 ## Required evidence
 

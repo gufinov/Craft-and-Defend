@@ -11,7 +11,7 @@ These are implementation contracts, not claims that modules already exist. Prefe
 | Placement/interaction | Bounds, reach, occupancy, support, atomic edit commands | break/place requests → success or reason code | UI layout |
 | Inventory | Slots/stacks/equipment and resource transactions | transaction request → committed inventory revision | Direct terrain writes |
 | Crafting/workstations | Recipe checks, timers, jobs, station state | recipe + inventory + station → job/result | Direct file I/O |
-| Simulation clock | Day phase and gameplay time | unpaused delta → time; timer events | Wall-clock catch-up |
+| Simulation clock | Day phase, cycle-enabled state and gameplay time | unpaused delta or validated world-setting command → time/lighting | Wall-clock catch-up |
 | Persistence | Slot identity, snapshot capture, terrain flush, metadata, recovery | save/load intents → completed snapshot or error | Inventing missing content |
 | Content registry | Stable blocks/items/recipes; validated lookup | JSON/resources → immutable definitions | Per-save state |
 | Presentation/UI | Menus, HUD, selection, inventory, feedback and game-viewport screenshots | state snapshots → display/files; user intent → commands | Authoritative game rules, desktop capture |
@@ -41,6 +41,8 @@ Error reasons should be stable symbols such as OUT_OF_BOUNDS, UNLOADED, OCCUPIED
 A persistent app root owns menu overlays and the save coordinator. A session root owns world, player, inventory, workstations and clock. Pause disables gameplay processing, while menus and persistence coordination remain responsive. Create a **new** terrain stream per session, never a scene-embedded shared stream reused by altering its path.
 
 The screenshot service captures only the rendered game viewport after a completed draw and writes outside save slots under the global data root. It must not change application state, tree pause, simulation pause or mouse capture. Windows Print Screen focus handling remains a separate system path.
+
+World Settings sends validated commands to `GameSession`, which delegates authoritative time/cycle mutation to the simulation clock and then refreshes presentation. The UI never writes save JSON directly. New worlds begin at 08:00 sunrise; existing saves restore their own phase and optional cycle-enabled state. A visible unshaded sun is presentation only and follows the authoritative solar direction.
 
 Use a small flat deterministic generator before procedural hills/trees. Generator callbacks must not access mutable scene state or global random state from worker threads. Snapshot immutable generation parameters. Do not hot-edit a script generator while engine worker threads are using it.
 

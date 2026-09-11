@@ -20,7 +20,7 @@ Stop and record a clear pass/fail at F0. A menu plus a rendered cube is insuffic
 | Crafting | Reachable wood → stone → iron pick progression; simple recipe list |
 | Workstations | Place/interact/dismantle workbench and furnace; furnace job timer persists |
 | Local persistence | Coherent terrain/player/inventory/station/time checkpoints; settings independent; recovery tests |
-| Day/night | Basic lighting/clock, frozen during pause and restored on load; no attack schedule |
+| Day/night | Visible sun and readable lighting/clock; per-slot time and cycle controls; frozen during pause and restored on load; no attack schedule |
 | Original placeholder art | Distinct materials sufficient to identify blocks, with provenance |
 | Portable Windows build | Works outside editor and tool directories; no installer required |
 
