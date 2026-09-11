@@ -14,7 +14,7 @@ const REASON_TEXT := {
 	"UNLOADED": "That area is still loading; try again in a moment.",
 	"OCCUPIED": "Placement rejected — that cell is occupied.",
 	"PLAYER_OVERLAP": "Placement rejected — move out of the target cell.",
-	"UNSUPPORTED": "Placement rejected — the block needs support below it.",
+	"UNSUPPORTED": "Placement rejected — attach the block to a solid neighboring face.",
 	"WRONG_TOOL": "That block needs a different tool.",
 	"OUT_OF_REACH": "That target is out of reach.",
 	"NO_RESOURCE": "No dirt is available to place.",

@@ -8,6 +8,14 @@ const GRASS := 1
 const DIRT := 2
 const STONE := 3
 const BEDROCK := 9
+const BLOCK_SUPPORT_OFFSETS: Array[Vector3i] = [
+	Vector3i(-1, 0, 0),
+	Vector3i(1, 0, 0),
+	Vector3i(0, -1, 0),
+	Vector3i(0, 1, 0),
+	Vector3i(0, 0, -1),
+	Vector3i(0, 0, 1),
+]
 
 var world: WorldAdapter
 var inventory: F0Inventory
@@ -84,11 +92,9 @@ func try_place_item(cell: Vector3i, item_id: String, expected_world_revision: in
 		return _finish(false, "OCCUPIED")
 	if player_body_aabb.is_valid() and player_body_aabb.call().intersects(AABB(Vector3(cell), Vector3.ONE)):
 		return _finish(false, "PLAYER_OVERLAP")
-	var support := world.query_cell(cell + Vector3i.DOWN)
-	if support.get("state") != "LOADED":
-		return _finish(false, support.get("state", "UNLOADED"))
-	if int(support.get("voxel_id", AIR)) == AIR:
-		return _finish(false, "UNSUPPORTED")
+	var support_result := _block_support_result(cell)
+	if not support_result.get("ok", false):
+		return _finish(false, str(support_result.get("reason", "UNSUPPORTED")))
 	if inventory.count(item_id) < 1:
 		return _finish(false, "NO_RESOURCE")
 	var voxel_id := int(item.places_block)
@@ -103,6 +109,18 @@ func try_place_item(cell: Vector3i, item_id: String, expected_world_revision: in
 
 func try_place_dirt(cell: Vector3i, expected_world_revision: int = -1) -> Dictionary:
 	return try_place_item(cell, "dirt", expected_world_revision)
+
+
+func _block_support_result(cell: Vector3i) -> Dictionary:
+	var saw_unloaded_neighbor := false
+	for offset: Vector3i in BLOCK_SUPPORT_OFFSETS:
+		var neighbor := world.query_cell(cell + offset)
+		var state := str(neighbor.get("state", "UNLOADED"))
+		if state == "LOADED" and int(neighbor.get("voxel_id", AIR)) != AIR:
+			return {"ok": true, "reason": "OK", "support_cell": cell + offset}
+		if state == "UNLOADED":
+			saw_unloaded_neighbor = true
+	return {"ok": false, "reason": "UNLOADED" if saw_unloaded_neighbor else "UNSUPPORTED"}
 
 
 func try_dismantle_station(instance_id: String) -> Dictionary:
