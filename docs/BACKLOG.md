@@ -1,6 +1,6 @@
 # Coding-agent backlog
 
-G0 and the owner-accepted F0 integration slice exist on `main`. The F1 candidate is isolated on its implementation worktree. Each card is independently reviewable with a checkpoint and evidence. Do not rebuild these documents or create a second bootstrap.
+G0, F0 and owner-accepted F1 are complete. Each card is independently reviewable with a checkpoint and evidence. Do not rebuild these documents or create a second bootstrap.
 
 ## F0 — Windows integration spike (PASS 2026-09-10)
 
@@ -19,11 +19,11 @@ G0 and the owner-accepted F0 integration slice exist on `main`. The F1 candidate
 
 **Outputs:** small runtime, exact setup/export commands, F0 evidence, source notices, status checkpoint. **Tests:** T01–T12. **Stop condition:** unexplained save corruption, missing module export, or collision failure. Preserve the reproduction; avoid crafting to conceal the blocker.
 
-## F1 — shell and interaction hardening (CORRECTIVE CANDIDATE PASS; OWNER WINDOW-PLACEMENT RETEST PENDING 2026-09-11)
+## F1 — shell and interaction hardening (PASS; OWNER ACCEPTED 2026-09-11)
 
 Complete keybind UI/reset/conflicts, settings with display rollback, mouse capture/focus loss, window close, inventory overlay, boundary feedback and edit reason codes. Add entity footprint service with synthetic tests. Run T13–T18. Deliver no new content beyond that needed to validate contracts.
 
-**Recorded candidate result:** Tony confirmed all non-display F1 behavior and the corrected ultrawide fullscreen fill. His next multi-monitor test found that Windowed previews ignored the active monitor's nonzero virtual-desktop origin. The second correction preserves the active monitor, centers the decorated frame inside its usable rectangle and shows the detected native size in Fullscreen. The exported runtime proved 1920×1080, 1280×720 and 1600×900 placement on the 3440×1440 active monitor; complete F1/F0 regressions and static tests pass. See [F1 evidence](evidence/F1_INTERACTION_HARDENING.md). Do not merge or begin F2 until owner retest.
+**Recorded result:** Tony confirmed all non-display F1 behavior, corrected ultrawide fullscreen fill and corrected multi-monitor Windowed placement. The final implementation preserves the active monitor, centers the decorated frame inside its usable rectangle and shows the detected native size in Fullscreen. The exported runtime proved 1920×1080, 1280×720 and 1600×900 placement on the 3440×1440 active monitor; complete F1/F0 regressions and static tests pass. See [F1 evidence](evidence/F1_INTERACTION_HARDENING.md). F2 requires its own implementation start; this acceptance does not activate it automatically.
 
 ## F2 — inventory, progression and workstations
 

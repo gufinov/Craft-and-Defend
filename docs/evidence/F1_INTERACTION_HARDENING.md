@@ -1,6 +1,6 @@
 # Evidence — F1 interaction hardening — 2026-09-10
 
-STATUS: PASS — corrected automated Windows candidate; owner window-placement retest pending
+STATUS: PASS — owner accepted on physical Windows hardware 2026-09-11
 
 DONE:
 
@@ -27,7 +27,7 @@ TEST:
 
 LIMITATIONS/FAILURES:
 
-- Owner hands-on window-placement retest is pending; this is not yet the accepted `main` state.
+- Tony confirmed the final multi-monitor placement correction works and authorized promotion to `main`, cleanup and push on 2026-09-11.
 - **Correction 2026-09-11:** the initial T18 automation did not prove fullscreen aspect behavior because it changed `content_scale_size` and window size together. Tony's three 3440×1440 screenshots showed the 1280×720 base canvas held at 16:9 and pillarboxed to 2560×1440. Godot 4.6 defaults `display/window/stretch/aspect` to `keep`; the project now sets `expand`, as recommended for non-pixel-art desktop games in the [official Godot 4.6 multiple-resolution guidance](https://docs.godotengine.org/en/4.6/tutorials/rendering/multiple_resolutions.html). The replacement test varies native window aspect independently and samples both framebuffer edges.
 - **Second correction 2026-09-11:** the native-size assertion did not inspect monitor origin, current-screen identity or OS decorations. Tony's five screenshots showed Windowed previews shifted left/up or onto another monitor and an inaccessible title bar. His active ultrawide usable rectangle begins at `(1080, 240)`, while the old implementation centered against a size-only rectangle beginning at `(0, 0)`. The replacement uses `window_get_current_screen()`, `screen_get_usable_rect()`, `window_get_position_with_decorations()` and `window_get_size_with_decorations()` from the [official Godot 4.6 DisplayServer contract](https://docs.godotengine.org/en/4.6/classes/class_displayserver.html), and the runtime gate checks all decorated edges.
 - Inventory intentionally exposes only the F1 dirt summary. Slots, stacks, hotbar selection, tools and workstations belong to F2.
@@ -39,15 +39,14 @@ LIMITATIONS/FAILURES:
 
 NEXT:
 
-1. Tony performs the short Fullscreen → Windowed placement retest from `START_GAME.cmd` at 1920×1080 and 1280×720, once from the main menu and once from paused gameplay.
-2. If accepted, promote `feature/f1-interaction-hardening` through the normal merge path.
-3. Begin F2 only after that acceptance; keep later enemies, waves, rifts, workers and automation out of scope.
+1. Promote the accepted F1 history through the authorized fast-forward merge and push.
+2. Begin F2 only under a new implementation instruction; keep later enemies, waves, rifts, workers and automation out of scope.
 
 GIT/REPRODUCIBILITY:
 
 - Repo: `gufinov/Craft-and-Defend`.
 - Canonical F0 checkout: `D:\CODEX\Craft_and_Defend\main`, `main`, `466579e9df7570aa174836895e65082cda765b3a`.
-- F1 worktree: `D:\CODEX\Craft_and_Defend\worktrees\f1-interaction`; branch `feature/f1-interaction-hardening`; original runtime checkpoint `805c3bc`; fullscreen correction `004cd34`; multi-monitor correction `1db98b5` plus the commit containing this evidence.
+- Accepted F1 history: original runtime checkpoint `805c3bc`; fullscreen correction `004cd34`; multi-monitor correction `1db98b5`; automated evidence checkpoint `6efeed0`; owner-acceptance record is the commit containing this update.
 - OS / hardware / renderer: Windows 11 Pro build 26200; Ryzen 9 7900X3D; 63.2 GB RAM; NVIDIA GeForce RTX 5090 driver 610.88; OpenGL Compatibility. Tested viewports: 1280×720, simulated 150% scale, 1720×720 ultrawide.
 - Engine: Godot `4.6.stable.custom_build.89cea1439`; Voxel Tools `1.6.0 Module`; single-precision Windows x86-64.
 - Editor archive SHA-256: `dae425d64dbf3b4f9e06f05a5f108f1f27eca708856e93bc46490151b0ffac0c`; installed editor executable SHA-256: `e41a056ab022e600ec400767bfe9e80cf8dcda122512622a58dbff27a38b3d5b`.
