@@ -38,6 +38,10 @@ func _run_phase1() -> void:
 	var hand_only := app.state == app.AppState.CRAFTING and app.crafting_panel.visible and not app.inventory_panel.visible and app.crafting_grid.columns == 2 and app.crafting_grid.get_child_count() == 4 and get_tree().paused and not app.session.player.active
 	app._close_crafting()
 	_record("T31_CONTEXTS", inventory_only and hand_only and app.state == app.AppState.PLAYING and not get_tree().paused and app.session.player.active, "Tab inventory and hand crafting are separate paused UI contexts and return cleanly to play", {"inventory_only": inventory_only, "hand_only": hand_only, "state": app.state})
+	app._show_crafting("furnace_diagnostic", "furnace")
+	var furnace_only := app.state == app.AppState.CRAFTING and app.crafting_title_label.text == "FURNACE" and app.crafting_grid.columns == 2 and app.crafting_grid.get_child_count() == 2 and app.craft_selected_button.text == "Start Processing"
+	app._close_crafting()
+	_record("T33_FURNACE_MODAL", furnace_only and app.state == app.AppState.PLAYING, "Furnace owns a distinct ore-and-fuel processing modal and returns cleanly to play", {"furnace_modal": furnace_only, "state": app.state})
 
 
 func _run_phase2() -> void:
