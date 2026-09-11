@@ -12,7 +12,7 @@ Sources: [Minecraft crafting overview](https://www.minecraft.net/en-us/article/h
 - **Right-click processing station:** open that station's own task-specific surface. Furnace is ore + fuel + timed output; a later oven is food + fuel + timed output. A chest is storage, an anvil/forge is equipment work, and none should masquerade as the generic workbench.
 - Inventory remains visible as material context in crafting, but crafting and inventory are separate application states. Escape returns to live play.
 
-The implemented 2×2 and 3×3 surfaces visualize the selected data-driven recipe and execute the existing atomic craft command. They do not yet claim free-form positional recipe discovery or drag-and-drop ingredients.
+The implemented 2×2 and 3×3 surfaces visualize the selected data-driven recipe and execute the existing atomic craft command. Inventory items can be dragged or selected into count-based staging slots, while recipe search/selection can auto-fill held ingredients. They do not yet claim free-form positional recipe discovery.
 
 ## Historical construction vocabulary
 
