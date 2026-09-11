@@ -11,6 +11,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [User experience and app lifecycle](UX_AND_LIFECYCLE.md)
 - [Keybinds](KEYBINDS.md)
 - [Content and crafting](CONTENT_AND_CRAFTING.md)
+- [Castle construction and crafting plan](CASTLE_CONSTRUCTION_AND_CRAFTING.md)
 
 ## Technical
 

@@ -172,7 +172,7 @@ def validate_bundle(bundle):
 
     actions = index(keys["actions"], "id", "actions")
     defaults = {"move_forward": "E", "move_backward": "D", "strafe_left": "S", "strafe_right": "F",
-                "sprint": "A", "crouch": "Z", "jump": "Space", "interact": "Shift", "inventory": "Tab", "pause": "Escape",
+                "sprint": "A", "crouch": "Z", "jump": "Space", "interact": "Shift", "inventory": "Tab", "build": "B", "pause": "Escape",
                 "reload": "G", "primary": "MouseLeft", "secondary": "MouseRight", "capture_screenshot": "F2"}
     defaults.update({f"hotbar_{i}": str(i) for i in range(1, 10)})
     require(keys["escape_recovery"] is True and keys["keyboard_mode"] == "physical_qwerty", "unsafe input recovery/default mode")

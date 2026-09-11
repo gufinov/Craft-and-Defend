@@ -25,6 +25,7 @@ const REASON_TEXT := {
 	"MISSING_CONTENT": "That content definition is unavailable.",
 	"NOT_PLACEABLE": "The selected hotbar item cannot be placed.",
 	"NO_STATION": "Aim at a workbench or furnace, then interact.",
+	"SECONDARY_REQUIRED": "Use right click to open this station.",
 	"OPEN_STATION": "Workstation opened.",
 	"WRONG_WORKSTATION": "That recipe needs a different workstation.",
 	"INSUFFICIENT_INPUT": "Missing recipe materials.",
@@ -223,7 +224,7 @@ func _on_spawn_area_ready() -> void:
 	world_ready = true
 	simulation_paused = false
 	player.activate(not DisplayServer.get_name().contains("headless"))
-	status_changed.emit("Ready — mine resources, craft in Tab, select hotbar items, place with right click, interact with Shift")
+	status_changed.emit("Ready — Tab inventory, B hand crafting, right-click stations or place the selected hotbar item")
 	ready_for_play.emit()
 
 
@@ -277,7 +278,7 @@ func _emit_hud() -> void:
 	var selected := inventory.active_item_id()
 	var selected_text := "Empty" if selected.is_empty() else registry.display_name(selected)
 	var cycle_text := "" if clock.cycle_enabled else " · cycle paused"
-	hud_changed.emit("Slot %d: %s   |   %s · %s%s   |   ESDF move · A sprint · Z crouch · Shift use · Tab inventory · Esc pause" % [inventory.selected_hotbar + 1, selected_text, clock.period_label(), clock.time_label(), cycle_text])
+	hud_changed.emit("Slot %d: %s   |   %s · %s%s" % [inventory.selected_hotbar + 1, selected_text, clock.period_label(), clock.time_label(), cycle_text])
 
 
 func _create_sun_visual() -> void:

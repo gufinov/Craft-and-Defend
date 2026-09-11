@@ -58,6 +58,12 @@
       "implemented_in_foundation": true
     },
     {
+      "id": "build",
+      "key": "B",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
       "id": "pause",
       "key": "Escape",
       "context": "system",

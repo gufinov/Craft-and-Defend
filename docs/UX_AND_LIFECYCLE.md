@@ -8,13 +8,14 @@ The landing page is the **native game's main menu**, not a separate marketing we
 | Main menu | New Game/Start, Continue if a valid checkpoint exists, Settings, Keybinds, Quit |
 | Loading | Show progress; block gameplay input; on failure return to menu without changing good saves |
 | Playing | Capture pointer; movement and interaction enabled; HUD shows hotbar and current target |
-| Inventory/workstation overlay | Release pointer; block world actions; pause simulation for Foundation single player |
+| Inventory overlay | Tab-only item view/movement; release pointer; block world actions; pause simulation |
+| Crafting/station modal | B opens limited hand crafting; right-click opens the targeted station interface; block world actions; pause simulation |
 | Paused | Resume, Settings, Keybinds, Save and Exit to Menu, Save and Quit |
 | Settings/keybind overlay | Preserve return state; gameplay stays paused until explicitly resumed |
 | Saving | Disable edits and conflicting navigation; responsive feedback; success follows intended destination |
 | Save/load error | Preserve last good checkpoint; Retry or safe return; no silent success |
 
-Escape closes the top ordinary overlay first; from gameplay it pauses. Tab toggles inventory during gameplay. Key-capture mode treats Escape as cancel rather than accidentally changing the pause binding. Pause and settings freeze clock, furnace jobs and gameplay timers, not just character movement. UI and the save coordinator continue processing while the scene tree is paused. Focus loss pauses the single-player session; focus return does not silently resume.
+Escape closes the top ordinary overlay first; from gameplay it pauses. Tab toggles inventory only. B toggles the limited hand-crafting modal. Right-click on a targeted workbench/furnace opens that station before the fallback placement action can run. Key-capture mode treats Escape as cancel rather than accidentally changing the pause binding. Pause and settings freeze clock, furnace jobs and gameplay timers, not just character movement. UI and the save coordinator continue processing while the scene tree is paused. Focus loss pauses the single-player session; focus return does not silently resume.
 
 New Game must not overwrite an existing slot without a concrete confirmation. F0 can expose one user slot, but automated/manual isolation testing must exercise two distinct slots. Continue is disabled with a reason when no valid save exists. Quit from main menu requires no world save. Window close during play follows the same save workflow as the menu.
 

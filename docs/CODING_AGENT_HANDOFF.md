@@ -1,6 +1,6 @@
 # Coding-agent handoff
 
-> **Checkpoint update (2026-09-11):** This was the original F0 commission and is retained for provenance. F0 and F1 are owner-accepted after physical Windows testing. F1 passed T13–T18, the full F0 regression, corrected ultrawide fullscreen fill and corrected multi-monitor Windowed placement. Use [current status](STATUS.md), [roadmap](ROADMAP.md), [F0 evidence](evidence/F0_WINDOWS_INTEGRATION.md) and [F1 evidence](evidence/F1_INTERACTION_HARDENING.md) for current truth. Do not repeat F0/F1 or begin F2 without owner direction. The historical instructions below are not a fresh commission.
+> **Checkpoint update (2026-09-11):** This was the original F0 commission and is retained for provenance. F0–F4 are owner-accepted after physical Windows testing. F5 separates Tab inventory from B hand crafting and right-click station interfaces on an isolated candidate branch. Use [current status](STATUS.md), [roadmap](ROADMAP.md), [castle construction and crafting plan](CASTLE_CONSTRUCTION_AND_CRAFTING.md) and recorded evidence for current truth. The historical instructions below are not a fresh commission.
 
 You are implementing Craft-and-Defend, an independent first-person voxel survival fortress game. This repo already contains the supervisory foundation. **Do not restart Deep Research or rewrite the groundwork before implementing the next gate.**
 

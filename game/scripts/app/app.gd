@@ -1,14 +1,14 @@
 class_name CraftAndDefendApp
 extends Node
 
-enum AppState { MAIN_MENU, LOADING, PLAYING, PAUSED, INVENTORY, SAVING, ERROR }
+enum AppState { MAIN_MENU, LOADING, PLAYING, PAUSED, INVENTORY, CRAFTING, SAVING, ERROR }
 
 const DISPLAY_CONFIRM_SECONDS := 10.0
 const PRINT_SCREEN_FOCUS_WINDOW_MSEC := 2000
 const SCREENSHOT_CLICK_GUARD_SECONDS := 0.20
 const BINDING_GROUPS: Array[Dictionary] = [
 	{"title": "MOVEMENT", "actions": ["move_forward", "move_backward", "strafe_left", "strafe_right", "sprint", "crouch", "jump"]},
-	{"title": "WORLD & MENUS", "actions": ["primary", "secondary", "interact", "inventory", "pause", "capture_screenshot"]},
+	{"title": "WORLD & MENUS", "actions": ["primary", "secondary", "interact", "inventory", "build", "pause", "capture_screenshot"]},
 	{"title": "HOTBAR", "actions": ["hotbar_1", "hotbar_2", "hotbar_3", "hotbar_4", "hotbar_5", "hotbar_6", "hotbar_7", "hotbar_8", "hotbar_9"]},
 ]
 
@@ -24,6 +24,7 @@ var pause_panel: Control
 var keybind_panel: Control
 var settings_panel: Control
 var inventory_panel: Control
+var crafting_panel: Control
 var display_confirm_panel: Control
 var loading_panel: Control
 var hud_layer: Control
@@ -46,11 +47,18 @@ var keybind_search: LineEdit
 var binding_rows: Dictionary = {}
 var binding_reset_buttons: Dictionary = {}
 var inventory_slot_buttons: Array[Button] = []
-var inventory_context_label: Label
 var inventory_message: Label
-var recipe_list: VBoxContainer
-var _inventory_station_id := ""
-var _inventory_station_type := "hand"
+var crafting_title_label: Label
+var crafting_context_label: Label
+var crafting_inventory_label: Label
+var crafting_recipe_list: VBoxContainer
+var crafting_grid: GridContainer
+var crafting_output_label: Label
+var crafting_message: Label
+var craft_selected_button: Button
+var _crafting_station_id := ""
+var _crafting_station_type := "hand"
+var _selected_recipe_id := ""
 var _inventory_move_source := -1
 var sensitivity_slider: HSlider
 var sensitivity_value_label: Label
@@ -78,6 +86,7 @@ var _print_screen_pressed_msec := -PRINT_SCREEN_FOCUS_WINDOW_MSEC
 var _screenshot_focus_suspended := false
 var _screenshot_resume_generation := 0
 var _failed_save_quit_after := false
+var _hud_state_text := ""
 
 
 func _ready() -> void:
@@ -117,6 +126,11 @@ func _ready() -> void:
 		var f4_automation := F4Automation.new()
 		add_child(f4_automation)
 		f4_automation.call_deferred("run", self, f4_mode)
+	var f5_mode := _argument_value("--f5-automation=")
+	if not f5_mode.is_empty():
+		var f5_automation := F5Automation.new()
+		add_child(f5_automation)
+		f5_automation.call_deferred("run", self, f5_mode)
 
 
 func _process(delta: float) -> void:
@@ -152,6 +166,7 @@ func _build_interface() -> void:
 	_build_keybinds(canvas)
 	_build_settings(canvas)
 	_build_inventory(canvas)
+	_build_crafting(canvas)
 	_build_hud(canvas)
 	_build_display_confirmation(canvas)
 
@@ -162,7 +177,7 @@ func _build_main_menu(canvas: CanvasLayer) -> void:
 	var menu := _centered_box(menu_panel, Vector2(700, 570))
 	var title := _title("CRAFT AND DEFEND", 34)
 	menu.add_child(title)
-	var subtitle := _centered_label("F4 foundation candidate · sunrise world controls")
+	var subtitle := _centered_label("F5 crafting-interface candidate · castle-building foundation")
 	menu.add_child(subtitle)
 	menu.add_child(_spacer(12))
 	var slot_row := _settings_row("Save slot")
@@ -448,22 +463,20 @@ func _build_inventory(canvas: CanvasLayer) -> void:
 	margin.add_child(root)
 	var header := HBoxContainer.new()
 	root.add_child(header)
-	var title := _title("INVENTORY & CRAFTING", 30)
+	var title := _title("INVENTORY", 30)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
 	header.add_child(_button("Back to Game", _close_inventory, Vector2(190, 44)))
-	inventory_context_label = Label.new()
-	inventory_context_label.add_theme_color_override("font_color", Color("85d5ea"))
-	root.add_child(inventory_context_label)
-	var columns := HBoxContainer.new()
-	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	columns.add_theme_constant_override("separation", 20)
-	root.add_child(columns)
+	var context := Label.new()
+	context.text = "TAB CLOSES  ·  B OPENS HAND BUILD"
+	context.add_theme_color_override("font_color", Color("85d5ea"))
+	root.add_child(context)
 	var inventory_card := PanelContainer.new()
 	inventory_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inventory_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	inventory_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 18))
-	columns.add_child(inventory_card)
+	root.add_child(inventory_card)
 	var inventory_column := VBoxContainer.new()
 	inventory_card.add_child(inventory_column)
 	var inventory_heading := Label.new()
@@ -484,8 +497,68 @@ func _build_inventory(canvas: CanvasLayer) -> void:
 	inventory_contents_label = Label.new()
 	inventory_contents_label.visible = false
 	inventory_column.add_child(inventory_contents_label)
+	inventory_message = Label.new()
+	inventory_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inventory_message.add_theme_color_override("font_color", Color("ffd488"))
+	inventory_column.add_child(inventory_message)
+
+
+func _build_crafting(canvas: CanvasLayer) -> void:
+	crafting_panel = _full_panel(Color(0.01, 0.018, 0.025, 0.88))
+	canvas.add_child(crafting_panel)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	crafting_panel.add_child(center)
+	var modal := PanelContainer.new()
+	modal.custom_minimum_size = Vector2(1040, 620)
+	modal.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("0d1a23"), Color("4e8294"), 12, 22))
+	center.add_child(modal)
+	var root := VBoxContainer.new()
+	modal.add_child(root)
+	var header := HBoxContainer.new()
+	root.add_child(header)
+	crafting_title_label = _title("FIELD BUILD", 28)
+	crafting_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	crafting_title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(crafting_title_label)
+	header.add_child(_button("Back to Game", _close_crafting, Vector2(180, 42)))
+	crafting_context_label = Label.new()
+	crafting_context_label.add_theme_color_override("font_color", Color("85d5ea"))
+	root.add_child(crafting_context_label)
+	var columns := HBoxContainer.new()
+	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	columns.add_theme_constant_override("separation", 18)
+	root.add_child(columns)
+
+	var grid_card := PanelContainer.new()
+	grid_card.custom_minimum_size.x = 430
+	grid_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 18))
+	columns.add_child(grid_card)
+	var grid_column := VBoxContainer.new()
+	grid_card.add_child(grid_column)
+	var grid_heading := Label.new()
+	grid_heading.text = "RECIPE INPUT"
+	grid_heading.add_theme_color_override("font_color", Color("9fd8e8"))
+	grid_column.add_child(grid_heading)
+	crafting_grid = GridContainer.new()
+	crafting_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	crafting_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	grid_column.add_child(crafting_grid)
+	crafting_output_label = Label.new()
+	crafting_output_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	crafting_output_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	crafting_output_label.custom_minimum_size = Vector2(380, 64)
+	crafting_output_label.add_theme_color_override("font_color", Color("c9f4ff"))
+	grid_column.add_child(crafting_output_label)
+	craft_selected_button = _button("Craft Selected", _craft_selected_recipe, Vector2(380, 48))
+	grid_column.add_child(craft_selected_button)
+	crafting_inventory_label = Label.new()
+	crafting_inventory_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	crafting_inventory_label.add_theme_color_override("font_color", Color("a7bac4"))
+	grid_column.add_child(crafting_inventory_label)
+
 	var recipe_card := PanelContainer.new()
-	recipe_card.custom_minimum_size.x = 520
+	recipe_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	recipe_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 18))
 	columns.add_child(recipe_card)
 	var recipe_column := VBoxContainer.new()
@@ -498,13 +571,13 @@ func _build_inventory(canvas: CanvasLayer) -> void:
 	recipe_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	recipe_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	recipe_column.add_child(recipe_scroll)
-	recipe_list = VBoxContainer.new()
-	recipe_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	recipe_scroll.add_child(recipe_list)
-	inventory_message = Label.new()
-	inventory_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	inventory_message.add_theme_color_override("font_color", Color("ffd488"))
-	recipe_column.add_child(inventory_message)
+	crafting_recipe_list = VBoxContainer.new()
+	crafting_recipe_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	recipe_scroll.add_child(crafting_recipe_list)
+	crafting_message = Label.new()
+	crafting_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	crafting_message.add_theme_color_override("font_color", Color("ffd488"))
+	recipe_column.add_child(crafting_message)
 
 
 func _build_hud(canvas: CanvasLayer) -> void:
@@ -645,11 +718,9 @@ func _resume_game() -> void:
 	state = AppState.PLAYING
 
 
-func _show_inventory(station_id: String = "", station_type: String = "hand") -> void:
+func _show_inventory() -> void:
 	if state != AppState.PLAYING or session == null:
 		return
-	_inventory_station_id = station_id
-	_inventory_station_type = station_type if station_type in ["workbench", "furnace"] else "hand"
 	_inventory_move_source = -1
 	state = AppState.INVENTORY
 	session.pause_game(true)
@@ -661,7 +732,23 @@ func _show_inventory(station_id: String = "", station_type: String = "hand") -> 
 
 
 func _show_workstation(instance_id: String, station_type: String) -> void:
-	_show_inventory(instance_id, station_type)
+	_show_crafting(instance_id, station_type)
+
+
+func _show_crafting(station_id: String = "", station_type: String = "hand") -> void:
+	if state != AppState.PLAYING or session == null:
+		return
+	_crafting_station_id = station_id
+	_crafting_station_type = station_type if station_type in ["workbench", "furnace"] else "hand"
+	_selected_recipe_id = ""
+	state = AppState.CRAFTING
+	session.pause_game(true)
+	get_tree().paused = true
+	hud_layer.hide()
+	crafting_message.text = ""
+	_refresh_crafting_panel()
+	crafting_panel.show()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 func _close_inventory() -> void:
@@ -672,14 +759,27 @@ func _close_inventory() -> void:
 	get_tree().paused = false
 	session.pause_game(false)
 	state = AppState.PLAYING
-	_inventory_station_id = ""
-	_inventory_station_type = "hand"
 	_inventory_move_source = -1
+
+
+func _close_crafting() -> void:
+	if state != AppState.CRAFTING:
+		return
+	crafting_panel.hide()
+	hud_layer.show()
+	get_tree().paused = false
+	session.pause_game(false)
+	state = AppState.PLAYING
+	_crafting_station_id = ""
+	_crafting_station_type = "hand"
+	_selected_recipe_id = ""
 
 
 func _on_session_inventory_changed(_snapshot: Dictionary) -> void:
 	if inventory_panel != null and inventory_panel.visible:
 		_refresh_inventory_panel()
+	if crafting_panel != null and crafting_panel.visible:
+		_refresh_crafting_panel()
 
 
 func _select_inventory_slot(index: int) -> void:
@@ -716,24 +816,85 @@ func _refresh_inventory_panel() -> void:
 		var marker := "↔ " if index == _inventory_move_source else ("▶ " if index == int(snapshot.get("selected_hotbar", 0)) and index < F0Inventory.HOTBAR_COUNT else "  ")
 		inventory_slot_buttons[index].text = marker + prefix + ("Empty" if item_id.is_empty() else "%s  ×%d" % [session.registry.display_name(item_id), int(slot.get("count", 0))])
 		inventory_slot_buttons[index].disabled = false
-	inventory_context_label.text = ("HAND CRAFTING  ·  Tab closes" if _inventory_station_type == "hand" else "%s  ·  Shift opens while targeted" % session.registry.display_name(_inventory_station_type).to_upper())
-	for child in recipe_list.get_children():
-		child.queue_free()
-	for recipe in session.recipes_for(_inventory_station_type):
-		var status := session.recipe_status(str(recipe.id), _inventory_station_type, _inventory_station_id)
-		var button := _button(_recipe_button_text(recipe, status), _craft_recipe.bind(str(recipe.id)), Vector2(460, 62))
-		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		button.disabled = not status.get("ok", false)
-		button.tooltip_text = "Ready" if status.get("ok", false) else _craft_reason_text(str(status.get("reason", "UNAVAILABLE")), str(status.get("item_id", "")))
-		recipe_list.add_child(button)
 
 
-func _craft_recipe(recipe_id: String) -> void:
+func _refresh_crafting_panel() -> void:
 	if session == null:
 		return
-	var result := session.try_craft(recipe_id, _inventory_station_type, _inventory_station_id)
-	inventory_message.text = "%s crafted." % session.registry.display_name(recipe_id) if result.get("ok", false) else _craft_reason_text(str(result.get("reason", "CRAFT_FAILED")), str(result.get("item_id", "")))
-	_refresh_inventory_panel()
+	var recipes := session.recipes_for(_crafting_station_type)
+	if _selected_recipe_id.is_empty() or session.registry.recipe(_selected_recipe_id).is_empty() or str(session.registry.recipe(_selected_recipe_id).get("station", "")) != _crafting_station_type:
+		_selected_recipe_id = str(recipes[0].id) if not recipes.is_empty() else ""
+	var grid_size := 2
+	var grid_capacity := 4
+	crafting_title_label.text = "FIELD BUILD"
+	crafting_context_label.text = "2 × 2 HAND CRAFTING  ·  B CLOSES  ·  TAB IS INVENTORY ONLY"
+	if _crafting_station_type == "workbench":
+		grid_size = 3
+		grid_capacity = 9
+		crafting_title_label.text = "WORKBENCH"
+		crafting_context_label.text = "3 × 3 ADVANCED CRAFTING  ·  AVAILABLE ONLY BY RIGHT-CLICKING THIS WORKBENCH"
+	elif _crafting_station_type == "furnace":
+		grid_size = 2
+		grid_capacity = 2
+		crafting_title_label.text = "FURNACE"
+		crafting_context_label.text = "ORE + FUEL PROCESSING  ·  AVAILABLE ONLY BY RIGHT-CLICKING THIS FURNACE"
+	crafting_grid.columns = grid_size
+	for child in crafting_grid.get_children():
+		crafting_grid.remove_child(child)
+		child.queue_free()
+	for child in crafting_recipe_list.get_children():
+		crafting_recipe_list.remove_child(child)
+		child.queue_free()
+	for recipe in recipes:
+		var status := session.recipe_status(str(recipe.id), _crafting_station_type, _crafting_station_id)
+		var selected_marker := "▶ " if str(recipe.id) == _selected_recipe_id else ""
+		var button := _button(selected_marker + _recipe_button_text(recipe, status), _select_crafting_recipe.bind(str(recipe.id)), Vector2(500, 68))
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.tooltip_text = "Select recipe"
+		crafting_recipe_list.add_child(button)
+	var selected_recipe := session.registry.recipe(_selected_recipe_id)
+	var input_cells: Array[String] = []
+	if not selected_recipe.is_empty():
+		for item_id: String in selected_recipe.inputs:
+			for _count in range(int(selected_recipe.inputs[item_id])):
+				input_cells.append(session.registry.display_name(item_id))
+	for index in range(grid_capacity):
+		var cell := PanelContainer.new()
+		cell.custom_minimum_size = Vector2(118, 72)
+		cell.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("0a141b"), Color("365363"), 5, 7))
+		var label := Label.new()
+		label.text = input_cells[index] if index < input_cells.size() else "Empty"
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		cell.add_child(label)
+		crafting_grid.add_child(cell)
+	crafting_inventory_label.text = "INVENTORY MATERIALS\n%s" % session.inventory_text()
+	if selected_recipe.is_empty():
+		crafting_output_label.text = "No recipe selected"
+		craft_selected_button.disabled = true
+		return
+	var selected_status := session.recipe_status(_selected_recipe_id, _crafting_station_type, _crafting_station_id)
+	var outputs: PackedStringArray = PackedStringArray()
+	for item_id: String in selected_recipe.outputs:
+		outputs.append("%d %s" % [int(selected_recipe.outputs[item_id]), session.registry.display_name(item_id)])
+	crafting_output_label.text = "OUTPUT  →  %s\n%s" % [" + ".join(outputs), "READY" if selected_status.get("ok", false) else _craft_reason_text(str(selected_status.get("reason", "UNAVAILABLE")), str(selected_status.get("item_id", "")))]
+	craft_selected_button.text = "Start Processing" if _crafting_station_type == "furnace" else "Craft Selected"
+	craft_selected_button.disabled = not selected_status.get("ok", false)
+
+
+func _select_crafting_recipe(recipe_id: String) -> void:
+	_selected_recipe_id = recipe_id
+	crafting_message.text = ""
+	_refresh_crafting_panel()
+
+
+func _craft_selected_recipe() -> void:
+	if session == null:
+		return
+	var result := session.try_craft(_selected_recipe_id, _crafting_station_type, _crafting_station_id)
+	crafting_message.text = "%s crafted." % session.registry.display_name(_selected_recipe_id) if result.get("ok", false) else _craft_reason_text(str(result.get("reason", "CRAFT_FAILED")), str(result.get("item_id", "")))
+	_refresh_crafting_panel()
 
 
 func _recipe_button_text(recipe: Dictionary, status: Dictionary) -> String:
@@ -817,6 +978,7 @@ func _refresh_binding_labels() -> void:
 		if binding_rows.has(action):
 			var searchable := (settings.get_action_label(action) + " " + settings.get_binding_label(action)).to_lower()
 			binding_rows[action].visible = query.is_empty() or searchable.contains(query)
+	_refresh_hud()
 
 
 func _refresh_binding_label() -> void:
@@ -1005,6 +1167,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			_show_inventory()
 		else:
 			_close_inventory()
+		return
+	if event.is_action_pressed("build") and state in [AppState.PLAYING, AppState.CRAFTING]:
+		get_viewport().set_input_as_handled()
+		if state == AppState.PLAYING:
+			_show_crafting()
+		elif _crafting_station_type == "hand":
+			_close_crafting()
 
 
 func _is_escape_press(event: InputEvent) -> bool:
@@ -1026,6 +1195,8 @@ func _handle_escape_recovery() -> void:
 		_close_settings()
 	elif state == AppState.INVENTORY:
 		_close_inventory()
+	elif state == AppState.CRAFTING:
+		_close_crafting()
 	elif state == AppState.PLAYING:
 		_pause_game()
 	elif state == AppState.PAUSED:
@@ -1123,7 +1294,25 @@ func _set_status(message: String) -> void:
 
 
 func _set_hud(text: String) -> void:
-	hud_label.text = "%s · %s capture" % [text, settings.get_binding_label("capture_screenshot")]
+	_hud_state_text = text
+	_refresh_hud()
+
+
+func _refresh_hud() -> void:
+	if hud_label == null or settings == null or _hud_state_text.is_empty():
+		return
+	var movement := "%s%s%s%s" % [settings.get_binding_label("move_forward"), settings.get_binding_label("move_backward"), settings.get_binding_label("strafe_left"), settings.get_binding_label("strafe_right")]
+	hud_label.text = "%s   |   %s move · %s sprint · %s crouch · %s use/place · %s build · %s inventory · %s pause · %s capture" % [
+		_hud_state_text,
+		movement,
+		settings.get_binding_label("sprint"),
+		settings.get_binding_label("crouch"),
+		settings.get_binding_label("secondary"),
+		settings.get_binding_label("build"),
+		settings.get_binding_label("inventory"),
+		settings.get_binding_label("pause"),
+		settings.get_binding_label("capture_screenshot"),
+	]
 
 
 func _capture_gameplay_screenshot() -> void:
@@ -1193,14 +1382,14 @@ func _resume_after_screenshot_focus(generation: int) -> void:
 
 
 func _handle_close_request() -> void:
-	if session != null and state in [AppState.PLAYING, AppState.PAUSED, AppState.INVENTORY]:
+	if session != null and state in [AppState.PLAYING, AppState.PAUSED, AppState.INVENTORY, AppState.CRAFTING]:
 		_save_then(true)
 	elif state != AppState.SAVING:
 		get_tree().quit(0)
 
 
 func _hide_all_panels() -> void:
-	for panel in [menu_panel, pause_panel, keybind_panel, settings_panel, inventory_panel, display_confirm_panel, loading_panel, hud_layer]:
+	for panel in [menu_panel, pause_panel, keybind_panel, settings_panel, inventory_panel, crafting_panel, display_confirm_panel, loading_panel, hud_layer]:
 		if panel != null:
 			panel.hide()
 

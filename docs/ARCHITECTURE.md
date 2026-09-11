@@ -14,11 +14,11 @@ These are implementation contracts, not claims that modules already exist. Prefe
 | Simulation clock | Day phase, cycle-enabled state and gameplay time | unpaused delta or validated world-setting command → time/lighting | Wall-clock catch-up |
 | Persistence | Slot identity, snapshot capture, terrain flush, metadata, recovery | save/load intents → completed snapshot or error | Inventing missing content |
 | Content registry | Stable blocks/items/recipes; validated lookup | JSON/resources → immutable definitions | Per-save state |
-| Presentation/UI | Menus, HUD, selection, inventory, feedback and game-viewport screenshots | state snapshots → display/files; user intent → commands | Authoritative game rules, desktop capture |
+| Presentation/UI | Menus, HUD, inventory-only overlay, hand/station crafting modals, feedback and game-viewport screenshots | state snapshots → display/files; user intent → commands | Authoritative game rules, desktop capture |
 
 ## Command flow
 
-A primary/secondary action is routed through the input context to InteractionService. It checks the target and submits a command containing session ID, expected world/inventory revisions and the desired operation. The service validates all preconditions before changing either inventory or the world. Only a successful commit emits `world_changed(region)` and `inventory_changed(revision)`. UI redraws from results.
+A primary/secondary action is routed through the input context to InteractionService. Secondary first resolves a targeted station; if found it emits a station-open result without placing, otherwise it follows the placement path. The service checks the target and submits a command containing session ID, expected world/inventory revisions and the desired operation. It validates all preconditions before changing either inventory or the world. Only a successful commit emits `world_changed(region)` and `inventory_changed(revision)`. UI redraws from results.
 
 Keep the first implementation synchronous on the gameplay/main thread. Do not `await` halfway through a resource/world transaction. If engine editing cannot confirm completion synchronously, reserve resources and lock the target until the operation is confirmed, with an explicit rollback path. Do not grant items merely because a ray hit a block. See [occupancy](WORLD_AND_OCCUPANCY.md).
 

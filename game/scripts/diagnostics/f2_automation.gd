@@ -61,6 +61,11 @@ func _run_visual() -> void:
 	for _frame in range(3):
 		await get_tree().process_frame
 	await _capture("f2-inventory.png", "F2_VISUAL_INVENTORY")
+	app._close_inventory()
+	app._show_crafting()
+	for _frame in range(3):
+		await get_tree().process_frame
+	await _capture("f2-hand-crafting.png", "F2_VISUAL_HAND_CRAFTING")
 	get_tree().quit(0)
 
 
@@ -82,6 +87,7 @@ func _run_gate() -> void:
 	if app.state != app.AppState.PLAYING:
 		return
 	await _wait_cells([Vector3i(4, 0, 40), Vector3i(-8, -3, 35), Vector3i(10, -4, 35), Vector3i(5, -4, 32)])
+	_test_inventory_crafting_split()
 	await _test_progression()
 	_test_atomic_crafting()
 	_test_workstation_placement()
@@ -104,6 +110,16 @@ func _test_progression() -> void:
 	var bench_place := interaction.try_place_item(Vector3i(2, 0, 38), "workbench")
 	_require_ok(bench_place, "T19 workbench placement")
 	var bench_id := str(bench_place.get("changes", {}).get("station", {}).get("instance_id", ""))
+	var inventory_before_secondary := inventory.snapshot()
+	var original_station_raycast := interaction.station_raycast
+	interaction.station_raycast = func(_origin: Vector3, _direction: Vector3) -> String: return bench_id
+	var secondary_result := interaction.secondary_from_view(Vector3.ZERO, Vector3.FORWARD)
+	var shift_result := interaction.interact_from_view(Vector3.ZERO, Vector3.FORWARD)
+	interaction.station_raycast = original_station_raycast
+	app._show_workstation(bench_id, "workbench")
+	var bench_modal := app.state == app.AppState.CRAFTING and app._crafting_station_type == "workbench" and app.crafting_grid.columns == 3 and app.crafting_grid.get_child_count() == 9
+	app._close_crafting()
+	_record("T32_CRAFTING_ENTRY", secondary_result.get("reason") == "OPEN_STATION" and shift_result.get("reason") == "SECONDARY_REQUIRED" and inventory_before_secondary == inventory.snapshot() and bench_modal, "right-click opens a targeted workbench without placing; Shift cannot bypass the station entry rule; the advanced modal exposes a 3×3 recipe grid", {"secondary": secondary_result, "shift": shift_result, "modal": bench_modal})
 	_require_ok(app.session.try_craft("wood_pick", "workbench", bench_id), "T19 wood pick")
 	_require_ok(app.session.try_craft("sticks", "hand"), "T19 second sticks")
 	_select_item("wood_pick")
@@ -128,6 +144,16 @@ func _test_progression() -> void:
 	_require_ok(app.session.try_craft("iron_pick", "workbench", bench_id), "T19 iron pick")
 	var reached := empty_start and inventory.count("wood_pick") == 1 and inventory.count("stone_pick") == 1 and inventory.count("iron_pick") == 1 and inventory.count("iron_ingot") == 0
 	_record("T19_PROGRESSION", reached, "empty inventory reaches wood pick, stone pick, three smelts and iron pick through world/crafting commands", inventory.snapshot())
+
+
+func _test_inventory_crafting_split() -> void:
+	app._show_inventory()
+	var inventory_only := app.state == app.AppState.INVENTORY and app.inventory_panel.visible and not app.crafting_panel.visible
+	app._close_inventory()
+	app._show_crafting()
+	var hand_modal := app.state == app.AppState.CRAFTING and app.crafting_panel.visible and not app.inventory_panel.visible and app._crafting_station_type == "hand" and app.crafting_grid.columns == 2 and app.crafting_grid.get_child_count() == 4
+	app._close_crafting()
+	_record("T31_INVENTORY_BUILD_SPLIT", inventory_only and hand_modal and app.settings.get_keycode("inventory") == KEY_TAB and app.settings.get_keycode("build") == KEY_B, "Tab owns inventory only; B owns the 2×2 hand-crafting modal", {"inventory_only": inventory_only, "hand_modal": hand_modal, "tab": app.settings.get_binding_label("inventory"), "build": app.settings.get_binding_label("build")})
 
 
 func _test_atomic_crafting() -> void:

@@ -24,5 +24,7 @@ User requirements take precedence over engine demos. Prototype quantities and tu
 | R18 | Reuse open-source infrastructure before reinventing | F0 upstream review and notices |
 | R19 | Worktrees, checkpoints, tests before main | All stages; AGENTS and evidence |
 | R20 | Supervisor groundwork and local coding-agent handoff | This G0 delivery |
+| R21 | Tab-only inventory; B hand crafting; right-click station interfaces | F5 T31–T34 |
+| R22 | Specialized castle structures, defenses, mounted weapons, equipment and reviewed magic track | Castle construction plan; P1–P4 and later gates |
 
 The original report is retained unchanged for provenance. Current requirements, reconciliations and this traceability table prevent its outdated empty-repo/latest-version wording or broad exclusions from silently overriding the user.

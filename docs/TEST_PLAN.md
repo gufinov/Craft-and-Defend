@@ -40,6 +40,10 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T28 | F4 | Blocks/resources distinguishable; selection, craft feedback and key help visible; rebindable F2 captures the rendered viewport in the background without pausing; no placeholder functional claims |
 | T29 | F4 | Measure frame times, edit latency, memory, save size/latency in fixed scenario; record hardware/build/renderer/resolution |
 | T30 | F4 | Fresh portable folder launch with editor closed runs full Foundation loop; README run/save-location instructions accurate |
+| T31 | F5 | Tab opens inventory only; B opens/closes 2×2 hand crafting; both pause and block world mutations; B persists/rebinds safely |
+| T32 | F5 | Right-clicked workbench opens 3×3 station modal without placing; Shift cannot bypass; non-station right-click still places |
+| T33 | F5 | Furnace owns ore+fuel processing modal; recipe results remain atomic and timed jobs complete exactly once |
+| T34 | F5 | Inventory and crafting presentations remain legible/keyboard-usable at 1280×720 and 3440×1440; labels do not imply unimplemented content |
 
 ## Performance evidence, not invented guarantees
 

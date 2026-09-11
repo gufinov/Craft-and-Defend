@@ -147,11 +147,18 @@ func place_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
 	return try_place_item(hit.previous_position, inventory.active_item_id())
 
 
+func secondary_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
+	var station_id := _station_from_view(origin, direction)
+	if not station_id.is_empty():
+		return _finish(true, "OPEN_STATION", {"instance_id": station_id, "station": workstations.station(station_id)})
+	return place_from_view(origin, direction)
+
+
 func interact_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
 	var station_id := _station_from_view(origin, direction)
 	if station_id.is_empty():
 		return _finish(false, "NO_STATION")
-	return _finish(true, "OPEN_STATION", {"instance_id": station_id, "station": workstations.station(station_id)})
+	return _finish(false, "SECONDARY_REQUIRED", {"instance_id": station_id, "station": workstations.station(station_id)})
 
 
 func _station_from_view(origin: Vector3, direction: Vector3) -> String:
