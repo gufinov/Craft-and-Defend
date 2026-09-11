@@ -73,6 +73,7 @@ func _capture(filename: String, test_id: String) -> void:
 
 
 func _run_gate() -> void:
+	_test_keybind_ui()
 	app._on_start_pressed()
 	var started := Time.get_ticks_msec()
 	while app.state != app.AppState.PLAYING and Time.get_ticks_msec() - started < 20000:
@@ -148,6 +149,33 @@ func _test_atomic_crafting() -> void:
 	_record("T20_EXACT_DOUBLE_CLICK", first.get("ok", false) and second.get("reason") == "INSUFFICIENT_INPUT" and exact_inventory.count("planks") == 4, "double activation produces one exact output only", {"first": first, "second": second, "snapshot": exact_inventory.snapshot()})
 	var wrong := exact_crafting.try_craft("wood_pick", "hand")
 	_record("T20_WRONG_STATION", wrong.get("reason") == "WRONG_WORKSTATION", "wrong workstation is explicit", wrong)
+	var slot_inventory := F0Inventory.new(registry)
+	slot_inventory.try_transaction({}, {"log": 1})
+	var moved := slot_inventory.swap_slots(0, 10)
+	var selected := slot_inventory.select_hotbar(8)
+	var before_invalid := slot_inventory.snapshot()
+	var invalid := slot_inventory.swap_slots(10, 99)
+	var slot_passed: bool = bool(moved.get("ok", false)) and str(slot_inventory.slots[10].item_id) == "log" and int(slot_inventory.slots[0].count) == 0 and bool(selected.get("ok", false)) and slot_inventory.selected_hotbar == 8 and invalid.get("reason") == "INVALID_SLOT" and before_invalid == slot_inventory.snapshot()
+	_record("T20_SLOT_HOTBAR", slot_passed, "items move between hotbar/storage slots, selection changes, and invalid moves are harmless", {"moved": moved, "selected": selected, "invalid": invalid, "snapshot": slot_inventory.snapshot()})
+
+
+func _test_keybind_ui() -> void:
+	app._show_keybinds()
+	var all_rows := app.binding_rows.size() == SettingsStore.BINDING_ACTIONS.size()
+	app.keybind_search.text = "forward"
+	app._refresh_binding_labels()
+	var visible_actions: Array[String] = []
+	for action in app.binding_rows:
+		if app.binding_rows[action].visible:
+			visible_actions.append(str(action))
+	var rebound := app.settings.rebind_key("move_forward", KEY_R)
+	app._refresh_binding_labels()
+	var reset_enabled: bool = not app.binding_reset_buttons["move_forward"].disabled
+	app._reset_binding("move_forward")
+	var restored: bool = app.settings.is_default_binding("move_forward") and app.settings.get_binding_label("move_forward") == "E" and app.binding_reset_buttons["move_forward"].disabled
+	var passed: bool = all_rows and visible_actions == ["move_forward"] and bool(rebound.get("ok", false)) and reset_enabled and restored
+	_record("F2_KEYBIND_UI", passed, "all actions are grouped into rows; search filters; one action can be rebound and reset independently", {"row_count": app.binding_rows.size(), "visible_actions": visible_actions, "rebound": rebound, "reset_enabled": reset_enabled, "restored_label": app.settings.get_binding_label("move_forward")})
+	app._close_keybinds()
 
 
 func _test_workstation_placement() -> void:
