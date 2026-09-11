@@ -47,7 +47,7 @@ Add basic day/night tied to simulation time; keep terrain readable at night. Rev
 
 Separate inventory from making things. Tab opens inventory only; rebindable B opens a paused 2×2 hand-crafting modal. Right-clicking a placed workbench is the sole entry to its 3×3 advanced crafting modal and takes priority over block placement. Other processing stations own purpose-specific interfaces rather than sharing the Settings presentation. Preserve data-driven recipes, atomic inventory transactions, exact-once furnace jobs and all existing saves. Document the staged castle construction, defense, equipment and possible-magic content families before adding them. Run T31–T34 plus F2–F4 regressions.
 
-**Candidate result:** the split interface and right-click priority are implemented on `feature/crafting-interface`; automated and owner graphical acceptance remain required. The current recipe set is deliberately unchanged. Torches, armor, weapons and castle pieces are roadmap content, not placeholder buttons.
+**Candidate result:** the split interface, persistent B binding, workbench right-click priority and furnace-specific processing modal are implemented on `feature/crafting-interface`. Exported T31–T33 and the existing F2/F4 regressions pass. T34 has a passing 1280×720 automated capture; native 3440×1440 owner graphical acceptance remains required. The current recipe set is deliberately unchanged. Torches, armor, weapons and castle pieces are roadmap content, not placeholder buttons.
 
 ## P2 — later navigation spike brief
 
