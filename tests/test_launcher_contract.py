@@ -35,6 +35,7 @@ class LauncherContractTests(unittest.TestCase):
         self.assertIn("portableReadmeSource", builder)
         self.assertIn("CraftAndDefend.exe", portable)
         self.assertIn("CraftAndDefend.pck", portable)
+        self.assertIn("%*", portable)
         self.assertNotIn("git ", portable.lower())
         self.assertIn("%APPDATA%\\CraftAndDefend\\", instructions)
         self.assertIn("default F2", instructions)

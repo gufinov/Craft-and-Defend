@@ -14,4 +14,4 @@ if not exist "CraftAndDefend.pck" (
   pause
   exit /b 1
 )
-start "" "%~dp0CraftAndDefend.exe"
+start "" "%~dp0CraftAndDefend.exe" %*
