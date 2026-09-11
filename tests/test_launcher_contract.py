@@ -20,6 +20,13 @@ class LauncherContractTests(unittest.TestCase):
         self.assertIn("Test-GameTreeClean", starter)
         self.assertIn("Rebuilding it now", starter)
 
+    def test_git_ownership_exception_is_repository_scoped(self):
+        starter = (ROOT / "tools" / "start_game.ps1").read_text(encoding="utf-8")
+        builder = (ROOT / "tools" / "build_windows_f0.ps1").read_text(encoding="utf-8")
+        for script in (starter, builder):
+            self.assertIn('git -c "safe.directory=$gitSafeDirectory" -C $repositoryRoot', script)
+            self.assertNotIn("config --global", script)
+
 
 if __name__ == "__main__":
     unittest.main()

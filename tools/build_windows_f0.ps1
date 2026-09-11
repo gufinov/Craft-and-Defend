@@ -6,6 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$gitSafeDirectory = $repositoryRoot.Replace('\', '/')
 
 function Find-PinnedToolRoot {
     $cursor = [System.IO.DirectoryInfo]::new($repositoryRoot)
@@ -74,13 +75,13 @@ $pckHash = (Get-FileHash -LiteralPath $buildPck -Algorithm SHA256).Hash.ToLowerI
 $sourceCommit = $null
 $gameTree = $null
 if ((Test-Path -LiteralPath (Join-Path $repositoryRoot '.git')) -and (Get-Command git -ErrorAction SilentlyContinue)) {
-	$sourceOutput = @(& git -C $repositoryRoot rev-parse HEAD 2>&1)
+	$sourceOutput = @(& git -c "safe.directory=$gitSafeDirectory" -C $repositoryRoot rev-parse HEAD 2>&1)
 	$sourceExitCode = $LASTEXITCODE
 	$sourceCommit = ($sourceOutput | Select-Object -First 1)
 	if ($sourceExitCode -ne 0 -or $sourceCommit -notmatch '^[0-9a-fA-F]{40}$') {
 		throw "Windows export completed, but source-commit provenance could not be resolved: $sourceCommit"
 	}
-	$gameTreeOutput = @(& git -C $repositoryRoot rev-parse HEAD:game 2>&1)
+	$gameTreeOutput = @(& git -c "safe.directory=$gitSafeDirectory" -C $repositoryRoot rev-parse HEAD:game 2>&1)
 	$gameTreeExitCode = $LASTEXITCODE
 	$gameTree = ($gameTreeOutput | Select-Object -First 1)
 	if ($gameTreeExitCode -ne 0 -or $gameTree -notmatch '^[0-9a-fA-F]{40}$') {
