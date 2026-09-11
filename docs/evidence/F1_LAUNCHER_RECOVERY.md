@@ -20,7 +20,7 @@ TEST:
 | Matching package | Avoid needless rebuild | Second preparation reported a provenance match and preserved PCK timestamp | PASS | recovery console output |
 | Mismatched manifest | Reject and repair stale identity | Synthetic all-zero game-tree identity forced rebuild and restored the tracked tree hash | PASS | recovery console output |
 | Legacy package | Reject existing EXE/PCK with no manifest | Removing only the ignored manifest forced rebuild and recreated valid provenance | PASS | recovery console output |
-| Exported F1 identity | Package contains F1 rather than F0 | F1 display automation accessed Settings/native-resolution controls and passed all fullscreen/windowed assertions | PASS | `artifacts/launcher_recovery_f1_display.log` |
+| Exported F1 identity | Package contains F1 rather than F0 | F1 display automation accessed Settings/native-resolution controls and passed all fullscreen/windowed assertions in both the recovery worktree and rebuilt canonical package | PASS | `artifacts/launcher_recovery_f1_display.log`, `artifacts/canonical_recovery_f1_display_runtime.log` |
 | F1 regression | Full accepted interaction behavior remains | Both F1 automation phases passed after rebuild | PASS | `artifacts/launcher_recovery_f1_phase1.log`, `artifacts/launcher_recovery_f1_phase2.log` |
 | F0 regression | Core world/save loop remains | Both F0 automation phases passed after rebuild | PASS | `artifacts/launcher_recovery_f0_phase1.log`, `artifacts/launcher_recovery_f0_phase2.log` |
 | Static | Contracts and launcher guard remain present | Foundation validator and all 18 unit tests passed; PowerShell scripts parsed | PASS | command output in this session |
@@ -33,9 +33,8 @@ LIMITATIONS/FAILURES:
 
 NEXT:
 
-1. Promote and push the recovery.
-2. Prepare the canonical `main` package, then have Tony double-click `START_GAME.cmd` and confirm the visible F1 menu.
-3. Keep F2 unstarted until a separate instruction.
+1. Tony double-clicks canonical `main\START_GAME.cmd` and confirms the visible F1 menu.
+2. Keep F2 unstarted until a separate instruction.
 
 GIT/REPRODUCIBILITY:
 
@@ -45,5 +44,6 @@ GIT/REPRODUCIBILITY:
 - Engine/template: Godot `4.6.stable.custom_build.89cea1439`; Voxel Tools `1.6.0 Module`; matching custom release template.
 - Tested tracked game-tree identity: `7ee41b6ea736d2c7bbff3db8ba168eaebd30b711`.
 - Executable SHA-256: `4ac128729e86108904e6d038d161322404d42d71892b1cc0dca751039aa7e4b2`.
-- Recovery PCK hash is recorded by each ignored `build_manifest.json`; canonical final hash is recorded after promotion because Godot exports are not assumed byte-reproducible.
+- Canonical rebuilt game-tree identity: `af7eb1b58ff5edab922b4b0e384a3ac42e391f92`.
+- Canonical rebuilt PCK SHA-256: `96780159eb89e2d866d8d027ccf41ac836b91bff15ae90a2352bbcc8d5c70124`.
 - User save root was not deleted or migrated. All automation used isolated ignored roots under `artifacts`.
