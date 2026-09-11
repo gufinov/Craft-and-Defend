@@ -74,14 +74,14 @@ $pckHash = (Get-FileHash -LiteralPath $buildPck -Algorithm SHA256).Hash.ToLowerI
 $sourceCommit = $null
 $gameTree = $null
 if ((Test-Path -LiteralPath (Join-Path $repositoryRoot '.git')) -and (Get-Command git -ErrorAction SilentlyContinue)) {
-    $sourceCommit = (& git -C $repositoryRoot rev-parse HEAD 2>$null | Select-Object -First 1)
-    if ($sourceCommit -notmatch '^[0-9a-fA-F]{40}$') {
-        $sourceCommit = $null
-    }
-    $gameTree = (& git -C $repositoryRoot rev-parse HEAD:game 2>$null | Select-Object -First 1)
-    if ($gameTree -notmatch '^[0-9a-fA-F]{40}$') {
-        $gameTree = $null
-    }
+	$sourceCommit = (& git -C $repositoryRoot rev-parse HEAD 2>&1 | Select-Object -First 1)
+	if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch '^[0-9a-fA-F]{40}$') {
+		throw "Windows export completed, but source-commit provenance could not be resolved: $sourceCommit"
+	}
+	$gameTree = (& git -C $repositoryRoot rev-parse HEAD:game 2>&1 | Select-Object -First 1)
+	if ($LASTEXITCODE -ne 0 -or $gameTree -notmatch '^[0-9a-fA-F]{40}$') {
+		throw "Windows export completed, but game-tree provenance could not be resolved: $gameTree"
+	}
 }
 $engineVersion = (& $GodotExe --version | Select-Object -First 1)
 $manifest = [ordered]@{
