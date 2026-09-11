@@ -23,7 +23,7 @@ Saving freezes gameplay mutations, workstations, clock and viewer movement, capt
 
 **The exact safe database snapshot/close barrier is an F0 investigation, not an assumed API.** Do not copy an open SQLite database with ordinary file copy, ignore possible journal/WAL companions, or assume a node being freed means all asynchronous I/O is finished. Use a supported consistent backup or verified stream-close/drain approach; document source evidence and force-stop tests. If that cannot be made reliable cheaply, propose a different save design before extending gameplay.
 
-This checkpoint plan introduces bounded disk overhead for the tiny world. The named exported F3 evidence run measured 23,223–23,659 bytes per checkpoint and 47–65 ms per F3 save on the recorded test machine; this is not a final large-world storage architecture. No promise of power-loss durability is made merely because rename succeeds. The practical Foundation requirement is reliable normal saves and preserving the prior complete checkpoint on interrupted saves.
+This checkpoint plan introduces bounded disk overhead for the tiny world. The final provenance-matched export measured 23,229–23,652 bytes per checkpoint and 45–66 ms per F3 save on the recorded test machine; this is not a final large-world storage architecture. No promise of power-loss durability is made merely because rename succeeds. The practical Foundation requirement is reliable normal saves and preserving the prior complete checkpoint on interrupted saves.
 
 ## Voxel-specific hazards
 

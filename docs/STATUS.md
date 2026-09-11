@@ -12,4 +12,4 @@
 
 **NEXT:** Tony double-clicks `START_GAME.cmd` in the F3 worktree and performs the short T23–T26/Print Screen playtest. Fix any F3 defect before promotion. Do not begin F4, merge, push or publish without explicit authority.
 
-**GIT/REPRODUCIBILITY:** Main path `D:\CODEX\Craft_and_Defend\main`, clean `main` and `origin/main` at `c085c013d39b2b64321ea6c5a696b96fe2efd45c`. F3 worktree `D:\CODEX\Craft_and_Defend\worktrees\f3-persistence`, branch `feature/f3-persistence-hardening`; built game commit `00d278ee3aef4093c78cf6b3fb3de5456d2f57db`, game tree `0b70ad5edbd699de90e58110b0801ab7690124df`. No merge, push or release performed.
+**GIT/REPRODUCIBILITY:** Main path `D:\CODEX\Craft_and_Defend\main`, clean `main` and `origin/main` at `c085c013d39b2b64321ea6c5a696b96fe2efd45c`. F3 worktree `D:\CODEX\Craft_and_Defend\worktrees\f3-persistence`, branch `feature/f3-persistence-hardening`; final tested package source commit `b001fce728227705bb4e44bc972f2e63a21c6ee4`, game tree `498ad7ea30fd5066aa659b2c7c50e174e2c5f1a1`. No merge, push or release performed.
