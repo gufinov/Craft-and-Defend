@@ -2,7 +2,7 @@
 
 First-person voxel survival and fortress building: **from forest to fortress**. Gather, dig, craft, build, automate, and eventually withstand a wizard-led final siege.
 
-**Status: F1 is owner accepted on `main`; Tony owner-confirmed F2 and accepted F3 on 2026-09-11; the revised F4 candidate passes its implementation gate on `feature/f4-foundation-acceptance` and awaits owner graphical acceptance.** The candidate retains independent A/B recovery, the native shell, exact ESDF controller and F2 progression while adding a visible simulation-time sun/day/night clock, per-slot World Settings, rebindable non-pausing in-game screenshots and an explicit portable Windows package. Craft-and-Defend is a working label; final branding is open.
+**Status: F1 is owner accepted on `main`; Tony owner-confirmed F2 and accepted F3 on 2026-09-11; Tony accepted the revised F4 day/night and World Settings presentation, and the exported side-face block-placement repair awaits owner retest on `feature/f4-foundation-acceptance`.** The candidate retains independent A/B recovery, the native shell, exact ESDF controller and F2 progression while adding a visible simulation-time sun/day/night clock, per-slot World Settings, rebindable non-pausing in-game screenshots and an explicit portable Windows package. Craft-and-Defend is a working label; final branding is open.
 
 ## Start here
 

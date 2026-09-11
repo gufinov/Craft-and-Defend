@@ -9,7 +9,7 @@ Advance on evidence, not elapsed time. Estimates are intentionally not presented
 | F1 — interaction hardening | Full controls/settings, boundaries, occupancy, recovery edges | T13–T18 plus F0 regression | PASS; owner accepted 2026-09-11 |
 | F2 — gathering/crafting | Small reachable tool/resource loop, inventory, workbench/furnace | T19–T22 | PASS; owner confirmed 2026-09-11 |
 | F3 — persistence hardening | Slot isolation, checkpoint interruption recovery, workstations | T23–T26 plus save regression | PASS; owner accepted 2026-09-11 |
-| F4 — Foundation acceptance | Visible sun/day/night with per-slot controls, material readability, UI/resolution review, portable package, rebindable in-game capture | T27–T30 and full acceptance | Revised implementation PASS; owner retest pending |
+| F4 — Foundation acceptance | Visible sun/day/night with per-slot controls, material readability, UI/resolution review, portable package, rebindable in-game capture | T27–T30 and full acceptance | Day/night and World Settings owner accepted; exported side-face placement repair awaits owner retest |
 | P1 — terrain/exploration | Hills, trees, ore placement, exploration/return pacing | Playtest gather/build loop before attacks | Not started |
 | P2 — navigation risk spike | One attacker routes around, through and against edited structures | Separate bounded pathfinding benchmark | Not started |
 | P3 — defense slice | One warned wave, one stationary trap/weapon, repair loop | Defense is readable and fun | Not started |

@@ -8,7 +8,7 @@ These are implementation contracts, not claims that modules already exist. Prefe
 | Settings/input | Named InputMap actions, bindings, audio/video config | validated settings → configuration + action events | Gameplay mutations |
 | Player | Movement, camera, collision, aim | actions + world collision → transform/target | Inventory accounting, saves |
 | World adapter | VoxelTerrain, viewer, generator, block library, engine APIs | coordinates/query/edit → cell data + dirty regions | Prices, crafting, menu logic |
-| Placement/interaction | Bounds, reach, occupancy, support, atomic edit commands | break/place requests → success or reason code | UI layout |
+| Placement/interaction | Bounds, reach, occupancy, six-face voxel support, entity-specific support, atomic edit commands | break/place requests → success or reason code | UI layout |
 | Inventory | Slots/stacks/equipment and resource transactions | transaction request → committed inventory revision | Direct terrain writes |
 | Crafting/workstations | Recipe checks, timers, jobs, station state | recipe + inventory + station → job/result | Direct file I/O |
 | Simulation clock | Day phase, cycle-enabled state and gameplay time | unpaused delta or validated world-setting command → time/lighting | Wall-clock catch-up |
@@ -35,6 +35,8 @@ Keep the first implementation synchronous on the gameplay/main thread. Do not `a
 | `Settings.apply(candidate)` | Validates action conflicts and safe escape; applies/persists only a valid map |
 
 Error reasons should be stable symbols such as OUT_OF_BOUNDS, UNLOADED, OCCUPIED, PLAYER_OVERLAP, UNSUPPORTED, WRONG_TOOL, OUT_OF_REACH, NO_RESOURCE, INVENTORY_FULL, STALE_REVISION, SAVE_BUSY. Localized/user-friendly text belongs to UI.
+
+Ordinary block placement accepts any loaded solid voxel on the destination's six orthogonal faces as support, enabling horizontal ledges and overhead attachment. It does not provide free-floating placement or general structural collapse. Entity definitions retain their own explicit support offsets; Foundation workbenches and furnaces still require floor support.
 
 ## Scene responsibilities
 

@@ -15,7 +15,7 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T03 | F0 | Start loads correct finite bounds; collision-ready spawn never falls through unloaded terrain |
 | T04 | F0 | E/D/S/F, jump, mouse look work; keyboard/pointer usable after pause/resume |
 | T05 | F0 | Break dirt, receive exactly one dirt, place it elsewhere, consume exactly one |
-| T06 | F0 | Outside-bounds, occupied and player-overlap placements fail without inventory/world mutation |
+| T06 | F0 | A block can attach to any solid side face with air below; truly floating, outside-bounds, occupied and player-overlap placements fail without inventory/world mutation |
 | T07 | F0 | Escape pauses; menu/settings stay responsive; Resume restores intended state |
 | T08 | F0 | Rebind forward, save settings, fully restart; new key works and default/reset behavior is clear |
 | T09 | F0 | Save/exit/restart/Continue preserves edited cells, player transform and exact inventory counts |
