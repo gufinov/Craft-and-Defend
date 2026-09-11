@@ -18,6 +18,7 @@ TEST:
 | Test ID | Expected | Actual | Result | Evidence |
 |---|---|---|---|---|
 | F2-UI | 21 grouped keybind rows; search filters; individual reset restores E | Search `forward` exposed only Move Forward; R rebound persisted in-memory then per-row reset restored E | PASS | `artifacts/f2-exported-final-20260911-2/gate.log` |
+| Print Screen focus | Windows capture does not expose/stick the Pause menu; ordinary focus loss remains safe | Synthetic Print Screen focus cycle froze invisibly and resumed after the click-through guard; normal focus loss still required explicit Resume | PASS (automation); owner Windows retest pending | `artifacts/print-screen-fix-20260911-1/f1-phase1.log`; `T14_PRINT_SCREEN`, `T14_FOCUS_LOSS` |
 | T19 | Empty inventory reaches wood pick, stone pick, three ingots and iron pick with no grants | Authored logs/stone/coal/iron were mined and the complete chain succeeded | PASS | same gate log; `T19_WORLD_READY`, `T19_PROGRESSION` |
 | T20 | Insufficient/capacity/double activation/wrong station are atomic; slots/hotbar work | All rejection snapshots unchanged; one exact output; slot 0→10, hotbar selection and invalid-slot no-op passed | PASS | same gate log; all `T20_*` records |
 | T21 | Station placement consumes once; invalid duplicate/support/dismantle rules hold | Workbench consumed once, support was owned, duplicate refused and idle dismantle returned one | PASS | same gate log; `T21_PLACE_DISMANTLE` |

@@ -4,6 +4,8 @@ extends Node
 enum AppState { MAIN_MENU, LOADING, PLAYING, PAUSED, INVENTORY, SAVING, ERROR }
 
 const DISPLAY_CONFIRM_SECONDS := 10.0
+const PRINT_SCREEN_FOCUS_WINDOW_MSEC := 2000
+const SCREENSHOT_CLICK_GUARD_SECONDS := 0.20
 const BINDING_GROUPS: Array[Dictionary] = [
 	{"title": "MOVEMENT", "actions": ["move_forward", "move_backward", "strafe_left", "strafe_right", "sprint", "crouch", "jump"]},
 	{"title": "WORLD & MENUS", "actions": ["primary", "secondary", "interact", "inventory", "pause"]},
@@ -59,6 +61,9 @@ var capture_action := ""
 var capture_forward := false
 var _overlay_return_state := AppState.MAIN_MENU
 var _display_confirm_remaining := 0.0
+var _print_screen_pressed_msec := -PRINT_SCREEN_FOCUS_WINDOW_MSEC
+var _screenshot_focus_suspended := false
+var _screenshot_resume_generation := 0
 
 
 func _ready() -> void:
@@ -805,6 +810,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		_refresh_binding_labels()
 		return
 
+	if _is_print_screen_press(event):
+		get_viewport().set_input_as_handled()
+		_print_screen_pressed_msec = Time.get_ticks_msec()
+		return
+
 	if _is_escape_press(event):
 		get_viewport().set_input_as_handled()
 		_handle_escape_recovery()
@@ -824,6 +834,11 @@ func _unhandled_input(event: InputEvent) -> void:
 func _is_escape_press(event: InputEvent) -> bool:
 	return event is InputEventKey and event.pressed and not event.echo \
 		and (event.physical_keycode == KEY_ESCAPE or event.keycode == KEY_ESCAPE)
+
+
+func _is_print_screen_press(event: InputEvent) -> bool:
+	return event is InputEventKey and event.pressed and not event.echo \
+		and (event.physical_keycode == KEY_PRINT or event.keycode == KEY_PRINT)
 
 
 func _handle_escape_recovery() -> void:
@@ -912,12 +927,40 @@ func _notification(what: int) -> void:
 		call_deferred("_handle_close_request")
 	elif what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		call_deferred("_handle_focus_lost")
+	elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		call_deferred("_handle_focus_gained")
 
 
 func _handle_focus_lost() -> void:
 	if state == AppState.PLAYING:
+		if Time.get_ticks_msec() - _print_screen_pressed_msec <= PRINT_SCREEN_FOCUS_WINDOW_MSEC:
+			_print_screen_pressed_msec = -PRINT_SCREEN_FOCUS_WINDOW_MSEC
+			_screenshot_focus_suspended = true
+			_screenshot_resume_generation += 1
+			session.pause_game(true)
+			get_tree().paused = true
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+			return
 		_pause_game()
 		_set_feedback("Paused because the application lost focus. Resume explicitly when ready.")
+
+
+func _handle_focus_gained() -> void:
+	if not _screenshot_focus_suspended:
+		return
+	_screenshot_resume_generation += 1
+	_resume_after_screenshot_focus(_screenshot_resume_generation)
+
+
+func _resume_after_screenshot_focus(generation: int) -> void:
+	await get_tree().create_timer(SCREENSHOT_CLICK_GUARD_SECONDS, true).timeout
+	if not _screenshot_focus_suspended or generation != _screenshot_resume_generation:
+		return
+	_screenshot_focus_suspended = false
+	if state == AppState.PLAYING and session != null:
+		get_tree().paused = false
+		session.pause_game(false)
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _handle_close_request() -> void:

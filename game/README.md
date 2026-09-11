@@ -16,6 +16,7 @@ From the repository or worktree root, double-click `START_GAME.cmd`. In a Git ch
 8. Press **Escape**, open **Keybinds**, search or scroll through grouped action rows. Any implemented keyboard or mouse action can be changed; conflicts are explained and change nothing. Each row has its own **Reset**, and **Reset All Defaults** restores the exact ESDF contract. Escape always cancels capture.
 9. Open **Settings** to change look sensitivity, vertical inversion, master volume or window mode. Fullscreen reports and uses the active monitor's native resolution and fills ultrawide displays. Explicit resolutions apply to Windowed mode; previews remain centered within the active monitor's usable area and revert after ten seconds unless confirmed.
 10. Choose **Save and Quit**, relaunch with `START_GAME.cmd`, and choose **Continue**. Terrain, inventory/hotbar, transform, idle workstations and settings must return without duplicate outputs.
+11. Press **Print Screen** while playing. The world freezes invisibly while Windows Snipping Tool owns focus, no Pause menu contaminates the capture, and play resumes after focus returns. Ordinary Alt-Tab/focus loss still opens Pause and requires explicit Resume.
 
 Normal save data resolves to `C:\Users\Tony\AppData\Roaming\CraftAndDefend\` on the recorded PC. Test automation uses isolated roots under the ignored `artifacts` folder.
 
