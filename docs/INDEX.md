@@ -35,6 +35,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [F1 interaction-hardening evidence](evidence/F1_INTERACTION_HARDENING.md)
 - [F1 launcher/build-provenance recovery](evidence/F1_LAUNCHER_RECOVERY.md)
 - [F2 inventory/progression/workstations candidate](evidence/F2_INVENTORY_PROGRESSION.md)
-- [F3 persistence-hardening candidate](evidence/F3_PERSISTENCE_HARDENING.md)
+- [F3 persistence-hardening evidence](evidence/F3_PERSISTENCE_HARDENING.md)
+- [F4 Foundation acceptance candidate](evidence/F4_FOUNDATION_ACCEPTANCE.md)
 - [Tool usage](../tools/README.md)
 - [Current status](STATUS.md)
