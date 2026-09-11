@@ -7,7 +7,7 @@ Advance on evidence, not elapsed time. Estimates are intentionally not presented
 | G0 — groundwork | Repo docs, contracts, validator, handoff | Static checks; source and status review | Complete |
 | F0 — integration spike | Menu, movement, editable world, coherent save/restart, Windows export | T01–T12 | Owner accepted on `main` |
 | F1 — interaction hardening | Full controls/settings, boundaries, occupancy, recovery edges | T13–T18 plus F0 regression | PASS; owner accepted 2026-09-11 |
-| F2 — gathering/crafting | Small reachable tool/resource loop, inventory, workbench/furnace | T19–T22 | Not started |
+| F2 — gathering/crafting | Small reachable tool/resource loop, inventory, workbench/furnace | T19–T22 | Implementation PASS; owner playtest pending |
 | F3 — persistence hardening | Slot isolation, checkpoint interruption recovery, workstations | T23–T26 plus save regression | Not started |
 | F4 — Foundation acceptance | Day/night, material readability, UI/resolution review, portable package | T27–T30 and full acceptance | Not started |
 | P1 — terrain/exploration | Hills, trees, ore placement, exploration/return pacing | Playtest gather/build loop before attacks | Not started |

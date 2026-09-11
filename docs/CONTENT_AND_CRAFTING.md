@@ -1,6 +1,6 @@
 # Starter content and crafting
 
-[content.json](../contracts/content.json) is a small proposed balance fixture, not final tuning or implemented gameplay. It deliberately makes the hands → wood → stone → iron loop reachable without creative-mode items. Stable IDs are more important than current quantities.
+[content.json](../contracts/content.json) is the canonical Foundation balance fixture and remains non-final tuning. F2 loads a byte-equivalent runtime mirror at `game/data/content.json` and validates it against this source. The hands → wood → stone → iron loop is implemented and reachable without creative-mode items. Stable IDs are more important than current quantities.
 
 | Voxel ID | Block | Drop | Minimum pick tier |
 |---:|---|---|---:|
@@ -29,7 +29,7 @@ Tier 0 is hands, 1 wooden pick, 2 stone pick, 3 iron pick. Coal is fuel and does
 
 Castle stone (1 stone → 1 castle stone at workbench) is an optional visual building block. No reverse conversion loop or free resources. Initial gathering spots are explicit patches in the test world; procedural ore distribution and full trees come later.
 
-Inventory proposal: 27 slots including a 9-slot hotbar; ordinary stacks 64, tools one per slot. Tool durability, encumbrance, dropped-item physics and complex crafting grids are deferred. Reject gathering when output cannot fit. Hotbar indexes refer to inventory slots rather than duplicate independent stacks.
+Implemented F2 inventory: 27 slots including a 9-slot hotbar; ordinary stacks 64, tools one per slot. Tool durability, encumbrance, dropped-item physics and complex crafting grids are deferred. Gathering is rejected when output cannot fit. Hotbar indexes refer to inventory slots rather than duplicate independent stacks.
 
 UI shows recipes and why unavailable: missing materials, wrong workstation, missing tool or no output room. A craft request validates the entire transaction. Workbench crafting is immediate; furnace jobs reserve an output slot and consume inputs/fuel exactly once. On cancel/dismantle, use one documented refund rule, tested for duplicate-item exploits. Simplest Foundation rule: refuse dismantling a running station; idle station dismantling returns the station item and stored contents only if inventory can hold everything.
 

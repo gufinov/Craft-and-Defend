@@ -29,6 +29,8 @@ Complete keybind UI/reset/conflicts, settings with display rollback, mouse captu
 
 Load the canonical registry; implement slots/stacks/hotbar as one inventory, reachable crafting, workstation placement, immediate bench recipes and timed furnace jobs. Add original distinguishable placeholder textures. Test empty-inventory progression without debug grants, insufficient tool/capacity and double-click duplication. Run T19–T22.
 
+**Recorded candidate result:** T19–T22 pass in the pinned editor and provenance-matched Windows export, including a clean-process Continue restore. Keybind usability was upgraded in the same bounded milestone using read-only MinionClash presentation evidence: grouped/searchable rows and per-action reset preserve Craft-and-Defend's exact ESDF and conflict-rejection contract. F0/F1 exported regressions pass. Owner playtest and explicit promotion authority remain pending; F3 is not active.
+
 ## F3 — persistence hardening
 
 Persist all Foundation state and settings. Exercise independent slots, checkpoint recovery, furnace job continuation and invalid/newer saves. Retain prior complete checkpoint on failure. Record storage/latency measurements and safe close semantics. Run T23–T26 plus T09–T12. Never add an untested migration to recover a sole user save.

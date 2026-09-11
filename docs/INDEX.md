@@ -34,5 +34,6 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [F0 Windows integration evidence](evidence/F0_WINDOWS_INTEGRATION.md)
 - [F1 interaction-hardening evidence](evidence/F1_INTERACTION_HARDENING.md)
 - [F1 launcher/build-provenance recovery](evidence/F1_LAUNCHER_RECOVERY.md)
+- [F2 inventory/progression/workstations candidate](evidence/F2_INVENTORY_PROGRESSION.md)
 - [Tool usage](../tools/README.md)
 - [Current status](STATUS.md)

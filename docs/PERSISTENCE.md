@@ -1,6 +1,6 @@
 # Persistence and recovery design
 
-**Status: proposed; Windows failure/restart tests required before claiming reliability.** Voxel streaming does not make player inventory and a separate metadata file an atomic save. This is the first major integration risk.
+**Status: F0/F2 normal-save checkpoint path implemented and restart-tested; F3 failure recovery remains unproven.** The current coordinator publishes terrain, player, full inventory/hotbar and idle workstation state in one checkpoint. Normal Windows export save/restart passes, but independent slots, interrupted publication, mid-job restart and denied-write/full-disk handling remain F3 gates.
 
 ## Ownership and format
 
