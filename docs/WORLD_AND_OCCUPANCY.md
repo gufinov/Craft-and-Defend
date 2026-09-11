@@ -7,7 +7,7 @@ Canonical proposed fixture: [world.json](../contracts/world.json). Values are pr
 - One voxel equals one logical unit; integer cell coordinates, Y up. World transform is identity in F0.
 - Dimensions are **X width 64, Y height 32, Z length 128**. Origin/minimum is `(-32,-16,-64)`; maximum exclusive is `(32,16,64)`.
 - Bounds are half-open: `min <= coordinate < min + size`. Valid Y spans -16 through 15. Sea-level reference is Y=0; flowing water is deferred.
-- Initial surface blocks are at Y=-1, with air at Y=0 and above. Bottom Y=-16 is protected bedrock. Spawn near `(0.5,2,40.5)`, on the friendly +Z side, only after collision is ready; coordinate is the player's feet convention.
+- P1 new worlds use deterministic `terrain_p1_1` surface heights from Y=-4 through Y=5. The home clearing remains flat at Y=-1; bottom Y=-16 is protected bedrock. Spawn near `(0.5,2,40.5)`, on the friendly +Z side, only after collision is ready; coordinate is the player's feet convention. Pre-P1 checkpoints keep `flat_fixture_1`.
 - The default test volume has 262,144 logical cells. Do not create that many scene nodes. Retain chunk loading/meshing from Voxel Tools.
 - Chunk size is initially 16; boundaries and origin align to it. The terrain bounds limit generation but do **not** supply enclosing physical walls. Add player boundary handling plus clear edge feedback, and check bounds in every edit API.
 - Use floor conversion for negative world coordinates. A point at X=-0.1 is in cell -1, not 0. Resolve placement using the voxel ray hit's neighboring position/normal, not arbitrary rounding.
@@ -15,6 +15,12 @@ Canonical proposed fixture: [world.json](../contracts/world.json). Values are pr
 ## Loading and physics
 
 An unloaded cell is unknown, not empty. Reject or briefly defer edits until data/collision is ready. Spawn must wait for a supported, unobstructed player volume and collision readiness; do not release gravity over unloaded terrain. Keep a loading screen with a recoverable failure path. Runtime tests cross chunk edges, corners, negative coordinates and the world floor/ceiling.
+
+## P1 generation contract
+
+`terrain_p1_1` is a pure blocky generator configured once from `world.json`: two seeded height-noise layers, a blended flat clearing, one deterministic tree candidate per grid cell, and deterministic two-cell ore clusters. Its worker callback reads immutable values and writes only the supplied voxel buffer. It never consults nodes, gameplay inventory, the global random stream or the active SQLite edit overlay. Fixed starter trees and ore patches take priority over procedural distribution to preserve the proven empty-inventory route.
+
+Leaves use additive voxel ID 10 and drop sticks; IDs 0–9 are unchanged. The home HUD uses the saved spawn landmark as an orientation aid: `+Z` is treated as south, so the cue reports the direction back to the clearing plus rounded planar distance. It is guidance, not a waypoint/pathfinding system.
 
 ## Occupancy invariant
 

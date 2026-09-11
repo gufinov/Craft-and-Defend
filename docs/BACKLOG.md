@@ -49,6 +49,16 @@ Separate inventory from making things. Tab opens inventory only; rebindable B op
 
 **Revised candidate result:** the split interface, persistent B binding, workbench right-click priority and furnace-specific processing modal are implemented on `feature/crafting-interface`. Crafting now uses three panels: a visible draggable inventory, staged 2×2/3×3 input grid, and searchable scrolling recipe book with text thumbnails. Recipe selection or search+Enter fills the grid only when held materials suffice; the workbench lists both hand and advanced recipes. Graphics defaults now include 4× MSAA, VSync and physics interpolation, while sunlight shadow transforms update at a stable visual cadence with bounded blended cascades. Editor T31–T36, F2 progression and a 1280×720 capture pass; final Windows export and owner 3440×1440/motion review remain required. The content registry is deliberately unchanged. Torches, armor, weapons and castle pieces are roadmap content, not placeholder buttons.
 
+## P1 — deterministic terrain and exploration
+
+Replace the new-world flat fixture with a finite, versioned, seeded generator while retaining the proven VoxelTerrain, VoxelMesherBlocky and VoxelStreamSQLite architecture. New worlds contain gentle hills and valleys, a flat protected spawn clearing, distributed trees with harvestable leaves, and deterministic coal/iron clusters. Preserve the fixed starter trees and ore patches so the empty-inventory progression remains testable. Add a lightweight home distance/bearing cue for exploration and return pacing.
+
+Persist generator version and seed in every new checkpoint. A pre-P1 save with no generator metadata must continue with `flat_fixture_1`; `terrain_p1_1` must reproduce the same untouched cells after restart; unknown generator versions must fail rather than silently reinterpret the SQLite edit overlay. Generator callbacks may use only immutable configuration and thread-safe resource reads; they must not access the scene tree or mutable gameplay services from Voxel Tools worker threads.
+
+Run T37–T41 plus the complete F0–F5 regression and matching exported-runtime gates. Castle structural pieces remain a separate P1 content slice because positional recipe behavior, rotation/snapping, tower-cap footprints and collapse policy are still open decisions; do not guess them inside the terrain change.
+
+**Candidate result:** implementation and editor T37–T41 are in progress on `feature/p1-terrain-exploration`. Tony accepted F5 as the baseline and authorized P1 on 2026-09-12. Promotion, merge and push require a separate instruction.
+
 ## P2 — later navigation spike brief
 
 Before raids, compare the pinned version's experimental voxel pathfinding with a small local-grid approach. Inspect current official API/source at that time. Use one 1×2-cell agent, terrain edits, corridor/wall, trench, stairs, bridge removal and tunnel. Define block damage by enemy capability. Measure recomputation time, stuck cases and memory; a blocked agent should deliberately attack an allowed obstruction or report no route. Scale to a small group only after one agent works. Hybrid sector/local routing is a hypothesis, not a decided architecture.

@@ -7,6 +7,7 @@ signal status_changed(message: String)
 signal feedback_changed(message: String)
 signal inventory_changed(snapshot: Dictionary)
 signal workstation_requested(instance_id: String, station_type: String)
+signal navigation_changed(text: String)
 
 const REASON_TEXT := {
 	"OK": "Edit complete.",
@@ -53,6 +54,7 @@ var _environment: Environment
 var _sun: DirectionalLight3D
 var _sun_visual: MeshInstance3D
 var _last_visual_minute := -1
+var _navigation_elapsed := 0.0
 
 
 func initialize(session_data: Dictionary) -> Dictionary:
@@ -108,7 +110,7 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	world = WorldAdapter.new()
 	world.name = "World"
 	add_child(world)
-	var world_result := world.initialize(session_data.working_database, player.position)
+	var world_result := world.initialize(session_data.working_database, player.position, snapshot.get("world", {}))
 	if not world_result.get("ok", false):
 		return world_result
 	world.revision = int(snapshot.get("world", {}).get("revision", 0))
@@ -140,6 +142,11 @@ func _process(delta: float) -> void:
 				_last_visual_minute = visual_minute
 				clock.apply_visuals(_environment, _sun)
 				_emit_hud()
+	if world_ready and not simulation_paused:
+		_navigation_elapsed += delta
+		if _navigation_elapsed >= 0.25:
+			_navigation_elapsed = 0.0
+			_emit_navigation()
 
 
 func apply_input_settings(settings_store: SettingsStore) -> void:
@@ -232,6 +239,7 @@ func _on_spawn_area_ready() -> void:
 	simulation_paused = false
 	player.activate(not DisplayServer.get_name().contains("headless"))
 	status_changed.emit("Ready — Tab inventory, B hand crafting, right-click stations or place the selected hotbar item")
+	_emit_navigation()
 	ready_for_play.emit()
 
 
@@ -286,6 +294,20 @@ func _emit_hud() -> void:
 	var selected_text := "Empty" if selected.is_empty() else registry.display_name(selected)
 	var cycle_text := "" if clock.cycle_enabled else " · cycle paused"
 	hud_changed.emit("Slot %d: %s   |   %s · %s%s" % [inventory.selected_hotbar + 1, selected_text, clock.period_label(), clock.time_label(), cycle_text])
+
+
+func _emit_navigation() -> void:
+	if player == null:
+		return
+	var offset := Vector2(WorldAdapter.SPAWN_FEET.x - player.global_position.x, WorldAdapter.SPAWN_FEET.z - player.global_position.z)
+	var distance := offset.length()
+	if distance <= 8.0:
+		navigation_changed.emit("HOME CLEARING")
+		return
+	var angle := atan2(offset.x, -offset.y)
+	var directions := ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+	var direction_index := posmod(roundi(angle / (PI / 4.0)), 8)
+	navigation_changed.emit("HOME  %d m  %s" % [roundi(distance), directions[direction_index]])
 
 
 func _create_sun_visual() -> void:

@@ -8,15 +8,19 @@ const WORLD_MIN := Vector3i(-32, -16, -64)
 const WORLD_SIZE := Vector3i(64, 32, 128)
 const SPAWN_FEET := Vector3(0.5, 2.0, 40.5)
 const CHANNEL := VoxelBuffer.CHANNEL_TYPE
+const WORLD_CONFIG_PATH := "res://data/world.json"
+const LEGACY_GENERATOR_VERSION := "flat_fixture_1"
+const P1_GENERATOR_VERSION := "terrain_p1_1"
+const DEFAULT_WORLD_SEED := 41026
 
 const BLOCK_NAMES := [
 	"air", "grass", "dirt", "stone", "log", "planks",
-	"coal_ore", "iron_ore", "castle_stone", "bedrock",
+	"coal_ore", "iron_ore", "castle_stone", "bedrock", "leaves",
 ]
 const BLOCK_COLORS := [
 	Color(0, 0, 0, 0), Color("74a65a"), Color("8b5f3c"), Color("777b82"),
 	Color("9b6a3d"), Color("b88954"), Color("34383f"), Color("a65b42"),
-	Color("8b929d"), Color("25282d"),
+	Color("8b929d"), Color("25282d"), Color("4f873c"),
 ]
 
 var terrain: VoxelTerrain
@@ -24,13 +28,23 @@ var stream: VoxelStreamSQLite
 var voxel_tool: VoxelTool
 var working_database_path := ""
 var revision := 0
+var generator_version := P1_GENERATOR_VERSION
+var world_seed := DEFAULT_WORLD_SEED
 var _spawn_ready_emitted := false
 var _ready_feet := SPAWN_FEET
 
 
-func initialize(database_path: String, ready_feet: Vector3 = SPAWN_FEET) -> Dictionary:
+func initialize(database_path: String, ready_feet: Vector3 = SPAWN_FEET, world_snapshot: Dictionary = {}) -> Dictionary:
 	working_database_path = database_path
 	_ready_feet = ready_feet
+	var world_config_result := _load_world_config()
+	if not world_config_result.get("ok", false):
+		return world_config_result
+	var generation_result := resolve_generation(world_snapshot, world_config_result.get("config", {}))
+	if not generation_result.get("ok", false):
+		return generation_result
+	generator_version = str(generation_result.get("generator_version", P1_GENERATOR_VERSION))
+	world_seed = int(generation_result.get("seed", DEFAULT_WORLD_SEED))
 	var parent_dir := database_path.get_base_dir()
 	var mkdir_error := DirAccess.make_dir_recursive_absolute(parent_dir)
 	if mkdir_error != OK:
@@ -44,7 +58,10 @@ func initialize(database_path: String, ready_feet: Vector3 = SPAWN_FEET) -> Dict
 	terrain.generate_collisions = true
 	terrain.collision_layer = 1
 	terrain.collision_mask = 1
-	terrain.generator = FlatWorldGenerator.new()
+	if generator_version == LEGACY_GENERATOR_VERSION:
+		terrain.generator = FlatWorldGenerator.new()
+	else:
+		terrain.generator = P1TerrainGenerator.new(world_seed, generation_result.get("terrain", {}))
 
 	var library := VoxelBlockyLibrary.new()
 	library.add_model(VoxelBlockyModelEmpty.new())
@@ -77,6 +94,29 @@ func initialize(database_path: String, ready_feet: Vector3 = SPAWN_FEET) -> Dict
 	set_process(true)
 	status_changed.emit("Loading collision-ready voxel terrain…")
 	return {"ok": true}
+
+
+static func resolve_generation(world_snapshot: Dictionary, world_config: Dictionary) -> Dictionary:
+	# Foundation saves predate generator metadata. They must retain the terrain they
+	# were created against so untouched SQLite chunks never regenerate differently.
+	var version := str(world_snapshot.get("generator_version", LEGACY_GENERATOR_VERSION))
+	var seed := int(world_snapshot.get("seed", world_config.get("seed", DEFAULT_WORLD_SEED)))
+	if version == LEGACY_GENERATOR_VERSION:
+		return {"ok": true, "generator_version": version, "seed": seed, "terrain": {}}
+	if version == P1_GENERATOR_VERSION:
+		return {"ok": true, "generator_version": version, "seed": seed, "terrain": world_config.get("terrain", {})}
+	return {"ok": false, "reason": "UNSUPPORTED_GENERATOR_VERSION", "found": version, "supported": [LEGACY_GENERATOR_VERSION, P1_GENERATOR_VERSION]}
+
+
+func _load_world_config() -> Dictionary:
+	var file := FileAccess.open(WORLD_CONFIG_PATH, FileAccess.READ)
+	if file == null:
+		return {"ok": false, "reason": "WORLD_CONFIG_READ_FAILED", "error": FileAccess.get_open_error()}
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	if not parsed is Dictionary:
+		return {"ok": false, "reason": "WORLD_CONFIG_INVALID"}
+	return {"ok": true, "config": parsed}
 
 
 func _process(_delta: float) -> void:
@@ -149,6 +189,8 @@ func resume_streaming_after_failed_save() -> void:
 func snapshot() -> Dictionary:
 	return {
 		"revision": revision,
+		"generator_version": generator_version,
+		"seed": world_seed,
 		"bounds_min": [WORLD_MIN.x, WORLD_MIN.y, WORLD_MIN.z],
 		"bounds_size": [WORLD_SIZE.x, WORLD_SIZE.y, WORLD_SIZE.z],
 		"database_path": working_database_path,

@@ -46,6 +46,11 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T34 | F5 | Inventory and crafting presentations remain legible/keyboard-usable at 1280×720 and 3440×1440; labels do not imply unimplemented content |
 | T35 | F5 | 4× MSAA, VSync and physics interpolation default on; quality preferences persist; sunlight shadow transforms remain stable within a visual minute and use bounded blended splits |
 | T36 | F5 | Three-panel crafting shows inventory/grid/scrolling recipe book; inventory drag/click staging, recipe search+Enter autofill, manual recognition and atomic craft validation work |
+| T37 | P1 | New worlds select `terrain_p1_1` with seed 41026; metadata-free saves select legacy flat generation; unknown generator versions are refused |
+| T38 | P1 | The pinned seed reproducibly yields hills, valleys, flat safe clearing, trees and coal/iron while fixed starter resources remain reachable |
+| T39 | P1 | Exploring outside the clearing shows an updating home distance/bearing cue; returning reports `HOME CLEARING` |
+| T40 | P1 | Save/full-process-restart/Continue restores terrain edit, player location and exact generator version/seed; legacy routing remains unchanged |
+| T41 | P1 | Terrain is visually readable at 1280×720 and owner ultrawide; fixed exploration route records frame/edit/save evidence without blocking streaming |
 
 ## Performance evidence, not invented guarantees
 

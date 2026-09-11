@@ -86,6 +86,14 @@
       "min_pick_tier": 0,
       "protected": true,
       "solid": true
+    },
+    {
+      "voxel_id": 10,
+      "id": "leaves",
+      "drop": "stick",
+      "min_pick_tier": 0,
+      "protected": false,
+      "solid": true
     }
   ],
   "items": [

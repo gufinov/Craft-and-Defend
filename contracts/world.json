@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generator_version": "flat_fixture_1",
+  "generator_version": "terrain_p1_1",
   "seed": 41026,
   "min_cell": [
     -32,
@@ -23,6 +23,25 @@
   "interaction_reach": 5,
   "day_length_seconds": 1200,
   "initial_day_phase": 0.3333333333333333,
+  "terrain": {
+    "min_surface_y": -4,
+    "max_surface_y": 5,
+    "height_frequency": 0.032,
+    "detail_frequency": 0.085,
+    "safe_clearing_center": [
+      0,
+      40
+    ],
+    "safe_clearing_half_size": [
+      12,
+      9
+    ],
+    "safe_clearing_blend": 8,
+    "tree_grid_size": 10,
+    "tree_chance_percent": 72,
+    "coal_cluster_per_thousand": 55,
+    "iron_cluster_per_thousand": 18
+  },
   "layers": [
     {
       "min_y": -16,
@@ -102,6 +121,17 @@
         2,
         3
       ]
+    }
+  ],
+  "landmarks": [
+    {
+      "id": "home_clearing",
+      "cell": [
+        0,
+        -1,
+        40
+      ],
+      "safe_radius": 12
     }
   ]
 }

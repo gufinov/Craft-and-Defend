@@ -50,6 +50,6 @@ Compatibility rendering remains the approved engine path. The viewport applies p
 
 Crafting-grid contents are temporary UI staging, not inventory reservations. Drag/drop and recipe autofill may arrange stable item IDs only up to the counts currently held. Craft presses the existing atomic crafting/workstation service, which revalidates station, materials and output capacity before any mutation. Closing or clearing the modal therefore has nothing to refund and cannot duplicate items.
 
-Use a small flat deterministic generator before procedural hills/trees. Generator callbacks must not access mutable scene state or global random state from worker threads. Snapshot immutable generation parameters. Do not hot-edit a script generator while engine worker threads are using it.
+P1 keeps the flat generator solely for pre-P1 save compatibility and selects a versioned seeded hills/trees/ore generator for new worlds. Generator callbacks must not access mutable scene state or global random state from worker threads. Snapshot immutable generation parameters and refuse unknown generator IDs. Do not hot-edit a script generator while engine worker threads are using it.
 
 Future enemies consume world-change events to invalidate relevant paths; they do not rebuild navigation through UI calls. Machines and templates should use the same placement/inventory commands as the player. These boundaries support later work without implementing those systems now.

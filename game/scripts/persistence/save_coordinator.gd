@@ -7,6 +7,8 @@ const CHECKPOINT_TIMEOUT_MS := 15000
 const SLOT_IDS: Array[String] = ["a", "b"]
 const DEFAULT_SLOT := "a"
 const CHECKPOINTS_TO_KEEP := 2
+const DEFAULT_GENERATOR_VERSION := "terrain_p1_1"
+const DEFAULT_WORLD_SEED := 41026
 
 var data_root: String
 var slots_base_root: String
@@ -393,4 +395,4 @@ func _remove_file_if_present(path: String) -> void:
 
 
 func _default_snapshot() -> Dictionary:
-	return {"schema_version": SAVE_SCHEMA, "content_version": CONTENT_VERSION, "world": {"revision": 0}, "inventory": {"dirt": 0, "revision": 0}, "workstations": {"stations": [], "jobs": {}, "next_instance": 1, "next_job": 1}, "clock": {}, "player": {"position": [0.5, 2.0, 40.5], "yaw": 0.0, "pitch": 0.0}}
+	return {"schema_version": SAVE_SCHEMA, "content_version": CONTENT_VERSION, "world": {"revision": 0, "generator_version": DEFAULT_GENERATOR_VERSION, "seed": DEFAULT_WORLD_SEED}, "inventory": {"dirt": 0, "revision": 0}, "workstations": {"stations": [], "jobs": {}, "next_instance": 1, "next_job": 1}, "clock": {}, "player": {"position": [0.5, 2.0, 40.5], "yaw": 0.0, "pitch": 0.0}}

@@ -15,6 +15,8 @@ Use a dedicated custom Godot user-data directory such as `CraftAndDefend` and sa
 
 Store explicit schema and content versions. Keep block numeric IDs stable; never reorder them across existing saves. Unknown/newer schema or missing content produces a readable refusal, not an empty replacement world. A migration copies the slot and reports a new version; it does not mutate the sole original copy.
 
+P1 adds generator identity without rewriting the save schema. A new snapshot records `world.generator_version = terrain_p1_1` and `world.seed = 41026`. A checkpoint created before these optional fields existed resolves specifically to `flat_fixture_1`; this prevents untouched chunks beside its SQLite edit overlay from regenerating as hills. A recognized P1 checkpoint reuses its saved seed. Any unknown generator version returns `UNSUPPORTED_GENERATOR_VERSION` before terrain opens. The additive leaves block is ID 10; all prior numeric IDs and content version remain stable.
+
 ## Minimum coherent checkpoint approach to prove
 
 For the tiny Foundation world, favor simplicity over storage efficiency: keep a working session database separate from the last published checkpoint. A committed checkpoint directory contains **both** voxel data and gameplay state with one manifest. Load copies/opens an appropriate working copy so continuous chunk saves do not mutate the last good checkpoint. F3 keeps two completed checkpoints and prunes older generations only after the new pointer is published.

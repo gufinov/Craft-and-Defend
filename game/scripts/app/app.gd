@@ -42,6 +42,7 @@ var settings_scroll: ScrollContainer
 var status_label: Label
 var hud_label: Label
 var feedback_label: Label
+var navigation_label: Label
 var inventory_contents_label: Label
 var keybind_search: LineEdit
 var binding_rows: Dictionary = {}
@@ -139,6 +140,11 @@ func _ready() -> void:
 		var f5_automation := F5Automation.new()
 		add_child(f5_automation)
 		f5_automation.call_deferred("run", self, f5_mode)
+	var p1_mode := _argument_value("--p1-automation=")
+	if not p1_mode.is_empty():
+		var p1_automation := P1Automation.new()
+		add_child(p1_automation)
+		p1_automation.call_deferred("run", self, p1_mode)
 
 
 func _process(delta: float) -> void:
@@ -185,7 +191,7 @@ func _build_main_menu(canvas: CanvasLayer) -> void:
 	var menu := _centered_box(menu_panel, Vector2(700, 570))
 	var title := _title("CRAFT AND DEFEND", 34)
 	menu.add_child(title)
-	var subtitle := _centered_label("F5 crafting-interface candidate · castle-building foundation")
+	var subtitle := _centered_label("P1 terrain and exploration candidate · castle-building foundation")
 	menu.add_child(subtitle)
 	menu.add_child(_spacer(12))
 	var slot_row := _settings_row("Save slot")
@@ -666,11 +672,22 @@ func _build_hud(canvas: CanvasLayer) -> void:
 	hud_label = Label.new()
 	hud_label.position = Vector2(20, 18)
 	hud_label.add_theme_font_size_override("font_size", 18)
+	hud_label.add_theme_constant_override("outline_size", 3)
+	hud_label.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.05, 0.9))
 	hud_layer.add_child(hud_label)
+	navigation_label = Label.new()
+	navigation_label.position = Vector2(20, 50)
+	navigation_label.add_theme_font_size_override("font_size", 15)
+	navigation_label.add_theme_color_override("font_color", Color("9fd8e8"))
+	navigation_label.add_theme_constant_override("outline_size", 3)
+	navigation_label.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.05, 0.9))
+	hud_layer.add_child(navigation_label)
 	feedback_label = Label.new()
-	feedback_label.position = Vector2(20, 52)
+	feedback_label.position = Vector2(20, 78)
 	feedback_label.custom_minimum_size = Vector2(760, 30)
 	feedback_label.add_theme_color_override("font_color", Color("ffe08a"))
+	feedback_label.add_theme_constant_override("outline_size", 3)
+	feedback_label.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.05, 0.9))
 	hud_layer.add_child(feedback_label)
 	var crosshair := Label.new()
 	crosshair.text = "+"
@@ -759,6 +776,7 @@ func _open_session(continue_existing: bool) -> void:
 	session.ready_for_play.connect(_on_session_ready)
 	session.status_changed.connect(_set_status)
 	session.hud_changed.connect(_set_hud)
+	session.navigation_changed.connect(_set_navigation)
 	session.feedback_changed.connect(_set_feedback)
 	session.inventory_changed.connect(_on_session_inventory_changed)
 	session.workstation_requested.connect(_show_workstation)
@@ -1624,6 +1642,11 @@ func _set_status(message: String) -> void:
 func _set_hud(text: String) -> void:
 	_hud_state_text = text
 	_refresh_hud()
+
+
+func _set_navigation(text: String) -> void:
+	if navigation_label != null:
+		navigation_label.text = text
 
 
 func _refresh_hud() -> void:

@@ -63,6 +63,14 @@ class FoundationTests(unittest.TestCase):
         self.bundle['world']['layers'][1]['min_y'] += 1
         self.rejects('layers gap')
 
+    def test_invalid_p1_height_range_rejected(self):
+        self.bundle['world']['terrain']['max_surface_y'] = self.bundle['world']['terrain']['min_surface_y']
+        self.rejects('invalid terrain height range')
+
+    def test_unknown_generator_rejected(self):
+        self.bundle['world']['generator_version'] = 'terrain_future_unknown'
+        self.rejects('unsupported generator version')
+
     def test_multicell_overlap_cannot_claim_success(self):
         case = next(c for c in self.bundle['placement_cases']['cases'] if c['id'] == 'multicell_partial_overlap')
         case['expected'] = 'OK'

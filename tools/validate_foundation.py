@@ -156,6 +156,25 @@ def validate_bundle(bundle):
     require(world["min_cell"][1] < world["sea_level"] < world["min_cell"][1] + world["size"][1], "world needs depth above and below sea level")
     require(len(world["spawn_feet"]) == 3 and in_bounds(world["spawn_feet"], world), "spawn outside bounds")
     require(world["interaction_reach"] > 0 and world["day_length_seconds"] > 0, "invalid world timing/reach")
+    require(world["generator_version"] in ("flat_fixture_1", "terrain_p1_1"), "unsupported generator version")
+    if world["generator_version"] == "terrain_p1_1":
+        terrain = world.get("terrain", {})
+        require(type(terrain.get("min_surface_y")) is int and type(terrain.get("max_surface_y")) is int and terrain["min_surface_y"] < terrain["max_surface_y"], "invalid terrain height range")
+        require(world["min_cell"][1] < terrain["min_surface_y"] and terrain["max_surface_y"] + 7 < world["min_cell"][1] + world["size"][1], "terrain lacks vertical headroom")
+        clearing_center = terrain.get("safe_clearing_center", [])
+        clearing_half_size = terrain.get("safe_clearing_half_size", [])
+        require(isinstance(clearing_center, list) and len(clearing_center) == 2 and all(type(v) is int for v in clearing_center), "invalid safe clearing")
+        require(isinstance(clearing_half_size, list) and len(clearing_half_size) == 2 and all(type(v) is int and v > 0 for v in clearing_half_size), "invalid safe clearing")
+        require(integer(terrain.get("safe_clearing_blend"), 1) and integer(terrain.get("tree_grid_size"), 5), "invalid terrain spacing")
+        require(integer(terrain.get("tree_chance_percent"), 0) and terrain["tree_chance_percent"] <= 100, "invalid tree chance")
+        for key in ("coal_cluster_per_thousand", "iron_cluster_per_thousand"):
+            require(integer(terrain.get(key), 0) and terrain[key] <= 1000, "invalid ore frequency")
+        landmark_ids = set()
+        for landmark in world.get("landmarks", []):
+            require(landmark.get("id") and landmark["id"] not in landmark_ids, "invalid or duplicate landmark")
+            landmark_ids.add(landmark["id"])
+            require(vector(landmark.get("cell", [])) and in_bounds(landmark["cell"], world), "landmark outside bounds")
+            require(integer(landmark.get("safe_radius"), 1), "invalid landmark radius")
     cursor = world["min_cell"][1]
     for layer in world["layers"]:
         require(layer["min_y"] == cursor and layer["max_y_exclusive"] > cursor, "layers gap or overlap")
