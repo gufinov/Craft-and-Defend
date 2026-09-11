@@ -52,7 +52,7 @@ func _run_foundation_phase1() -> void:
 	var all_assets := true
 	for block_index in range(1, WorldAdapter.BLOCK_NAMES.size()):
 		unique_colors[WorldAdapter.BLOCK_COLORS[block_index].to_html()] = true
-		all_assets = all_assets and FileAccess.file_exists("res://assets/blocks/%s.svg" % WorldAdapter.BLOCK_NAMES[block_index])
+		all_assets = all_assets and ResourceLoader.exists("res://assets/blocks/%s.svg" % WorldAdapter.BLOCK_NAMES[block_index])
 	var hud_help := app.hud_label.text.contains("Slot 1") and app.hud_label.text.contains("F2 capture") and app.hud_label.text.contains("Night")
 	var failed_craft := app.session.try_craft("planks", "hand")
 	await get_tree().process_frame
@@ -174,6 +174,9 @@ func _measure_fixed_scenario() -> Dictionary:
 	var edit_total_usec := Time.get_ticks_usec() - edit_started
 	if int(app.session.world.query_cell(edit_cell).get("voxel_id", -1)) != original_voxel:
 		edits_ok = app.session.world.set_cell(edit_cell, original_voxel) and edits_ok
+	var static_memory := int(Performance.get_monitor(Performance.MEMORY_STATIC))
+	if static_memory <= 0:
+		static_memory = OS.get_static_memory_usage()
 	return {
 		"scenario": "60 rendered frames; 100 alternating loaded-cell edits; coherent slot A save",
 		"resolution": Vector2i(get_viewport().get_visible_rect().size),
@@ -185,7 +188,7 @@ func _measure_fixed_scenario() -> Dictionary:
 		"edits_ok": edits_ok,
 		"edit_total_msec": float(edit_total_usec) / 1000.0,
 		"edit_average_msec": float(edit_total_usec) / 100000.0,
-		"memory_static_bytes": int(Performance.get_monitor(Performance.MEMORY_STATIC)),
+		"memory_static_bytes": static_memory,
 	}
 
 
