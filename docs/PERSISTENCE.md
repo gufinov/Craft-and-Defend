@@ -1,6 +1,6 @@
 # Persistence and recovery design
 
-**Status: F0/F2 normal-save checkpoint path implemented and restart-tested; F3 failure recovery remains unproven.** The current coordinator publishes terrain, player, full inventory/hotbar and idle workstation state in one checkpoint. Normal Windows export save/restart passes, but independent slots, interrupted publication, mid-job restart and denied-write/full-disk handling remain F3 gates.
+**Status: F3 implementation gate PASS; owner playtest/promotion pending.** The coordinator publishes terrain, player, full inventory/hotbar and workstation/job state in one checkpoint. Independent A/B slots, interrupted publication recovery, invalid-save refusal, legacy-layout copy migration, mid-job restart and injected denied-write/full-disk behavior pass in the provenance-matched Windows export.
 
 ## Ownership and format
 
@@ -17,13 +17,13 @@ Store explicit schema and content versions. Keep block numeric IDs stable; never
 
 ## Minimum coherent checkpoint approach to prove
 
-For the tiny Foundation world, favor simplicity over storage efficiency: keep a working session database separate from the last published checkpoint. A committed checkpoint directory contains **both** voxel data and gameplay state with one manifest. Load copies/opens an appropriate working copy so continuous chunk saves do not mutate the last good checkpoint. Keep two completed checkpoints; clean old generations only after the new one is validated.
+For the tiny Foundation world, favor simplicity over storage efficiency: keep a working session database separate from the last published checkpoint. A committed checkpoint directory contains **both** voxel data and gameplay state with one manifest. Load copies/opens an appropriate working copy so continuous chunk saves do not mutate the last good checkpoint. F3 keeps two completed checkpoints and prunes older generations only after the new pointer is published.
 
 Saving freezes gameplay mutations, workstations, clock and viewer movement, captures one state revision, drains terrain saves, then obtains a verified consistent database snapshot. Write to a new temporary checkpoint directory, validate metadata/database compatibility, and only then publish a manifest/pointer to that completed directory. Returning to menu/quit proceeds after the coherent checkpoint is complete. Pending generations are ignored/reported on restart.
 
 **The exact safe database snapshot/close barrier is an F0 investigation, not an assumed API.** Do not copy an open SQLite database with ordinary file copy, ignore possible journal/WAL companions, or assume a node being freed means all asynchronous I/O is finished. Use a supported consistent backup or verified stream-close/drain approach; document source evidence and force-stop tests. If that cannot be made reliable cheaply, propose a different save design before extending gameplay.
 
-This checkpoint plan introduces bounded disk overhead for the tiny world. Record measured size and save latency; it is not a final large-world storage architecture. No promise of power-loss durability is made merely because rename succeeds. The practical Foundation requirement is reliable normal saves and preserving the prior complete checkpoint on interrupted saves.
+This checkpoint plan introduces bounded disk overhead for the tiny world. The named exported F3 evidence run measured 23,223–23,659 bytes per checkpoint and 47–65 ms per F3 save on the recorded test machine; this is not a final large-world storage architecture. No promise of power-loss durability is made merely because rename succeeds. The practical Foundation requirement is reliable normal saves and preserving the prior complete checkpoint on interrupted saves.
 
 ## Voxel-specific hazards
 
