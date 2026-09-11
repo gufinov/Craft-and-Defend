@@ -1,10 +1,10 @@
-# F1 runtime candidate
+# F1 accepted runtime
 
-The Godot project in this folder contains the passed F0 Windows integration spike plus the automated F1 interaction-hardening candidate. It intentionally contains no crafting, enemies, waves, workers, rifts, automation, multiplayer, or procedural world expansion.
+The Godot project in this folder contains the owner-accepted F0 Windows integration spike and F1 interaction hardening. It intentionally contains no crafting, enemies, waves, workers, rifts, automation, multiplayer, or procedural world expansion.
 
 ## Play on this PC
 
-From the worktree root, double-click `START_GAME.cmd`. It prefers the ignored portable export at `builds\CraftAndDefend\CraftAndDefend.exe` and otherwise uses the pinned external custom editor when present. The old `START_F0.cmd` remains a compatibility wrapper.
+From the repository or worktree root, double-click `START_GAME.cmd`. In a Git checkout it verifies the ignored portable export against the current tracked `game` tree and automatically rebuilds a missing, legacy, dirty or mismatched package before launch. A portable folder without Git launches its packaged executable normally. The old `START_F0.cmd` remains a compatibility wrapper.
 
 1. Choose **Start**; the player is not created before this action.
 2. Use physical **E/D/S/F** to move, **Space** to jump, and the mouse to look.

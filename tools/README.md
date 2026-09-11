@@ -10,6 +10,8 @@ python tools/verify_toolchain.py --archive-dir /path/to/already-downloaded-archi
 
 The validator reads canonical JSON, verifies references/defaults/bounds/placement examples and proves coarse crafting capability reachability. It also checks original-report bytes and local Markdown link targets. It does not validate anchors, external URL availability, runtime semantics, spatial resource accessibility, resource quantities, Godot collision, save behavior or Windows export.
 
-The archive verifier checks both recorded archives independently, using publisher-reported size and SHA-256 from `versions.json`. A missing/corrupt file returns nonzero. It never downloads, installs, changes PATH or updates the manifest. Real engine archive verification remains NOT RUN until the local agent supplies them. The verifier's automated tests use small synthetic bytes.
+The archive verifier checks both recorded archives independently, using publisher-reported size and SHA-256 from `versions.json`. A missing/corrupt file returns nonzero. It never downloads, installs, changes PATH or updates the manifest. The verifier's automated tests use small synthetic bytes.
 
-`contracts/` is the source of proposed data, not a compiled game asset bundle. The runtime content loader must deliberately read/convert it. Keep stable IDs and update tests/docs together when changing fixtures. There is no tested run/export script until the local agent creates the Godot project and actual export preset.
+`contracts/` is the source of proposed data, not a compiled game asset bundle. The runtime content loader deliberately reads/converts it. Keep stable IDs and update tests/docs together when changing fixtures.
+
+`build_windows_f0.ps1` creates the verified Windows export and an ignored `build_manifest.json` containing the tracked `game` tree identity, source commit, engine version and artifact hashes. `start_game.ps1` is the provenance guard used by `START_GAME.cmd`: in a Git checkout it rebuilds when the package is missing, unversioned, the tracked game tree differs, or game files are dirty. Use `-PrepareOnly` to validate/prepare the package without launching it.

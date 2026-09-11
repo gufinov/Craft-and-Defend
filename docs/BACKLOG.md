@@ -23,7 +23,7 @@ G0, F0 and owner-accepted F1 are complete. Each card is independently reviewable
 
 Complete keybind UI/reset/conflicts, settings with display rollback, mouse capture/focus loss, window close, inventory overlay, boundary feedback and edit reason codes. Add entity footprint service with synthetic tests. Run T13–T18. Deliver no new content beyond that needed to validate contracts.
 
-**Recorded result:** Tony confirmed all non-display F1 behavior, corrected ultrawide fullscreen fill and corrected multi-monitor Windowed placement. The final implementation preserves the active monitor, centers the decorated frame inside its usable rectangle and shows the detected native size in Fullscreen. The exported runtime proved 1920×1080, 1280×720 and 1600×900 placement on the 3440×1440 active monitor; complete F1/F0 regressions and static tests pass. See [F1 evidence](evidence/F1_INTERACTION_HARDENING.md). F2 requires its own implementation start; this acceptance does not activate it automatically.
+**Recorded result:** Tony confirmed all non-display F1 behavior, corrected ultrawide fullscreen fill and corrected multi-monitor Windowed placement. The final implementation preserves the active monitor, centers the decorated frame inside its usable rectangle and shows the detected native size in Fullscreen. The exported runtime proved 1920×1080, 1280×720 and 1600×900 placement on the 3440×1440 active monitor; complete F1/F0 regressions and static tests pass. A post-promotion [launcher recovery](evidence/F1_LAUNCHER_RECOVERY.md) prevents an ignored stale export from masking the current accepted source. F2 requires its own implementation start; this acceptance does not activate it automatically.
 
 ## F2 — inventory, progression and workstations
 

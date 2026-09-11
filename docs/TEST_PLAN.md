@@ -20,7 +20,7 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T08 | F0 | Rebind forward, save settings, fully restart; new key works and default/reset behavior is clear |
 | T09 | F0 | Save/exit/restart/Continue preserves edited cells, player transform and exact inventory counts |
 | T10 | F0 | Move far enough to unload an edited chunk, reload it, save/quit/restart; edits remain |
-| T11 | F0 | Export with custom release template; launch outside editor; repeat T02–T09 |
+| T11 | F0 | Export with custom release template; launcher rejects/rebuilds a stale checkout package; launch outside editor; repeat T02–T09 |
 | T12 | F0 | Window-close/Alt-F4 during play follows coherent save workflow; failure stays visible |
 | T13 | F1 | All defaults, conflict rejection, cancel capture and reset work; UI actions never mine/place |
 | T14 | F1 | Inventory/settings/focus-loss pause; mouse capture restored only on explicit resume |

@@ -39,7 +39,7 @@ LIMITATIONS/FAILURES:
 
 NEXT:
 
-1. Promote the accepted F1 history through the authorized fast-forward merge and push.
+1. F1 was promoted to `main`; see the [post-promotion launcher recovery](F1_LAUNCHER_RECOVERY.md) for the ignored-artifact correction.
 2. Begin F2 only under a new implementation instruction; keep later enemies, waves, rifts, workers and automation out of scope.
 
 GIT/REPRODUCIBILITY:
