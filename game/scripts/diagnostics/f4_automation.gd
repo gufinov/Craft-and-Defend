@@ -12,6 +12,8 @@ func run(application: CraftAndDefendApp, mode: String) -> void:
 			await _run_foundation_phase1()
 		"phase2":
 			await _run_foundation_phase2()
+		"memory-probe":
+			await _run_memory_probe()
 		"capture-phase1":
 			await _run_capture_phase1()
 		"capture-phase2":
@@ -74,7 +76,7 @@ func _run_foundation_phase1() -> void:
 	var save_result := await app.saves.save_session(app.session)
 	metrics["save_msec"] = save_result.get("save_msec", -1)
 	metrics["checkpoint_bytes"] = save_result.get("checkpoint_bytes", -1)
-	_record("T29_FIXED_MEASUREMENTS", save_result.get("ok", false) and float(metrics.get("frame_p95_msec", 0.0)) > 0.0 and int(metrics.get("edit_count", 0)) == 100 and int(metrics.get("memory_static_bytes", 0)) > 0 and int(metrics.get("checkpoint_bytes", 0)) > 0, "fixed scenario records frame, edit, memory and coherent-save measurements", metrics)
+	_record("T29_FIXED_MEASUREMENTS", save_result.get("ok", false) and float(metrics.get("frame_p95_msec", 0.0)) > 0.0 and int(metrics.get("edit_count", 0)) == 100 and bool(metrics.get("edits_ok", false)) and int(metrics.get("checkpoint_bytes", 0)) > 0, "fixed scenario records frame, edit, allocator availability and coherent-save measurements; process working set is sampled externally in release", metrics)
 
 
 func _run_foundation_phase2() -> void:
@@ -96,6 +98,14 @@ func _run_foundation_phase2() -> void:
 	var resumed := app.session.clock.phase > before_resume
 	_record("T27_CLOCK_RESTART", no_offline_catchup and resumed and app.session.clock.day_index == 3, "Continue restores the saved phase without wall-clock catch-up, then resumes advancing", {"saved": phase_before_open, "restored": restored_phase, "after_frames": app.session.clock.phase, "day": app.session.clock.day_index})
 	_record("T30_FOUNDATION_CONTINUE", app.session.world_ready and app.session.inventory != null and app.session.workstations != null and app.session.clock != null, "clean-process Continue restores the complete Foundation session", {"world_ready": app.session.world_ready, "slot": app.saves.slot_id, "clock": app.session.clock.snapshot()})
+
+
+func _run_memory_probe() -> void:
+	app._on_start_pressed()
+	if not await _wait_ready():
+		return
+	print("F4_MEMORY_PROBE_READY pid=%d" % OS.get_process_id())
+	await get_tree().create_timer(10.0).timeout
 
 
 func _run_capture_phase1() -> void:
@@ -189,6 +199,7 @@ func _measure_fixed_scenario() -> Dictionary:
 		"edit_total_msec": float(edit_total_usec) / 1000.0,
 		"edit_average_msec": float(edit_total_usec) / 100000.0,
 		"memory_static_bytes": static_memory,
+		"memory_static_available": static_memory > 0,
 	}
 
 
