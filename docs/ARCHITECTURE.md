@@ -5,7 +5,7 @@ These are implementation contracts, not claims that modules already exist. Prefe
 | Module | Owns | Inputs → outputs | Must not own |
 |---|---|---|---|
 | App/session | Menu/loading/playing/paused/saving/error transitions; active slot | UI intents → session lifecycle | Recipes, meshing |
-| Settings/input | Named InputMap actions, bindings, audio/video config | validated settings → configuration + action events | Gameplay mutations |
+| Settings/input | Named InputMap actions, bindings, audio/video/graphics config | validated settings → configuration + action events | Gameplay mutations |
 | Player | Movement, camera, collision, aim | actions + world collision → transform/target | Inventory accounting, saves |
 | World adapter | VoxelTerrain, viewer, generator, block library, engine APIs | coordinates/query/edit → cell data + dirty regions | Prices, crafting, menu logic |
 | Placement/interaction | Bounds, reach, occupancy, six-face voxel support, entity-specific support, atomic edit commands | break/place requests → success or reason code | UI layout |
@@ -45,6 +45,10 @@ A persistent app root owns menu overlays and the save coordinator. A session roo
 The screenshot service captures only the rendered game viewport after a completed draw and writes outside save slots under the global data root. It must not change application state, tree pause, simulation pause or mouse capture. Windows Print Screen focus handling remains a separate system path.
 
 World Settings sends validated commands to `GameSession`, which delegates authoritative time/cycle mutation to the simulation clock and then refreshes presentation. The UI never writes save JSON directly. New worlds begin at 08:00 sunrise; existing saves restore their own phase and optional cycle-enabled state. A visible unshaded sun is presentation only and follows the authoritative solar direction.
+
+Compatibility rendering remains the approved engine path. The viewport applies persisted MSAA while VSync is applied through DisplayServer; physics interpolation smooths fixed-step player/camera transforms and is reset after activation or restore. The visible sun can follow the player every rendered frame, but directional-light rotation and shadow-map inputs update only when the displayed game minute changes. Four blended shadow splits with a bounded near-field distance keep precision focused on the editable play area. These presentation controls do not change simulation time or saved terrain.
+
+Crafting-grid contents are temporary UI staging, not inventory reservations. Drag/drop and recipe autofill may arrange stable item IDs only up to the counts currently held. Craft presses the existing atomic crafting/workstation service, which revalidates station, materials and output capacity before any mutation. Closing or clearing the modal therefore has nothing to refund and cannot duplicate items.
 
 Use a small flat deterministic generator before procedural hills/trees. Generator callbacks must not access mutable scene state or global random state from worker threads. Snapshot immutable generation parameters. Do not hot-edit a script generator while engine worker threads are using it.
 

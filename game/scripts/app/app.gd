@@ -50,15 +50,20 @@ var inventory_slot_buttons: Array[Button] = []
 var inventory_message: Label
 var crafting_title_label: Label
 var crafting_context_label: Label
-var crafting_inventory_label: Label
+var crafting_inventory_grid: GridContainer
+var crafting_inventory_slots: Array[CraftingItemSlot] = []
 var crafting_recipe_list: VBoxContainer
+var crafting_recipe_search: LineEdit
 var crafting_grid: GridContainer
+var crafting_grid_slots: Array[CraftingItemSlot] = []
 var crafting_output_label: Label
 var crafting_message: Label
 var craft_selected_button: Button
 var _crafting_station_id := ""
 var _crafting_station_type := "hand"
 var _selected_recipe_id := ""
+var _craft_grid_items: Array[String] = []
+var _crafting_selected_inventory_item := ""
 var _inventory_move_source := -1
 var sensitivity_slider: HSlider
 var sensitivity_value_label: Label
@@ -67,6 +72,8 @@ var volume_slider: HSlider
 var volume_value_label: Label
 var window_mode_option: OptionButton
 var resolution_option: OptionButton
+var msaa_option: OptionButton
+var vsync_check: CheckButton
 var windowed_resolution_row: HBoxContainer
 var fullscreen_resolution_row: HBoxContainer
 var fullscreen_resolution_value_label: Label
@@ -96,6 +103,7 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(data_root)
 	settings = SettingsStore.new(data_root)
 	settings.load_and_apply()
+	_apply_runtime_graphics()
 	saves = SaveCoordinator.new(data_root)
 	screenshots = GameplayScreenshotService.new(data_root)
 	_build_interface()
@@ -409,6 +417,29 @@ func _build_settings(canvas: CanvasLayer) -> void:
 	box.add_child(fullscreen_resolution_row)
 	box.add_child(_button("Preview Display Changes", _preview_display_changes, Vector2(360, 42)))
 
+	var graphics_title := _centered_label("GRAPHICS QUALITY")
+	graphics_title.add_theme_font_size_override("font_size", 18)
+	box.add_child(graphics_title)
+	var msaa_row := _settings_row("3D edge smoothing")
+	msaa_option = OptionButton.new()
+	for label in ["Off", "2× MSAA", "4× MSAA (Recommended)", "8× MSAA"]:
+		msaa_option.add_item(label)
+	msaa_option.custom_minimum_size = Vector2(350, 36)
+	msaa_option.tooltip_text = "Smooths moving block and silhouette edges; 4× is the default quality setting"
+	msaa_row.add_child(msaa_option)
+	box.add_child(msaa_row)
+	var vsync_row := _settings_row("Vertical synchronization")
+	vsync_check = CheckButton.new()
+	vsync_check.text = "Enabled"
+	vsync_check.tooltip_text = "Matches frame presentation to the monitor to avoid visible tearing"
+	vsync_row.add_child(vsync_check)
+	box.add_child(vsync_row)
+	var graphics_help := _centered_label("Physics interpolation and stabilized sunlight are always enabled. These options control edge smoothing and screen presentation.")
+	graphics_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	graphics_help.add_theme_color_override("font_color", Color("9fd8e8"))
+	box.add_child(graphics_help)
+	box.add_child(_button("Apply Graphics Quality", _save_graphics, Vector2(360, 42)))
+
 	world_settings_toggle = _button("WORLD SETTINGS  ▸", _toggle_world_settings, Vector2(360, 42))
 	world_settings_toggle.tooltip_text = "Show or hide settings for the active save slot"
 	box.add_child(world_settings_toggle)
@@ -510,7 +541,7 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	crafting_panel.add_child(center)
 	var modal := PanelContainer.new()
-	modal.custom_minimum_size = Vector2(1040, 620)
+	modal.custom_minimum_size = Vector2(1160, 650)
 	modal.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("0d1a23"), Color("4e8294"), 12, 22))
 	center.add_child(modal)
 	var root := VBoxContainer.new()
@@ -527,19 +558,61 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	root.add_child(crafting_context_label)
 	var columns := HBoxContainer.new()
 	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	columns.add_theme_constant_override("separation", 18)
+	columns.add_theme_constant_override("separation", 12)
 	root.add_child(columns)
 
+	var inventory_card := PanelContainer.new()
+	inventory_card.custom_minimum_size.x = 270
+	inventory_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inventory_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 14))
+	columns.add_child(inventory_card)
+	var inventory_column := VBoxContainer.new()
+	inventory_card.add_child(inventory_column)
+	var inventory_heading := Label.new()
+	inventory_heading.text = "INVENTORY"
+	inventory_heading.add_theme_color_override("font_color", Color("9fd8e8"))
+	inventory_column.add_child(inventory_heading)
+	var inventory_help := Label.new()
+	inventory_help.text = "Drag into the grid, or select then choose a cell"
+	inventory_help.add_theme_font_size_override("font_size", 13)
+	inventory_help.add_theme_color_override("font_color", Color("8fa5af"))
+	inventory_column.add_child(inventory_help)
+	var inventory_scroll := ScrollContainer.new()
+	inventory_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inventory_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	inventory_scroll.follow_focus = true
+	inventory_column.add_child(inventory_scroll)
+	crafting_inventory_grid = GridContainer.new()
+	crafting_inventory_grid.columns = 3
+	crafting_inventory_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inventory_scroll.add_child(crafting_inventory_grid)
+	for index in range(F0Inventory.SLOT_COUNT):
+		var inventory_slot := CraftingItemSlot.new()
+		inventory_slot.custom_minimum_size = Vector2(74, 50)
+		inventory_slot.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		inventory_slot.tooltip_text = "Drag to the crafting grid, or select and then choose a grid cell"
+		inventory_slot.pressed.connect(_select_crafting_inventory_slot.bind(index))
+		inventory_slot.item_dropped.connect(_on_crafting_item_dropped)
+		inventory_slot.configure_target("inventory", index)
+		crafting_inventory_slots.append(inventory_slot)
+		crafting_inventory_grid.add_child(inventory_slot)
+
 	var grid_card := PanelContainer.new()
-	grid_card.custom_minimum_size.x = 430
-	grid_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 18))
+	grid_card.custom_minimum_size.x = 350
+	grid_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 14))
 	columns.add_child(grid_card)
 	var grid_column := VBoxContainer.new()
 	grid_card.add_child(grid_column)
 	var grid_heading := Label.new()
-	grid_heading.text = "RECIPE INPUT"
+	grid_heading.text = "CRAFTING GRID"
 	grid_heading.add_theme_color_override("font_color", Color("9fd8e8"))
 	grid_column.add_child(grid_heading)
+	var grid_help := Label.new()
+	grid_help.text = "Staged only — inventory is consumed when Craft is pressed"
+	grid_help.add_theme_font_size_override("font_size", 13)
+	grid_help.add_theme_color_override("font_color", Color("8fa5af"))
+	grid_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	grid_column.add_child(grid_help)
 	crafting_grid = GridContainer.new()
 	crafting_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	crafting_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -547,37 +620,42 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	crafting_output_label = Label.new()
 	crafting_output_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	crafting_output_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	crafting_output_label.custom_minimum_size = Vector2(380, 64)
+	crafting_output_label.custom_minimum_size = Vector2(350, 64)
 	crafting_output_label.add_theme_color_override("font_color", Color("c9f4ff"))
 	grid_column.add_child(crafting_output_label)
-	craft_selected_button = _button("Craft Selected", _craft_selected_recipe, Vector2(380, 48))
+	craft_selected_button = _button("Craft", _craft_selected_recipe, Vector2(350, 48))
 	grid_column.add_child(craft_selected_button)
-	crafting_inventory_label = Label.new()
-	crafting_inventory_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	crafting_inventory_label.add_theme_color_override("font_color", Color("a7bac4"))
-	grid_column.add_child(crafting_inventory_label)
+	grid_column.add_child(_button("Clear Grid", _clear_crafting_grid, Vector2(350, 42)))
+	crafting_message = Label.new()
+	crafting_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	crafting_message.add_theme_color_override("font_color", Color("ffd488"))
+	grid_column.add_child(crafting_message)
 
 	var recipe_card := PanelContainer.new()
 	recipe_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	recipe_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 18))
+	recipe_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 14))
 	columns.add_child(recipe_card)
 	var recipe_column := VBoxContainer.new()
 	recipe_card.add_child(recipe_column)
 	var recipe_heading := Label.new()
-	recipe_heading.text = "AVAILABLE RECIPES"
+	recipe_heading.text = "RECIPE BOOK"
 	recipe_heading.add_theme_color_override("font_color", Color("9fd8e8"))
 	recipe_column.add_child(recipe_heading)
+	crafting_recipe_search = LineEdit.new()
+	crafting_recipe_search.placeholder_text = "Search recipes or ingredients…"
+	crafting_recipe_search.clear_button_enabled = true
+	crafting_recipe_search.tooltip_text = "Press Enter to load the first matching recipe when ingredients are available"
+	crafting_recipe_search.text_changed.connect(_on_crafting_recipe_search_changed)
+	crafting_recipe_search.text_submitted.connect(_on_crafting_recipe_search_submitted)
+	recipe_column.add_child(crafting_recipe_search)
 	var recipe_scroll := ScrollContainer.new()
 	recipe_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	recipe_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	recipe_scroll.follow_focus = true
 	recipe_column.add_child(recipe_scroll)
 	crafting_recipe_list = VBoxContainer.new()
 	crafting_recipe_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	recipe_scroll.add_child(crafting_recipe_list)
-	crafting_message = Label.new()
-	crafting_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	crafting_message.add_theme_color_override("font_color", Color("ffd488"))
-	recipe_column.add_child(crafting_message)
 
 
 func _build_hud(canvas: CanvasLayer) -> void:
@@ -741,6 +819,9 @@ func _show_crafting(station_id: String = "", station_type: String = "hand") -> v
 	_crafting_station_id = station_id
 	_crafting_station_type = station_type if station_type in ["workbench", "furnace"] else "hand"
 	_selected_recipe_id = ""
+	_craft_grid_items.clear()
+	_crafting_selected_inventory_item = ""
+	crafting_recipe_search.clear()
 	state = AppState.CRAFTING
 	session.pause_game(true)
 	get_tree().paused = true
@@ -773,6 +854,8 @@ func _close_crafting() -> void:
 	_crafting_station_id = ""
 	_crafting_station_type = "hand"
 	_selected_recipe_id = ""
+	_craft_grid_items.clear()
+	_crafting_selected_inventory_item = ""
 
 
 func _on_session_inventory_changed(_snapshot: Dictionary) -> void:
@@ -821,80 +904,310 @@ func _refresh_inventory_panel() -> void:
 func _refresh_crafting_panel() -> void:
 	if session == null:
 		return
-	var recipes := session.recipes_for(_crafting_station_type)
-	if _selected_recipe_id.is_empty() or session.registry.recipe(_selected_recipe_id).is_empty() or str(session.registry.recipe(_selected_recipe_id).get("station", "")) != _crafting_station_type:
-		_selected_recipe_id = str(recipes[0].id) if not recipes.is_empty() else ""
+	var recipes := _available_crafting_recipes()
 	var grid_size := 2
 	var grid_capacity := 4
 	crafting_title_label.text = "FIELD BUILD"
-	crafting_context_label.text = "2 × 2 HAND CRAFTING  ·  B CLOSES  ·  TAB IS INVENTORY ONLY"
+	crafting_context_label.text = "2 × 2 HAND CRAFTING  ·  DRAG OR SEARCH  ·  B CLOSES"
 	if _crafting_station_type == "workbench":
 		grid_size = 3
 		grid_capacity = 9
 		crafting_title_label.text = "WORKBENCH"
-		crafting_context_label.text = "3 × 3 ADVANCED CRAFTING  ·  AVAILABLE ONLY BY RIGHT-CLICKING THIS WORKBENCH"
+		crafting_context_label.text = "3 × 3 CRAFTING  ·  BASIC + ADVANCED RECIPES  ·  RIGHT-CLICK ACCESS ONLY"
 	elif _crafting_station_type == "furnace":
 		grid_size = 2
 		grid_capacity = 2
 		crafting_title_label.text = "FURNACE"
-		crafting_context_label.text = "ORE + FUEL PROCESSING  ·  AVAILABLE ONLY BY RIGHT-CLICKING THIS FURNACE"
+		crafting_context_label.text = "ORE + FUEL PROCESSING  ·  DRAG OR SEARCH  ·  RIGHT-CLICK ACCESS ONLY"
+	_ensure_crafting_grid_capacity(grid_capacity)
 	crafting_grid.columns = grid_size
 	for child in crafting_grid.get_children():
 		crafting_grid.remove_child(child)
 		child.queue_free()
+	crafting_grid_slots.clear()
+	_refresh_crafting_inventory()
 	for child in crafting_recipe_list.get_children():
 		crafting_recipe_list.remove_child(child)
 		child.queue_free()
+	var recipe_query := crafting_recipe_search.text.strip_edges().to_lower()
+	var visible_recipe_count := 0
 	for recipe in recipes:
-		var status := session.recipe_status(str(recipe.id), _crafting_station_type, _crafting_station_id)
-		var selected_marker := "▶ " if str(recipe.id) == _selected_recipe_id else ""
-		var button := _button(selected_marker + _recipe_button_text(recipe, status), _select_crafting_recipe.bind(str(recipe.id)), Vector2(500, 68))
-		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		button.tooltip_text = "Select recipe"
-		crafting_recipe_list.add_child(button)
-	var selected_recipe := session.registry.recipe(_selected_recipe_id)
-	var input_cells: Array[String] = []
-	if not selected_recipe.is_empty():
-		for item_id: String in selected_recipe.inputs:
-			for _count in range(int(selected_recipe.inputs[item_id])):
-				input_cells.append(session.registry.display_name(item_id))
+		if not recipe_query.is_empty() and not _recipe_search_text(recipe).contains(recipe_query):
+			continue
+		visible_recipe_count += 1
+		_add_recipe_card(recipe, _recipe_status(recipe), str(recipe.id) == _selected_recipe_id)
+	if visible_recipe_count == 0:
+		var no_matches := Label.new()
+		no_matches.text = "No recipes match this search."
+		no_matches.add_theme_color_override("font_color", Color("8fa5af"))
+		crafting_recipe_list.add_child(no_matches)
 	for index in range(grid_capacity):
-		var cell := PanelContainer.new()
-		cell.custom_minimum_size = Vector2(118, 72)
-		cell.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("0a141b"), Color("365363"), 5, 7))
-		var label := Label.new()
-		label.text = input_cells[index] if index < input_cells.size() else "Empty"
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		cell.add_child(label)
+		var cell := CraftingItemSlot.new()
+		cell.custom_minimum_size = Vector2(94, 74)
+		cell.add_theme_stylebox_override("normal", FoundationTheme.panel(Color("0a141b"), Color("365363"), 5, 7))
+		cell.add_theme_stylebox_override("hover", FoundationTheme.panel(Color("132733"), Color("78cbe0"), 5, 7))
+		var item_id := _craft_grid_items[index]
+		var empty_label := "Empty"
+		if _crafting_station_type == "furnace":
+			empty_label = "Ore" if index == 0 else "Fuel"
+		cell.text = empty_label if item_id.is_empty() else session.registry.display_name(item_id)
+		cell.tooltip_text = "Drop an inventory item here" if item_id.is_empty() else "Drag to another cell or click to clear"
+		cell.configure_source("grid", index, item_id)
+		cell.configure_target("grid", index)
+		cell.item_dropped.connect(_on_crafting_item_dropped)
+		cell.pressed.connect(_on_crafting_grid_slot_pressed.bind(index))
+		crafting_grid_slots.append(cell)
 		crafting_grid.add_child(cell)
-	crafting_inventory_label.text = "INVENTORY MATERIALS\n%s" % session.inventory_text()
-	if selected_recipe.is_empty():
-		crafting_output_label.text = "No recipe selected"
+	craft_selected_button.text = "Start Processing" if _crafting_station_type == "furnace" else "Craft"
+	var selected_recipe := session.registry.recipe(_selected_recipe_id)
+	if selected_recipe.is_empty() or not _grid_matches_recipe(selected_recipe):
+		crafting_output_label.text = "No matching recipe\nDrag ingredients or choose from the recipe book"
 		craft_selected_button.disabled = true
 		return
-	var selected_status := session.recipe_status(_selected_recipe_id, _crafting_station_type, _crafting_station_id)
+	var selected_status := _recipe_status(selected_recipe)
 	var outputs: PackedStringArray = PackedStringArray()
 	for item_id: String in selected_recipe.outputs:
 		outputs.append("%d %s" % [int(selected_recipe.outputs[item_id]), session.registry.display_name(item_id)])
 	crafting_output_label.text = "OUTPUT  →  %s\n%s" % [" + ".join(outputs), "READY" if selected_status.get("ok", false) else _craft_reason_text(str(selected_status.get("reason", "UNAVAILABLE")), str(selected_status.get("item_id", "")))]
-	craft_selected_button.text = "Start Processing" if _crafting_station_type == "furnace" else "Craft Selected"
 	craft_selected_button.disabled = not selected_status.get("ok", false)
 
 
 func _select_crafting_recipe(recipe_id: String) -> void:
 	_selected_recipe_id = recipe_id
-	crafting_message.text = ""
+	var recipe := session.registry.recipe(recipe_id)
+	if _fill_grid_from_recipe(recipe):
+		crafting_message.text = "%s loaded from available inventory." % session.registry.display_name(recipe_id)
+	else:
+		var status := _recipe_status(recipe)
+		crafting_message.text = _craft_reason_text(str(status.get("reason", "INSUFFICIENT_INPUT")), str(status.get("item_id", "")))
 	_refresh_crafting_panel()
 
 
 func _craft_selected_recipe() -> void:
 	if session == null:
 		return
-	var result := session.try_craft(_selected_recipe_id, _crafting_station_type, _crafting_station_id)
+	var recipe := session.registry.recipe(_selected_recipe_id)
+	if recipe.is_empty() or not _grid_matches_recipe(recipe):
+		crafting_message.text = "The staged grid does not match a recipe."
+		_refresh_crafting_panel()
+		return
+	var recipe_station := str(recipe.get("station", ""))
+	var station_id := "" if recipe_station == "hand" else _crafting_station_id
+	var result := session.try_craft(_selected_recipe_id, recipe_station, station_id)
 	crafting_message.text = "%s crafted." % session.registry.display_name(_selected_recipe_id) if result.get("ok", false) else _craft_reason_text(str(result.get("reason", "CRAFT_FAILED")), str(result.get("item_id", "")))
+	if result.get("ok", false) and not _fill_grid_from_recipe(recipe):
+		_clear_crafting_grid(false, false)
 	_refresh_crafting_panel()
+
+
+func _available_crafting_recipes() -> Array[Dictionary]:
+	var recipes: Array[Dictionary] = session.recipes_for(_crafting_station_type)
+	if _crafting_station_type == "workbench":
+		recipes.append_array(session.recipes_for("hand"))
+	recipes.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return session.registry.display_name(str(a.id)) < session.registry.display_name(str(b.id)))
+	return recipes
+
+
+func _recipe_status(recipe: Dictionary) -> Dictionary:
+	if recipe.is_empty():
+		return {"ok": false, "reason": "UNKNOWN_RECIPE"}
+	var recipe_station := str(recipe.get("station", ""))
+	var station_id := "" if recipe_station == "hand" else _crafting_station_id
+	return session.recipe_status(str(recipe.id), recipe_station, station_id)
+
+
+func _ensure_crafting_grid_capacity(capacity: int) -> void:
+	if _craft_grid_items.size() == capacity:
+		return
+	_craft_grid_items.clear()
+	for _index in range(capacity):
+		_craft_grid_items.append("")
+
+
+func _refresh_crafting_inventory() -> void:
+	var snapshot := session.inventory_snapshot()
+	var slots: Array = snapshot.get("slots", [])
+	for index in range(crafting_inventory_slots.size()):
+		var slot: Dictionary = slots[index] if index < slots.size() else {"item_id": "", "count": 0}
+		var item_id := str(slot.get("item_id", ""))
+		var count := int(slot.get("count", 0))
+		var marker := "▶ " if item_id == _crafting_selected_inventory_item and not item_id.is_empty() else ""
+		crafting_inventory_slots[index].text = "%s%d\n%s" % [marker, index + 1, "Empty" if item_id.is_empty() else "%s ×%d" % [session.registry.display_name(item_id), count]]
+		crafting_inventory_slots[index].disabled = item_id.is_empty()
+		crafting_inventory_slots[index].configure_source("inventory", index, item_id)
+
+
+func _select_crafting_inventory_slot(index: int) -> void:
+	if index < 0 or index >= session.inventory.slots.size():
+		return
+	var item_id := str(session.inventory.slots[index].get("item_id", ""))
+	if item_id.is_empty():
+		return
+	_crafting_selected_inventory_item = item_id
+	crafting_message.text = "%s selected. Choose a crafting-grid cell." % session.registry.display_name(item_id)
+	_refresh_crafting_panel()
+
+
+func _on_crafting_grid_slot_pressed(index: int) -> void:
+	if not _crafting_selected_inventory_item.is_empty():
+		_stage_item_in_grid(index, _crafting_selected_inventory_item)
+	else:
+		_clear_crafting_grid_slot(index)
+
+
+func _on_crafting_item_dropped(target_kind: String, target_index: int, payload: Dictionary) -> void:
+	var source_kind := str(payload.get("source_kind", ""))
+	var source_index := int(payload.get("source_index", -1))
+	var item_id := str(payload.get("item_id", ""))
+	if target_kind == "grid":
+		if source_kind == "grid" and source_index >= 0 and source_index < _craft_grid_items.size():
+			var held := _craft_grid_items[target_index]
+			_craft_grid_items[target_index] = _craft_grid_items[source_index]
+			_craft_grid_items[source_index] = held
+			_after_manual_grid_change()
+		elif source_kind == "inventory":
+			_stage_item_in_grid(target_index, item_id)
+	elif target_kind == "inventory":
+		if source_kind == "grid":
+			_clear_crafting_grid_slot(source_index)
+		elif source_kind == "inventory" and source_index != target_index:
+			var result := session.inventory.swap_slots(source_index, target_index)
+			crafting_message.text = "Inventory slots rearranged." if result.get("ok", false) else "Inventory move failed."
+			_refresh_crafting_panel()
+
+
+func _stage_item_in_grid(index: int, item_id: String) -> void:
+	if index < 0 or index >= _craft_grid_items.size() or item_id.is_empty():
+		return
+	var candidate := _craft_grid_items.duplicate()
+	candidate[index] = item_id
+	var candidate_counts := _grid_counts(candidate)
+	if int(candidate_counts.get(item_id, 0)) > session.inventory.count(item_id):
+		crafting_message.text = "No additional %s is available." % session.registry.display_name(item_id)
+		return
+	_craft_grid_items[index] = item_id
+	_crafting_selected_inventory_item = ""
+	_after_manual_grid_change()
+
+
+func _clear_crafting_grid_slot(index: int) -> void:
+	if index < 0 or index >= _craft_grid_items.size():
+		return
+	_craft_grid_items[index] = ""
+	_after_manual_grid_change()
+
+
+func _clear_crafting_grid(refresh: bool = true, announce: bool = true) -> void:
+	for index in range(_craft_grid_items.size()):
+		_craft_grid_items[index] = ""
+	_selected_recipe_id = ""
+	_crafting_selected_inventory_item = ""
+	if announce:
+		crafting_message.text = "Crafting grid cleared."
+	if refresh:
+		_refresh_crafting_panel()
+
+
+func _after_manual_grid_change() -> void:
+	_selected_recipe_id = ""
+	for recipe in _available_crafting_recipes():
+		if _grid_matches_recipe(recipe):
+			_selected_recipe_id = str(recipe.id)
+			break
+	crafting_message.text = "Recipe recognized: %s." % session.registry.display_name(_selected_recipe_id) if not _selected_recipe_id.is_empty() else "Arrange ingredients or select a recipe."
+	_refresh_crafting_panel()
+
+
+func _fill_grid_from_recipe(recipe: Dictionary) -> bool:
+	if recipe.is_empty():
+		return false
+	for item_id: String in recipe.inputs:
+		if session.inventory.count(item_id) < int(recipe.inputs[item_id]):
+			return false
+	var input_cells: Array[String] = []
+	var input_ids: Array = recipe.inputs.keys()
+	if str(recipe.get("station", "")) == "furnace":
+		input_ids.sort_custom(func(a: Variant, b: Variant) -> bool: return str(a) != "coal" and str(b) == "coal")
+	for raw_item_id in input_ids:
+		var item_id := str(raw_item_id)
+		for _count in range(int(recipe.inputs[item_id])):
+			input_cells.append(item_id)
+	if input_cells.size() > _craft_grid_items.size():
+		return false
+	for index in range(_craft_grid_items.size()):
+		_craft_grid_items[index] = input_cells[index] if index < input_cells.size() else ""
+	return true
+
+
+func _grid_matches_recipe(recipe: Dictionary) -> bool:
+	if recipe.is_empty():
+		return false
+	var staged := _grid_counts(_craft_grid_items)
+	var inputs: Dictionary = recipe.get("inputs", {})
+	if staged.size() != inputs.size():
+		return false
+	for item_id: String in inputs:
+		if int(staged.get(item_id, 0)) != int(inputs[item_id]):
+			return false
+	return true
+
+
+func _grid_counts(items: Array) -> Dictionary:
+	var counts := {}
+	for value in items:
+		var item_id := str(value)
+		if not item_id.is_empty():
+			counts[item_id] = int(counts.get(item_id, 0)) + 1
+	return counts
+
+
+func _recipe_search_text(recipe: Dictionary) -> String:
+	var terms := session.registry.display_name(str(recipe.id))
+	for item_id: String in recipe.inputs:
+		terms += " " + session.registry.display_name(item_id)
+	for item_id: String in recipe.outputs:
+		terms += " " + session.registry.display_name(item_id)
+	return terms.to_lower()
+
+
+func _on_crafting_recipe_search_changed(_query: String) -> void:
+	_refresh_crafting_panel()
+
+
+func _on_crafting_recipe_search_submitted(_query: String) -> void:
+	var query := crafting_recipe_search.text.strip_edges().to_lower()
+	for recipe in _available_crafting_recipes():
+		if query.is_empty() or _recipe_search_text(recipe).contains(query):
+			_select_crafting_recipe(str(recipe.id))
+			return
+	crafting_message.text = "No matching recipe."
+
+
+func _add_recipe_card(recipe: Dictionary, status: Dictionary, selected: bool) -> void:
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("152732") if selected else Color("101a23"), Color("78cbe0") if selected else Color("344c5a"), 7, 8))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	card.add_child(row)
+	var thumbnail := PanelContainer.new()
+	thumbnail.custom_minimum_size = Vector2(58, 58)
+	thumbnail.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("233d4a"), Color("6aaac0"), 6, 4))
+	var thumbnail_label := Label.new()
+	thumbnail_label.text = session.registry.display_name(str(recipe.id)).left(2).to_upper()
+	thumbnail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	thumbnail_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	thumbnail_label.add_theme_font_size_override("font_size", 18)
+	thumbnail.add_child(thumbnail_label)
+	row.add_child(thumbnail)
+	var selected_marker := "▶ " if selected else ""
+	var button := _button(selected_marker + _recipe_button_text(recipe, status), _select_crafting_recipe.bind(str(recipe.id)), Vector2(250, 76))
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	button.clip_text = true
+	button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	button.tooltip_text = "Load this recipe into the grid when ingredients are available"
+	row.add_child(button)
+	crafting_recipe_list.add_child(card)
 
 
 func _recipe_button_text(recipe: Dictionary, status: Dictionary) -> String:
@@ -905,7 +1218,7 @@ func _recipe_button_text(recipe: Dictionary, status: Dictionary) -> String:
 	for item_id: String in recipe.outputs:
 		outputs.append("%d %s" % [int(recipe.outputs[item_id]), session.registry.display_name(item_id)])
 	var suffix := "READY" if status.get("ok", false) else _craft_reason_text(str(status.get("reason", "UNAVAILABLE")), str(status.get("item_id", ""))).to_upper()
-	return "%s\n%s  →  %s   ·   %s" % [session.registry.display_name(str(recipe.id)), " + ".join(inputs), " + ".join(outputs), suffix]
+	return "%s\n%s  →  %s\n%s" % [session.registry.display_name(str(recipe.id)), " + ".join(inputs), " + ".join(outputs), suffix]
 
 
 func _craft_reason_text(reason: String, item_id: String = "") -> String:
@@ -1011,6 +1324,8 @@ func _refresh_settings_controls() -> void:
 	window_mode_option.select(1 if settings.window_mode == "fullscreen" else 0)
 	var resolution_index := SettingsStore.RESOLUTION_OPTIONS.find(settings.resolution)
 	resolution_option.select(maxi(0, resolution_index))
+	msaa_option.select(settings.msaa_3d)
+	vsync_check.button_pressed = settings.vsync_enabled
 	_refresh_display_mode_controls(window_mode_option.selected)
 	_on_sensitivity_value_changed(sensitivity_slider.value)
 	_on_volume_value_changed(volume_slider.value)
@@ -1058,6 +1373,19 @@ func _save_input_audio() -> void:
 	if session != null:
 		session.apply_input_settings(settings)
 	settings_message.text = "Input and audio settings saved." if result.get("ok", false) else "Settings failed: %s" % result.get("reason", "UNKNOWN")
+
+
+func _save_graphics() -> void:
+	var result := settings.set_graphics_preferences(msaa_option.selected, vsync_check.button_pressed)
+	if result.get("ok", false):
+		_apply_runtime_graphics()
+		settings_message.text = "Graphics quality saved and applied."
+	else:
+		settings_message.text = "Graphics settings failed: %s" % result.get("reason", "UNKNOWN")
+
+
+func _apply_runtime_graphics() -> void:
+	get_viewport().msaa_3d = settings.msaa_3d
 
 
 func _preview_display_changes() -> void:

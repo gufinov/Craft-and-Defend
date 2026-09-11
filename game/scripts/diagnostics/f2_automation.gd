@@ -118,8 +118,12 @@ func _test_progression() -> void:
 	interaction.station_raycast = original_station_raycast
 	app._show_workstation(bench_id, "workbench")
 	var bench_modal := app.state == app.AppState.CRAFTING and app._crafting_station_type == "workbench" and app.crafting_grid.columns == 3 and app.crafting_grid.get_child_count() == 9
+	var bench_recipe_ids: Array[String] = []
+	for recipe in app._available_crafting_recipes():
+		bench_recipe_ids.append(str(recipe.id))
+	var bench_has_basic_and_advanced := ["planks", "sticks", "workbench", "wood_pick", "stone_pick", "furnace", "iron_pick", "castle_stone"].all(func(recipe_id: String) -> bool: return recipe_id in bench_recipe_ids)
 	app._close_crafting()
-	_record("T32_CRAFTING_ENTRY", secondary_result.get("reason") == "OPEN_STATION" and shift_result.get("reason") == "SECONDARY_REQUIRED" and inventory_before_secondary == inventory.snapshot() and bench_modal, "right-click opens a targeted workbench without placing; Shift cannot bypass the station entry rule; the advanced modal exposes a 3×3 recipe grid", {"secondary": secondary_result, "shift": shift_result, "modal": bench_modal})
+	_record("T32_CRAFTING_ENTRY", secondary_result.get("reason") == "OPEN_STATION" and shift_result.get("reason") == "SECONDARY_REQUIRED" and inventory_before_secondary == inventory.snapshot() and bench_modal and bench_has_basic_and_advanced, "right-click opens a targeted workbench without placing; Shift cannot bypass the station entry rule; the 3×3 modal includes basic and advanced recipes", {"secondary": secondary_result, "shift": shift_result, "modal": bench_modal, "recipes": bench_recipe_ids})
 	_require_ok(app.session.try_craft("wood_pick", "workbench", bench_id), "T19 wood pick")
 	_require_ok(app.session.try_craft("sticks", "hand"), "T19 second sticks")
 	_select_item("wood_pick")

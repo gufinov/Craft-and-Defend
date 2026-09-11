@@ -52,7 +52,7 @@ var _station_visuals: Dictionary = {}
 var _environment: Environment
 var _sun: DirectionalLight3D
 var _sun_visual: MeshInstance3D
-var _last_clock_second := -1
+var _last_visual_minute := -1
 
 
 func initialize(session_data: Dictionary) -> Dictionary:
@@ -81,6 +81,13 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	add_child(world_environment)
 	_sun = DirectionalLight3D.new()
 	_sun.shadow_enabled = true
+	_sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	_sun.directional_shadow_blend_splits = true
+	_sun.directional_shadow_max_distance = 48.0
+	_sun.directional_shadow_fade_start = 0.9
+	_sun.shadow_bias = 0.08
+	_sun.shadow_normal_bias = 1.0
+	_sun.shadow_blur = 1.15
 	add_child(_sun)
 	_create_sun_visual()
 	clock.apply_visuals(_environment, _sun)
@@ -128,10 +135,10 @@ func _process(delta: float) -> void:
 		var clock_advanced := clock.advance(delta, simulation_paused)
 		_update_sun_visual()
 		if clock_advanced:
-			clock.apply_visuals(_environment, _sun)
-			var clock_second := floori(clock.phase * clock.day_length_seconds)
-			if clock_second != _last_clock_second:
-				_last_clock_second = clock_second
+			var visual_minute := (clock.day_index - 1) * DayNightClock.MINUTES_PER_DAY + clock.current_minutes()
+			if visual_minute != _last_visual_minute:
+				_last_visual_minute = visual_minute
+				clock.apply_visuals(_environment, _sun)
 				_emit_hud()
 
 
@@ -149,7 +156,7 @@ func apply_world_settings(time_hhmm: String, cycle_enabled: bool) -> Dictionary:
 	clock.set_cycle_enabled(cycle_enabled)
 	clock.apply_visuals(_environment, _sun)
 	_update_sun_visual()
-	_last_clock_second = -1
+	_last_visual_minute = (clock.day_index - 1) * DayNightClock.MINUTES_PER_DAY + clock.current_minutes()
 	_emit_hud()
 	return {
 		"ok": true,

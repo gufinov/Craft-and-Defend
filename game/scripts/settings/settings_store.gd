@@ -8,6 +8,8 @@ const DEFAULT_MOUSE_SENSITIVITY := 0.0025
 const DEFAULT_MASTER_VOLUME := 1.0
 const DEFAULT_WINDOW_MODE := "windowed"
 const DEFAULT_RESOLUTION := Vector2i(1280, 720)
+const DEFAULT_MSAA_3D := 2
+const DEFAULT_VSYNC_ENABLED := true
 
 const BINDING_ACTIONS: Array[String] = [
 	"move_forward", "move_backward", "strafe_left", "strafe_right",
@@ -80,6 +82,8 @@ var invert_y := false
 var master_volume := DEFAULT_MASTER_VOLUME
 var window_mode := DEFAULT_WINDOW_MODE
 var resolution := DEFAULT_RESOLUTION
+var msaa_3d := DEFAULT_MSAA_3D
+var vsync_enabled := DEFAULT_VSYNC_ENABLED
 
 
 func _init(data_root: String) -> void:
@@ -107,6 +111,8 @@ func load_and_apply() -> Dictionary:
 		var candidate_resolution := Vector2i(width, height)
 		if RESOLUTION_OPTIONS.has(candidate_resolution):
 			resolution = candidate_resolution
+		msaa_3d = clampi(int(config.get_value("graphics", "msaa_3d", DEFAULT_MSAA_3D)), 0, 3)
+		vsync_enabled = bool(config.get_value("graphics", "vsync_enabled", DEFAULT_VSYNC_ENABLED))
 		if window_mode not in ["windowed", "fullscreen"]:
 			window_mode = DEFAULT_WINDOW_MODE
 		if not _bindings_are_safe():
@@ -205,6 +211,22 @@ func set_input_audio_preferences(sensitivity: float, inverted: bool, volume: flo
 		_apply_non_display_settings()
 		return {"ok": false, "reason": "SAVE_FAILED", "error": save_error}
 	return {"ok": true, "reason": "OK"}
+
+
+func set_graphics_preferences(candidate_msaa_3d: int, candidate_vsync_enabled: bool) -> Dictionary:
+	if candidate_msaa_3d < 0 or candidate_msaa_3d > 3:
+		return {"ok": false, "reason": "INVALID_MSAA"}
+	var previous := {"msaa_3d": msaa_3d, "vsync_enabled": vsync_enabled}
+	msaa_3d = candidate_msaa_3d
+	vsync_enabled = candidate_vsync_enabled
+	_apply_non_display_settings()
+	var save_error := _save()
+	if save_error != OK:
+		msaa_3d = int(previous.msaa_3d)
+		vsync_enabled = bool(previous.vsync_enabled)
+		_apply_non_display_settings()
+		return {"ok": false, "reason": "SAVE_FAILED", "error": save_error}
+	return {"ok": true, "reason": "OK", "msaa_3d": msaa_3d, "vsync_enabled": vsync_enabled}
 
 
 func begin_display_preview(candidate_mode: String, candidate_resolution: Vector2i) -> Dictionary:
@@ -367,6 +389,8 @@ func _apply_non_display_settings() -> void:
 	if AudioServer.get_bus_count() > 0:
 		AudioServer.set_bus_mute(0, master_volume <= 0.0)
 		AudioServer.set_bus_volume_db(0, linear_to_db(maxf(master_volume, 0.0001)))
+	if not DisplayServer.get_name().contains("headless"):
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync_enabled else DisplayServer.VSYNC_DISABLED)
 
 
 func _apply_display(mode: String, target_resolution: Vector2i) -> void:
@@ -410,4 +434,6 @@ func _save() -> Error:
 	config.set_value("display", "window_mode", window_mode)
 	config.set_value("display", "width", resolution.x)
 	config.set_value("display", "height", resolution.y)
+	config.set_value("graphics", "msaa_3d", msaa_3d)
+	config.set_value("graphics", "vsync_enabled", vsync_enabled)
 	return config.save(_settings_path)

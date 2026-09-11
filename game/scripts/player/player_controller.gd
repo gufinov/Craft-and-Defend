@@ -41,6 +41,7 @@ func _ready() -> void:
 
 func activate(capture_pointer: bool = true) -> void:
 	active = true
+	reset_physics_interpolation()
 	set_physics_process(true)
 	if capture_pointer:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -123,6 +124,7 @@ func restore(data: Dictionary) -> bool:
 	look_pitch = clampf(float(data.get("pitch", 0.0)), -1.5, 1.5)
 	if camera != null:
 		camera.rotation.x = look_pitch
+	reset_physics_interpolation()
 	return true
 
 

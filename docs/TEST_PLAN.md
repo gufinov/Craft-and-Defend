@@ -41,9 +41,11 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T29 | F4 | Measure frame times, edit latency, memory, save size/latency in fixed scenario; record hardware/build/renderer/resolution |
 | T30 | F4 | Fresh portable folder launch with editor closed runs full Foundation loop; README run/save-location instructions accurate |
 | T31 | F5 | Tab opens inventory only; B opens/closes 2×2 hand crafting; both pause and block world mutations; B persists/rebinds safely |
-| T32 | F5 | Right-clicked workbench opens 3×3 station modal without placing; Shift cannot bypass; non-station right-click still places |
+| T32 | F5 | Right-clicked workbench opens 3×3 station modal without placing; Shift cannot bypass; non-station right-click still places; workbench recipe book contains both hand and advanced recipes |
 | T33 | F5 | Furnace owns ore+fuel processing modal; recipe results remain atomic and timed jobs complete exactly once |
 | T34 | F5 | Inventory and crafting presentations remain legible/keyboard-usable at 1280×720 and 3440×1440; labels do not imply unimplemented content |
+| T35 | F5 | 4× MSAA, VSync and physics interpolation default on; quality preferences persist; sunlight shadow transforms remain stable within a visual minute and use bounded blended splits |
+| T36 | F5 | Three-panel crafting shows inventory/grid/scrolling recipe book; inventory drag/click staging, recipe search+Enter autofill, manual recognition and atomic craft validation work |
 
 ## Performance evidence, not invented guarantees
 
