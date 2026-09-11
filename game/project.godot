@@ -1,4 +1,4 @@
-; Craft-and-Defend F2 inventory, progression and workstations
+; Craft-and-Defend F3 persistence hardening candidate
 config_version=5
 
 [application]

@@ -28,6 +28,11 @@ var loading_panel: Control
 var hud_layer: Control
 var continue_button: Button
 var start_button: Button
+var slot_option: OptionButton
+var slot_status_label: Label
+var loading_back_button: Button
+var loading_retry_button: Button
+var loading_return_button: Button
 var forward_binding_label: Label
 var keybind_message: Label
 var settings_message: Label
@@ -64,6 +69,7 @@ var _display_confirm_remaining := 0.0
 var _print_screen_pressed_msec := -PRINT_SCREEN_FOCUS_WINDOW_MSEC
 var _screenshot_focus_suspended := false
 var _screenshot_resume_generation := 0
+var _failed_save_quit_after := false
 
 
 func _ready() -> void:
@@ -92,6 +98,11 @@ func _ready() -> void:
 		var f2_automation := F2Automation.new()
 		add_child(f2_automation)
 		f2_automation.call_deferred("run", self, f2_mode)
+	var f3_mode := _argument_value("--f3-automation=")
+	if not f3_mode.is_empty():
+		var f3_automation := F3Automation.new()
+		add_child(f3_automation)
+		f3_automation.call_deferred("run", self, f3_mode)
 
 
 func _process(delta: float) -> void:
@@ -134,12 +145,25 @@ func _build_interface() -> void:
 func _build_main_menu(canvas: CanvasLayer) -> void:
 	menu_panel = _full_panel(Color("17222c"))
 	canvas.add_child(menu_panel)
-	var menu := _centered_box(menu_panel, Vector2(700, 500))
+	var menu := _centered_box(menu_panel, Vector2(700, 570))
 	var title := _title("CRAFT AND DEFEND", 34)
 	menu.add_child(title)
-	var subtitle := _centered_label("F2 inventory, progression & workstations · development build")
+	var subtitle := _centered_label("F3 persistence hardening · development build")
 	menu.add_child(subtitle)
 	menu.add_child(_spacer(12))
+	var slot_row := _settings_row("Save slot")
+	slot_option = OptionButton.new()
+	slot_option.custom_minimum_size = Vector2(260, 42)
+	for available_slot in SaveCoordinator.SLOT_IDS:
+		slot_option.add_item("Slot %s" % available_slot.to_upper())
+		slot_option.set_item_metadata(slot_option.item_count - 1, available_slot)
+	slot_option.item_selected.connect(_on_slot_selected)
+	slot_row.add_child(slot_option)
+	menu.add_child(slot_row)
+	slot_status_label = _centered_label("")
+	slot_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	slot_status_label.add_theme_color_override("font_color", Color("9fd8e8"))
+	menu.add_child(slot_status_label)
 	start_button = _button("Start", _on_start_pressed)
 	menu.add_child(start_button)
 	continue_button = _button("Continue", _on_continue_pressed)
@@ -162,6 +186,15 @@ func _build_loading(canvas: CanvasLayer) -> void:
 	status_label.custom_minimum_size = Vector2(600, 0)
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	loading_box.add_child(status_label)
+	loading_back_button = _button("Back to Main Menu", _show_main_menu)
+	loading_back_button.hide()
+	loading_box.add_child(loading_back_button)
+	loading_retry_button = _button("Retry Save", _retry_failed_save)
+	loading_retry_button.hide()
+	loading_box.add_child(loading_retry_button)
+	loading_return_button = _button("Return to Paused Game", _return_from_save_error)
+	loading_return_button.hide()
+	loading_box.add_child(loading_return_button)
 
 
 func _build_pause(canvas: CanvasLayer) -> void:
@@ -445,9 +478,38 @@ func _show_main_menu() -> void:
 	get_tree().paused = false
 	_hide_all_panels()
 	menu_panel.show()
-	continue_button.disabled = not saves.has_checkpoint()
-	continue_button.tooltip_text = "" if not continue_button.disabled else "No valid checkpoint yet"
+	_refresh_slot_ui()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _on_slot_selected(index: int) -> void:
+	if slot_option == null or index < 0 or index >= slot_option.item_count:
+		return
+	saves.select_slot(str(slot_option.get_item_metadata(index)))
+	_refresh_slot_ui()
+
+
+func _refresh_slot_ui() -> void:
+	if slot_option == null:
+		return
+	for index in range(slot_option.item_count):
+		if str(slot_option.get_item_metadata(index)) == saves.slot_id:
+			slot_option.select(index)
+			break
+	var slot_status := saves.checkpoint_status()
+	var label := "Slot %s" % saves.slot_id.to_upper()
+	start_button.text = "Start New — %s" % label
+	continue_button.text = "Continue — %s" % label
+	continue_button.disabled = not slot_status.get("ok", false)
+	if slot_status.get("ok", false):
+		slot_status_label.text = "%s · checkpoint %d ready" % [label, int(slot_status.get("revision", 0))]
+		continue_button.tooltip_text = "Resume the last complete checkpoint in %s" % label
+	else:
+		var reason := str(slot_status.get("reason", "NO_VALID_CHECKPOINT"))
+		slot_status_label.text = "%s · %s" % [label, _save_reason_text(reason)]
+		continue_button.tooltip_text = _save_reason_text(reason)
+	if saves.migration_report.get("migrated", false) and saves.slot_id == SaveCoordinator.DEFAULT_SLOT:
+		slot_status_label.text += " · previous default save copied safely"
 
 
 func _on_start_pressed() -> void:
@@ -464,6 +526,9 @@ func _open_session(continue_existing: bool) -> void:
 	state = AppState.LOADING
 	menu_panel.hide()
 	loading_panel.show()
+	loading_back_button.hide()
+	loading_retry_button.hide()
+	loading_return_button.hide()
 	status_label.text = "Opening checkpoint…" if continue_existing else "Creating working session…"
 	var open_result := saves.open_session(continue_existing)
 	if not open_result.get("ok", false):
@@ -884,7 +949,8 @@ func _save_then(quit_after: bool) -> void:
 	status_label.text = "Saving coherent terrain and inventory checkpoint…"
 	var result := await saves.save_session(session)
 	if not result.get("ok", false):
-		_show_error("Save failed: %s" % result.get("reason", "UNKNOWN"))
+		_failed_save_quit_after = quit_after
+		_show_error("Save failed: %s" % result.get("reason", "UNKNOWN"), true)
 		return
 	print("CHECKPOINT %s" % JSON.stringify(result))
 	session.queue_free()
@@ -895,13 +961,48 @@ func _save_then(quit_after: bool) -> void:
 		_show_main_menu()
 
 
-func _show_error(message: String) -> void:
+func _show_error(message: String, recoverable_session: bool = false) -> void:
 	state = AppState.ERROR
 	get_tree().paused = false
 	_hide_all_panels()
 	loading_panel.show()
-	status_label.text = message
+	status_label.text = _save_reason_text(message.trim_prefix("Save failed: "))
+	loading_back_button.visible = not recoverable_session
+	loading_retry_button.visible = recoverable_session
+	loading_return_button.visible = recoverable_session
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _retry_failed_save() -> void:
+	if session != null and state == AppState.ERROR:
+		_save_then(_failed_save_quit_after)
+
+
+func _return_from_save_error() -> void:
+	if session == null or state != AppState.ERROR:
+		return
+	loading_panel.hide()
+	loading_retry_button.hide()
+	loading_return_button.hide()
+	state = AppState.PAUSED
+	get_tree().paused = true
+	session.pause_game(true)
+	pause_panel.show()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _save_reason_text(reason: String) -> String:
+	match reason:
+		"NO_VALID_CHECKPOINT":
+			return "No complete checkpoint exists in this slot yet."
+		"UNSUPPORTED_SAVE_SCHEMA":
+			return "This slot was created by a newer or unsupported save format. It was not changed."
+		"MISSING_CONTENT_VERSION":
+			return "This slot needs content that is not available in this build. It was not changed."
+		"MALFORMED_POINTER", "MALFORMED_MANIFEST", "MALFORMED_GAMEPLAY":
+			return "This slot is malformed and was refused without replacing it."
+		_:
+			return reason.replace("_", " ").capitalize()
 
 
 func _set_status(message: String) -> void:

@@ -134,6 +134,18 @@ func detach_and_close_stream() -> void:
 		stream.database_path = ""
 
 
+func resume_streaming_after_failed_save() -> void:
+	if terrain == null:
+		return
+	if stream == null or stream.database_path.is_empty():
+		stream = VoxelStreamSQLite.new()
+		stream.database_path = working_database_path
+		stream.set_key_cache_enabled(true)
+	terrain.stream = stream
+	terrain.automatic_loading_enabled = true
+	set_process(true)
+
+
 func snapshot() -> Dictionary:
 	return {
 		"revision": revision,

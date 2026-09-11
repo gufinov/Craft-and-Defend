@@ -194,6 +194,15 @@ func freeze_for_save() -> void:
 		player.deactivate()
 
 
+func recover_from_failed_save() -> void:
+	if world != null:
+		world.resume_streaming_after_failed_save()
+	saving = false
+	simulation_paused = true
+	if player != null:
+		player.deactivate()
+
+
 func pause_game(paused: bool) -> void:
 	if player == null or saving:
 		return
