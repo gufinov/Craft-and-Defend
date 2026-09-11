@@ -50,6 +50,7 @@ var _pending_workstation_snapshot: Dictionary = {}
 var _station_visuals: Dictionary = {}
 var _environment: Environment
 var _sun: DirectionalLight3D
+var _sun_visual: MeshInstance3D
 var _last_clock_second := -1
 
 
@@ -80,7 +81,9 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	_sun = DirectionalLight3D.new()
 	_sun.shadow_enabled = true
 	add_child(_sun)
+	_create_sun_visual()
 	clock.apply_visuals(_environment, _sun)
+	_update_sun_visual()
 
 	player = PlayerController.new()
 	player.name = "Player"
@@ -120,17 +123,41 @@ func initialize(session_data: Dictionary) -> Dictionary:
 func _process(delta: float) -> void:
 	if workstations != null and not saving:
 		workstations.advance(delta, simulation_paused)
-	if clock != null and not saving and clock.advance(delta, simulation_paused):
-		clock.apply_visuals(_environment, _sun)
-		var clock_second := floori(clock.phase * clock.day_length_seconds)
-		if clock_second != _last_clock_second:
-			_last_clock_second = clock_second
-			_emit_hud()
+	if clock != null and not saving:
+		var clock_advanced := clock.advance(delta, simulation_paused)
+		_update_sun_visual()
+		if clock_advanced:
+			clock.apply_visuals(_environment, _sun)
+			var clock_second := floori(clock.phase * clock.day_length_seconds)
+			if clock_second != _last_clock_second:
+				_last_clock_second = clock_second
+				_emit_hud()
 
 
 func apply_input_settings(settings_store: SettingsStore) -> void:
 	if player != null:
 		player.configure_input(settings_store.mouse_sensitivity, settings_store.invert_y)
+
+
+func apply_world_settings(time_hhmm: String, cycle_enabled: bool) -> Dictionary:
+	if clock == null:
+		return {"ok": false, "reason": "NO_ACTIVE_WORLD"}
+	var time_result := clock.set_time_hhmm(time_hhmm)
+	if not time_result.get("ok", false):
+		return time_result
+	clock.set_cycle_enabled(cycle_enabled)
+	clock.apply_visuals(_environment, _sun)
+	_update_sun_visual()
+	_last_clock_second = -1
+	_emit_hud()
+	return {
+		"ok": true,
+		"reason": "OK",
+		"time": clock.time_input_text(),
+		"time_label": clock.time_label(),
+		"period": clock.period_label(),
+		"cycle_enabled": clock.cycle_enabled,
+	}
 
 
 func inventory_text() -> String:
@@ -249,7 +276,35 @@ func _emit_hud() -> void:
 		return
 	var selected := inventory.active_item_id()
 	var selected_text := "Empty" if selected.is_empty() else registry.display_name(selected)
-	hud_changed.emit("Slot %d: %s   |   %s %s   |   ESDF move · A sprint · Z crouch · Shift use · Tab inventory · Esc pause" % [inventory.selected_hotbar + 1, selected_text, clock.period_label(), clock.time_label()])
+	var cycle_text := "" if clock.cycle_enabled else " · cycle paused"
+	hud_changed.emit("Slot %d: %s   |   %s · %s%s   |   ESDF move · A sprint · Z crouch · Shift use · Tab inventory · Esc pause" % [inventory.selected_hotbar + 1, selected_text, clock.period_label(), clock.time_label(), cycle_text])
+
+
+func _create_sun_visual() -> void:
+	_sun_visual = MeshInstance3D.new()
+	_sun_visual.name = "VisibleSun"
+	var sphere := SphereMesh.new()
+	sphere.radius = 6.0
+	sphere.height = 12.0
+	sphere.radial_segments = 24
+	sphere.rings = 12
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = Color("fff2b0")
+	material.emission_enabled = true
+	material.emission = Color("ffd76a")
+	material.emission_energy_multiplier = 2.2
+	sphere.material = material
+	_sun_visual.mesh = sphere
+	_sun_visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_sun_visual)
+
+
+func _update_sun_visual() -> void:
+	if _sun_visual == null or player == null or clock == null:
+		return
+	_sun_visual.visible = clock.sun_is_visible()
+	_sun_visual.global_position = player.global_position + clock.sun_direction() * 180.0
 
 
 func _on_interaction_feedback(message: String) -> void:

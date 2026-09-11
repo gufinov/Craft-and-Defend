@@ -18,6 +18,8 @@ func run(application: CraftAndDefendApp, mode: String) -> void:
 			await _run_capture_phase1()
 		"capture-phase2":
 			await _run_capture_phase2()
+		"visual":
+			await _run_world_visual()
 		_:
 			failures.append("unknown mode " + mode)
 	_finish()
@@ -29,7 +31,8 @@ func _run_foundation_phase1() -> void:
 	if not await _wait_ready():
 		return
 	await _wait_cell(Vector3i(0, -1, 38))
-	var configured := is_equal_approx(app.session.clock.day_length_seconds, 1200.0) and absf(app.session.clock.phase - 0.25) < 0.002
+	var sunrise_phase := 8.0 / 24.0
+	var configured := is_equal_approx(app.session.clock.day_length_seconds, 1200.0) and absf(app.session.clock.phase - sunrise_phase) < 0.002 and app.session.clock.time_input_text() == "0800" and app.session.clock.period_label() == "Sunrise"
 	var initial_phase := app.session.clock.phase
 	app.session.clock.advance(120.0, false)
 	var playing_phase := app.session.clock.phase
@@ -41,8 +44,30 @@ func _run_foundation_phase1() -> void:
 	app._close_inventory()
 	_record("T27_SIMULATION_CLOCK", configured and is_equal_approx(playing_phase, initial_phase + 0.1) and is_equal_approx(explicit_pause_phase, playing_phase) and is_equal_approx(overlay_phase, playing_phase), "configured day phase advances only during unpaused simulation and freezes in overlays", {"initial": initial_phase, "playing": playing_phase, "paused": explicit_pause_phase, "overlay": overlay_phase, "day_length": app.session.clock.day_length_seconds})
 
-	var restored_night := app.session.clock.restore({"phase": 0.75, "day_index": 3})
+	app._pause_game()
+	app._show_settings()
+	if not app.world_settings_content.visible:
+		app._toggle_world_settings()
+	var phase_before_invalid := app.session.clock.phase
+	app.world_time_input.text = "2460"
+	app.world_cycle_check.button_pressed = false
+	app._apply_world_settings()
+	var invalid_unchanged := is_equal_approx(app.session.clock.phase, phase_before_invalid)
+	app.world_time_input.text = "2200"
+	app.world_cycle_check.button_pressed = false
+	app._apply_world_settings()
+	var frozen_phase := app.session.clock.phase
+	app.session.clock.advance(60.0, false)
+	var world_controls_applied := app.world_settings_content.visible and invalid_unchanged and app.session.clock.time_input_text() == "2200" and app.session.clock.period_label() == "Night" and not app.session.clock.cycle_enabled and is_equal_approx(app.session.clock.phase, frozen_phase)
+	app.world_cycle_check.button_pressed = true
+	app._apply_world_settings()
+	app._close_settings()
+	app._resume_game()
+	_record("T27_WORLD_CONTROLS", world_controls_applied and app.session.clock.cycle_enabled, "World Settings validates HHMM, applies time immediately and can pause/resume the per-slot cycle", {"time": app.session.clock.time_input_text(), "period": app.session.clock.period_label(), "cycle": app.session.clock.cycle_enabled, "invalid_unchanged": invalid_unchanged})
+
+	var restored_night := app.session.clock.restore({"phase": 22.0 / 24.0, "day_index": 3, "cycle_enabled": true})
 	app.session.clock.apply_visuals(app.session._environment, app.session._sun)
+	app.session._update_sun_visual()
 	app.session._emit_hud()
 	await _settle_frames(3)
 	var night_capture := await app.screenshots.capture_viewport(get_viewport())
@@ -73,6 +98,8 @@ func _run_foundation_phase1() -> void:
 	_record("T28_CAPTURE_BACKGROUND", not capture_path.is_empty() and capture_live and capture_image != null and capture_image.get_size() == Vector2i(get_viewport().get_visible_rect().size), "F2 writes the rendered game viewport while gameplay remains active", {"path": capture_path, "frames_before": frame_before, "frames_after": Engine.get_physics_frames(), "tree_paused": get_tree().paused, "session_paused": app.session.simulation_paused})
 
 	var metrics := await _measure_fixed_scenario()
+	app.session.clock.set_cycle_enabled(false)
+	app.session._emit_hud()
 	var save_result := await app.saves.save_session(app.session)
 	metrics["save_msec"] = save_result.get("save_msec", -1)
 	metrics["checkpoint_bytes"] = save_result.get("checkpoint_bytes", -1)
@@ -93,10 +120,14 @@ func _run_foundation_phase2() -> void:
 		return
 	var restored_phase := app.session.clock.phase
 	var no_offline_catchup := phase_before_open >= 0.0 and absf(restored_phase - phase_before_open) < 0.002
+	var restored_cycle_disabled := not app.session.clock.cycle_enabled
 	var before_resume := restored_phase
 	await _settle_frames(10)
+	var stayed_frozen := is_equal_approx(app.session.clock.phase, before_resume)
+	app.session.clock.set_cycle_enabled(true)
+	await _settle_frames(10)
 	var resumed := app.session.clock.phase > before_resume
-	_record("T27_CLOCK_RESTART", no_offline_catchup and resumed and app.session.clock.day_index == 3, "Continue restores the saved phase without wall-clock catch-up, then resumes advancing", {"saved": phase_before_open, "restored": restored_phase, "after_frames": app.session.clock.phase, "day": app.session.clock.day_index})
+	_record("T27_CLOCK_RESTART", no_offline_catchup and restored_cycle_disabled and stayed_frozen and resumed and app.session.clock.day_index == 3, "Continue restores phase and disabled-cycle state without wall-clock catch-up; re-enabling resumes advancement", {"saved": phase_before_open, "restored": restored_phase, "restored_cycle_disabled": restored_cycle_disabled, "stayed_frozen": stayed_frozen, "after_enable": app.session.clock.phase, "day": app.session.clock.day_index})
 	_record("T30_FOUNDATION_CONTINUE", app.session.world_ready and app.session.inventory != null and app.session.workstations != null and app.session.clock != null, "clean-process Continue restores the complete Foundation session", {"world_ready": app.session.world_ready, "slot": app.saves.slot_id, "clock": app.session.clock.snapshot()})
 
 
@@ -141,6 +172,48 @@ func _run_capture_phase2() -> void:
 	_record("T28_CAPTURE_REBOUND_ACTION", not capture_path.is_empty() and app.state == app.AppState.PLAYING and not get_tree().paused and not app.session.simulation_paused, "the persisted replacement key captures without pausing", {"path": capture_path, "feedback": app.feedback_label.text})
 	var reset := app.settings.reset_action("capture_screenshot")
 	_record("T28_CAPTURE_RESET", reset.get("ok", false) and app.settings.get_keycode("capture_screenshot") == KEY_F2, "per-action Reset restores F2", reset)
+
+
+func _run_world_visual() -> void:
+	get_window().content_scale_size = Vector2i(1280, 720)
+	get_window().size = Vector2i(1280, 720)
+	await _settle_frames(5)
+	app._on_start_pressed()
+	if not await _wait_ready():
+		return
+	app._pause_game()
+	app._show_settings()
+	if not app.world_settings_content.visible:
+		app._toggle_world_settings()
+	await _settle_frames(5)
+	await _capture_named_frame("f4-world-settings-1280x720.png", "T27_WORLD_SETTINGS_VISUAL")
+	app._close_settings()
+	app._resume_game()
+	var visual_times := ["0800", "1400", "2000", "2200"]
+	for time_hhmm in visual_times:
+		var applied := app.session.apply_world_settings(time_hhmm, false)
+		if time_hhmm == "0800":
+			app.session.player.rotation.y = 0.0
+			app.session.player.camera.rotation.x = 0.0
+		elif time_hhmm == "1400":
+			app.session.player.rotation.y = 0.0
+			app.session.player.camera.rotation.x = 0.75
+		elif time_hhmm == "2000":
+			app.session.player.rotation.y = PI
+			app.session.player.camera.rotation.x = 0.0
+		else:
+			app.session.player.rotation.y = 0.0
+			app.session.player.camera.rotation.x = 0.0
+		await _settle_frames(5)
+		await _capture_named_frame("f4-world-%s.png" % time_hhmm, "T27_WORLD_%s_VISUAL" % time_hhmm, applied.get("ok", false))
+
+
+func _capture_named_frame(filename: String, test_id: String, prerequisite: Variant = true) -> void:
+	await RenderingServer.frame_post_draw
+	var image := get_viewport().get_texture().get_image()
+	var path := app.data_root.path_join(filename)
+	var error := image.save_png(path)
+	_record(test_id, bool(prerequisite) and error == OK and not image.is_empty() and image.get_size() == Vector2i(1280, 720), "rendered 1280×720 visual evidence", {"path": path, "error": error, "size": image.get_size()})
 
 
 func _wait_ready() -> bool:

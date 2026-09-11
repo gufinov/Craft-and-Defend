@@ -10,7 +10,7 @@
   "spawn_feet": [0.5, 2.0, 40.5],
   "interaction_reach": 5,
   "day_length_seconds": 1200,
-  "initial_day_phase": 0.25,
+  "initial_day_phase": 0.3333333333333333,
   "layers": [
     {"min_y": -16, "max_y_exclusive": -15, "block": 9},
     {"min_y": -15, "max_y_exclusive": -3, "block": 3},

@@ -37,6 +37,7 @@ var loading_return_button: Button
 var forward_binding_label: Label
 var keybind_message: Label
 var settings_message: Label
+var settings_scroll: ScrollContainer
 var status_label: Label
 var hud_label: Label
 var feedback_label: Label
@@ -61,6 +62,12 @@ var resolution_option: OptionButton
 var windowed_resolution_row: HBoxContainer
 var fullscreen_resolution_row: HBoxContainer
 var fullscreen_resolution_value_label: Label
+var world_settings_toggle: Button
+var world_settings_content: VBoxContainer
+var world_time_input: LineEdit
+var world_cycle_check: CheckButton
+var world_apply_button: Button
+var world_settings_message: Label
 var display_confirm_label: Label
 var binding_labels: Dictionary = {}
 var capture_action := ""
@@ -155,7 +162,7 @@ func _build_main_menu(canvas: CanvasLayer) -> void:
 	var menu := _centered_box(menu_panel, Vector2(700, 570))
 	var title := _title("CRAFT AND DEFEND", 34)
 	menu.add_child(title)
-	var subtitle := _centered_label("F3 persistence hardening · development build")
+	var subtitle := _centered_label("F4 foundation candidate · sunrise world controls")
 	menu.add_child(subtitle)
 	menu.add_child(_spacer(12))
 	var slot_row := _settings_row("Save slot")
@@ -304,8 +311,29 @@ func _build_keybinds(canvas: CanvasLayer) -> void:
 func _build_settings(canvas: CanvasLayer) -> void:
 	settings_panel = _full_panel(Color("17222c"))
 	canvas.add_child(settings_panel)
-	var box := _centered_box(settings_panel, Vector2(760, 590))
-	box.add_child(_title("SETTINGS", 28))
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(side, 24)
+	settings_panel.add_child(margin)
+	var center := CenterContainer.new()
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	margin.add_child(center)
+	var layout := VBoxContainer.new()
+	layout.custom_minimum_size = Vector2(820, 620)
+	layout.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	center.add_child(layout)
+	layout.add_child(_title("SETTINGS", 28))
+	settings_scroll = ScrollContainer.new()
+	settings_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	settings_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	settings_scroll.follow_focus = true
+	layout.add_child(settings_scroll)
+	var box := VBoxContainer.new()
+	box.custom_minimum_size = Vector2(780, 0)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	settings_scroll.add_child(box)
 
 	var input_title := _centered_label("INPUT AND AUDIO")
 	input_title.add_theme_font_size_override("font_size", 18)
@@ -365,11 +393,44 @@ func _build_settings(canvas: CanvasLayer) -> void:
 	fullscreen_resolution_row.add_child(fullscreen_resolution_value_label)
 	box.add_child(fullscreen_resolution_row)
 	box.add_child(_button("Preview Display Changes", _preview_display_changes, Vector2(360, 42)))
+
+	world_settings_toggle = _button("WORLD SETTINGS  ▸", _toggle_world_settings, Vector2(360, 42))
+	world_settings_toggle.tooltip_text = "Show or hide settings for the active save slot"
+	box.add_child(world_settings_toggle)
+	world_settings_content = VBoxContainer.new()
+	world_settings_content.add_theme_constant_override("separation", 8)
+	box.add_child(world_settings_content)
+	var time_row := _settings_row("Time (24-hour HHMM)")
+	world_time_input = LineEdit.new()
+	world_time_input.placeholder_text = "0800"
+	world_time_input.max_length = 5
+	world_time_input.custom_minimum_size = Vector2(350, 38)
+	world_time_input.tooltip_text = "Enter 0000 through 2359; 08:00 is also accepted"
+	time_row.add_child(world_time_input)
+	world_settings_content.add_child(time_row)
+	var cycle_row := _settings_row("Day/Night cycle")
+	world_cycle_check = CheckButton.new()
+	world_cycle_check.text = "Enabled"
+	world_cycle_check.tooltip_text = "When disabled, the current world time and lighting remain fixed"
+	cycle_row.add_child(world_cycle_check)
+	world_settings_content.add_child(cycle_row)
+	var world_help := _centered_label("Time and cycle state belong to the active save slot. Rain controls will appear when weather exists.")
+	world_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	world_help.add_theme_color_override("font_color", Color("9fd8e8"))
+	world_settings_content.add_child(world_help)
+	world_apply_button = _button("Apply World Settings", _apply_world_settings, Vector2(360, 42))
+	world_settings_content.add_child(world_apply_button)
+	world_settings_message = _centered_label("")
+	world_settings_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	world_settings_message.custom_minimum_size = Vector2(650, 24)
+	world_settings_content.add_child(world_settings_message)
+	world_settings_content.hide()
+
 	settings_message = _centered_label("")
 	settings_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	settings_message.custom_minimum_size = Vector2(650, 24)
 	box.add_child(settings_message)
-	box.add_child(_button("Back", _close_settings, Vector2(360, 42)))
+	layout.add_child(_button("Back", _close_settings, Vector2(360, 42)))
 	sensitivity_slider.value_changed.connect(_on_sensitivity_value_changed)
 	volume_slider.value_changed.connect(_on_volume_value_changed)
 	window_mode_option.item_selected.connect(_on_window_mode_selected)
@@ -767,6 +828,7 @@ func _show_settings() -> void:
 	menu_panel.hide()
 	pause_panel.hide()
 	_refresh_settings_controls()
+	_refresh_world_settings_controls()
 	settings_message.text = _display_mode_help(window_mode_option.selected)
 	settings_panel.show()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -790,6 +852,43 @@ func _refresh_settings_controls() -> void:
 	_refresh_display_mode_controls(window_mode_option.selected)
 	_on_sensitivity_value_changed(sensitivity_slider.value)
 	_on_volume_value_changed(volume_slider.value)
+
+
+func _toggle_world_settings() -> void:
+	world_settings_content.visible = not world_settings_content.visible
+	world_settings_toggle.text = "WORLD SETTINGS  ▾" if world_settings_content.visible else "WORLD SETTINGS  ▸"
+	if world_settings_content.visible:
+		_refresh_world_settings_controls()
+		world_time_input.grab_focus()
+		settings_scroll.call_deferred("ensure_control_visible", world_apply_button)
+
+
+func _refresh_world_settings_controls() -> void:
+	var active_world := session != null and session.clock != null
+	world_time_input.editable = active_world
+	world_cycle_check.disabled = not active_world
+	world_apply_button.disabled = not active_world
+	if active_world:
+		world_time_input.text = session.clock.time_input_text()
+		world_cycle_check.button_pressed = session.clock.cycle_enabled
+		world_settings_message.text = "Changes apply immediately to this world and persist with the next normal save."
+	else:
+		world_time_input.text = "0800"
+		world_cycle_check.button_pressed = true
+		world_settings_message.text = "Start or Continue a world, then open Settings from Pause to change its time."
+
+
+func _apply_world_settings() -> void:
+	if session == null:
+		world_settings_message.text = "No active world. Start or Continue, pause, then open Settings."
+		return
+	var result := session.apply_world_settings(world_time_input.text, world_cycle_check.button_pressed)
+	if not result.get("ok", false):
+		var reason := str(result.get("reason", "UNKNOWN"))
+		world_settings_message.text = "Not applied: enter a valid 24-hour time from 0000 to 2359." if reason in ["TIME_FORMAT", "TIME_RANGE"] else "World setting failed: %s" % reason.replace("_", " ").capitalize()
+		return
+	world_time_input.text = str(result.get("time", world_time_input.text))
+	world_settings_message.text = "%s applied; cycle %s. Save and Exit to keep it for this slot." % [str(result.get("time_label", "Time")), "enabled" if result.get("cycle_enabled", true) else "paused"]
 
 
 func _save_input_audio() -> void:
