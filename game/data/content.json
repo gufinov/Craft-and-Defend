@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "content_version": "foundation-1",
+  "status": "proposed_balance_fixture",
+  "inventory": {"slots": 27, "hotbar_slots": 9},
+  "blocks": [
+    {"voxel_id": 0, "id": "air", "drop": null, "min_pick_tier": 0, "protected": false, "solid": false},
+    {"voxel_id": 1, "id": "grass", "drop": "dirt", "min_pick_tier": 0, "protected": false, "solid": true},
+    {"voxel_id": 2, "id": "dirt", "drop": "dirt", "min_pick_tier": 0, "protected": false, "solid": true},
+    {"voxel_id": 3, "id": "stone", "drop": "stone", "min_pick_tier": 1, "protected": false, "solid": true},
+    {"voxel_id": 4, "id": "log", "drop": "log", "min_pick_tier": 0, "protected": false, "solid": true},
+    {"voxel_id": 5, "id": "planks", "drop": "planks", "min_pick_tier": 0, "protected": false, "solid": true},
+    {"voxel_id": 6, "id": "coal_ore", "drop": "coal", "min_pick_tier": 2, "protected": false, "solid": true},
+    {"voxel_id": 7, "id": "iron_ore", "drop": "iron_ore", "min_pick_tier": 2, "protected": false, "solid": true},
+    {"voxel_id": 8, "id": "castle_stone", "drop": "castle_stone", "min_pick_tier": 1, "protected": false, "solid": true},
+    {"voxel_id": 9, "id": "bedrock", "drop": null, "min_pick_tier": 0, "protected": true, "solid": true}
+  ],
+  "items": [
+    {"id": "dirt", "max_stack": 64, "places_block": 2},
+    {"id": "stone", "max_stack": 64, "places_block": 3},
+    {"id": "log", "max_stack": 64, "places_block": 4},
+    {"id": "planks", "max_stack": 64, "places_block": 5},
+    {"id": "castle_stone", "max_stack": 64, "places_block": 8},
+    {"id": "stick", "max_stack": 64},
+    {"id": "coal", "max_stack": 64},
+    {"id": "iron_ore", "max_stack": 64},
+    {"id": "iron_ingot", "max_stack": 64},
+    {"id": "wood_pick", "max_stack": 1, "pick_tier": 1},
+    {"id": "stone_pick", "max_stack": 1, "pick_tier": 2},
+    {"id": "iron_pick", "max_stack": 1, "pick_tier": 3},
+    {"id": "workbench", "max_stack": 1, "places_entity": "workbench"},
+    {"id": "furnace", "max_stack": 1, "places_entity": "furnace"}
+  ],
+  "entities": [
+    {"id": "workbench", "occupied_offsets": [[0, 0, 0]], "support_offsets": [[0, -1, 0]], "dismantle_policy": "idle_only_inventory_capacity_required"},
+    {"id": "furnace", "occupied_offsets": [[0, 0, 0]], "support_offsets": [[0, -1, 0]], "dismantle_policy": "idle_only_inventory_capacity_required"}
+  ],
+  "recipes": [
+    {"id": "planks", "station": "hand", "inputs": {"log": 1}, "outputs": {"planks": 4}, "duration_seconds": 0},
+    {"id": "sticks", "station": "hand", "inputs": {"planks": 2}, "outputs": {"stick": 4}, "duration_seconds": 0},
+    {"id": "workbench", "station": "hand", "inputs": {"planks": 4}, "outputs": {"workbench": 1}, "duration_seconds": 0},
+    {"id": "wood_pick", "station": "workbench", "inputs": {"planks": 3, "stick": 2}, "outputs": {"wood_pick": 1}, "duration_seconds": 0},
+    {"id": "stone_pick", "station": "workbench", "inputs": {"stone": 3, "stick": 2}, "outputs": {"stone_pick": 1}, "duration_seconds": 0},
+    {"id": "furnace", "station": "workbench", "inputs": {"stone": 8}, "outputs": {"furnace": 1}, "duration_seconds": 0},
+    {"id": "iron_ingot", "station": "furnace", "inputs": {"iron_ore": 1, "coal": 1}, "outputs": {"iron_ingot": 1}, "duration_seconds": 5},
+    {"id": "iron_pick", "station": "workbench", "inputs": {"iron_ingot": 3, "stick": 2}, "outputs": {"iron_pick": 1}, "duration_seconds": 0},
+    {"id": "castle_stone", "station": "workbench", "inputs": {"stone": 1}, "outputs": {"castle_stone": 1}, "duration_seconds": 0}
+  ],
+  "progression_goals": ["workbench", "wood_pick", "stone_pick", "furnace", "iron_ingot", "iron_pick"]
+}

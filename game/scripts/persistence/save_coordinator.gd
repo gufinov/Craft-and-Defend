@@ -201,6 +201,6 @@ func _default_snapshot() -> Dictionary:
 		"content_version": CONTENT_VERSION,
 		"world": {"revision": 0},
 		"inventory": {"dirt": 0, "revision": 0},
+		"workstations": {"stations": [], "jobs": {}, "next_instance": 1, "next_job": 1},
 		"player": {"position": [0.5, 2.0, 40.5], "yaw": 0.0, "pitch": 0.0},
 	}
-

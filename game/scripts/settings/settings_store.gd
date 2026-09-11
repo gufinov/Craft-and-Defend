@@ -157,6 +157,31 @@ func reset_defaults() -> Dictionary:
 	return {"ok": true, "reason": "OK"}
 
 
+func reset_action(action: String) -> Dictionary:
+	if not DEFAULT_BINDINGS.has(action):
+		return {"ok": false, "reason": "UNKNOWN_ACTION"}
+	var previous: Dictionary = _bindings[action].duplicate(true)
+	var candidate: Dictionary = DEFAULT_BINDINGS[action].duplicate(true)
+	for other_action in BINDING_ACTIONS:
+		if other_action == action or not _contexts_overlap(action, other_action):
+			continue
+		var other: Dictionary = _bindings[other_action]
+		if other.kind == candidate.kind and int(other.code) == int(candidate.code):
+			return {"ok": false, "reason": "CONFLICT", "conflict": other_action}
+	_bindings[action] = candidate
+	_apply_binding(action, candidate)
+	var save_error := _save()
+	if save_error != OK:
+		_bindings[action] = previous
+		_apply_binding(action, previous)
+		return {"ok": false, "reason": "SAVE_FAILED", "error": save_error}
+	return {"ok": true, "reason": "OK", "action": action}
+
+
+func is_default_binding(action: String) -> bool:
+	return _bindings.get(action, {}) == DEFAULT_BINDINGS.get(action, {})
+
+
 func set_input_audio_preferences(sensitivity: float, inverted: bool, volume: float) -> Dictionary:
 	if sensitivity < MIN_MOUSE_SENSITIVITY or sensitivity > MAX_MOUSE_SENSITIVITY:
 		return {"ok": false, "reason": "INVALID_SENSITIVITY"}

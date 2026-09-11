@@ -91,6 +91,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_report(interaction.break_from_view(camera.global_position, -camera.global_basis.z))
 	elif event.is_action_pressed("secondary") and interaction != null:
 		_report(interaction.place_from_view(camera.global_position, -camera.global_basis.z))
+	elif event.is_action_pressed("interact") and interaction != null:
+		_report(interaction.interact_from_view(camera.global_position, -camera.global_basis.z))
 
 
 func get_body_aabb() -> AABB:

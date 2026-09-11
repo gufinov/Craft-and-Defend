@@ -4,6 +4,11 @@ extends Node
 enum AppState { MAIN_MENU, LOADING, PLAYING, PAUSED, INVENTORY, SAVING, ERROR }
 
 const DISPLAY_CONFIRM_SECONDS := 10.0
+const BINDING_GROUPS: Array[Dictionary] = [
+	{"title": "MOVEMENT", "actions": ["move_forward", "move_backward", "strafe_left", "strafe_right", "sprint", "crouch", "jump"]},
+	{"title": "WORLD & MENUS", "actions": ["primary", "secondary", "interact", "inventory", "pause"]},
+	{"title": "HOTBAR", "actions": ["hotbar_1", "hotbar_2", "hotbar_3", "hotbar_4", "hotbar_5", "hotbar_6", "hotbar_7", "hotbar_8", "hotbar_9"]},
+]
 
 var state := AppState.MAIN_MENU
 var data_root := ""
@@ -28,6 +33,16 @@ var status_label: Label
 var hud_label: Label
 var feedback_label: Label
 var inventory_contents_label: Label
+var keybind_search: LineEdit
+var binding_rows: Dictionary = {}
+var binding_reset_buttons: Dictionary = {}
+var inventory_slot_buttons: Array[Button] = []
+var inventory_context_label: Label
+var inventory_message: Label
+var recipe_list: VBoxContainer
+var _inventory_station_id := ""
+var _inventory_station_type := "hand"
+var _inventory_move_source := -1
 var sensitivity_slider: HSlider
 var sensitivity_value_label: Label
 var invert_check: CheckButton
@@ -67,6 +82,11 @@ func _ready() -> void:
 		var f1_automation := F1Automation.new()
 		add_child(f1_automation)
 		f1_automation.call_deferred("run", self, f1_mode)
+	var f2_mode := _argument_value("--f2-automation=")
+	if not f2_mode.is_empty():
+		var f2_automation := F2Automation.new()
+		add_child(f2_automation)
+		f2_automation.call_deferred("run", self, f2_mode)
 
 
 func _process(delta: float) -> void:
@@ -112,7 +132,7 @@ func _build_main_menu(canvas: CanvasLayer) -> void:
 	var menu := _centered_box(menu_panel, Vector2(700, 500))
 	var title := _title("CRAFT AND DEFEND", 34)
 	menu.add_child(title)
-	var subtitle := _centered_label("F1 interaction hardening · development build")
+	var subtitle := _centered_label("F2 inventory, progression & workstations · development build")
 	menu.add_child(subtitle)
 	menu.add_child(_spacer(12))
 	start_button = _button("Start", _on_start_pressed)
@@ -152,58 +172,86 @@ func _build_pause(canvas: CanvasLayer) -> void:
 
 
 func _build_keybinds(canvas: CanvasLayer) -> void:
-	keybind_panel = _full_panel(Color("17222c"))
+	keybind_panel = _full_panel(Color("0d1821"))
 	canvas.add_child(keybind_panel)
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
-		margin.add_theme_constant_override(side, 28)
+		margin.add_theme_constant_override(side, 24)
 	keybind_panel.add_child(margin)
+	var center := CenterContainer.new()
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	margin.add_child(center)
 	var layout := VBoxContainer.new()
-	layout.add_theme_constant_override("separation", 8)
-	margin.add_child(layout)
-	layout.add_child(_title("KEYBINDS", 28))
-	layout.add_child(_centered_label("Physical-key ESDF defaults · select Change, then press a keyboard key or mouse button"))
-
+	layout.custom_minimum_size = Vector2(980, 650)
+	layout.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	center.add_child(layout)
+	var heading := HBoxContainer.new()
+	layout.add_child(heading)
+	var title := _title("KEYBINDS", 30)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.add_child(title)
+	heading.add_child(_button("Back", _close_keybinds, Vector2(150, 42)))
+	var help := _centered_label("Physical-key ESDF defaults · click Change, then press one keyboard key or mouse button")
+	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	layout.add_child(help)
+	keybind_search = LineEdit.new()
+	keybind_search.placeholder_text = "Find an action or assigned key…"
+	keybind_search.clear_button_enabled = true
+	keybind_search.text_changed.connect(_on_keybind_search_changed)
+	layout.add_child(keybind_search)
+	keybind_message = _centered_label("Escape always cancels capture and remains the recovery path. Conflicting assignments are rejected with an explanation.")
+	keybind_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	keybind_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	keybind_message.add_theme_color_override("font_color", Color("9fd8e8"))
+	layout.add_child(keybind_message)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
 	layout.add_child(scroll)
-	var center := CenterContainer.new()
-	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(center)
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 18)
-	grid.add_theme_constant_override("v_separation", 6)
-	center.add_child(grid)
-	for action in SettingsStore.BINDING_ACTIONS:
-		var action_label := Label.new()
-		action_label.text = settings.get_action_label(action)
-		action_label.custom_minimum_size = Vector2(210, 36)
-		action_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		grid.add_child(action_label)
-		var current_label := Label.new()
-		current_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		current_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		current_label.custom_minimum_size = Vector2(170, 36)
-		binding_labels[action] = current_label
-		grid.add_child(current_label)
-		var change_button := _button("Change", _capture_binding.bind(action), Vector2(150, 36))
-		change_button.tooltip_text = "Change %s" % settings.get_action_label(action)
-		grid.add_child(change_button)
-		if action == "move_forward":
-			forward_binding_label = current_label
-
-	keybind_message = _centered_label("Escape always cancels capture and remains the recovery path.")
-	keybind_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	keybind_message.custom_minimum_size = Vector2(700, 24)
-	layout.add_child(keybind_message)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list)
+	for group in BINDING_GROUPS:
+		var group_title := Label.new()
+		group_title.text = str(group.title)
+		group_title.add_theme_font_size_override("font_size", 15)
+		group_title.add_theme_color_override("font_color", Color("7fcde2"))
+		list.add_child(group_title)
+		for action in group.actions:
+			var card := PanelContainer.new()
+			card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101e28"), Color("2f4756"), 6, 8))
+			list.add_child(card)
+			var row := HBoxContainer.new()
+			card.add_child(row)
+			var action_label := Label.new()
+			action_label.text = settings.get_action_label(action)
+			action_label.custom_minimum_size = Vector2(270, 38)
+			action_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			action_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			row.add_child(action_label)
+			var current_label := Label.new()
+			current_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			current_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			current_label.custom_minimum_size = Vector2(160, 38)
+			binding_labels[action] = current_label
+			row.add_child(current_label)
+			var change_button := _button("Change", _capture_binding.bind(action), Vector2(130, 38))
+			change_button.tooltip_text = "Rebind %s" % settings.get_action_label(action)
+			row.add_child(change_button)
+			var reset_button := _button("Reset", _reset_binding.bind(action), Vector2(110, 38))
+			reset_button.tooltip_text = "Restore only %s to its ESDF default" % settings.get_action_label(action)
+			binding_reset_buttons[action] = reset_button
+			row.add_child(reset_button)
+			binding_rows[action] = card
+			if action == "move_forward":
+				forward_binding_label = current_label
 	var actions := HBoxContainer.new()
 	actions.alignment = BoxContainer.ALIGNMENT_CENTER
-	actions.add_theme_constant_override("separation", 12)
-	actions.add_child(_button("Reset Defaults", _reset_bindings, Vector2(220, 42)))
-	actions.add_child(_button("Back", _close_keybinds, Vector2(220, 42)))
+	actions.add_child(_button("Reset All Defaults", _reset_bindings, Vector2(240, 44)))
 	layout.add_child(actions)
 	_refresh_binding_labels()
 
@@ -283,17 +331,74 @@ func _build_settings(canvas: CanvasLayer) -> void:
 
 
 func _build_inventory(canvas: CanvasLayer) -> void:
-	inventory_panel = _full_panel(Color(0.04, 0.06, 0.08, 0.95))
+	inventory_panel = _full_panel(Color(0.035, 0.06, 0.078, 0.98))
 	canvas.add_child(inventory_panel)
-	var box := _centered_box(inventory_panel, Vector2(700, 460))
-	box.add_child(_title("INVENTORY", 30))
-	box.add_child(_centered_label("Foundation inventory overlay · world input is paused and blocked"))
-	inventory_contents_label = _centered_label("Dirt\n0 / 64")
-	inventory_contents_label.add_theme_font_size_override("font_size", 24)
-	inventory_contents_label.custom_minimum_size = Vector2(320, 140)
-	box.add_child(inventory_contents_label)
-	box.add_child(_centered_label("Slots, tools, and hotbar item selection arrive in F2."))
-	box.add_child(_button("Close Inventory", _close_inventory))
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(side, 28)
+	inventory_panel.add_child(margin)
+	var root := VBoxContainer.new()
+	margin.add_child(root)
+	var header := HBoxContainer.new()
+	root.add_child(header)
+	var title := _title("INVENTORY & CRAFTING", 30)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	header.add_child(_button("Back to Game", _close_inventory, Vector2(190, 44)))
+	inventory_context_label = Label.new()
+	inventory_context_label.add_theme_color_override("font_color", Color("85d5ea"))
+	root.add_child(inventory_context_label)
+	var columns := HBoxContainer.new()
+	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	columns.add_theme_constant_override("separation", 20)
+	root.add_child(columns)
+	var inventory_card := PanelContainer.new()
+	inventory_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inventory_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 18))
+	columns.add_child(inventory_card)
+	var inventory_column := VBoxContainer.new()
+	inventory_card.add_child(inventory_column)
+	var inventory_heading := Label.new()
+	inventory_heading.text = "27 SLOTS  ·  FIRST 9 ARE THE HOTBAR"
+	inventory_heading.add_theme_color_override("font_color", Color("9fd8e8"))
+	inventory_column.add_child(inventory_heading)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inventory_column.add_child(grid)
+	for index in range(F0Inventory.SLOT_COUNT):
+		var slot_button := _button("", _select_inventory_slot.bind(index), Vector2(180, 45))
+		slot_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		slot_button.tooltip_text = "Select hotbar slot %d" % (index + 1) if index < F0Inventory.HOTBAR_COUNT else "Storage slot %d" % (index + 1)
+		inventory_slot_buttons.append(slot_button)
+		grid.add_child(slot_button)
+	inventory_contents_label = Label.new()
+	inventory_contents_label.visible = false
+	inventory_column.add_child(inventory_contents_label)
+	var recipe_card := PanelContainer.new()
+	recipe_card.custom_minimum_size.x = 520
+	recipe_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 18))
+	columns.add_child(recipe_card)
+	var recipe_column := VBoxContainer.new()
+	recipe_card.add_child(recipe_column)
+	var recipe_heading := Label.new()
+	recipe_heading.text = "AVAILABLE RECIPES"
+	recipe_heading.add_theme_color_override("font_color", Color("9fd8e8"))
+	recipe_column.add_child(recipe_heading)
+	var recipe_scroll := ScrollContainer.new()
+	recipe_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	recipe_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	recipe_column.add_child(recipe_scroll)
+	recipe_list = VBoxContainer.new()
+	recipe_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	recipe_scroll.add_child(recipe_list)
+	inventory_message = Label.new()
+	inventory_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inventory_message.add_theme_color_override("font_color", Color("ffd488"))
+	recipe_column.add_child(inventory_message)
 
 
 func _build_hud(canvas: CanvasLayer) -> void:
@@ -366,6 +471,8 @@ func _open_session(continue_existing: bool) -> void:
 	session.status_changed.connect(_set_status)
 	session.hud_changed.connect(_set_hud)
 	session.feedback_changed.connect(_set_feedback)
+	session.inventory_changed.connect(_on_session_inventory_changed)
+	session.workstation_requested.connect(_show_workstation)
 	var initialize_result := session.initialize(open_result)
 	if not initialize_result.get("ok", false):
 		_show_error(initialize_result.get("reason", "SESSION_INITIALIZE_FAILED"))
@@ -400,16 +507,23 @@ func _resume_game() -> void:
 	state = AppState.PLAYING
 
 
-func _show_inventory() -> void:
+func _show_inventory(station_id: String = "", station_type: String = "hand") -> void:
 	if state != AppState.PLAYING or session == null:
 		return
+	_inventory_station_id = station_id
+	_inventory_station_type = station_type if station_type in ["workbench", "furnace"] else "hand"
+	_inventory_move_source = -1
 	state = AppState.INVENTORY
 	session.pause_game(true)
 	get_tree().paused = true
 	hud_layer.hide()
-	inventory_contents_label.text = session.inventory_text()
+	_refresh_inventory_panel()
 	inventory_panel.show()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _show_workstation(instance_id: String, station_type: String) -> void:
+	_show_inventory(instance_id, station_type)
 
 
 func _close_inventory() -> void:
@@ -420,12 +534,101 @@ func _close_inventory() -> void:
 	get_tree().paused = false
 	session.pause_game(false)
 	state = AppState.PLAYING
+	_inventory_station_id = ""
+	_inventory_station_type = "hand"
+	_inventory_move_source = -1
+
+
+func _on_session_inventory_changed(_snapshot: Dictionary) -> void:
+	if inventory_panel != null and inventory_panel.visible:
+		_refresh_inventory_panel()
+
+
+func _select_inventory_slot(index: int) -> void:
+	if session == null:
+		return
+	var slot: Dictionary = session.inventory.slots[index]
+	if _inventory_move_source < 0:
+		if index < F0Inventory.HOTBAR_COUNT:
+			session.select_hotbar(index)
+		if str(slot.get("item_id", "")).is_empty():
+			inventory_message.text = "Slot %d is empty." % (index + 1)
+		else:
+			_inventory_move_source = index
+			inventory_message.text = "%s selected. Choose another slot to move or swap it." % session.registry.display_name(str(slot.item_id))
+	else:
+		var source := _inventory_move_source
+		_inventory_move_source = -1
+		var result := session.inventory.swap_slots(source, index)
+		if index < F0Inventory.HOTBAR_COUNT:
+			session.select_hotbar(index)
+		inventory_message.text = "Slots %d and %d swapped." % [source + 1, index + 1] if result.get("ok", false) else "Move failed: %s" % result.get("reason", "UNKNOWN")
+	_refresh_inventory_panel()
+
+
+func _refresh_inventory_panel() -> void:
+	if session == null:
+		return
+	var snapshot := session.inventory_snapshot()
+	var slots: Array = snapshot.get("slots", [])
+	for index in range(inventory_slot_buttons.size()):
+		var slot: Dictionary = slots[index] if index < slots.size() else {"item_id": "", "count": 0}
+		var item_id := str(slot.get("item_id", ""))
+		var prefix := "%d  " % (index + 1) if index < F0Inventory.HOTBAR_COUNT else "%02d  " % (index + 1)
+		var marker := "↔ " if index == _inventory_move_source else ("▶ " if index == int(snapshot.get("selected_hotbar", 0)) and index < F0Inventory.HOTBAR_COUNT else "  ")
+		inventory_slot_buttons[index].text = marker + prefix + ("Empty" if item_id.is_empty() else "%s  ×%d" % [session.registry.display_name(item_id), int(slot.get("count", 0))])
+		inventory_slot_buttons[index].disabled = false
+	inventory_context_label.text = ("HAND CRAFTING  ·  Tab closes" if _inventory_station_type == "hand" else "%s  ·  Shift opens while targeted" % session.registry.display_name(_inventory_station_type).to_upper())
+	for child in recipe_list.get_children():
+		child.queue_free()
+	for recipe in session.recipes_for(_inventory_station_type):
+		var status := session.recipe_status(str(recipe.id), _inventory_station_type, _inventory_station_id)
+		var button := _button(_recipe_button_text(recipe, status), _craft_recipe.bind(str(recipe.id)), Vector2(460, 62))
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.disabled = not status.get("ok", false)
+		button.tooltip_text = "Ready" if status.get("ok", false) else _craft_reason_text(str(status.get("reason", "UNAVAILABLE")), str(status.get("item_id", "")))
+		recipe_list.add_child(button)
+
+
+func _craft_recipe(recipe_id: String) -> void:
+	if session == null:
+		return
+	var result := session.try_craft(recipe_id, _inventory_station_type, _inventory_station_id)
+	inventory_message.text = "%s crafted." % session.registry.display_name(recipe_id) if result.get("ok", false) else _craft_reason_text(str(result.get("reason", "CRAFT_FAILED")), str(result.get("item_id", "")))
+	_refresh_inventory_panel()
+
+
+func _recipe_button_text(recipe: Dictionary, status: Dictionary) -> String:
+	var inputs: PackedStringArray = PackedStringArray()
+	for item_id: String in recipe.inputs:
+		inputs.append("%d %s" % [int(recipe.inputs[item_id]), session.registry.display_name(item_id)])
+	var outputs: PackedStringArray = PackedStringArray()
+	for item_id: String in recipe.outputs:
+		outputs.append("%d %s" % [int(recipe.outputs[item_id]), session.registry.display_name(item_id)])
+	var suffix := "READY" if status.get("ok", false) else _craft_reason_text(str(status.get("reason", "UNAVAILABLE")), str(status.get("item_id", ""))).to_upper()
+	return "%s\n%s  →  %s   ·   %s" % [session.registry.display_name(str(recipe.id)), " + ".join(inputs), " + ".join(outputs), suffix]
+
+
+func _craft_reason_text(reason: String, item_id: String = "") -> String:
+	match reason:
+		"INSUFFICIENT_INPUT":
+			return "Missing %s" % (session.registry.display_name(item_id) if not item_id.is_empty() else "materials")
+		"INVENTORY_FULL":
+			return "No output room"
+		"WRONG_WORKSTATION":
+			return "Wrong workstation"
+		"STATION_BUSY":
+			return "Furnace is busy"
+		_:
+			return reason.replace("_", " ").capitalize()
 
 
 func _show_keybinds() -> void:
 	capture_action = ""
 	capture_forward = false
 	_overlay_return_state = state
+	if keybind_search != null:
+		keybind_search.clear()
 	keybind_message.text = "Escape always cancels capture and remains the recovery path."
 	_refresh_binding_labels()
 	menu_panel.hide()
@@ -457,9 +660,25 @@ func _reset_bindings() -> void:
 	_refresh_binding_labels()
 
 
+func _reset_binding(action: String) -> void:
+	var result := settings.reset_action(action)
+	keybind_message.text = "%s restored to %s." % [settings.get_action_label(action), settings.get_binding_label(action)] if result.get("ok", false) else _binding_error_text(result)
+	_refresh_binding_labels()
+
+
+func _on_keybind_search_changed(_query: String) -> void:
+	_refresh_binding_labels()
+
+
 func _refresh_binding_labels() -> void:
+	var query := "" if keybind_search == null else keybind_search.text.strip_edges().to_lower()
 	for action in binding_labels:
 		binding_labels[action].text = settings.get_binding_label(action)
+		if binding_reset_buttons.has(action):
+			binding_reset_buttons[action].disabled = settings.is_default_binding(action)
+		if binding_rows.has(action):
+			var searchable := (settings.get_action_label(action) + " " + settings.get_binding_label(action)).to_lower()
+			binding_rows[action].visible = query.is_empty() or searchable.contains(query)
 
 
 func _refresh_binding_label() -> void:
@@ -717,6 +936,7 @@ func _hide_all_panels() -> void:
 func _full_panel(color: Color) -> ColorRect:
 	var panel := ColorRect.new()
 	panel.color = color
+	panel.theme = FoundationTheme.create()
 	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	return panel

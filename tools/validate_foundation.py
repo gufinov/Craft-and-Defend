@@ -197,6 +197,9 @@ def validate_bundle(bundle):
 def validate_repo(root=ROOT):
     bundle = load_bundle(root)
     validate_bundle(bundle)
+    runtime_content = read_json(root / "game" / "data" / "content.json")
+    require(runtime_content == bundle["content"],
+            "runtime content registry differs from canonical contracts/content.json")
     versions = read_json(root / "tools/versions.json")
     require(versions["edition"] == "module" and versions["precision"] == "single", "unexpected engine edition/precision")
     assets = index(versions["assets"], "name", "release assets")
