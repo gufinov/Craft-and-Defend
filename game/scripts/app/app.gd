@@ -1301,7 +1301,7 @@ func _set_hud(text: String) -> void:
 func _refresh_hud() -> void:
 	if hud_label == null or settings == null or _hud_state_text.is_empty():
 		return
-	var movement := "%s%s%s%s" % [settings.get_binding_label("move_forward"), settings.get_binding_label("move_backward"), settings.get_binding_label("strafe_left"), settings.get_binding_label("strafe_right")]
+	var movement := "%s%s%s%s" % [settings.get_binding_label("move_forward"), settings.get_binding_label("strafe_left"), settings.get_binding_label("move_backward"), settings.get_binding_label("strafe_right")]
 	hud_label.text = "%s   |   %s move · %s sprint · %s crouch · %s use/place · %s build · %s inventory · %s pause · %s capture" % [
 		_hud_state_text,
 		movement,
