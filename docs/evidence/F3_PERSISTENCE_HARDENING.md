@@ -1,6 +1,6 @@
 # Evidence — F3 persistence hardening — 2026-09-11
 
-STATUS: PASS — implementation and exported regression gates complete; owner graphical playtest and promotion pending.
+STATUS: PASS — implementation, exported regression gates and owner graphical acceptance complete.
 
 DONE:
 
@@ -35,6 +35,7 @@ TEST:
 | Static | Foundation contracts and negative cases remain valid | validator PASS; 19/19 unittest PASS | PASS | commands below |
 | Visual | New menu, gameplay and pause render at 1280×720 | All three GPU PNG captures saved at expected size; menu shows slot selector/status with no clipping | PASS | `artifacts/f3-visual-20260911a/*.png`, `artifacts/f3-visual.log` |
 | Windows export | Matching custom release template builds exact committed game tree | Export PASS; manifest records source/game tree; all runtime gates ran with matching editor process count `0` | PASS | `builds/CraftAndDefend/build_manifest.json` |
+| Owner graphical acceptance | Independent slots and real Windows capture path behave correctly | Tony confirmed Slot A/B save-exit-Continue and successful Print Screen capture with Snipping Tool visible on 2026-09-11 | PASS | Owner report in implementation task |
 
 Commands:
 
@@ -48,15 +49,14 @@ Commands:
 
 LIMITATIONS/FAILURES:
 
-- Tony must retest the real Print Screen/Snipping Tool overlay; automation proves the intended focus-event sequence but cannot invoke the OS overlay.
-- Tony has not yet accepted the visible F3 slot/recovery experience.
+- Failure recovery is injection-tested; a real physical power-removal test was not performed.
 - Failure injection validates application boundaries, not sudden physical power removal, filesystem hardware guarantees or large-world performance.
 - The initial `dubious ownership` failure came from Tony's launcher process reading Git metadata owned by the isolated Codex sandbox account. Commit `a1172cb` makes the launcher and builder pass the exact resolved worktree as a command-scoped trust value; no global Git configuration or filesystem owner was changed.
 - Two orphaned headless Godot processes from an earlier parse-error run were identified by exact command line and terminated before editor-closed export validation.
 
 NEXT:
 
-Tony launches `D:\CODEX\Craft_and_Defend\worktrees\f3-persistence\START_GAME.cmd`, tests both slots, saves/restarts during one furnace job, and confirms Print Screen no longer exposes or sticks Pause. Fix any defect before promotion. Do not begin F4, merge, push or publish without explicit authority.
+Begin F4 from this accepted checkpoint in a new dependent worktree. Add the approved non-pausing, rebindable in-game screenshot action (default F2), then complete T27–T30. Do not merge, push or publish without separate authority.
 
 GIT/REPRODUCIBILITY:
 

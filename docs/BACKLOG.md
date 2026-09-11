@@ -35,11 +35,11 @@ Load the canonical registry; implement slots/stacks/hotbar as one inventory, rea
 
 Persist all Foundation state and settings. Exercise independent slots, checkpoint recovery, furnace job continuation and invalid/newer saves. Retain prior complete checkpoint on failure. Record storage/latency measurements and safe close semantics. Run T23–T26 plus T09–T12. Never add an untested migration to recover a sole user save.
 
-**Recorded candidate result:** T23–T26 and the F0–F2 exported regressions pass with the pinned editor closed. A/B slots are independent; five injected write/publication failures retain the previous checkpoint; malformed/newer/missing-content saves are refused unchanged; legacy `default` data is copied to Slot A with the source preserved; an in-progress furnace resumes with 3.0 seconds remaining and delivers exactly one output. The final provenance-matched export measured F3 checkpoints at 23,229–23,652 bytes and 45–66 ms. Tony must visually test both slots, save-error recovery and the repaired Print Screen/Snipping Tool path before promotion. Do not begin F4, merge, push or publish without explicit authority.
+**Recorded result:** T23–T26 and the F0–F2 exported regressions pass with the pinned editor closed. A/B slots are independent; five injected write/publication failures retain the previous checkpoint; malformed/newer/missing-content saves are refused unchanged; legacy `default` data is copied to Slot A with the source preserved; an in-progress furnace resumes with 3.0 seconds remaining and delivers exactly one output. The final provenance-matched export measured F3 checkpoints at 23,229–23,652 bytes and 45–66 ms. Tony confirmed independent Slot A/B save-exit-Continue cycles and the real Windows Print Screen/Snipping Tool path on 2026-09-11. F4 is authorized as the next isolated update; merge, push and publication still require separate authority.
 
 ## F4 — Foundation acceptance package
 
-Add basic day/night tied to simulation time; keep terrain readable at night. Review UI on 16:9 and ultrawide, confirm no input leaks. Produce a portable Windows folder and fresh-machine-style launch without editor dependence. Run T27–T30 and prior acceptance. Optional wall preview follows required checks only.
+Add basic day/night tied to simulation time; keep terrain readable at night. Review UI on 16:9 and ultrawide, confirm no input leaks. Add a globally persisted, rebindable in-game screenshot action (default F2) that writes a rendered gameplay frame in the background without pausing simulation. Produce a portable Windows folder and fresh-machine-style launch without editor dependence. Run T27–T30 and prior acceptance. Optional wall preview follows required checks only.
 
 ## P2 — later navigation spike brief
 
