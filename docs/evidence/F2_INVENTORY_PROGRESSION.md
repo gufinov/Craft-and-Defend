@@ -55,7 +55,7 @@ GIT/REPRODUCIBILITY:
 
 - Repo: `D:\CODEX\Craft_and_Defend\main`; clean canonical `main` and `origin/main` at `c085c013d39b2b64321ea6c5a696b96fe2efd45c` when the gate was recorded.
 - Worktree/branch: `D:\CODEX\Craft_and_Defend\worktrees\f2-inventory`; `feature/f2-inventory-progression`.
-- Verified package source commit: `89a03e842e6118a3bba62f7bcbbc4a9801b0fbef`; game tree `31c515e5ff8fdb532c6d78ce547bae74a4d04a40`. A later documentation-only evidence commit does not change that game tree.
+- Verified package source commit: `41d1e6cd2eb08e0032f02f45edb841db424344fd`; game tree `bd105da67bcafc489eb684ed2a6b3add7c0acba1`. The final evidence correction is docs-only and does not change that game tree.
 - Reference only: MinionClash worktree `D:\CODEX\MinionClash\worktrees\milestone-01-move-look-bind-place`, commit `8457e9e4f68d26f6f291eb5e1df9465d542991c0`; its pre-existing dirty state was preserved.
 - Platform: Microsoft Windows build `10.0.26200.9445`; AMD64 Family 25 Model 97; NVIDIA GeForce RTX 5090; owner display 3440×1440; OpenGL 3.3 Compatibility renderer. RAM was not available through the restricted diagnostic interface.
 - Engine/Voxel Tools: `4.6.stable.custom_build.89cea1439`; Voxel Tools `1.6.0 Module`, source commit `595f52ee4e23203a865eeb981f115909f7aa92f4`.
