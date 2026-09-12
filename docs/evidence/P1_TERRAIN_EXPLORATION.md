@@ -1,6 +1,6 @@
 # Evidence — P1 terrain and exploration — 2026-09-12
 
-STATUS: PARTIAL — implementation, matching export and automated/runtime gates pass; owner 3440×1440 terrain/pacing acceptance remains pending.
+STATUS: PASS — implementation, matching export and automated/runtime gates passed; Tony accepted the terrain after physical playtesting on 2026-09-12.
 
 DONE:
 
@@ -23,7 +23,7 @@ TEST:
 | T38 | Reproducible varied terrain/resources and safe clearing | Repeated generator matched; sampled surface -4..2; 16 tree roots; 702 coal and 237 iron samples; clearing and fixed fixtures passed | PASS | same log |
 | T39 | Exploration/return cue | At the test point HUD showed `HOME 45 m SW`; at spawn it showed `HOME CLEARING` | PASS | same log |
 | T40 | Coherent save/full restart/Continue | Terrain edit restored as air; player restored within 0.05 units; generator version/seed exactly restored | PASS | `artifacts/p1-export/phase1.log`, `phase2.log` |
-| T41 | Readable landscape and acceptable exploration pacing | Exported 1280×720 landscape rendered and was visually inspected; owner 3440×1440/pacing review not yet run | PARTIAL | `artifacts/p1-export-visual/p1-terrain.png`, `visual.log` |
+| T41 | Readable landscape and acceptable exploration pacing | Exported 1280×720 landscape rendered and was visually inspected; Tony reported the terrain works in physical testing | PASS | `artifacts/p1-export-visual/p1-terrain.png`, `visual.log`; owner report 2026-09-12 |
 | F0 regression | Menu, movement/collision, break/place/reject, rebind, unload/reload and Continue | Export phase1/phase2 all assertions PASS | PASS | `artifacts/export-regression/f0/phase1.log`, `phase2.log` |
 | F1 regression | Controls, UI isolation, focus/display, boundaries and atomic rejection | Editor phase1/phase2 PASS | PASS | `artifacts/regression/f1/phase1.log`, `phase2.log` |
 | F2 regression | Empty-inventory progression, crafting, stations and Continue | Editor and exported gate/Continue PASS | PASS | `artifacts/export-regression/f2/gate.log`, `continue.log` |
@@ -46,7 +46,6 @@ Commands:
 
 LIMITATIONS/FAILURES:
 
-- Owner ultrawide exploration, perceived terrain quality, tree/ore density and gather/return pacing are not automatable and remain pending.
 - The finite terrain is a bounded first P1 slice: no water, caves, biome system or procedural expansion.
 - Castle structural pieces were not guessed while tower-cap footprint, positional recipe, rotation/snapping and collapse decisions remain open.
 - The direct custom editor can crash while opening its default Godot user log in this restricted session; explicit `--log-file` is the proven test route.
@@ -54,7 +53,7 @@ LIMITATIONS/FAILURES:
 
 NEXT:
 
-Tony starts a new expendable slot from `D:\CODEX\Craft_and_Defend\worktrees\p1-terrain\START_GAME.cmd`, explores, gathers, returns, edits, saves and Continues at 3440×1440. Address owner findings before the P1 castle-structure slice or promotion.
+Terrain acceptance activates the isolated P1B castle-structure candidate. Preserve this P1A checkpoint as the rollback base; promotion remains a separate decision.
 
 GIT/REPRODUCIBILITY:
 

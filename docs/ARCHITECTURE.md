@@ -10,7 +10,7 @@ These are implementation contracts, not claims that modules already exist. Prefe
 | World adapter | VoxelTerrain, viewer, generator, block library, engine APIs | coordinates/query/edit → cell data + dirty regions | Prices, crafting, menu logic |
 | Placement/interaction | Bounds, reach, occupancy, six-face voxel support, entity-specific support, atomic edit commands | break/place requests → success or reason code | UI layout |
 | Inventory | Slots/stacks/equipment and resource transactions | transaction request → committed inventory revision | Direct terrain writes |
-| Crafting/workstations | Recipe checks, timers, jobs, station state | recipe + inventory + station → job/result | Direct file I/O |
+| Crafting/workstations | Recipe checks, timers, jobs, station and placed-structure state | recipe + inventory + placed entity → job/result | Direct file I/O |
 | Simulation clock | Day phase, cycle-enabled state and gameplay time | unpaused delta or validated world-setting command → time/lighting | Wall-clock catch-up |
 | Persistence | Slot identity, snapshot capture, terrain flush, metadata, recovery | save/load intents → completed snapshot or error | Inventing missing content |
 | Content registry | Stable blocks/items/recipes; validated lookup | JSON/resources → immutable definitions | Per-save state |
@@ -49,6 +49,10 @@ World Settings sends validated commands to `GameSession`, which delegates author
 Compatibility rendering remains the approved engine path. The viewport applies persisted MSAA while VSync is applied through DisplayServer; physics interpolation smooths fixed-step player/camera transforms and is reset after activation or restore. The visible sun can follow the player every rendered frame, but directional-light rotation and shadow-map inputs update only when the displayed game minute changes. Four blended shadow splits with a bounded near-field distance keep precision focused on the editable play area. These presentation controls do not change simulation time or saved terrain.
 
 Crafting-grid contents are temporary UI staging, not inventory reservations. Drag/drop and recipe autofill may arrange stable item IDs only up to the counts currently held. Craft presses the existing atomic crafting/workstation service, which revalidates station, materials and output capacity before any mutation. Closing or clearing the modal therefore has nothing to refund and cannot duplicate items.
+
+The P1 castle kit reuses the entity owner map for stations and non-interactive structures. The historical `WorkstationService` name and `workstations` save envelope remain for compatibility, but each record's content definition decides whether it is a station or a structure. Only definitions with an explicit `station_type` open crafting or processing UI. Structure definitions own their occupied and support offsets, data-driven visual/collision box parts and optional typed mount sockets; the scene renderer remains an adapter rather than an authority for occupancy.
+
+Placement preview calls the same validation without reserving cells or consuming inventory. Successful placement repeats validation, reserves the complete rotated footprint and then performs the inventory transaction; a failed transaction releases the reservation. One stored quarter-turn value drives footprint, support, visual and collision orientation. The candidate default is rebindable physical X and leaves the established ESDF controls unchanged.
 
 P1 keeps the flat generator solely for pre-P1 save compatibility and selects a versioned seeded hills/trees/ore generator for new worlds. Generator callbacks must not access mutable scene state or global random state from worker threads. Snapshot immutable generation parameters and refuse unknown generator IDs. Do not hot-edit a script generator while engine worker threads are using it.
 

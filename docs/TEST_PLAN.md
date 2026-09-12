@@ -51,6 +51,11 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T39 | P1 | Exploring outside the clearing shows an updating home distance/bearing cue; returning reports `HOME CLEARING` |
 | T40 | P1 | Save/full-process-restart/Continue restores terrain edit, player location and exact generator version/seed; legacy routing remains unchanged |
 | T41 | P1 | Terrain is visually readable at 1280×720 and owner ultrawide; fixed exploration route records frame/edit/save evidence without blocking streaming |
+| T42 | P1 | Workbench exposes stable IDs/recipes for stair, wall-walk slab, parapet merlon, tower platform and open gate frame; the platform has a typed future defense mount socket |
+| T43 | P1 | Entity preview is non-mutating; quarter-turn rotation transforms occupied/support cells; unsupported, partial-overlap, unloaded and player-overlap placements reject atomically |
+| T44 | P1 | A selected structural item shows a green/red world preview, X rotates it, right-click commits only a valid preview, and collision geometry matches the visible piece |
+| T45 | P1 | Save/full-process-restart/Continue restores every structure once with anchor/orientation; dismantling releases the complete footprint and refunds exactly one item |
+| T46 | P1 | First castle kit and workbench recipe list are legible at 1280×720 and owner ultrawide; stairs, wall walks, parapets, platform and gate opening support a useful small build |
 
 ## Performance evidence, not invented guarantees
 

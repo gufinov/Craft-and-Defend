@@ -57,7 +57,9 @@ Persist generator version and seed in every new checkpoint. A pre-P1 save with n
 
 Run T37–T41 plus the complete F0–F5 regression and matching exported-runtime gates. Castle structural pieces remain a separate P1 content slice because positional recipe behavior, rotation/snapping, tower-cap footprints and collapse policy are still open decisions; do not guess them inside the terrain change.
 
-**Candidate result:** editor and matching Windows export pass T37–T40 plus automated T41 rendering on `feature/p1-terrain-exploration`; prior F0–F5 gates remain green. Owner ultrawide terrain/resource/pacing review is pending. Tony accepted F5 as the baseline and authorized P1 on 2026-09-12. Promotion, merge and push require a separate instruction.
+**P1A result:** editor and matching Windows export pass T37–T40 plus automated T41 rendering on `feature/p1-terrain-exploration`; prior F0–F5 gates remain green. Tony accepted the terrain after physical playtesting on 2026-09-12.
+
+**P1B active candidate:** `feature/p1-castle-kit` adds the first original construction set: existing full castle-stone masonry plus stone stair, wall-walk slab, parapet merlon, a whole 2×2 tower platform with typed `light_siege` mount socket, and an open three-cell gate frame. All non-voxel pieces use explicit footprints/support, green/red non-mutating previews, rebindable X quarter-turn rotation, collision, whole-entity dismantle/refund and coherent persistence. Recipes remain count-based and provisional; no collapse simulation, moving gate, siege weapon or combat was added. Run T42–T46 and owner building-feel review. Promotion, merge and push require a separate instruction.
 
 ## P2 — later navigation spike brief
 

@@ -87,3 +87,17 @@ Potential castle-defense roles include a rune table or focus altar, ward anchors
 - exact mounted-weapon footprints, crew requirements and ammunition;
 - combat, equipment, durability, repair and death/recovery contracts;
 - whether magic belongs in the first campaign slice or a later expansion.
+
+## P1B candidate decisions under test
+
+The first castle-kit slice makes the smallest reversible choices needed for an owner building-feel test. They are implemented candidates, not permanent content law:
+
+- Existing `castle_stone` remains the full curtain-wall masonry voxel.
+- `stone_stair`, `wall_walk_slab` and `parapet_merlon` are one-cell placed entities with explicit support and data-driven box-part collision.
+- `tower_platform` is one whole 2×2 supported entity. It records a centered typed `light_siege` socket but mounts no weapon yet.
+- `gate_frame` is a three-cell-wide, three-cell-high open frame. The two-cell passage is not reserved or blocked; doors, portcullises and drawbridges remain later mechanisms.
+- Structural entities rotate in 90-degree steps with rebindable physical X. Preview validation is non-mutating and uses green/red geometry.
+- Recipes use the current count-based workbench transaction model. Costs/yields are prototype balance, not final recipes or evidence for a positional crafting decision.
+- Dismantling refunds one whole crafted piece. No structural collapse or partial-piece salvage is inferred.
+
+This vocabulary follows the sources above: curtain walls form a defensive enclosure, battlements support a wall walk, projecting towers create defended positions, and gatehouses control an entrance. The game pieces are original functional abstractions rather than reconstructions of one historical site.
