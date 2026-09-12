@@ -50,6 +50,8 @@ var saving := false
 var simulation_paused := true
 var _pending_workstation_snapshot: Dictionary = {}
 var _station_visuals: Dictionary = {}
+var _placement_preview: Node3D
+var _placement_preview_key := ""
 var _environment: Environment
 var _sun: DirectionalLight3D
 var _sun_visual: MeshInstance3D
@@ -131,6 +133,7 @@ func initialize(session_data: Dictionary) -> Dictionary:
 
 
 func _process(delta: float) -> void:
+	_update_placement_preview()
 	if workstations != null and not saving:
 		workstations.advance(delta, simulation_paused)
 	if clock != null and not saving:
@@ -238,7 +241,7 @@ func _on_spawn_area_ready() -> void:
 	world_ready = true
 	simulation_paused = false
 	player.activate(not DisplayServer.get_name().contains("headless"))
-	status_changed.emit("Ready — Tab inventory, B hand crafting, right-click stations or place the selected hotbar item")
+	status_changed.emit("Ready — Tab inventory, B hand crafting, right-click stations, X rotates castle previews")
 	_emit_navigation()
 	ready_for_play.emit()
 
@@ -351,6 +354,12 @@ func _on_boundary_feedback(message: String) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not world_ready or simulation_paused or saving:
 		return
+	if event.is_action_pressed("rotate_build"):
+		var rotation := interaction.rotate_placement()
+		_placement_preview_key = ""
+		_on_interaction_feedback("Build orientation: %s" % ["North", "East", "South", "West"][rotation])
+		get_viewport().set_input_as_handled()
+		return
 	for index in range(F0Inventory.HOTBAR_COUNT):
 		if event.is_action_pressed("hotbar_%d" % (index + 1)):
 			select_hotbar(index)
@@ -384,26 +393,89 @@ func _spawn_station_visual(record: Dictionary) -> void:
 	if instance_id.is_empty() or _station_visuals.has(instance_id):
 		return
 	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	var definition := registry.entity(str(record.get("entity_id", "")))
+	if definition.is_empty():
+		return
 	var body := StaticBody3D.new()
-	body.name = "Station_" + instance_id
+	body.name = "PlacedEntity_" + instance_id
 	body.position = Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
+	body.rotation.y = -float(int(record.get("rotation_quarters", 0))) * PI / 2.0
 	body.set_meta("station_instance_id", instance_id)
-	var collision := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(0.9, 0.9, 0.9)
-	collision.shape = box
-	body.add_child(collision)
-	var mesh_instance := MeshInstance3D.new()
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.9, 0.9, 0.9)
-	mesh_instance.mesh = mesh
 	var material := StandardMaterial3D.new()
-	material.albedo_color = Color("d98b3a") if str(record.get("entity_id", "")) == "workbench" else Color("52616b")
+	var visual: Dictionary = definition.get("visual", {})
+	material.albedo_color = Color(str(visual.get("color", "8b929d")))
 	material.roughness = 0.9
-	mesh_instance.material_override = material
-	body.add_child(mesh_instance)
+	_add_visual_parts(body, visual.get("parts", []), material, true)
 	add_child(body)
 	_station_visuals[instance_id] = body
+
+
+func _add_visual_parts(parent: Node3D, part_values: Array, material: Material, add_collision: bool) -> void:
+	for value in part_values:
+		if not value is Dictionary:
+			continue
+		var offset := _vector3_from_array(value.get("offset", []), Vector3.ZERO)
+		var size := _vector3_from_array(value.get("size", []), Vector3.ONE)
+		if size.x <= 0.0 or size.y <= 0.0 or size.z <= 0.0:
+			continue
+		if add_collision:
+			var collision := CollisionShape3D.new()
+			var box := BoxShape3D.new()
+			box.size = size
+			collision.shape = box
+			collision.position = offset
+			parent.add_child(collision)
+		var mesh_instance := MeshInstance3D.new()
+		var mesh := BoxMesh.new()
+		mesh.size = size
+		mesh_instance.mesh = mesh
+		mesh_instance.position = offset
+		mesh_instance.material_override = material
+		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if not add_collision else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		parent.add_child(mesh_instance)
+
+
+func _vector3_from_array(value: Variant, fallback: Vector3) -> Vector3:
+	if value is Array and value.size() == 3:
+		return Vector3(float(value[0]), float(value[1]), float(value[2]))
+	return fallback
+
+
+func _update_placement_preview() -> void:
+	if not world_ready or simulation_paused or saving or player == null or player.camera == null:
+		_hide_placement_preview()
+		return
+	var preview := interaction.placement_preview_from_view(player.camera.global_position, -player.camera.global_basis.z)
+	if not preview.get("visible", false):
+		_hide_placement_preview()
+		return
+	var anchor: Vector3i = preview.anchor
+	var key := "%s|%s|%d|%s" % [preview.entity_id, anchor, int(preview.rotation_quarters), str(preview.ok)]
+	if key == _placement_preview_key:
+		return
+	_hide_placement_preview()
+	var definition := registry.entity(str(preview.entity_id))
+	if definition.is_empty():
+		return
+	_placement_preview = Node3D.new()
+	_placement_preview.name = "PlacementPreview"
+	_placement_preview.position = Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
+	_placement_preview.rotation.y = -float(int(preview.rotation_quarters)) * PI / 2.0
+	var material := StandardMaterial3D.new()
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color = Color(0.2, 0.9, 0.45, 0.48) if preview.ok else Color(0.95, 0.2, 0.2, 0.48)
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.no_depth_test = true
+	_add_visual_parts(_placement_preview, definition.get("visual", {}).get("parts", []), material, false)
+	add_child(_placement_preview)
+	_placement_preview_key = key
+
+
+func _hide_placement_preview() -> void:
+	if _placement_preview != null:
+		_placement_preview.queue_free()
+		_placement_preview = null
+	_placement_preview_key = ""
 
 
 func _remove_station_visual(instance_id: String) -> void:

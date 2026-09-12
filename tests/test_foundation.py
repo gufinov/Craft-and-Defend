@@ -71,6 +71,16 @@ class FoundationTests(unittest.TestCase):
         self.bundle['world']['generator_version'] = 'terrain_future_unknown'
         self.rejects('unsupported generator version')
 
+    def test_invalid_entity_visual_rejected(self):
+        entity = next(e for e in self.bundle['content']['entities'] if e['id'] == 'stone_stair')
+        entity['visual']['parts'][0]['size'][1] = 0
+        self.rejects('invalid entity visual')
+
+    def test_duplicate_mount_socket_rejected(self):
+        entity = next(e for e in self.bundle['content']['entities'] if e['id'] == 'tower_platform')
+        entity['mount_sockets'].append(copy.deepcopy(entity['mount_sockets'][0]))
+        self.rejects('invalid mount socket')
+
     def test_multicell_overlap_cannot_claim_success(self):
         case = next(c for c in self.bundle['placement_cases']['cases'] if c['id'] == 'multicell_partial_overlap')
         case['expected'] = 'OK'

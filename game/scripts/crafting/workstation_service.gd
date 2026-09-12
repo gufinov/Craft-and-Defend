@@ -18,14 +18,21 @@ func _init(content_registry: ContentRegistry, player_inventory: F0Inventory) -> 
 	inventory = player_inventory
 
 
-func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, player_aabb: AABB) -> Dictionary:
+func preview_placement(entity_id: String, anchor: Vector3i, rotation_quarters: int, world_query: Callable, player_aabb: AABB) -> Dictionary:
+	var definition := registry.entity(entity_id)
+	if definition.is_empty():
+		return _result(false, "UNKNOWN_ENTITY")
+	return footprints.validate_placement("preview", anchor, _vector_list(definition.get("occupied_offsets", [])), rotation_quarters, world_query, player_aabb, _vector_list(definition.get("support_offsets", [])))
+
+
+func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, player_aabb: AABB, rotation_quarters: int = 0) -> Dictionary:
 	var definition := registry.entity(entity_id)
 	if definition.is_empty():
 		return _result(false, "UNKNOWN_ENTITY")
 	if inventory.count(entity_id) < 1:
 		return _result(false, "NO_RESOURCE")
 	var instance_id := "%s_%04d" % [entity_id, _next_instance]
-	var reserved := footprints.try_reserve(instance_id, anchor, _vector_list(definition.get("occupied_offsets", [])), 0, world_query, player_aabb, _vector_list(definition.get("support_offsets", [])))
+	var reserved := footprints.try_reserve(instance_id, anchor, _vector_list(definition.get("occupied_offsets", [])), rotation_quarters, world_query, player_aabb, _vector_list(definition.get("support_offsets", [])))
 	if not reserved.get("ok", false):
 		return reserved
 	var consumed := inventory.try_transaction({entity_id: 1}, {})
@@ -33,7 +40,7 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		footprints.release_at(anchor)
 		return _result(false, consumed.get("reason", "INVENTORY_COMMIT_FAILED"))
 	_next_instance += 1
-	stations[instance_id] = {"instance_id": instance_id, "entity_id": entity_id, "anchor": anchor, "rotation_quarters": 0}
+	stations[instance_id] = {"instance_id": instance_id, "entity_id": entity_id, "anchor": anchor, "rotation_quarters": posmod(rotation_quarters, 4)}
 	var result := _result(true, "OK", {"station": stations[instance_id].duplicate(true), "consumed_item": entity_id})
 	station_changed.emit(result)
 	return result
@@ -105,6 +112,15 @@ func station_at_cell(cell: Vector3i) -> String:
 	return footprints.owner_at(cell)
 
 
+func interactable_station_at_cell(cell: Vector3i) -> String:
+	var instance_id := footprints.owner_at(cell)
+	if instance_id.is_empty():
+		return ""
+	var record: Dictionary = stations.get(instance_id, {})
+	var definition := registry.entity(str(record.get("entity_id", "")))
+	return instance_id if not str(definition.get("station_type", "")).is_empty() else ""
+
+
 func supported_by(cell: Vector3i) -> bool:
 	for instance_id: String in stations:
 		var record: Dictionary = stations[instance_id]
@@ -117,6 +133,11 @@ func supported_by(cell: Vector3i) -> bool:
 
 func station(instance_id: String) -> Dictionary:
 	return stations.get(instance_id, {}).duplicate(true)
+
+
+func station_type(instance_id: String) -> String:
+	var record: Dictionary = stations.get(instance_id, {})
+	return str(registry.entity(str(record.get("entity_id", ""))).get("station_type", ""))
 
 
 func snapshot() -> Dictionary:
@@ -166,4 +187,3 @@ func _vector_list(values: Array) -> Array:
 
 func _result(ok: bool, reason: String, details: Dictionary = {}) -> Dictionary:
 	return {"ok": ok, "reason": reason, "details": details}
-

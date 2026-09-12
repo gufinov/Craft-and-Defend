@@ -8,7 +8,7 @@ const PRINT_SCREEN_FOCUS_WINDOW_MSEC := 2000
 const SCREENSHOT_CLICK_GUARD_SECONDS := 0.20
 const BINDING_GROUPS: Array[Dictionary] = [
 	{"title": "MOVEMENT", "actions": ["move_forward", "move_backward", "strafe_left", "strafe_right", "sprint", "crouch", "jump"]},
-	{"title": "WORLD & MENUS", "actions": ["primary", "secondary", "interact", "inventory", "build", "pause", "capture_screenshot"]},
+	{"title": "WORLD & MENUS", "actions": ["primary", "secondary", "interact", "inventory", "build", "rotate_build", "pause", "capture_screenshot"]},
 	{"title": "HOTBAR", "actions": ["hotbar_1", "hotbar_2", "hotbar_3", "hotbar_4", "hotbar_5", "hotbar_6", "hotbar_7", "hotbar_8", "hotbar_9"]},
 ]
 
@@ -145,6 +145,11 @@ func _ready() -> void:
 		var p1_automation := P1Automation.new()
 		add_child(p1_automation)
 		p1_automation.call_deferred("run", self, p1_mode)
+	var castle_mode := _argument_value("--castle-kit-automation=")
+	if not castle_mode.is_empty():
+		var castle_automation := CastleKitAutomation.new()
+		add_child(castle_automation)
+		castle_automation.call_deferred("run", self, castle_mode)
 
 
 func _process(delta: float) -> void:
@@ -1653,13 +1658,14 @@ func _refresh_hud() -> void:
 	if hud_label == null or settings == null or _hud_state_text.is_empty():
 		return
 	var movement := "%s%s%s%s" % [settings.get_binding_label("move_forward"), settings.get_binding_label("strafe_left"), settings.get_binding_label("move_backward"), settings.get_binding_label("strafe_right")]
-	hud_label.text = "%s   |   %s move · %s sprint · %s crouch · %s use/place · %s build · %s inventory · %s pause · %s capture" % [
+	hud_label.text = "%s   |   %s move · %s sprint · %s crouch · %s use/place · %s build · %s rotate · %s inventory · %s pause · %s capture" % [
 		_hud_state_text,
 		movement,
 		settings.get_binding_label("sprint"),
 		settings.get_binding_label("crouch"),
 		settings.get_binding_label("secondary"),
 		settings.get_binding_label("build"),
+		settings.get_binding_label("rotate_build"),
 		settings.get_binding_label("inventory"),
 		settings.get_binding_label("pause"),
 		settings.get_binding_label("capture_screenshot"),

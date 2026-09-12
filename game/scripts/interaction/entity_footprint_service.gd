@@ -16,6 +16,30 @@ func try_reserve(
 	player_aabb: AABB = AABB(),
 	required_support: Array = []
 ) -> Dictionary:
+	var validation := validate_placement(instance_id, anchor, offsets, rotation_quarters, world_query, player_aabb, required_support)
+	if not validation.get("ok", false):
+		return validation
+	var cells: Array = validation.get("details", {}).get("cells", [])
+	for cell in cells:
+		_cell_owners[cell] = instance_id
+	_instances[instance_id] = {
+		"instance_id": instance_id,
+		"anchor": anchor,
+		"rotation_quarters": posmod(rotation_quarters, 4),
+		"cells": cells.duplicate(),
+	}
+	return _result(true, "OK", _instances[instance_id])
+
+
+func validate_placement(
+	instance_id: String,
+	anchor: Vector3i,
+	offsets: Array,
+	rotation_quarters: int,
+	world_query: Callable,
+	player_aabb: AABB = AABB(),
+	required_support: Array = []
+) -> Dictionary:
 	if instance_id.is_empty():
 		return _result(false, "INVALID_INSTANCE")
 	if _instances.has(instance_id):
@@ -51,15 +75,12 @@ func try_reserve(
 		if int(support_query.get("voxel_id", AIR)) == AIR and not _cell_owners.has(support_cell):
 			return _result(false, "UNSUPPORTED", {"cell": support_cell})
 
-	for cell in cells:
-		_cell_owners[cell] = instance_id
-	_instances[instance_id] = {
+	return _result(true, "OK", {
 		"instance_id": instance_id,
 		"anchor": anchor,
 		"rotation_quarters": posmod(rotation_quarters, 4),
 		"cells": cells.duplicate(),
-	}
-	return _result(true, "OK", _instances[instance_id])
+	})
 
 
 func release_at(cell: Vector3i) -> Dictionary:

@@ -23,6 +23,7 @@ var registry: ContentRegistry
 var workstations: WorkstationService
 var player_body_aabb: Callable
 var station_raycast: Callable
+var placement_rotation_quarters := 0
 
 
 func _init(
@@ -72,7 +73,7 @@ func try_break_cell(cell: Vector3i, expected_world_revision: int = -1) -> Dictio
 	return _finish(true, "OK", {"cell": cell, "voxel_before": voxel_id, "voxel_after": AIR, "drops": additions})
 
 
-func try_place_item(cell: Vector3i, item_id: String, expected_world_revision: int = -1) -> Dictionary:
+func try_place_item(cell: Vector3i, item_id: String, expected_world_revision: int = -1, rotation_quarters: int = -1) -> Dictionary:
 	if expected_world_revision >= 0 and expected_world_revision != world.revision:
 		return _finish(false, "STALE_REVISION")
 	var item := registry.item(item_id)
@@ -81,7 +82,8 @@ func try_place_item(cell: Vector3i, item_id: String, expected_world_revision: in
 	if item.has("places_entity"):
 		if workstations == null:
 			return _finish(false, "PLACEMENT_UNAVAILABLE")
-		var station_result := workstations.try_place(str(item.places_entity), cell, world.query_cell, player_body_aabb.call())
+		var rotation := placement_rotation_quarters if rotation_quarters < 0 else rotation_quarters
+		var station_result := workstations.try_place(str(item.places_entity), cell, world.query_cell, player_body_aabb.call(), rotation)
 		return _finish(bool(station_result.get("ok", false)), str(station_result.get("reason", "PLACEMENT_FAILED")), station_result.get("details", {}))
 	if not item.has("places_block"):
 		return _finish(false, "NOT_PLACEABLE")
@@ -147,16 +149,42 @@ func place_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
 	return try_place_item(hit.previous_position, inventory.active_item_id())
 
 
+func placement_preview_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
+	var item_id := inventory.active_item_id()
+	var item := registry.item(item_id)
+	if item.is_empty() or not item.has("places_entity") or workstations == null:
+		return {"visible": false}
+	var hit := world.raycast(origin, direction)
+	if hit == null:
+		return {"visible": false, "reason": "NO_TARGET"}
+	var anchor: Vector3i = hit.previous_position
+	var checked := workstations.preview_placement(str(item.places_entity), anchor, placement_rotation_quarters, world.query_cell, player_body_aabb.call())
+	return {
+		"visible": true,
+		"ok": bool(checked.get("ok", false)),
+		"reason": str(checked.get("reason", "PLACEMENT_FAILED")),
+		"item_id": item_id,
+		"entity_id": str(item.places_entity),
+		"anchor": anchor,
+		"rotation_quarters": placement_rotation_quarters,
+	}
+
+
+func rotate_placement() -> int:
+	placement_rotation_quarters = posmod(placement_rotation_quarters + 1, 4)
+	return placement_rotation_quarters
+
+
 func secondary_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
 	var station_id := _station_from_view(origin, direction)
-	if not station_id.is_empty():
+	if not station_id.is_empty() and not workstations.station_type(station_id).is_empty():
 		return _finish(true, "OPEN_STATION", {"instance_id": station_id, "station": workstations.station(station_id)})
 	return place_from_view(origin, direction)
 
 
 func interact_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
 	var station_id := _station_from_view(origin, direction)
-	if station_id.is_empty():
+	if station_id.is_empty() or workstations.station_type(station_id).is_empty():
 		return _finish(false, "NO_STATION")
 	return _finish(false, "SECONDARY_REQUIRED", {"instance_id": station_id, "station": workstations.station(station_id)})
 

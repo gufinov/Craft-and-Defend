@@ -41,6 +41,12 @@ def vector(value, positive=False):
             and all(type(v) is int and (not positive or v > 0) for v in value))
 
 
+def numeric_vector(value, positive=False):
+    return (isinstance(value, list) and len(value) == 3
+            and all(type(v) in (int, float) and not isinstance(v, bool)
+                    and (not positive or v > 0) for v in value))
+
+
 def index(rows, field, label):
     require(isinstance(rows, list) and rows, f"{label}: nonempty list required")
     result = {}
@@ -141,6 +147,21 @@ def validate_bundle(bundle):
         require(len({tuple(v) for v in offsets}) == len(offsets), "duplicate occupied offset")
         require([0, 0, 0] in offsets, "entity anchor must be occupied")
         require(not ({tuple(v) for v in offsets} & {tuple(v) for v in entity["support_offsets"]}), "support overlaps entity")
+        visual = entity.get("visual", {})
+        require(isinstance(visual, dict) and re.fullmatch(r"[a-fA-F0-9]{6}", visual.get("color", "")), "invalid entity visual")
+        parts = visual.get("parts", [])
+        require(parts and all(isinstance(part, dict)
+                              and numeric_vector(part.get("offset", []))
+                              and numeric_vector(part.get("size", []), positive=True)
+                              for part in parts), "invalid entity visual")
+        station_type = entity.get("station_type")
+        require(station_type is None or station_type == entity["id"], "invalid station type")
+        socket_ids = set()
+        for socket in entity.get("mount_sockets", []):
+            require(isinstance(socket, dict) and re.fullmatch(r"[a-z][a-z0-9_]*", socket.get("id", ""))
+                    and socket["id"] not in socket_ids and re.fullmatch(r"[a-z][a-z0-9_]*", socket.get("type", ""))
+                    and numeric_vector(socket.get("offset", [])), "invalid mount socket")
+            socket_ids.add(socket["id"])
     for recipe in content["recipes"]:
         require(recipe["station"] == "hand" or recipe["station"] in entities, "unknown recipe station")
         require(type(recipe["duration_seconds"]) in (int, float) and recipe["duration_seconds"] >= 0, "invalid recipe time")
@@ -191,7 +212,7 @@ def validate_bundle(bundle):
 
     actions = index(keys["actions"], "id", "actions")
     defaults = {"move_forward": "E", "move_backward": "D", "strafe_left": "S", "strafe_right": "F",
-                "sprint": "A", "crouch": "Z", "jump": "Space", "interact": "Shift", "inventory": "Tab", "build": "B", "pause": "Escape",
+                "sprint": "A", "crouch": "Z", "jump": "Space", "interact": "Shift", "inventory": "Tab", "build": "B", "rotate_build": "X", "pause": "Escape",
                 "reload": "G", "primary": "MouseLeft", "secondary": "MouseRight", "capture_screenshot": "F2"}
     defaults.update({f"hotbar_{i}": str(i) for i in range(1, 10)})
     require(keys["escape_recovery"] is True and keys["keyboard_mode"] == "physical_qwerty", "unsafe input recovery/default mode")

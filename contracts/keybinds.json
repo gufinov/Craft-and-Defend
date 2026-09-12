@@ -64,6 +64,12 @@
       "implemented_in_foundation": true
     },
     {
+      "id": "rotate_build",
+      "key": "X",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
       "id": "pause",
       "key": "Escape",
       "context": "system",
