@@ -18,7 +18,7 @@ const REASON_TEXT := {
 	"UNSUPPORTED": "Placement rejected — attach the block to a solid neighboring face.",
 	"WRONG_TOOL": "That block needs a different tool.",
 	"OUT_OF_REACH": "That target is out of reach.",
-	"NO_RESOURCE": "No dirt is available to place.",
+	"NO_RESOURCE": "The selected item is not available to place.",
 	"INVENTORY_FULL": "Inventory is full; the block was not removed.",
 	"STALE_REVISION": "The world changed before that edit; try again.",
 	"PROTECTED": "The bottom bedrock layer is protected.",
@@ -31,7 +31,7 @@ const REASON_TEXT := {
 	"WRONG_WORKSTATION": "That recipe needs a different workstation.",
 	"INSUFFICIENT_INPUT": "Missing recipe materials.",
 	"STATION_BUSY": "That furnace is already working.",
-	"SUPPORT_IN_USE": "Dismantle the workstation before removing its support.",
+	"SUPPORT_IN_USE": "Dismantle the supported placed object before removing this block.",
 	"JOB_STARTED": "Furnace started; input and fuel were consumed once.",
 	"JOB_COMPLETED": "Furnace finished and delivered its reserved output.",
 }
