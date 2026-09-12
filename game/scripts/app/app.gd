@@ -48,6 +48,12 @@ var keybind_search: LineEdit
 var binding_rows: Dictionary = {}
 var binding_reset_buttons: Dictionary = {}
 var inventory_slot_buttons: Array[Button] = []
+var inventory_carried_grid: GridContainer
+var inventory_hotbar_grid: GridContainer
+var inventory_left_column: VBoxContainer
+var inventory_armor_card: PanelContainer
+var inventory_armor_slot_buttons: Array[Button] = []
+var inventory_silhouette: ArmorSilhouette
 var inventory_message: Label
 var crafting_title_label: Label
 var crafting_context_label: Label
@@ -499,7 +505,7 @@ func _build_inventory(canvas: CanvasLayer) -> void:
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
-		margin.add_theme_constant_override(side, 28)
+		margin.add_theme_constant_override(side, 24)
 	inventory_panel.add_child(margin)
 	var root := VBoxContainer.new()
 	margin.add_child(root)
@@ -511,38 +517,120 @@ func _build_inventory(canvas: CanvasLayer) -> void:
 	header.add_child(title)
 	header.add_child(_button("Back to Game", _close_inventory, Vector2(190, 44)))
 	var context := Label.new()
-	context.text = "TAB CLOSES  ·  B OPENS HAND BUILD"
+	context.text = "TAB CLOSES  ·  SELECT ONE SLOT, THEN ANOTHER TO MOVE OR SWAP"
 	context.add_theme_color_override("font_color", Color("85d5ea"))
 	root.add_child(context)
-	var inventory_card := PanelContainer.new()
-	inventory_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	inventory_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	inventory_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 18))
-	root.add_child(inventory_card)
-	var inventory_column := VBoxContainer.new()
-	inventory_card.add_child(inventory_column)
-	var inventory_heading := Label.new()
-	inventory_heading.text = "27 SLOTS  ·  FIRST 9 ARE THE HOTBAR"
-	inventory_heading.add_theme_color_override("font_color", Color("9fd8e8"))
-	inventory_column.add_child(inventory_heading)
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	inventory_column.add_child(grid)
+
+	var body := HBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 14)
+	root.add_child(body)
+
+	inventory_left_column = VBoxContainer.new()
+	inventory_left_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inventory_left_column.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inventory_left_column.size_flags_stretch_ratio = 1.65
+	body.add_child(inventory_left_column)
+
+	var carried_card := PanelContainer.new()
+	carried_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	carried_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	carried_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 14))
+	inventory_left_column.add_child(carried_card)
+	var carried_column := VBoxContainer.new()
+	carried_card.add_child(carried_column)
+	var carried_heading := Label.new()
+	carried_heading.text = "CARRIED INVENTORY  ·  18 FIXED SLOTS"
+	carried_heading.add_theme_color_override("font_color", Color("9fd8e8"))
+	carried_column.add_child(carried_heading)
+	var carried_help := Label.new()
+	carried_help.text = "Stored with the character; these are not equipped items"
+	carried_help.add_theme_font_size_override("font_size", 13)
+	carried_help.add_theme_color_override("font_color", Color("8fa5af"))
+	carried_column.add_child(carried_help)
+	inventory_carried_grid = GridContainer.new()
+	inventory_carried_grid.columns = 6
+	inventory_carried_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inventory_carried_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	carried_column.add_child(inventory_carried_grid)
+
+	var hotbar_card := PanelContainer.new()
+	hotbar_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hotbar_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("4b7180"), 8, 12))
+	inventory_left_column.add_child(hotbar_card)
+	var hotbar_column := VBoxContainer.new()
+	hotbar_card.add_child(hotbar_column)
+	var hotbar_heading := Label.new()
+	hotbar_heading.text = "HOTBAR LOADOUT  ·  EQUIPPED KEYS 1–9"
+	hotbar_heading.add_theme_color_override("font_color", Color("9fd8e8"))
+	hotbar_column.add_child(hotbar_heading)
+	inventory_hotbar_grid = GridContainer.new()
+	inventory_hotbar_grid.columns = F0Inventory.HOTBAR_COUNT
+	inventory_hotbar_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hotbar_column.add_child(inventory_hotbar_grid)
+
 	for index in range(F0Inventory.SLOT_COUNT):
-		var slot_button := _button("", _select_inventory_slot.bind(index), Vector2(180, 45))
-		slot_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		slot_button.tooltip_text = "Select hotbar slot %d" % (index + 1) if index < F0Inventory.HOTBAR_COUNT else "Storage slot %d" % (index + 1)
+		var slot_button := _button("", _select_inventory_slot.bind(index), Vector2(58, 58))
+		slot_button.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		slot_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		slot_button.add_theme_font_size_override("font_size", 13)
+		slot_button.clip_text = true
+		slot_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		slot_button.tooltip_text = "Hotbar key %d" % (index + 1) if index < F0Inventory.HOTBAR_COUNT else "Carried slot %d" % (index - F0Inventory.HOTBAR_COUNT + 1)
 		inventory_slot_buttons.append(slot_button)
-		grid.add_child(slot_button)
+		if index < F0Inventory.HOTBAR_COUNT:
+			inventory_hotbar_grid.add_child(slot_button)
+		else:
+			inventory_carried_grid.add_child(slot_button)
+
+	inventory_armor_card = PanelContainer.new()
+	inventory_armor_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inventory_armor_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inventory_armor_card.size_flags_stretch_ratio = 1.0
+	inventory_armor_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("4b7180"), 8, 14))
+	body.add_child(inventory_armor_card)
+	var armor_column := VBoxContainer.new()
+	inventory_armor_card.add_child(armor_column)
+	var armor_heading := Label.new()
+	armor_heading.text = "ARMOR LOADOUT"
+	armor_heading.add_theme_color_override("font_color", Color("9fd8e8"))
+	armor_column.add_child(armor_heading)
+	var armor_help := Label.new()
+	armor_help.text = "Character equipment layout · gear interaction arrives with the combat slice"
+	armor_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	armor_help.add_theme_font_size_override("font_size", 13)
+	armor_help.add_theme_color_override("font_color", Color("8fa5af"))
+	armor_column.add_child(armor_help)
+	var armor_body := HBoxContainer.new()
+	armor_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	armor_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	armor_column.add_child(armor_body)
+	inventory_silhouette = ArmorSilhouette.new()
+	inventory_silhouette.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inventory_silhouette.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	armor_body.add_child(inventory_silhouette)
+	var equipment_column := VBoxContainer.new()
+	equipment_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	equipment_column.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	equipment_column.alignment = BoxContainer.ALIGNMENT_CENTER
+	armor_body.add_child(equipment_column)
+	for equipment_name in ["Helmet", "Breastplate", "Gauntlets", "Leggings", "Boots", "Shield"]:
+		var equipment_slot := Button.new()
+		equipment_slot.text = "%s\nEmpty" % equipment_name
+		equipment_slot.custom_minimum_size = Vector2(145, 54)
+		equipment_slot.disabled = true
+		equipment_slot.tooltip_text = "%s equipment slot; armor items are not implemented yet" % equipment_name
+		inventory_armor_slot_buttons.append(equipment_slot)
+		equipment_column.add_child(equipment_slot)
+
 	inventory_contents_label = Label.new()
 	inventory_contents_label.visible = false
-	inventory_column.add_child(inventory_contents_label)
+	root.add_child(inventory_contents_label)
 	inventory_message = Label.new()
 	inventory_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	inventory_message.add_theme_color_override("font_color", Color("ffd488"))
-	inventory_column.add_child(inventory_message)
+	root.add_child(inventory_message)
 
 
 func _build_crafting(canvas: CanvasLayer) -> void:
@@ -918,9 +1006,11 @@ func _refresh_inventory_panel() -> void:
 	for index in range(inventory_slot_buttons.size()):
 		var slot: Dictionary = slots[index] if index < slots.size() else {"item_id": "", "count": 0}
 		var item_id := str(slot.get("item_id", ""))
-		var prefix := "%d  " % (index + 1) if index < F0Inventory.HOTBAR_COUNT else "%02d  " % (index + 1)
-		var marker := "↔ " if index == _inventory_move_source else ("▶ " if index == int(snapshot.get("selected_hotbar", 0)) and index < F0Inventory.HOTBAR_COUNT else "  ")
-		inventory_slot_buttons[index].text = marker + prefix + ("Empty" if item_id.is_empty() else "%s  ×%d" % [session.registry.display_name(item_id), int(slot.get("count", 0))])
+		var prefix := "%d\n" % (index + 1) if index < F0Inventory.HOTBAR_COUNT else "C%d\n" % (index - F0Inventory.HOTBAR_COUNT + 1)
+		var marker := "↔" if index == _inventory_move_source else ("▶" if index == int(snapshot.get("selected_hotbar", 0)) and index < F0Inventory.HOTBAR_COUNT else "")
+		var item_text := "Empty" if item_id.is_empty() else "%s ×%d" % [session.registry.display_name(item_id), int(slot.get("count", 0))]
+		inventory_slot_buttons[index].text = marker + prefix + item_text
+		inventory_slot_buttons[index].tooltip_text = ("Hotbar key %d" % (index + 1) if index < F0Inventory.HOTBAR_COUNT else "Carried slot %d" % (index - F0Inventory.HOTBAR_COUNT + 1)) + " · " + item_text
 		inventory_slot_buttons[index].disabled = false
 
 

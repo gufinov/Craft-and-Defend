@@ -14,6 +14,12 @@ func run(application: CraftAndDefendApp, mode: String) -> void:
 			await _run_phase2()
 		"visual":
 			await _run_visual()
+		"inventory":
+			await _run_inventory(false, Vector2i.ZERO)
+		"inventory_visual":
+			await _run_inventory(true, Vector2i(1280, 720))
+		"inventory_ultrawide":
+			await _run_inventory(true, Vector2i(1720, 720))
 		_:
 			failures.append("unknown mode " + mode)
 	if failures.is_empty():
@@ -117,6 +123,38 @@ func _run_visual() -> void:
 	var path := app.data_root.path_join("p1-castle-kit.png")
 	var error := image.save_png(path)
 	_record("T46_CASTLE_VISUAL", error == OK and not image.is_empty() and image.get_size() == Vector2i(1280, 720), "rendered evidence shows the first structural castle kit at 1280×720", {"path": path, "size": image.get_size(), "error": error})
+
+
+func _run_inventory(capture_visual: bool, expected_size: Vector2i) -> void:
+	app._on_start_pressed()
+	if not await _wait_ready():
+		return
+	if capture_visual and expected_size != Vector2i.ZERO:
+		get_window().content_scale_size = expected_size
+		get_window().size = expected_size
+		for _resize_frame in range(3):
+			await get_tree().process_frame
+	app.session.inventory.try_transaction({}, {"dirt": 12, "log": 5, "planks": 8, "stone_stair": 2, "parapet_merlon": 3})
+	app._show_inventory()
+	for _frame in range(4):
+		await get_tree().process_frame
+	var section_counts_ok := app.inventory_carried_grid.get_child_count() == F0Inventory.SLOT_COUNT - F0Inventory.HOTBAR_COUNT \
+		and app.inventory_hotbar_grid.get_child_count() == F0Inventory.HOTBAR_COUNT \
+		and app.inventory_armor_slot_buttons.size() == 6
+	var mapping_ok := app.inventory_slot_buttons[0].get_parent() == app.inventory_hotbar_grid \
+		and app.inventory_slot_buttons[8].get_parent() == app.inventory_hotbar_grid \
+		and app.inventory_slot_buttons[9].get_parent() == app.inventory_carried_grid \
+		and app.inventory_slot_buttons[26].get_parent() == app.inventory_carried_grid
+	var armor_truthful := app.inventory_armor_slot_buttons.all(func(button: Button) -> bool: return button.disabled and button.text.ends_with("Empty"))
+	var heights_align := absf(app.inventory_left_column.size.y - app.inventory_armor_card.size.y) <= 2.0
+	_record("T47_INVENTORY_LAYOUT", app.state == app.AppState.INVENTORY and section_counts_ok and mapping_ok and armor_truthful and heights_align, "Tab separates 18 carried slots, one 1–9 hotbar row and a truthful six-position full-height armor loadout", {"carried": app.inventory_carried_grid.get_child_count(), "hotbar": app.inventory_hotbar_grid.get_child_count(), "armor": app.inventory_armor_slot_buttons.size(), "left_height": app.inventory_left_column.size.y, "armor_height": app.inventory_armor_card.size.y})
+	if not capture_visual:
+		return
+	await RenderingServer.frame_post_draw
+	var image := get_viewport().get_texture().get_image()
+	var path := app.data_root.path_join("p1-inventory-loadout-%dx%d.png" % [expected_size.x, expected_size.y])
+	var error := image.save_png(path)
+	_record("T48_INVENTORY_VISUAL", error == OK and not image.is_empty() and image.get_size() == expected_size, "rendered evidence shows all three inventory sections at the requested Windows viewport without clipping", {"path": path, "size": image.get_size(), "expected": expected_size, "error": error})
 
 
 func _test_content_contract() -> void:

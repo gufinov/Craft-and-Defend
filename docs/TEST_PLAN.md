@@ -56,6 +56,8 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T44 | P1 | A selected structural item shows a green/red world preview, X rotates it, right-click commits only a valid preview, and collision geometry matches the visible piece |
 | T45 | P1 | Save/full-process-restart/Continue restores every structure once with anchor/orientation; dismantling releases the complete footprint and refunds exactly one item |
 | T46 | P1 | First castle kit and workbench recipe list are legible at 1280×720 and owner ultrawide; stairs, wall walks, parapets, platform and gate opening support a useful small build |
+| T47 | P1 | Tab separates 18 carried slots, one equipped 1–9 hotbar row and a full-height six-position armor loadout without changing the authoritative 27-slot accounting |
+| T48 | P1 | The three-section inventory and original character guide are readable and unclipped at 1280×720 and the 1720×720 logical ultrawide viewport used for 3440×1440 fullscreen validation; unavailable armor interaction is stated truthfully |
 
 ## Performance evidence, not invented guarantees
 

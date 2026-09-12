@@ -6,7 +6,7 @@ Sources: [Minecraft crafting overview](https://www.minecraft.net/en-us/article/h
 
 ## Accepted interaction contract
 
-- **Tab — Inventory:** view, select, move and swap the one authoritative 27-slot inventory. It does not expose recipes.
+- **Tab — Inventory:** show three distinct regions. Carried Inventory owns 18 unequipped storage slots; Hotbar Loadout owns the single equipped row mapped to keys 1–9; Armor Loadout occupies the full-height right column with an original character guide and positions for helmet, breastplate, gauntlets, leggings, boots and shield. Tab does not expose recipes.
 - **B — Field Build:** open a modal 2×2 hand-crafting surface for simple survival starts. The initial implemented set remains planks, sticks and workbench. Torches are next only when placeable light behavior exists.
 - **Right-click workbench:** the only entry to its modal 3×3 advanced recipe surface. A targeted station takes priority over placing the selected hotbar item.
 - **Right-click processing station:** open that station's own task-specific surface. Furnace is ore + fuel + timed output; a later oven is food + fuel + timed output. A chest is storage, an anvil/forge is equipment work, and none should masquerade as the generic workbench.
@@ -58,7 +58,7 @@ Siege devices should be entities with footprints, mount requirements, aim/fire/r
 
 ### Player tools, weapons and armor
 
-Before adding gear, define equipment slots, damage types, armor mitigation, durability/repair, tool-vs-weapon roles, death/recovery and whether shields are active or passive. A candidate slot set is main hand, off hand/shield, head, torso, hands, legs and feet. Material tiers can reuse the existing wood/stone/iron resource path, but recipes and values require a separate balance decision.
+The Tab layout now reserves helmet, breastplate, gauntlets, leggings, boots and shield positions alongside the existing 1–9 hotbar loadout. They are deliberately non-interactive until the equipment slice defines stable gear IDs, damage types, armor mitigation, durability/repair, tool-vs-weapon roles, death/recovery and whether shields are active or passive. Material tiers can reuse the existing wood/stone/iron resource path, but recipes and values require a separate balance decision.
 
 Museum evidence shows medieval equipment evolved through combinations of mail, shields, helmets, plate elements and full plate, and that interchangeable armor components could serve different kinds of combat. Maces and war hammers also matter once armor types create meaningful weapon choices.
 
@@ -81,6 +81,7 @@ Potential castle-defense roles include a rune table or focus altar, ward anchors
 ## Decisions still required
 
 - positional recipes versus recipe-driven auto-fill;
+- whether carried inventory remains fixed one-slot stacks or becomes a spatial/variable-footprint container; the current 18 carried + 9 hotbar model remains authoritative until storage, drag/drop, capacity and persistence rules are approved together;
 - whether tower caps are crafted whole, assembled from segments, or both;
 - structural integrity/collapse rules beyond current adjacent-face support;
 - rotation and snapping model for non-cubic castle pieces;
