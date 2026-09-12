@@ -99,92 +99,111 @@
   "items": [
     {
       "id": "dirt",
+      "category": "resource",
       "max_stack": 64,
       "places_block": 2
     },
     {
       "id": "stone",
+      "category": "resource",
       "max_stack": 64,
       "places_block": 3
     },
     {
       "id": "log",
+      "category": "resource",
       "max_stack": 64,
       "places_block": 4
     },
     {
       "id": "planks",
+      "category": "resource",
       "max_stack": 64,
       "places_block": 5
     },
     {
       "id": "castle_stone",
+      "category": "resource",
       "max_stack": 64,
       "places_block": 8
     },
     {
       "id": "stick",
+      "category": "resource",
       "max_stack": 64
     },
     {
       "id": "coal",
+      "category": "resource",
       "max_stack": 64
     },
     {
       "id": "iron_ore",
+      "category": "resource",
       "max_stack": 64
     },
     {
       "id": "iron_ingot",
+      "category": "resource",
       "max_stack": 64
     },
     {
       "id": "wood_pick",
+      "category": "tool",
       "max_stack": 1,
       "pick_tier": 1
     },
     {
       "id": "stone_pick",
+      "category": "tool",
       "max_stack": 1,
       "pick_tier": 2
     },
     {
       "id": "iron_pick",
+      "category": "tool",
       "max_stack": 1,
       "pick_tier": 3
     },
     {
       "id": "workbench",
+      "category": "station",
       "max_stack": 1,
       "places_entity": "workbench"
     },
     {
       "id": "furnace",
+      "category": "station",
       "max_stack": 1,
       "places_entity": "furnace"
     },
     {
       "id": "stone_stair",
+      "category": "building",
       "max_stack": 16,
       "places_entity": "stone_stair"
     },
     {
       "id": "wall_walk_slab",
+      "category": "building",
       "max_stack": 32,
       "places_entity": "wall_walk_slab"
     },
     {
       "id": "parapet_merlon",
+      "category": "building",
       "max_stack": 32,
       "places_entity": "parapet_merlon"
     },
     {
       "id": "tower_platform",
+      "category": "building",
       "max_stack": 8,
       "places_entity": "tower_platform"
     },
     {
       "id": "gate_frame",
+      "category": "building",
       "max_stack": 8,
       "places_entity": "gate_frame"
     }

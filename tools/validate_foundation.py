@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_SHA = "f238c37f3f9509b2a152e632503b7a4e16ab8fd4377dcc32122717e30c13cebd"
+ITEM_CATEGORIES = {"resource", "building", "tool", "station", "food"}
 
 
 class ValidationError(ValueError):
@@ -133,6 +134,7 @@ def validate_bundle(bundle):
         require(not block["protected"] or block["drop"] is None, "protected block cannot drop")
     for item in items.values():
         require(integer(item["max_stack"], 1), "invalid stack size")
+        require(item.get("category") in ITEM_CATEGORIES, "invalid item category")
         require(not ("places_block" in item and "places_entity" in item), "ambiguous placeable item")
         if "places_block" in item:
             target = numeric.get(item["places_block"])

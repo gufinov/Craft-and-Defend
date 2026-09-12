@@ -135,6 +135,12 @@ func _run_inventory(capture_visual: bool, expected_size: Vector2i) -> void:
 		for _resize_frame in range(3):
 			await get_tree().process_frame
 	app.session.inventory.try_transaction({}, {"dirt": 12, "log": 5, "planks": 8, "stone_stair": 2, "parapet_merlon": 3})
+	app.session.inventory.swap_slots(0, 12)
+	app.session.inventory.swap_slots(3, 10)
+	app.session.inventory.try_transaction({}, {"workbench": 1, "iron_pick": 1})
+	app.session.inventory.swap_slots(0, 15)
+	app.session.inventory.swap_slots(3, 9)
+	app.session.inventory.try_transaction({}, {"coal": 6, "stone": 9})
 	app._show_inventory()
 	for _frame in range(4):
 		await get_tree().process_frame
@@ -148,6 +154,36 @@ func _run_inventory(capture_visual: bool, expected_size: Vector2i) -> void:
 	var armor_truthful := app.inventory_armor_slot_buttons.all(func(button: Button) -> bool: return button.disabled and button.text.ends_with("Empty"))
 	var heights_align := absf(app.inventory_left_column.size.y - app.inventory_armor_card.size.y) <= 2.0
 	_record("T47_INVENTORY_LAYOUT", app.state == app.AppState.INVENTORY and section_counts_ok and mapping_ok and armor_truthful and heights_align, "Tab separates 18 carried slots, one 1–9 hotbar row and a truthful six-position full-height armor loadout", {"carried": app.inventory_carried_grid.get_child_count(), "hotbar": app.inventory_hotbar_grid.get_child_count(), "armor": app.inventory_armor_slot_buttons.size(), "left_height": app.inventory_left_column.size.y, "armor_height": app.inventory_armor_card.size.y})
+	var drag_source_item := str(app.session.inventory.slots[12].item_id)
+	var drag_target_before := app.session.inventory.slots[8].duplicate(true)
+	var drag_payload := {"kind": "inventory_slot", "source_index": 12, "item_id": drag_source_item}
+	var drag_accepted: bool = app.inventory_slot_buttons[8]._can_drop_data(Vector2.ZERO, drag_payload)
+	app.inventory_slot_buttons[8]._drop_data(Vector2.ZERO, drag_payload)
+	var drag_moved: bool = str(app.session.inventory.slots[8].item_id) == drag_source_item and app.session.inventory.slots[12] == drag_target_before
+	app.inventory_slot_buttons[12]._drop_data(Vector2.ZERO, {"kind": "inventory_slot", "source_index": 8, "item_id": drag_source_item})
+	app._set_inventory_filter("resource")
+	var visible_resource_slots := 0
+	for index in range(F0Inventory.HOTBAR_COUNT, app.inventory_slot_buttons.size()):
+		if app.inventory_slot_buttons[index].visible:
+			visible_resource_slots += 1
+	var filter_ok: bool = visible_resource_slots == 1 and app.inventory_filter_buttons["resource"].button_pressed and not app.inventory_filter_empty_label.visible
+	app._set_inventory_filter("food")
+	var empty_filter_ok: bool = app.inventory_filter_empty_label.visible and app.inventory_filter_buttons["food"].button_pressed
+	app._set_inventory_filter("all")
+	var hotbar_before := app.session.inventory.slots.slice(0, F0Inventory.HOTBAR_COUNT).duplicate(true)
+	var revision_before := app.session.inventory.revision
+	app._sort_carried_inventory()
+	var category_order: Array[String] = []
+	for index in range(F0Inventory.HOTBAR_COUNT, F0Inventory.SLOT_COUNT):
+		var carried_item_id := str(app.session.inventory.slots[index].item_id)
+		if not carried_item_id.is_empty():
+			category_order.append(app.session.registry.item_category(carried_item_id))
+	var expected_order: Array[String] = ["resource", "building", "tool", "station"]
+	var sort_ok: bool = hotbar_before == app.session.inventory.slots.slice(0, F0Inventory.HOTBAR_COUNT) and category_order == expected_order and app.session.inventory.revision == revision_before + 1
+	var sorted_snapshot := app.session.inventory.snapshot()
+	var restored_inventory := F0Inventory.new(app.session.registry)
+	var restore_ok: bool = restored_inventory.restore(sorted_snapshot) and restored_inventory.snapshot() == sorted_snapshot
+	_record("T49_INVENTORY_ORGANIZATION", drag_accepted and drag_moved and filter_ok and empty_filter_ok and sort_ok and restore_ok, "drag/drop swaps exact slots; carried filters are presentation-only; type sort preserves the hotbar and round-trips through the inventory snapshot", {"drag": drag_moved, "visible_resources": visible_resource_slots, "empty_food": empty_filter_ok, "categories": category_order, "hotbar_unchanged": hotbar_before == app.session.inventory.slots.slice(0, F0Inventory.HOTBAR_COUNT), "revision": app.session.inventory.revision, "restored": restore_ok})
 	if not capture_visual:
 		return
 	await RenderingServer.frame_post_draw

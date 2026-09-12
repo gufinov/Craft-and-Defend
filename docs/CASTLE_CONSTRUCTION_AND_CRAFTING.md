@@ -6,7 +6,7 @@ Sources: [Minecraft crafting overview](https://www.minecraft.net/en-us/article/h
 
 ## Accepted interaction contract
 
-- **Tab — Inventory:** show three distinct regions. Carried Inventory owns 18 unequipped storage slots; Hotbar Loadout owns the single equipped row mapped to keys 1–9; Armor Loadout occupies the full-height right column with an original character guide and positions for helmet, breastplate, gauntlets, leggings, boots and shield. Tab does not expose recipes.
+- **Tab — Inventory:** show three distinct regions. Carried Inventory owns 18 unequipped storage slots; Hotbar Loadout owns the single equipped row mapped to keys 1–9; Armor Loadout occupies the full-height right column with an original character guide and positions for helmet, breastplate, gauntlets, leggings, boots and shield. Items may be dragged or moved with the two-click keyboard fallback between Carried and Hotbar. Carried filters group stable categories (resource, building, tool, station and food) without mutating slot order; Sort Carried by Type reorders only Carried and never the equipped hotbar. Tab does not expose recipes.
 - **B — Field Build:** open a modal 2×2 hand-crafting surface for simple survival starts. The initial implemented set remains planks, sticks and workbench. Torches are next only when placeable light behavior exists.
 - **Right-click workbench:** the only entry to its modal 3×3 advanced recipe surface. A targeted station takes priority over placing the selected hotbar item.
 - **Right-click processing station:** open that station's own task-specific surface. Furnace is ore + fuel + timed output; a later oven is food + fuel + timed output. A chest is storage, an anvil/forge is equipment work, and none should masquerade as the generic workbench.

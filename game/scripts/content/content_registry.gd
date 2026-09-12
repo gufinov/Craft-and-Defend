@@ -2,6 +2,7 @@ class_name ContentRegistry
 extends RefCounted
 
 const REGISTRY_PATH := "res://data/content.json"
+const ITEM_CATEGORIES: Array[String] = ["resource", "building", "tool", "station", "food"]
 
 var content_version := ""
 var inventory_slots := 0
@@ -50,6 +51,8 @@ func load_registry(path: String = REGISTRY_PATH) -> Dictionary:
 		if not value is Dictionary:
 			return {"ok": false, "reason": "REGISTRY_ITEM_INVALID"}
 		var item: Dictionary = value.duplicate(true)
+		if str(item.get("category", "")) not in ITEM_CATEGORIES:
+			return {"ok": false, "reason": "REGISTRY_ITEM_CATEGORY_INVALID", "item_id": str(item.get("id", ""))}
 		items[str(item.id)] = item
 	for value in document.get("entities", []):
 		if not value is Dictionary:
@@ -97,6 +100,9 @@ func max_stack(item_id: String) -> int:
 	return int(items.get(item_id, {}).get("max_stack", 0))
 
 
+func item_category(item_id: String) -> String:
+	return str(items.get(item_id, {}).get("category", ""))
+
+
 func display_name(stable_id: String) -> String:
 	return stable_id.replace("_", " ").capitalize()
-

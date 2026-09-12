@@ -6,6 +6,14 @@ enum AppState { MAIN_MENU, LOADING, PLAYING, PAUSED, INVENTORY, CRAFTING, SAVING
 const DISPLAY_CONFIRM_SECONDS := 10.0
 const PRINT_SCREEN_FOCUS_WINDOW_MSEC := 2000
 const SCREENSHOT_CLICK_GUARD_SECONDS := 0.20
+const INVENTORY_FILTERS: Array[Dictionary] = [
+	{"id": "all", "label": "All"},
+	{"id": "resource", "label": "Resources"},
+	{"id": "building", "label": "Building"},
+	{"id": "tool", "label": "Tools"},
+	{"id": "station", "label": "Stations"},
+	{"id": "food", "label": "Food"},
+]
 const BINDING_GROUPS: Array[Dictionary] = [
 	{"title": "MOVEMENT", "actions": ["move_forward", "move_backward", "strafe_left", "strafe_right", "sprint", "crouch", "jump"]},
 	{"title": "WORLD & MENUS", "actions": ["primary", "secondary", "interact", "inventory", "build", "rotate_build", "pause", "capture_screenshot"]},
@@ -47,13 +55,15 @@ var inventory_contents_label: Label
 var keybind_search: LineEdit
 var binding_rows: Dictionary = {}
 var binding_reset_buttons: Dictionary = {}
-var inventory_slot_buttons: Array[Button] = []
+var inventory_slot_buttons: Array[InventoryItemSlot] = []
 var inventory_carried_grid: GridContainer
 var inventory_hotbar_grid: GridContainer
 var inventory_left_column: VBoxContainer
 var inventory_armor_card: PanelContainer
 var inventory_armor_slot_buttons: Array[Button] = []
 var inventory_silhouette: ArmorSilhouette
+var inventory_filter_buttons: Dictionary = {}
+var inventory_filter_empty_label: Label
 var inventory_message: Label
 var crafting_title_label: Label
 var crafting_context_label: Label
@@ -72,6 +82,7 @@ var _selected_recipe_id := ""
 var _craft_grid_items: Array[String] = []
 var _crafting_selected_inventory_item := ""
 var _inventory_move_source := -1
+var _inventory_filter := "all"
 var sensitivity_slider: HSlider
 var sensitivity_value_label: Label
 var invert_check: CheckButton
@@ -517,7 +528,7 @@ func _build_inventory(canvas: CanvasLayer) -> void:
 	header.add_child(title)
 	header.add_child(_button("Back to Game", _close_inventory, Vector2(190, 44)))
 	var context := Label.new()
-	context.text = "TAB CLOSES  ·  SELECT ONE SLOT, THEN ANOTHER TO MOVE OR SWAP"
+	context.text = "TAB CLOSES  ·  DRAG TO REPOSITION  ·  CLICK TWO SLOTS TO MOVE OR SWAP"
 	context.add_theme_color_override("font_color", Color("85d5ea"))
 	root.add_child(context)
 
@@ -545,15 +556,37 @@ func _build_inventory(canvas: CanvasLayer) -> void:
 	carried_heading.add_theme_color_override("font_color", Color("9fd8e8"))
 	carried_column.add_child(carried_heading)
 	var carried_help := Label.new()
-	carried_help.text = "Stored with the character; these are not equipped items"
+	carried_help.text = "Drag to reposition · filters change this view only · All shows empty drop targets"
 	carried_help.add_theme_font_size_override("font_size", 13)
 	carried_help.add_theme_color_override("font_color", Color("8fa5af"))
 	carried_column.add_child(carried_help)
+	var filter_row := HFlowContainer.new()
+	filter_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	filter_row.add_theme_constant_override("h_separation", 6)
+	filter_row.add_theme_constant_override("v_separation", 6)
+	carried_column.add_child(filter_row)
+	for filter_definition in INVENTORY_FILTERS:
+		var filter_id := str(filter_definition.id)
+		var filter_button := _button(str(filter_definition.label), _set_inventory_filter.bind(filter_id), Vector2(76, 34))
+		filter_button.toggle_mode = true
+		filter_button.add_theme_font_size_override("font_size", 13)
+		inventory_filter_buttons[filter_id] = filter_button
+		filter_row.add_child(filter_button)
+	var sort_button := _button("Sort Carried by Type", _sort_carried_inventory, Vector2(158, 34))
+	sort_button.add_theme_font_size_override("font_size", 13)
+	sort_button.tooltip_text = "Reorder only the 18 carried slots by category and item name; the hotbar is unchanged"
+	filter_row.add_child(sort_button)
 	inventory_carried_grid = GridContainer.new()
 	inventory_carried_grid.columns = 6
 	inventory_carried_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	inventory_carried_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	carried_column.add_child(inventory_carried_grid)
+	inventory_filter_empty_label = Label.new()
+	inventory_filter_empty_label.text = "No carried items match this filter. Choose All to show every slot."
+	inventory_filter_empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	inventory_filter_empty_label.add_theme_color_override("font_color", Color("8fa5af"))
+	inventory_filter_empty_label.hide()
+	carried_column.add_child(inventory_filter_empty_label)
 
 	var hotbar_card := PanelContainer.new()
 	hotbar_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -571,7 +604,10 @@ func _build_inventory(canvas: CanvasLayer) -> void:
 	hotbar_column.add_child(inventory_hotbar_grid)
 
 	for index in range(F0Inventory.SLOT_COUNT):
-		var slot_button := _button("", _select_inventory_slot.bind(index), Vector2(58, 58))
+		var slot_button := InventoryItemSlot.new()
+		slot_button.custom_minimum_size = Vector2(58, 58)
+		slot_button.pressed.connect(_select_inventory_slot.bind(index))
+		slot_button.item_dropped.connect(_on_inventory_item_dropped)
 		slot_button.alignment = HORIZONTAL_ALIGNMENT_CENTER
 		slot_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		slot_button.add_theme_font_size_override("font_size", 13)
@@ -911,6 +947,7 @@ func _show_inventory() -> void:
 	if state != AppState.PLAYING or session == null:
 		return
 	_inventory_move_source = -1
+	_inventory_filter = "all"
 	state = AppState.INVENTORY
 	session.pause_game(true)
 	get_tree().paused = true
@@ -998,6 +1035,36 @@ func _select_inventory_slot(index: int) -> void:
 	_refresh_inventory_panel()
 
 
+func _on_inventory_item_dropped(source_index: int, target_index: int) -> void:
+	if session == null:
+		return
+	_inventory_move_source = -1
+	var result := session.inventory.swap_slots(source_index, target_index)
+	if result.get("ok", false):
+		inventory_message.text = "Moved slot %d to slot %d." % [source_index + 1, target_index + 1] if result.get("reason") != "UNCHANGED" else "That item is already in this slot."
+	else:
+		inventory_message.text = "Move failed: %s" % result.get("reason", "UNKNOWN")
+	_refresh_inventory_panel()
+
+
+func _set_inventory_filter(filter_id: String) -> void:
+	if not INVENTORY_FILTERS.any(func(definition: Dictionary) -> bool: return str(definition.id) == filter_id):
+		return
+	_inventory_filter = filter_id
+	_inventory_move_source = -1
+	inventory_message.text = "Showing all carried slots." if filter_id == "all" else "Showing carried %s only. Choose All to expose empty drop targets." % filter_id
+	_refresh_inventory_panel()
+
+
+func _sort_carried_inventory() -> void:
+	if session == null:
+		return
+	_inventory_move_source = -1
+	var result := session.inventory.sort_carried_by_type()
+	inventory_message.text = "Carried inventory sorted by type; hotbar unchanged." if result.get("reason") == "OK" else "Carried inventory is already sorted."
+	_refresh_inventory_panel()
+
+
 func _refresh_inventory_panel() -> void:
 	if session == null:
 		return
@@ -1012,6 +1079,24 @@ func _refresh_inventory_panel() -> void:
 		inventory_slot_buttons[index].text = marker + prefix + item_text
 		inventory_slot_buttons[index].tooltip_text = ("Hotbar key %d" % (index + 1) if index < F0Inventory.HOTBAR_COUNT else "Carried slot %d" % (index - F0Inventory.HOTBAR_COUNT + 1)) + " · " + item_text
 		inventory_slot_buttons[index].disabled = false
+		inventory_slot_buttons[index].configure(index, item_id)
+		if index >= F0Inventory.HOTBAR_COUNT:
+			inventory_slot_buttons[index].visible = _inventory_filter == "all" or (not item_id.is_empty() and session.registry.item_category(item_id) == _inventory_filter)
+	var visible_carried := 0
+	for index in range(F0Inventory.HOTBAR_COUNT, inventory_slot_buttons.size()):
+		if inventory_slot_buttons[index].visible:
+			visible_carried += 1
+	inventory_filter_empty_label.visible = _inventory_filter != "all" and visible_carried == 0
+	for filter_definition in INVENTORY_FILTERS:
+		var filter_id := str(filter_definition.id)
+		var count := 0
+		for index in range(F0Inventory.HOTBAR_COUNT, slots.size()):
+			var filtered_item_id := str(slots[index].get("item_id", ""))
+			if not filtered_item_id.is_empty() and (filter_id == "all" or session.registry.item_category(filtered_item_id) == filter_id):
+				count += 1
+		var filter_button: Button = inventory_filter_buttons.get(filter_id)
+		filter_button.text = "%s %d" % [str(filter_definition.label), count]
+		filter_button.set_pressed_no_signal(filter_id == _inventory_filter)
 
 
 func _refresh_crafting_panel() -> void:

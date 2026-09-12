@@ -39,6 +39,10 @@ class FoundationTests(unittest.TestCase):
         self.bundle['content']['recipes'][0]['inputs']['log'] = True
         self.rejects('invalid recipe item/count')
 
+    def test_unknown_item_category_rejected(self):
+        self.bundle['content']['items'][0]['category'] = 'mystery'
+        self.rejects('invalid item category')
+
     def test_progression_deadlock_rejected(self):
         self.bundle['content']['recipes'][2]['station'] = 'workbench'
         self.rejects('unreachable progression')

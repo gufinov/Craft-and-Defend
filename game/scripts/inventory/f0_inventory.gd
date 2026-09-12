@@ -8,6 +8,7 @@ signal changed(snapshot: Dictionary)
 const SLOT_COUNT := 27
 const HOTBAR_COUNT := 9
 const MAX_DIRT := SLOT_COUNT * 64
+const CARRIED_CATEGORY_ORDER: Array[String] = ["resource", "building", "tool", "station", "food"]
 
 var registry: ContentRegistry
 var slots: Array[Dictionary] = []
@@ -58,6 +59,32 @@ func swap_slots(first: int, second: int) -> Dictionary:
 	revision += 1
 	changed.emit(snapshot())
 	return {"ok": true, "reason": "OK", "revision": revision}
+
+
+func sort_carried_by_type() -> Dictionary:
+	var before := slots.duplicate(true)
+	var occupied: Array[Dictionary] = []
+	for index in range(HOTBAR_COUNT, SLOT_COUNT):
+		if not str(slots[index].get("item_id", "")).is_empty():
+			occupied.append(slots[index].duplicate(true))
+	occupied.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var a_id := str(a.get("item_id", ""))
+		var b_id := str(b.get("item_id", ""))
+		var a_rank := CARRIED_CATEGORY_ORDER.find(registry.item_category(a_id))
+		var b_rank := CARRIED_CATEGORY_ORDER.find(registry.item_category(b_id))
+		if a_rank < 0:
+			a_rank = CARRIED_CATEGORY_ORDER.size()
+		if b_rank < 0:
+			b_rank = CARRIED_CATEGORY_ORDER.size()
+		return a_id < b_id if a_rank == b_rank else a_rank < b_rank
+	)
+	for offset in range(SLOT_COUNT - HOTBAR_COUNT):
+		slots[HOTBAR_COUNT + offset] = occupied[offset] if offset < occupied.size() else _empty_slot()
+	if slots == before:
+		return {"ok": true, "reason": "UNCHANGED", "revision": revision}
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "OK", "revision": revision, "sorted_slots": occupied.size()}
 
 
 func can_transaction(removals: Dictionary, additions: Dictionary) -> bool:
