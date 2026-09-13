@@ -63,7 +63,7 @@
     {"id": "parapet_merlon", "station": "workbench", "inputs": {"castle_stone": 3}, "outputs": {"parapet_merlon": 6}, "duration_seconds": 0},
     {"id": "tower_platform", "station": "workbench", "inputs": {"castle_stone": 4, "planks": 2}, "outputs": {"tower_platform": 1}, "duration_seconds": 0},
     {"id": "gate_frame", "station": "workbench", "inputs": {"castle_stone": 8}, "outputs": {"gate_frame": 1}, "duration_seconds": 0},
-    {"id": "wood_barricade", "station": "workbench", "inputs": {"planks": 4}, "outputs": {"wood_barricade": 1}, "duration_seconds": 0}
+    {"id": "wood_barricade", "station": "workbench", "recipe_book_priority": 100, "inputs": {"planks": 4}, "outputs": {"wood_barricade": 1}, "duration_seconds": 0}
   ],
   "progression_goals": ["workbench", "wood_pick", "stone_pick", "furnace", "iron_ingot", "iron_pick"]
 }

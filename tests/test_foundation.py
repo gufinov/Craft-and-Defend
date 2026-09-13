@@ -39,6 +39,10 @@ class FoundationTests(unittest.TestCase):
         self.bundle['content']['recipes'][0]['inputs']['log'] = True
         self.rejects('invalid recipe item/count')
 
+    def test_boolean_is_not_recipe_book_priority(self):
+        self.bundle['content']['recipes'][0]['recipe_book_priority'] = True
+        self.rejects('invalid recipe book priority')
+
     def test_unknown_item_category_rejected(self):
         self.bundle['content']['items'][0]['category'] = 'mystery'
         self.rejects('invalid item category')

@@ -1276,7 +1276,13 @@ func _available_crafting_recipes() -> Array[Dictionary]:
 	var recipes: Array[Dictionary] = session.recipes_for(_crafting_station_type)
 	if _crafting_station_type == "workbench":
 		recipes.append_array(session.recipes_for("hand"))
-	recipes.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return session.registry.display_name(str(a.id)) < session.registry.display_name(str(b.id)))
+	recipes.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var priority_a := int(a.get("recipe_book_priority", 0))
+		var priority_b := int(b.get("recipe_book_priority", 0))
+		if priority_a != priority_b:
+			return priority_a > priority_b
+		return session.registry.display_name(str(a.id)) < session.registry.display_name(str(b.id))
+	)
 	return recipes
 
 

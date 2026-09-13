@@ -458,6 +458,7 @@
     {
       "id": "wood_barricade",
       "station": "workbench",
+      "recipe_book_priority": 100,
       "inputs": {"planks": 4},
       "outputs": {"wood_barricade": 1},
       "duration_seconds": 0

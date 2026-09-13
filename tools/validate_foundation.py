@@ -168,6 +168,7 @@ def validate_bundle(bundle):
     for recipe in content["recipes"]:
         require(recipe["station"] == "hand" or recipe["station"] in entities, "unknown recipe station")
         require(type(recipe["duration_seconds"]) in (int, float) and recipe["duration_seconds"] >= 0, "invalid recipe time")
+        require("recipe_book_priority" not in recipe or integer(recipe["recipe_book_priority"]), "invalid recipe book priority")
         for field in ("inputs", "outputs"):
             require(recipe[field], "recipe cannot have empty inputs or outputs")
             require(all(i in items and integer(n, 1) for i, n in recipe[field].items()), "invalid recipe item/count")

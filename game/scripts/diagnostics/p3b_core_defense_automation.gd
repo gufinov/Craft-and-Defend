@@ -17,6 +17,8 @@ func run(application: CraftAndDefendApp, mode: String) -> void:
 			await _run_restore_checkpoint()
 		"visual":
 			await _run_visual()
+		"recipe_visual":
+			await _run_recipe_visual()
 		_:
 			failures.append("unknown mode " + mode)
 	_write_json(app.data_root.path_join("p3b_core_defense_results.json"), {"failures": failures, "records": records})
@@ -43,6 +45,7 @@ func _run_phase1() -> void:
 	app.session.inventory.try_transaction({}, {"workbench": 1})
 	var workbench := _place("workbench", workbench_cell)
 	var workbench_id := str(workbench.get("details", {}).get("station", {}).get("instance_id", ""))
+	var recipe_ui := await _inspect_workbench_barricade_recipe(workbench_id)
 	app.session.inventory.try_transaction({}, {"planks": 4})
 	var crafted := app.session.try_craft("wood_barricade", "workbench", workbench_id)
 	var barricade_cell := Vector3i(center.x, center.y, center.z)
@@ -57,8 +60,8 @@ func _run_phase1() -> void:
 	var repaired_once := app.session.workstations.try_repair_structure(barricade_id)
 	var repaired_status := app.session.workstations.defense_status(barricade_id)
 	var repair_atomic: bool = repaired_once.get("ok", false) and app.session.inventory.count("planks") == planks_before_repair - 1 and int(repaired_status.get("details", {}).get("integrity", 0)) == 30
-	var recipe_placement_ok: bool = bool(workbench.get("ok", false)) and bool(crafted.get("ok", false)) and bool(placed.get("ok", false)) and occupied.size() == 2 and status.get("ok", false) and int(status.get("details", {}).get("integrity", 0)) == 30 and nav.get("tags", []).has("breachable_wood") and damaged_once.get("ok", false) and repair_atomic
-	_record("T66_BARRICADE_RECIPE_PLACEMENT", recipe_placement_ok, "the Workbench recipe creates one placeable two-cell wooden barricade with a stable identity, exact footprint, 30 integrity and atomic Planks repair", {"workbench": workbench, "crafted": crafted, "placed": placed, "status": status, "navigation": nav, "damage": damaged_once, "repair": repaired_once, "repair_status": repaired_status})
+	var recipe_placement_ok: bool = bool(workbench.get("ok", false)) and bool(recipe_ui.get("ok", false)) and bool(crafted.get("ok", false)) and bool(placed.get("ok", false)) and occupied.size() == 2 and status.get("ok", false) and int(status.get("details", {}).get("integrity", 0)) == 30 and nav.get("tags", []).has("breachable_wood") and damaged_once.get("ok", false) and repair_atomic
+	_record("T66_BARRICADE_RECIPE_PLACEMENT", recipe_placement_ok, "the visible Workbench book presents Wood Barricade first and finds it by search before crafting one placeable two-cell defense with a stable identity, exact footprint, 30 integrity and atomic Planks repair", {"workbench": workbench, "recipe_ui": recipe_ui, "crafted": crafted, "placed": placed, "status": status, "navigation": nav, "damage": damaged_once, "repair": repaired_once, "repair_status": repaired_status})
 
 	core.warning_remaining = 0.0
 	core._begin_attack()
@@ -178,8 +181,67 @@ func _run_visual() -> void:
 	_record("T71_CORE_DEFENSE_VISUAL", visual_ok, "rendered evidence shows the strategic core, field-side raider, player-built barricades, an open route and damaged barricade integrity in one frame", {"path": path, "size": image.get_size(), "error": error, "route_reason": core.last_route_reason, "target": core.active_target_type, "barricade": status})
 
 
+func _run_recipe_visual() -> void:
+	app._on_start_pressed()
+	if not await _wait_ready():
+		return
+	app.session.player.deactivate()
+	var core := app.session.core_defense
+	var started := core.start_prototype()
+	if not started.get("ok", false):
+		_record("T66_WORKBENCH_RECIPE_VISIBLE", false, "the core-defense arena starts before the Workbench evidence capture", started)
+		return
+	var workbench_cell := core.arena_center + Vector3i(4, 0, 3)
+	app.session.inventory.try_transaction({}, {"workbench": 1, "planks": 4})
+	var workbench := _place("workbench", workbench_cell)
+	var workbench_id := str(workbench.get("details", {}).get("station", {}).get("instance_id", ""))
+	app._show_crafting(workbench_id, "workbench")
+	for _frame in range(30):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var image := get_viewport().get_texture().get_image()
+	var path := app.data_root.path_join("p3b-workbench-recipe.png")
+	var error := image.save_png(path)
+	var first_card_text := _first_recipe_button_text()
+	var visible := bool(workbench.get("ok", false)) and first_card_text.contains("Wood Barricade") and first_card_text.contains("READY") and error == OK and not image.is_empty() and image.get_size() == Vector2i(1280, 720)
+	_record("T66_WORKBENCH_RECIPE_VISIBLE", visible, "the default 1280×720 Workbench page visibly presents a READY Wood Barricade recipe without scrolling or search", {"path": path, "size": image.get_size(), "error": error, "first_card_text": first_card_text, "workbench": workbench})
+
+
 func _place(entity_id: String, cell: Vector3i) -> Dictionary:
 	return app.session.workstations.try_place(entity_id, cell, app.session.world.query_cell, AABB(), 0)
+
+
+func _inspect_workbench_barricade_recipe(workbench_id: String) -> Dictionary:
+	app._show_crafting(workbench_id, "workbench")
+	await get_tree().process_frame
+	var recipes := app._available_crafting_recipes()
+	var first_recipe_id := str(recipes[0].get("id", "")) if not recipes.is_empty() else ""
+	var initial_cards := app.crafting_recipe_list.get_child_count()
+	var first_card_text := _first_recipe_button_text()
+	app.crafting_recipe_search.text = "wood barricade"
+	app._on_crafting_recipe_search_changed("wood barricade")
+	await get_tree().process_frame
+	var search_cards := app.crafting_recipe_list.get_child_count()
+	var search_card_text := _first_recipe_button_text()
+	var result := {
+		"ok": first_recipe_id == "wood_barricade" and initial_cards == recipes.size() and first_card_text.contains("Wood Barricade") and search_cards == 1 and search_card_text.contains("Wood Barricade"),
+		"first_recipe_id": first_recipe_id,
+		"recipe_count": recipes.size(),
+		"initial_cards": initial_cards,
+		"first_card_text": first_card_text,
+		"search_cards": search_cards,
+		"search_card_text": search_card_text,
+	}
+	app.crafting_recipe_search.clear()
+	app._close_crafting()
+	return result
+
+
+func _first_recipe_button_text() -> String:
+	if app.crafting_recipe_list.get_child_count() == 0:
+		return ""
+	var buttons := app.crafting_recipe_list.get_child(0).find_children("*", "Button", true, false)
+	return str(buttons[0].text) if not buttons.is_empty() else ""
 
 
 func _add_structure_label(instance_id: String) -> void:
