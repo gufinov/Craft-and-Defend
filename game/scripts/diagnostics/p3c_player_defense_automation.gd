@@ -11,6 +11,10 @@ func run(application: CraftAndDefendApp, mode: String) -> void:
 	match mode:
 		"phase1":
 			await _run_phase1()
+		"save":
+			await _run_save_checkpoint()
+		"restore":
+			await _run_restore_checkpoint()
 		"visual":
 			await _run_visual()
 		_:
@@ -132,6 +136,43 @@ func _run_phase1() -> void:
 	var restored_catapult := restored_service.siege_status(catapult_id)
 	var persistence_ok: bool = restored.get("ok", false) and int(restored_ballista.get("details", {}).get("ammo", -1)) == ammo_after_clear and int(restored_catapult.get("details", {}).get("ammo", -1)) == catapult_after
 	_record("T77_SIEGE_PERSISTENCE", persistence_ok, "placed siege identity, remaining ammunition and reload state round-trip through the existing station snapshot", {"restore": restored, "ballista": restored_ballista, "catapult": restored_catapult})
+
+
+func _run_save_checkpoint() -> void:
+	app._on_start_pressed()
+	if not await _wait_ready():
+		return
+	app.session.player.deactivate()
+	app.session.simulation_paused = true
+	app.session.inventory.try_transaction({}, {"iron_sword": 1, "ballista": 1, "catapult": 1})
+	var ballista := app.session.workstations.try_place("ballista", Vector3i(5, 0, 34), app.session.world.query_cell, AABB(), 0)
+	var catapult := app.session.workstations.try_place("catapult", Vector3i(2, 0, 34), app.session.world.query_cell, AABB(), 0)
+	var ballista_id := str(ballista.get("details", {}).get("station", {}).get("instance_id", ""))
+	var catapult_id := str(catapult.get("details", {}).get("station", {}).get("instance_id", ""))
+	var ballista_shot := app.session.workstations.commit_siege_shot(ballista_id)
+	var catapult_shot := app.session.workstations.commit_siege_shot(catapult_id)
+	var saved := await app.saves.save_session(app.session)
+	var ok: bool = ballista.get("ok", false) and catapult.get("ok", false) and ballista_shot.get("ok", false) and catapult_shot.get("ok", false) and saved.get("ok", false)
+	_record("T77_SIEGE_CHECKPOINT_SAVE", ok, "one atomic checkpoint stores the carried sword plus placed siege identity, remaining ammunition and reload state", {"save": saved, "sword_count": app.session.inventory.count("iron_sword"), "ballista": app.session.workstations.siege_status(ballista_id), "catapult": app.session.workstations.siege_status(catapult_id)})
+
+
+func _run_restore_checkpoint() -> void:
+	app._on_continue_pressed()
+	if not await _wait_ready():
+		return
+	app.session.player.deactivate()
+	var ballista_status: Dictionary = {}
+	var catapult_status: Dictionary = {}
+	for instance_id: String in app.session.workstations.stations:
+		var record: Dictionary = app.session.workstations.stations[instance_id]
+		if str(record.get("entity_id", "")) == "ballista":
+			ballista_status = app.session.workstations.siege_status(instance_id)
+		elif str(record.get("entity_id", "")) == "catapult":
+			catapult_status = app.session.workstations.siege_status(instance_id)
+	var ballista_details: Dictionary = ballista_status.get("details", {})
+	var catapult_details: Dictionary = catapult_status.get("details", {})
+	var restored: bool = app.session.inventory.count("iron_sword") == 1 and ballista_status.get("ok", false) and catapult_status.get("ok", false) and int(ballista_details.get("ammo", -1)) == 7 and is_equal_approx(float(ballista_details.get("cooldown", -1.0)), 1.5) and int(catapult_details.get("ammo", -1)) == 4 and is_equal_approx(float(catapult_details.get("cooldown", -1.0)), 3.2)
+	_record("T77_SIEGE_CHECKPOINT_RESTORE", restored, "a separate executable Continue restores the exact carried sword and placed siege ammunition/reload state", {"sword_count": app.session.inventory.count("iron_sword"), "ballista": ballista_status, "catapult": catapult_status})
 
 
 func _run_visual() -> void:

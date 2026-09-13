@@ -9,9 +9,11 @@ if errorlevel 1 goto :prepare_failed
 
 set "TEST_ROOT=%~dp0artifacts\manual-p3c-player-defense-%RANDOM%%RANDOM%"
 set "PHASE_ROOT=%TEST_ROOT%\phase1"
+set "PERSIST_ROOT=%TEST_ROOT%\persistence"
 set "VISUAL_ROOT=%TEST_ROOT%\visual"
 set "EXE=%~dp0builds\CraftAndDefend\CraftAndDefend.exe"
 mkdir "%PHASE_ROOT%" 2>nul
+mkdir "%PERSIST_ROOT%" 2>nul
 mkdir "%VISUAL_ROOT%" 2>nul
 
 echo.
@@ -19,6 +21,13 @@ echo Running the automated sword, ballista, catapult, catalog, paging and save c
 echo The diagnostic controls itself; it is not the playable game.
 "%EXE%" --headless --log-file "%PHASE_ROOT%\phase1.log" -- --f0-data-root="%PHASE_ROOT%" --p3c-player-defense-automation=phase1
 if errorlevel 1 goto :phase_failed
+
+echo.
+echo Saving siege state, then restoring it in a separate executable process.
+"%EXE%" --headless --log-file "%PERSIST_ROOT%\save.log" -- --f0-data-root="%PERSIST_ROOT%" --p3c-player-defense-automation=save
+if errorlevel 1 goto :save_failed
+"%EXE%" --headless --log-file "%PERSIST_ROOT%\restore.log" -- --f0-data-root="%PERSIST_ROOT%" --p3c-player-defense-automation=restore
+if errorlevel 1 goto :restore_failed
 
 echo.
 echo Rendering the 12-card Workbench page. A game window may appear briefly and close itself.
@@ -48,6 +57,18 @@ exit /b 1
 :phase_failed
 echo.
 echo P3C gameplay automation failed. Review: %PHASE_ROOT%\phase1.log
+pause
+exit /b 1
+
+:save_failed
+echo.
+echo P3C persistence save failed. Review: %PERSIST_ROOT%\save.log
+pause
+exit /b 1
+
+:restore_failed
+echo.
+echo P3C clean-process Continue failed. Review: %PERSIST_ROOT%\restore.log
 pause
 exit /b 1
 

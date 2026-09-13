@@ -161,6 +161,8 @@ class FoundationTests(unittest.TestCase):
         launcher = (root / 'TEST_P3C_PLAYER_DEFENSE.cmd').read_text(encoding='utf-8')
         self.assertIn('start_game.ps1" -PrepareOnly', launcher)
         self.assertIn('--p3c-player-defense-automation=phase1', launcher)
+        self.assertIn('--p3c-player-defense-automation=save', launcher)
+        self.assertIn('--p3c-player-defense-automation=restore', launcher)
         self.assertIn('--p3c-player-defense-automation=visual', launcher)
         self.assertIn('if not exist "%VISUAL_ROOT%\\p3c-visual-catalog.png"', launcher)
         self.assertIn('P3C_DIAGNOSTIC_NO_OPEN', launcher)
