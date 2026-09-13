@@ -40,7 +40,11 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		footprints.release_at(anchor)
 		return _result(false, consumed.get("reason", "INVENTORY_COMMIT_FAILED"))
 	_next_instance += 1
-	stations[instance_id] = {"instance_id": instance_id, "entity_id": entity_id, "anchor": anchor, "rotation_quarters": posmod(rotation_quarters, 4)}
+	var record := {"instance_id": instance_id, "entity_id": entity_id, "anchor": anchor, "rotation_quarters": posmod(rotation_quarters, 4)}
+	var defense_definition: Dictionary = definition.get("defense", {})
+	if not defense_definition.is_empty():
+		record["integrity"] = maxi(1, int(defense_definition.get("max_integrity", 1)))
+	stations[instance_id] = record
 	var result := _result(true, "OK", {"station": stations[instance_id].duplicate(true), "consumed_item": entity_id, "occupied_cells": reserved.get("details", {}).get("cells", []).duplicate()})
 	station_changed.emit(result)
 	return result
@@ -140,6 +144,118 @@ func station_type(instance_id: String) -> String:
 	return str(registry.entity(str(record.get("entity_id", ""))).get("station_type", ""))
 
 
+func navigation_cell_data(instance_id: String) -> Dictionary:
+	var record: Dictionary = stations.get(instance_id, {})
+	if record.is_empty():
+		return {"state": "LOADED", "solid": false}
+	var entity_id := str(record.get("entity_id", ""))
+	var definition := registry.entity(entity_id)
+	var navigation: Dictionary = definition.get("navigation", {})
+	var tags: Array = navigation.get("material_tags", [])
+	if tags.is_empty() and registry.item_category(entity_id) == "building":
+		tags = ["stone", "fortification"]
+	var integrity := int(record.get("integrity", navigation.get("integrity", 1)))
+	return {
+		"state": "LOADED",
+		"solid": true,
+		"voxel_id": -1,
+		"material_id": entity_id,
+		"source": "entity",
+		"source_id": instance_id,
+		"tags": tags.duplicate(),
+		"integrity": maxi(1, integrity),
+		"protected": tags.is_empty(),
+	}
+
+
+func defense_status(instance_id: String) -> Dictionary:
+	var record: Dictionary = stations.get(instance_id, {})
+	if record.is_empty():
+		return _result(false, "NO_ENTITY")
+	var definition := registry.entity(str(record.get("entity_id", "")))
+	var defense_definition: Dictionary = definition.get("defense", {})
+	if defense_definition.is_empty():
+		return _result(false, "NOT_DAMAGEABLE")
+	var maximum := maxi(1, int(defense_definition.get("max_integrity", 1)))
+	return _result(true, "OK", {
+		"instance_id": instance_id,
+		"entity_id": str(record.get("entity_id", "")),
+		"integrity": clampi(int(record.get("integrity", maximum)), 1, maximum),
+		"max_integrity": maximum,
+		"repair_item": str(defense_definition.get("repair_item", "")),
+		"repair_amount": maxi(1, int(defense_definition.get("repair_amount", 1))),
+	})
+
+
+func try_damage(instance_id: String, amount: int) -> Dictionary:
+	if amount <= 0:
+		return _result(false, "INVALID_DAMAGE")
+	var status := defense_status(instance_id)
+	if not status.get("ok", false):
+		return status
+	var details: Dictionary = status.get("details", {})
+	var before := int(details.get("integrity", 1))
+	var after := maxi(0, before - amount)
+	if after > 0:
+		stations[instance_id]["integrity"] = after
+		var damaged := _result(true, "DAMAGED", {
+			"instance_id": instance_id,
+			"entity_id": details.get("entity_id", ""),
+			"integrity_before": before,
+			"integrity": after,
+			"max_integrity": details.get("max_integrity", before),
+		})
+		station_changed.emit(damaged)
+		return damaged
+	var record: Dictionary = stations[instance_id]
+	var released := footprints.release_at(record.anchor)
+	if not released.get("ok", false):
+		return released
+	stations.erase(instance_id)
+	jobs.erase(instance_id)
+	var destroyed := _result(true, "DESTROYED", {
+		"instance_id": instance_id,
+		"entity_id": details.get("entity_id", ""),
+		"integrity_before": before,
+		"integrity": 0,
+		"max_integrity": details.get("max_integrity", before),
+		"destroyed": true,
+		"refund": {},
+		"occupied_cells": released.get("details", {}).get("released_cells", []).duplicate(),
+	})
+	station_changed.emit(destroyed)
+	return destroyed
+
+
+func try_repair_structure(instance_id: String) -> Dictionary:
+	var status := defense_status(instance_id)
+	if not status.get("ok", false):
+		return {"handled": false}
+	var details: Dictionary = status.get("details", {})
+	var before := int(details.get("integrity", 1))
+	var maximum := int(details.get("max_integrity", before))
+	if before >= maximum:
+		return {"handled": true, "ok": false, "reason": "NO_REPAIR_NEEDED"}
+	var repair_item := str(details.get("repair_item", ""))
+	if repair_item.is_empty() or inventory.count(repair_item) < 1:
+		return {"handled": true, "ok": false, "reason": "MISSING_REPAIR_MATERIAL"}
+	var committed := inventory.try_transaction({repair_item: 1}, {})
+	if not committed.get("ok", false):
+		return {"handled": true, "ok": false, "reason": str(committed.get("reason", "REPAIR_FAILED"))}
+	var after := mini(maximum, before + int(details.get("repair_amount", 1)))
+	stations[instance_id]["integrity"] = after
+	var repaired := _result(true, "REPAIRED", {
+		"instance_id": instance_id,
+		"entity_id": details.get("entity_id", ""),
+		"integrity_before": before,
+		"integrity": after,
+		"max_integrity": maximum,
+		"consumed": {repair_item: 1},
+	})
+	station_changed.emit(repaired)
+	return {"handled": true, "ok": true, "reason": "REPAIRED", "changes": repaired.get("details", {})}
+
+
 func snapshot() -> Dictionary:
 	var station_list: Array[Dictionary] = []
 	for record: Dictionary in stations.values():
@@ -161,6 +277,13 @@ func restore(data: Dictionary, world_query: Callable) -> Dictionary:
 		var definition := registry.entity(str(record.get("entity_id", "")))
 		if definition.is_empty():
 			return _result(false, "MISSING_CONTENT")
+		var defense_definition: Dictionary = definition.get("defense", {})
+		if not defense_definition.is_empty():
+			var maximum := maxi(1, int(defense_definition.get("max_integrity", 1)))
+			var integrity := int(record.get("integrity", maximum))
+			if integrity <= 0 or integrity > maximum:
+				return _result(false, "INVALID_STATION_SNAPSHOT")
+			record["integrity"] = integrity
 		var reserved := footprints.try_reserve(str(record.instance_id), record.anchor, _vector_list(definition.occupied_offsets), int(record.get("rotation_quarters", 0)), world_query, AABB(), _vector_list(definition.support_offsets))
 		if not reserved.get("ok", false):
 			return _result(false, "INVALID_STATION_SNAPSHOT", reserved)

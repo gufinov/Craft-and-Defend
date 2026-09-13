@@ -180,6 +180,11 @@ func _ready() -> void:
 		var p3_defense_automation := P3DefenseAutomation.new()
 		add_child(p3_defense_automation)
 		p3_defense_automation.call_deferred("run", self, p3_defense_mode)
+	var p3b_core_mode := _argument_value("--p3b-core-defense-automation=")
+	if not p3b_core_mode.is_empty():
+		var p3b_core_automation := P3BCoreDefenseAutomation.new()
+		add_child(p3b_core_automation)
+		p3b_core_automation.call_deferred("run", self, p3b_core_mode)
 
 
 func _process(delta: float) -> void:
@@ -278,12 +283,13 @@ func _build_loading(canvas: CanvasLayer) -> void:
 func _build_pause(canvas: CanvasLayer) -> void:
 	pause_panel = _full_panel(Color(0.04, 0.06, 0.08, 0.92))
 	canvas.add_child(pause_panel)
-	var pause_box := _centered_box(pause_panel, Vector2(700, 520))
+	var pause_box := _centered_box(pause_panel, Vector2(700, 590))
 	pause_box.add_child(_title("PAUSED", 30))
 	pause_box.add_child(_button("Resume", _resume_game))
 	pause_box.add_child(_button("Settings", _show_settings))
 	pause_box.add_child(_button("Keybinds", _show_keybinds))
 	pause_box.add_child(_button("Start Defense Drill", _start_defense_drill))
+	pause_box.add_child(_button("Start Core Defense Prototype", _start_core_defense_prototype))
 	pause_box.add_child(_button("Save and Exit to Menu", _save_and_exit_to_menu))
 	pause_box.add_child(_button("Save and Quit", _save_and_quit))
 
@@ -985,6 +991,14 @@ func _start_defense_drill() -> void:
 	if state != AppState.PAUSED or session == null:
 		return
 	var result := session.start_defense_drill()
+	if result.get("ok", false):
+		_resume_game()
+
+
+func _start_core_defense_prototype() -> void:
+	if state != AppState.PAUSED or session == null:
+		return
+	var result := session.start_core_defense_prototype()
 	if result.get("ok", false):
 		_resume_game()
 

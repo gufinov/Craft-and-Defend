@@ -35,7 +35,8 @@
     {"id": "wall_walk_slab", "category": "building", "max_stack": 32, "places_entity": "wall_walk_slab"},
     {"id": "parapet_merlon", "category": "building", "max_stack": 32, "places_entity": "parapet_merlon"},
     {"id": "tower_platform", "category": "building", "max_stack": 8, "places_entity": "tower_platform"},
-    {"id": "gate_frame", "category": "building", "max_stack": 8, "places_entity": "gate_frame"}
+    {"id": "gate_frame", "category": "building", "max_stack": 8, "places_entity": "gate_frame"},
+    {"id": "wood_barricade", "category": "building", "max_stack": 16, "places_entity": "wood_barricade"}
   ],
   "entities": [
     {"id": "workbench", "occupied_offsets": [[0, 0, 0]], "support_offsets": [[0, -1, 0]], "station_type": "workbench", "visual": {"color": "d98b3a", "parts": [{"offset": [0.0, 0.0, 0.0], "size": [0.9, 0.9, 0.9]}]}, "dismantle_policy": "idle_only_inventory_capacity_required"},
@@ -44,7 +45,8 @@
     {"id": "wall_walk_slab", "occupied_offsets": [[0, 0, 0]], "support_offsets": [[0, -1, 0]], "visual": {"color": "8b929d", "parts": [{"offset": [0.0, -0.25, 0.0], "size": [1.0, 0.5, 1.0]}]}, "dismantle_policy": "inventory_capacity_required"},
     {"id": "parapet_merlon", "occupied_offsets": [[0, 0, 0]], "support_offsets": [[0, -1, 0]], "visual": {"color": "8b929d", "parts": [{"offset": [0.0, -0.05, 0.0], "size": [0.68, 0.9, 0.68]}]}, "dismantle_policy": "inventory_capacity_required"},
     {"id": "tower_platform", "occupied_offsets": [[0, 0, 0], [1, 0, 0], [0, 0, 1], [1, 0, 1]], "support_offsets": [[0, -1, 0], [1, -1, 0], [0, -1, 1], [1, -1, 1]], "mount_sockets": [{"id": "center_mount", "type": "light_siege", "offset": [0.5, 0.0, 0.5]}], "visual": {"color": "747c86", "parts": [{"offset": [0.5, -0.3, 0.5], "size": [2.0, 0.4, 2.0]}, {"offset": [0.5, -0.05, 0.5], "size": [0.55, 0.15, 0.55]}]}, "dismantle_policy": "inventory_capacity_required"},
-    {"id": "gate_frame", "occupied_offsets": [[0, 0, 0], [2, 0, 0], [0, 1, 0], [2, 1, 0], [0, 2, 0], [1, 2, 0], [2, 2, 0]], "support_offsets": [[0, -1, 0], [2, -1, 0]], "visual": {"color": "69717b", "parts": [{"offset": [0.0, 1.0, 0.0], "size": [1.0, 3.0, 1.0]}, {"offset": [2.0, 1.0, 0.0], "size": [1.0, 3.0, 1.0]}, {"offset": [1.0, 2.0, 0.0], "size": [1.0, 1.0, 1.0]}]}, "dismantle_policy": "inventory_capacity_required"}
+    {"id": "gate_frame", "occupied_offsets": [[0, 0, 0], [2, 0, 0], [0, 1, 0], [2, 1, 0], [0, 2, 0], [1, 2, 0], [2, 2, 0]], "support_offsets": [[0, -1, 0], [2, -1, 0]], "visual": {"color": "69717b", "parts": [{"offset": [0.0, 1.0, 0.0], "size": [1.0, 3.0, 1.0]}, {"offset": [2.0, 1.0, 0.0], "size": [1.0, 3.0, 1.0]}, {"offset": [1.0, 2.0, 0.0], "size": [1.0, 1.0, 1.0]}]}, "navigation": {"material_tags": ["stone", "fortification"], "integrity": 180}, "dismantle_policy": "inventory_capacity_required"},
+    {"id": "wood_barricade", "occupied_offsets": [[0, 0, 0], [0, 1, 0]], "support_offsets": [[0, -1, 0]], "visual": {"color": "9b5b32", "parts": [{"offset": [0.0, 0.5, 0.0], "size": [0.92, 1.92, 0.55]}, {"offset": [0.0, 0.15, 0.0], "size": [1.0, 0.18, 0.72]}, {"offset": [0.0, 0.85, 0.0], "size": [1.0, 0.18, 0.72]}]}, "navigation": {"material_tags": ["wood", "breachable_wood"], "integrity": 30}, "defense": {"max_integrity": 30, "repair_item": "planks", "repair_amount": 6}, "dismantle_policy": "inventory_capacity_required"}
   ],
   "recipes": [
     {"id": "planks", "station": "hand", "inputs": {"log": 1}, "outputs": {"planks": 4}, "duration_seconds": 0},
@@ -60,7 +62,8 @@
     {"id": "wall_walk_slab", "station": "workbench", "inputs": {"castle_stone": 3}, "outputs": {"wall_walk_slab": 6}, "duration_seconds": 0},
     {"id": "parapet_merlon", "station": "workbench", "inputs": {"castle_stone": 3}, "outputs": {"parapet_merlon": 6}, "duration_seconds": 0},
     {"id": "tower_platform", "station": "workbench", "inputs": {"castle_stone": 4, "planks": 2}, "outputs": {"tower_platform": 1}, "duration_seconds": 0},
-    {"id": "gate_frame", "station": "workbench", "inputs": {"castle_stone": 8}, "outputs": {"gate_frame": 1}, "duration_seconds": 0}
+    {"id": "gate_frame", "station": "workbench", "inputs": {"castle_stone": 8}, "outputs": {"gate_frame": 1}, "duration_seconds": 0},
+    {"id": "wood_barricade", "station": "workbench", "inputs": {"planks": 4}, "outputs": {"wood_barricade": 1}, "duration_seconds": 0}
   ],
   "progression_goals": ["workbench", "wood_pick", "stone_pick", "furnace", "iron_ingot", "iron_pick"]
 }

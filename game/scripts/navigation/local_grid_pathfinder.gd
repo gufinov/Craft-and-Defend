@@ -150,6 +150,7 @@ func _best_attack_action(snapshot: NavigationSnapshot, visited: Array, goal: Vec
 					"cell": target,
 					"material_id": str(block.get("material_id", "unknown")),
 					"source": str(block.get("source", "voxel")),
+					"source_id": str(block.get("source_id", block.get("material_id", "unknown"))),
 					"damage_per_hit": damage,
 					"integrity": integrity,
 					"estimated_hits": ceili(integrity / damage),

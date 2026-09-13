@@ -37,6 +37,7 @@ const REASON_TEXT := {
 	"JOB_COMPLETED": "Furnace finished and delivered its reserved output.",
 	"DEFENSE_ALREADY_ACTIVE": "A defense drill is already active.",
 	"DEFENSE_ARENA_BLOCKED": "No clear practice lane is available near home. Move or dismantle nearby builds, then try again.",
+	"CORE_ARENA_BLOCKED": "No clear core-defense lane is available near home. Move or dismantle nearby builds, then try again.",
 	"MISSING_REPAIR_MATERIAL": "Repair requires one Planks item in carried inventory or the hotbar.",
 	"NO_REPAIR_NEEDED": "That barricade is already at full integrity.",
 	"REPAIRED": "Barricade repaired; one Planks item was consumed.",
@@ -51,12 +52,14 @@ var workstations: WorkstationService
 var interaction: InteractionService
 var clock: DayNightClock
 var defense: DefenseService
+var core_defense: CoreDefenseService
 var open_data: Dictionary
 var world_ready := false
 var saving := false
 var simulation_paused := true
 var _pending_workstation_snapshot: Dictionary = {}
 var _station_visuals: Dictionary = {}
+var _station_visual_materials: Dictionary = {}
 var _placement_preview: Node3D
 var _placement_preview_key := ""
 var _environment: Environment
@@ -127,6 +130,10 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	defense.name = "DefenseService"
 	add_child(defense)
 	defense.initialize(world, inventory, registry, workstations, snapshot.get("defense", {}))
+	core_defense = CoreDefenseService.new()
+	core_defense.name = "CoreDefenseService"
+	add_child(core_defense)
+	core_defense.initialize(world, registry, workstations, snapshot.get("core_defense", {}))
 	interaction = InteractionService.new(world, inventory, player.get_body_aabb, registry, workstations, _raycast_station, _defense_interact)
 	player.interaction = interaction
 	world.spawn_area_ready.connect(_on_spawn_area_ready)
@@ -135,8 +142,10 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	interaction.result_reported.connect(_on_interaction_result)
 	workstations.station_changed.connect(_on_station_changed)
 	workstations.job_completed.connect(_on_job_completed)
-	defense.state_changed.connect(defense_changed.emit)
+	defense.state_changed.connect(_on_defense_state_changed)
 	defense.feedback.connect(_on_interaction_feedback)
+	core_defense.state_changed.connect(_on_defense_state_changed)
+	core_defense.feedback.connect(_on_interaction_feedback)
 	player.interaction_feedback.connect(_on_interaction_feedback)
 	player.boundary_feedback.connect(_on_boundary_feedback)
 	player.deactivate()
@@ -149,6 +158,8 @@ func _process(delta: float) -> void:
 	_update_placement_preview()
 	if defense != null:
 		defense.advance(delta, simulation_paused or saving)
+	if core_defense != null:
+		core_defense.advance(delta, simulation_paused or saving)
 	if workstations != null and not saving:
 		workstations.advance(delta, simulation_paused)
 	if clock != null and not saving:
@@ -238,7 +249,24 @@ func try_craft(recipe_id: String, station_type: String, station_id: String = "")
 func start_defense_drill() -> Dictionary:
 	if defense == null or not world_ready:
 		return {"ok": false, "reason": "WORLD_NOT_READY"}
+	if core_defense != null and core_defense.is_active():
+		return {"ok": false, "reason": "DEFENSE_ALREADY_ACTIVE"}
+	if core_defense != null:
+		core_defense.clear_for_other_mode()
 	var result := defense.start_drill()
+	if not result.get("ok", false):
+		_on_interaction_feedback(str(result.get("reason", "DEFENSE_START_FAILED")))
+	return result
+
+
+func start_core_defense_prototype() -> Dictionary:
+	if core_defense == null or not world_ready:
+		return {"ok": false, "reason": "WORLD_NOT_READY"}
+	if defense != null and defense.is_active():
+		return {"ok": false, "reason": "DEFENSE_ALREADY_ACTIVE"}
+	if defense != null:
+		defense.clear_for_other_mode()
+	var result := core_defense.start_prototype()
 	if not result.get("ok", false):
 		_on_interaction_feedback(str(result.get("reason", "DEFENSE_START_FAILED")))
 	return result
@@ -265,6 +293,10 @@ func _on_spawn_area_ready() -> void:
 	var defense_restore := defense.restore_after_world_ready()
 	if not defense_restore.get("ok", false):
 		status_changed.emit("Defense restore failed: %s" % defense_restore.get("reason", "UNKNOWN"))
+		return
+	var core_restore := core_defense.restore_after_world_ready()
+	if not core_restore.get("ok", false):
+		status_changed.emit("Core-defense restore failed: %s" % core_restore.get("reason", "UNKNOWN"))
 		return
 	world_ready = true
 	simulation_paused = false
@@ -308,6 +340,7 @@ func snapshot() -> Dictionary:
 		"inventory": inventory.snapshot(),
 		"workstations": workstations.snapshot(),
 		"defense": defense.snapshot(),
+		"core_defense": core_defense.snapshot(),
 		"clock": clock.snapshot(),
 		"player": player.snapshot(),
 		"session_id": open_data.get("session_id", ""),
@@ -409,10 +442,14 @@ func _on_station_changed(result: Dictionary) -> void:
 	var details: Dictionary = result.get("details", {})
 	if defense != null:
 		defense.notify_placed_entity_cells(details.get("occupied_cells", []))
+	if core_defense != null:
+		core_defense.notify_placed_entity_cells(details.get("occupied_cells", []))
 	if details.has("station"):
 		_spawn_station_visual(details.station)
-	elif details.has("instance_id") and details.has("returned_item"):
+	elif details.has("instance_id") and (details.has("returned_item") or bool(details.get("destroyed", false))):
 		_remove_station_visual(str(details.instance_id))
+	elif details.has("instance_id") and details.has("integrity"):
+		_update_station_visual(str(details.instance_id), int(details.integrity), int(details.get("max_integrity", 1)))
 
 
 func _on_job_completed(result: Dictionary) -> void:
@@ -436,9 +473,14 @@ func _spawn_station_visual(record: Dictionary) -> void:
 	var visual: Dictionary = definition.get("visual", {})
 	material.albedo_color = Color(str(visual.get("color", "8b929d")))
 	material.roughness = 0.9
+	if not definition.get("defense", {}).is_empty():
+		body.set_meta("defense_structure_id", instance_id)
 	_add_visual_parts(body, visual.get("parts", []), material, true)
 	add_child(body)
 	_station_visuals[instance_id] = body
+	_station_visual_materials[instance_id] = material
+	if record.has("integrity"):
+		_update_station_visual(instance_id, int(record.integrity), int(definition.get("defense", {}).get("max_integrity", 1)))
 
 
 func _add_visual_parts(parent: Node3D, part_values: Array, material: Material, add_collision: bool) -> void:
@@ -515,6 +557,17 @@ func _remove_station_visual(instance_id: String) -> void:
 	var body: Node = _station_visuals[instance_id]
 	body.queue_free()
 	_station_visuals.erase(instance_id)
+	_station_visual_materials.erase(instance_id)
+
+
+func _update_station_visual(instance_id: String, integrity: int, max_integrity: int) -> void:
+	if not _station_visual_materials.has(instance_id) or max_integrity <= 0:
+		return
+	var material: StandardMaterial3D = _station_visual_materials[instance_id]
+	var definition := registry.entity(str(workstations.station(instance_id).get("entity_id", "")))
+	var base_color := Color(str(definition.get("visual", {}).get("color", "8b929d")))
+	var ratio := clampf(float(integrity) / float(max_integrity), 0.0, 1.0)
+	material.albedo_color = base_color.lerp(Color("c64a3c"), 1.0 - ratio)
 
 
 func _raycast_station(origin: Vector3, direction: Vector3) -> String:
@@ -542,4 +595,14 @@ func _defense_interact(origin: Vector3, direction: Vector3) -> Dictionary:
 	var collider: Object = hit.get("collider")
 	if collider == null or not collider.has_meta("defense_structure_id"):
 		return {"handled": false}
-	return defense.try_repair(str(collider.get_meta("defense_structure_id")))
+	var structure_id := str(collider.get_meta("defense_structure_id"))
+	if structure_id == "training_wall":
+		return defense.try_repair(structure_id)
+	return workstations.try_repair_structure(structure_id)
+
+
+func _on_defense_state_changed(_text: String) -> void:
+	if core_defense != null and (core_defense.is_active() or core_defense.state == CoreDefenseService.FAILED):
+		defense_changed.emit(core_defense.hud_text())
+	elif defense != null:
+		defense_changed.emit(defense.hud_text())

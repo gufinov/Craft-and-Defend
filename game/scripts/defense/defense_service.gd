@@ -127,6 +127,17 @@ func start_drill() -> Dictionary:
 	return {"ok": true, "reason": "OK", "center": arena_center}
 
 
+func is_active() -> bool:
+	return state in [WARNING, ROUTING, ATTACKING]
+
+
+func clear_for_other_mode() -> void:
+	_clear_fixture()
+	state = IDLE
+	warning_remaining = 0.0
+	_emit_state()
+
+
 func try_repair(structure_id: String) -> Dictionary:
 	if structure_id != "training_wall" or wall_integrity <= 0:
 		return {"handled": false}
@@ -316,7 +327,7 @@ func _query_navigation_cell(cell: Vector3i) -> Dictionary:
 		return {"state": "LOADED", "solid": true, "voxel_id": -1, "material_id": "planks", "source": "defense_structure", "source_id": "training_wall", "tags": ["wood"], "integrity": wall_integrity, "protected": false}
 	var station_id := workstations.station_at_cell(cell)
 	if not station_id.is_empty():
-		return {"state": "LOADED", "solid": true, "voxel_id": -1, "material_id": "castle_stone", "source": "entity", "source_id": station_id, "tags": ["stone", "fortification"], "integrity": 90, "protected": false}
+		return workstations.navigation_cell_data(station_id)
 	var query := world.query_cell(cell)
 	if str(query.get("state", "UNLOADED")) != "LOADED":
 		return {"state": str(query.get("state", "UNLOADED")), "solid": true}
