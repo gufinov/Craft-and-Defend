@@ -231,7 +231,7 @@ func _build_main_menu(canvas: CanvasLayer) -> void:
 	var menu := _centered_box(menu_panel, Vector2(700, 570))
 	var title := _title("CRAFT AND DEFEND", 34)
 	menu.add_child(title)
-	var subtitle := _centered_label("P1 terrain and exploration candidate · castle-building foundation")
+	var subtitle := _centered_label("P3B core and breach prototype · castle-building foundation")
 	menu.add_child(subtitle)
 	menu.add_child(_spacer(12))
 	var slot_row := _settings_row("Save slot")
