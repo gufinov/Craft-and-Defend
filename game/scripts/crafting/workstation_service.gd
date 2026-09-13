@@ -41,7 +41,7 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		return _result(false, consumed.get("reason", "INVENTORY_COMMIT_FAILED"))
 	_next_instance += 1
 	stations[instance_id] = {"instance_id": instance_id, "entity_id": entity_id, "anchor": anchor, "rotation_quarters": posmod(rotation_quarters, 4)}
-	var result := _result(true, "OK", {"station": stations[instance_id].duplicate(true), "consumed_item": entity_id})
+	var result := _result(true, "OK", {"station": stations[instance_id].duplicate(true), "consumed_item": entity_id, "occupied_cells": reserved.get("details", {}).get("cells", []).duplicate()})
 	station_changed.emit(result)
 	return result
 
@@ -64,7 +64,7 @@ func try_dismantle(instance_id: String, world_query: Callable, player_aabb: AABB
 		footprints.try_reserve(instance_id, record.anchor, _vector_list(definition.occupied_offsets), int(record.rotation_quarters), world_query, player_aabb, _vector_list(definition.support_offsets))
 		return _result(false, "INVENTORY_COMMIT_FAILED")
 	stations.erase(instance_id)
-	var result := _result(true, "OK", {"instance_id": instance_id, "returned_item": item_id, "anchor": record.anchor})
+	var result := _result(true, "OK", {"instance_id": instance_id, "returned_item": item_id, "anchor": record.anchor, "occupied_cells": released.get("details", {}).get("released_cells", []).duplicate()})
 	station_changed.emit(result)
 	return result
 

@@ -8,6 +8,7 @@ signal feedback_changed(message: String)
 signal inventory_changed(snapshot: Dictionary)
 signal workstation_requested(instance_id: String, station_type: String)
 signal navigation_changed(text: String)
+signal defense_changed(text: String)
 
 const REASON_TEXT := {
 	"OK": "Edit complete.",
@@ -34,6 +35,11 @@ const REASON_TEXT := {
 	"SUPPORT_IN_USE": "Dismantle the supported placed object before removing this block.",
 	"JOB_STARTED": "Furnace started; input and fuel were consumed once.",
 	"JOB_COMPLETED": "Furnace finished and delivered its reserved output.",
+	"DEFENSE_ALREADY_ACTIVE": "A defense drill is already active.",
+	"DEFENSE_ARENA_BLOCKED": "No clear practice lane is available near home. Move or dismantle nearby builds, then try again.",
+	"MISSING_REPAIR_MATERIAL": "Repair requires one Planks item in carried inventory or the hotbar.",
+	"NO_REPAIR_NEEDED": "That barricade is already at full integrity.",
+	"REPAIRED": "Barricade repaired; one Planks item was consumed.",
 }
 
 var world: WorldAdapter
@@ -44,6 +50,7 @@ var crafting: CraftingService
 var workstations: WorkstationService
 var interaction: InteractionService
 var clock: DayNightClock
+var defense: DefenseService
 var open_data: Dictionary
 var world_ready := false
 var saving := false
@@ -116,7 +123,11 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	if not world_result.get("ok", false):
 		return world_result
 	world.revision = int(snapshot.get("world", {}).get("revision", 0))
-	interaction = InteractionService.new(world, inventory, player.get_body_aabb, registry, workstations, _raycast_station)
+	defense = DefenseService.new()
+	defense.name = "DefenseService"
+	add_child(defense)
+	defense.initialize(world, inventory, registry, workstations, snapshot.get("defense", {}))
+	interaction = InteractionService.new(world, inventory, player.get_body_aabb, registry, workstations, _raycast_station, _defense_interact)
 	player.interaction = interaction
 	world.spawn_area_ready.connect(_on_spawn_area_ready)
 	world.status_changed.connect(status_changed.emit)
@@ -124,6 +135,8 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	interaction.result_reported.connect(_on_interaction_result)
 	workstations.station_changed.connect(_on_station_changed)
 	workstations.job_completed.connect(_on_job_completed)
+	defense.state_changed.connect(defense_changed.emit)
+	defense.feedback.connect(_on_interaction_feedback)
 	player.interaction_feedback.connect(_on_interaction_feedback)
 	player.boundary_feedback.connect(_on_boundary_feedback)
 	player.deactivate()
@@ -134,6 +147,8 @@ func initialize(session_data: Dictionary) -> Dictionary:
 
 func _process(delta: float) -> void:
 	_update_placement_preview()
+	if defense != null:
+		defense.advance(delta, simulation_paused or saving)
 	if workstations != null and not saving:
 		workstations.advance(delta, simulation_paused)
 	if clock != null and not saving:
@@ -220,6 +235,15 @@ func try_craft(recipe_id: String, station_type: String, station_id: String = "")
 	return result
 
 
+func start_defense_drill() -> Dictionary:
+	if defense == null or not world_ready:
+		return {"ok": false, "reason": "WORLD_NOT_READY"}
+	var result := defense.start_drill()
+	if not result.get("ok", false):
+		_on_interaction_feedback(str(result.get("reason", "DEFENSE_START_FAILED")))
+	return result
+
+
 func select_hotbar(index: int) -> Dictionary:
 	var result := inventory.select_hotbar(index)
 	if result.get("ok", false):
@@ -238,6 +262,10 @@ func _on_spawn_area_ready() -> void:
 			return
 		for record: Dictionary in workstations.stations.values():
 			_spawn_station_visual(record)
+	var defense_restore := defense.restore_after_world_ready()
+	if not defense_restore.get("ok", false):
+		status_changed.emit("Defense restore failed: %s" % defense_restore.get("reason", "UNKNOWN"))
+		return
 	world_ready = true
 	simulation_paused = false
 	player.activate(not DisplayServer.get_name().contains("headless"))
@@ -279,6 +307,7 @@ func snapshot() -> Dictionary:
 		"world": world.snapshot(),
 		"inventory": inventory.snapshot(),
 		"workstations": workstations.snapshot(),
+		"defense": defense.snapshot(),
 		"clock": clock.snapshot(),
 		"player": player.snapshot(),
 		"session_id": open_data.get("session_id", ""),
@@ -341,7 +370,7 @@ func _update_sun_visual() -> void:
 
 
 func _on_interaction_feedback(message: String) -> void:
-	var friendly := str(REASON_TEXT.get(message, message.replace("_", " ").capitalize()))
+	var friendly := str(REASON_TEXT.get(message, message if message.contains(" ") else message.replace("_", " ").capitalize()))
 	status_changed.emit(friendly)
 	feedback_changed.emit(friendly)
 
@@ -378,6 +407,8 @@ func _on_station_changed(result: Dictionary) -> void:
 	if not result.get("ok", false):
 		return
 	var details: Dictionary = result.get("details", {})
+	if defense != null:
+		defense.notify_placed_entity_cells(details.get("occupied_cells", []))
 	if details.has("station"):
 		_spawn_station_visual(details.station)
 	elif details.has("instance_id") and details.has("returned_item"):
@@ -498,3 +529,17 @@ func _raycast_station(origin: Vector3, direction: Vector3) -> String:
 	if collider != null and collider.has_meta("station_instance_id"):
 		return str(collider.get_meta("station_instance_id"))
 	return ""
+
+
+func _defense_interact(origin: Vector3, direction: Vector3) -> Dictionary:
+	if defense == null or not is_inside_tree():
+		return {"handled": false}
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + direction.normalized() * 5.0, 1)
+	query.exclude = [player.get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return {"handled": false}
+	var collider: Object = hit.get("collider")
+	if collider == null or not collider.has_meta("defense_structure_id"):
+		return {"handled": false}
+	return defense.try_repair(str(collider.get_meta("defense_structure_id")))

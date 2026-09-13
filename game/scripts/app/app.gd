@@ -51,6 +51,7 @@ var status_label: Label
 var hud_label: Label
 var feedback_label: Label
 var navigation_label: Label
+var defense_label: Label
 var inventory_contents_label: Label
 var keybind_search: LineEdit
 var binding_rows: Dictionary = {}
@@ -172,6 +173,11 @@ func _ready() -> void:
 		var p2_navigation_automation := P2NavigationAutomation.new()
 		add_child(p2_navigation_automation)
 		p2_navigation_automation.call_deferred("run", self, p2_navigation_mode)
+	var p3_defense_mode := _argument_value("--p3-defense-automation=")
+	if not p3_defense_mode.is_empty():
+		var p3_defense_automation := P3DefenseAutomation.new()
+		add_child(p3_defense_automation)
+		p3_defense_automation.call_deferred("run", self, p3_defense_mode)
 
 
 func _process(delta: float) -> void:
@@ -275,6 +281,7 @@ func _build_pause(canvas: CanvasLayer) -> void:
 	pause_box.add_child(_button("Resume", _resume_game))
 	pause_box.add_child(_button("Settings", _show_settings))
 	pause_box.add_child(_button("Keybinds", _show_keybinds))
+	pause_box.add_child(_button("Start Defense Drill", _start_defense_drill))
 	pause_box.add_child(_button("Save and Exit to Menu", _save_and_exit_to_menu))
 	pause_box.add_child(_button("Save and Quit", _save_and_quit))
 
@@ -816,8 +823,16 @@ func _build_hud(canvas: CanvasLayer) -> void:
 	navigation_label.add_theme_constant_override("outline_size", 3)
 	navigation_label.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.05, 0.9))
 	hud_layer.add_child(navigation_label)
+	defense_label = Label.new()
+	defense_label.position = Vector2(20, 78)
+	defense_label.custom_minimum_size = Vector2(1100, 26)
+	defense_label.add_theme_font_size_override("font_size", 15)
+	defense_label.add_theme_color_override("font_color", Color("ffd166"))
+	defense_label.add_theme_constant_override("outline_size", 3)
+	defense_label.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.05, 0.9))
+	hud_layer.add_child(defense_label)
 	feedback_label = Label.new()
-	feedback_label.position = Vector2(20, 78)
+	feedback_label.position = Vector2(20, 106)
 	feedback_label.custom_minimum_size = Vector2(760, 30)
 	feedback_label.add_theme_color_override("font_color", Color("ffe08a"))
 	feedback_label.add_theme_constant_override("outline_size", 3)
@@ -911,6 +926,7 @@ func _open_session(continue_existing: bool) -> void:
 	session.status_changed.connect(_set_status)
 	session.hud_changed.connect(_set_hud)
 	session.navigation_changed.connect(_set_navigation)
+	session.defense_changed.connect(_set_defense)
 	session.feedback_changed.connect(_set_feedback)
 	session.inventory_changed.connect(_on_session_inventory_changed)
 	session.workstation_requested.connect(_show_workstation)
@@ -946,6 +962,14 @@ func _resume_game() -> void:
 	get_tree().paused = false
 	session.pause_game(false)
 	state = AppState.PLAYING
+
+
+func _start_defense_drill() -> void:
+	if state != AppState.PAUSED or session == null:
+		return
+	var result := session.start_defense_drill()
+	if result.get("ok", false):
+		_resume_game()
 
 
 func _show_inventory() -> void:
@@ -1832,6 +1856,11 @@ func _set_hud(text: String) -> void:
 func _set_navigation(text: String) -> void:
 	if navigation_label != null:
 		navigation_label.text = text
+
+
+func _set_defense(text: String) -> void:
+	if defense_label != null:
+		defense_label.text = text
 
 
 func _refresh_hud() -> void:

@@ -23,6 +23,7 @@ var registry: ContentRegistry
 var workstations: WorkstationService
 var player_body_aabb: Callable
 var station_raycast: Callable
+var defense_interact: Callable
 var placement_rotation_quarters := 0
 
 
@@ -32,7 +33,8 @@ func _init(
 	body_aabb: Callable,
 	content_registry: ContentRegistry = null,
 	station_service: WorkstationService = null,
-	station_query: Callable = Callable()
+	station_query: Callable = Callable(),
+	defense_query: Callable = Callable()
 ) -> void:
 	world = world_adapter
 	inventory = player_inventory
@@ -40,6 +42,7 @@ func _init(
 	registry = content_registry if content_registry != null else ContentRegistry.new()
 	workstations = station_service
 	station_raycast = station_query
+	defense_interact = defense_query
 
 
 func try_break_cell(cell: Vector3i, expected_world_revision: int = -1) -> Dictionary:
@@ -183,6 +186,10 @@ func secondary_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
 
 
 func interact_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
+	if defense_interact.is_valid():
+		var defense_result: Dictionary = defense_interact.call(origin, direction)
+		if defense_result.get("handled", false):
+			return _finish(bool(defense_result.get("ok", false)), str(defense_result.get("reason", "REPAIR_FAILED")), defense_result.get("changes", {}))
 	var station_id := _station_from_view(origin, direction)
 	if station_id.is_empty() or workstations.station_type(station_id).is_empty():
 		return _finish(false, "NO_STATION")
