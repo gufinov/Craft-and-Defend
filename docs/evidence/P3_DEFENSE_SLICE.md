@@ -1,6 +1,6 @@
 # Evidence — P3 bounded defense slice — 2026-09-13
 
-STATUS: OWNER-FEEDBACK REVISION CANDIDATE PASS — automated/runtime/export gates pass; owner retest pending
+STATUS: OWNER ACCEPTED PASS — automated/runtime/export gates and owner ultrawide playtest pass
 
 DONE:
 
@@ -33,6 +33,7 @@ TEST:
 | T64 | Live held hotbar | All nine gameplay slots rendered; selected slot 1 showed Dirt and selection matched the authoritative inventory snapshot | PASS | `artifacts/exported-p3-defense-revision-final/phase1.log` |
 | T65 | Direct-fire line of sight | Clear ray first hit `BasicRaider`; an inserted solid blocker returned `LINE_OF_SIGHT_BLOCKED` with no health/ammunition mutation; removing it allowed one visible travelling bolt | PASS | `artifacts/exported-p3-defense-revision-final/phase1.log` |
 | Regression | Preserve accepted game | Correctly serialized final export F0, F2, P1 terrain, P1 castle and P2 navigation phases all exited 0 and reported no failure marker | PASS | `artifacts/exported-regression-p3-revision-final/` |
+| Owner | Ultrawide graphical playtest | Tony confirmed the live nine-slot loadout, labelled elevated ballista, repaired barricade and completed defense state work and marked the revision PASS | PASS | Owner-supplied `Screenshot 2026-09-13 161928.png` and `Screenshot 2026-09-13 161948.png` |
 
 Static verification:
 
@@ -54,7 +55,7 @@ LIMITATIONS/FAILURES:
 
 NEXT:
 
-Tony runs the graphical playtest from `D:\CODEX\Craft_and_Defend\worktrees\p3-defense\START_GAME.cmd`. Accept the revision only if the nine-slot held display, field-side approach, visible direct-fire behavior, wall occlusion and Shift repair are understandable and feel promising. Craftable siege integration or wider combat requires the next reviewed contract.
+Owner acceptance is recorded. Craftable siege integration, damageable player-built fortifications, king/core targeting and wider combat require the next reviewed contract.
 
 GIT/REPRODUCIBILITY:
 

@@ -14,7 +14,7 @@ Advance on evidence, not elapsed time. Estimates are intentionally not presented
 | P1A — terrain/exploration | Seeded hills/valleys, distributed trees and ore, safe home clearing, exploration/return cue, generator-compatible saves | T37–T41 plus F0–F5 regression and owner playtest | Owner accepted 2026-09-12 |
 | P1B — first castle kit | Wall masonry plus stair, wall-walk slab, parapet merlon, 2×2 tower platform and open gate frame; preview, rotation, support, dismantle and save | T42–T50 plus construction playtest | Owner accepted 2026-09-13 |
 | P2 — navigation risk spike | One attacker routes around, through and against edited structures | T51–T56 bounded comparison and visual diagnostic | PASS; owner accepted 2026-09-13 |
-| P3 — defense slice | One warned attack, field-side approach, one direct-fire stationary weapon, repair loop and live held hotbar | T57–T65 plus owner readability/fun playtest | Owner-feedback revision candidate PASS; owner retest pending |
+| P3 — defense slice | One warned attack, field-side approach, one direct-fire stationary weapon, repair loop and live held hotbar | T57–T65 plus owner readability/fun playtest | Owner accepted 2026-09-13 |
 | P4 — campaign systems | Threat sources, rifts, escalation, wizard final siege | Balance/scaling evidence; scope review | Not started |
 | Later | Automation/templates, more biomes/content, packaging/store | Separate decisions based on tests | Not started |
 
