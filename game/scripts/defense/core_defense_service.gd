@@ -10,7 +10,7 @@ const ROUTING := "routing"
 const ATTACKING_STRUCTURE := "attacking_structure"
 const ATTACKING_CORE := "attacking_core"
 const FAILED := "failed"
-const WARNING_SECONDS := 5.0
+const WARNING_SECONDS := 20.0
 const CORE_MAX_INTEGRITY := 30
 const RAIDER_MAX_HEALTH := 20
 const RAIDER_DAMAGE := 6
@@ -122,7 +122,7 @@ func start_prototype() -> Dictionary:
 	navigation_revision = 0
 	exact_invalidations = 0
 	_build_core_visual()
-	feedback.emit("Core-defense prototype armed: one raider in 5 seconds. It must prefer an opening before a breach.")
+	feedback.emit("Core-defense setup: 20 seconds. Place wooden barricades across the field-side approach; any opening will be used.")
 	_emit_state()
 	return {"ok": true, "reason": "OK", "center": arena_center, "core_cell": _core_cell()}
 
@@ -171,7 +171,7 @@ func hud_text() -> String:
 		IDLE:
 			return "CORE DEFENSE · Pause and choose Start Core Defense Prototype"
 		WARNING:
-			return "⚠ CORE WARNING · one raider in %d · prototype core %d/%d" % [ceili(warning_remaining), core_integrity, CORE_MAX_INTEGRITY]
+			return "⚠ CORE SETUP · raider in %d · build across the field-side approach · core %d/%d" % [ceili(warning_remaining), core_integrity, CORE_MAX_INTEGRITY]
 		ROUTING:
 			return "RAIDER ROUTING TO CORE · open path preferred · core %d/%d" % [core_integrity, CORE_MAX_INTEGRITY]
 		ATTACKING_STRUCTURE:

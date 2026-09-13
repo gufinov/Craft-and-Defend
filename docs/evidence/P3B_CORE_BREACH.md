@@ -6,6 +6,7 @@ DONE:
 
 - Added one clearly labelled cyan `strategic_core_prototype` and one field-side physical raider.
 - Added the paused-menu **Start Core Defense Prototype** action without replacing the accepted P3 drill.
+- Added a 20-second player setup window with explicit field-side barricade guidance.
 - Added a Workbench recipe for an original two-cell-high `wood_barricade` placed through the existing inventory/occupancy path.
 - Added stable instance-owned current/max integrity, material capability tags, visible damage tint, atomic Planks repair and whole-entity breach without a refund.
 - Added opening-first planning: an available core route wins; a wooden obstruction is selected only after every route in the bounded lane closes.
