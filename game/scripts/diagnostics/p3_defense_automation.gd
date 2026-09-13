@@ -74,7 +74,7 @@ func _run_phase1() -> void:
 	app.session.add_child(restored)
 	restored.initialize(app.session.world, app.session.inventory, app.session.registry, app.session.workstations, saved)
 	var restore_result := restored.restore_after_world_ready()
-	var persistence_ok: bool = bool(restore_result.get("ok", false)) and restored.state == defense.state and restored.wall_integrity == defense.wall_integrity and restored.ballista_bolts == defense.ballista_bolts and restored.arena_center == defense.arena_center
+	var persistence_ok: bool = bool(restore_result.get("ok", false)) and restored.state == defense.state and restored.wall_integrity == defense.wall_integrity and restored.ballista_bolts == defense.ballista_bolts and restored.arena_center == defense.arena_center and restored.navigation_revision == defense.navigation_revision
 	_record("T61_DEFENSE_PERSISTENCE", persistence_ok, "defense phase, arena, wall integrity and exact ammunition round-trip through the save envelope", {"saved": saved, "restored": restored.snapshot(), "result": restore_result})
 	restored.queue_free()
 

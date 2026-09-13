@@ -88,6 +88,7 @@ func restore_after_world_ready() -> Dictionary:
 	ballista_bolts = clampi(int(saved.get("ballista_bolts", 0)), 0, BALLISTA_STARTING_BOLTS)
 	raider_health = clampi(int(saved.get("raider_health", 0)), 0, RAIDER_MAX_HEALTH)
 	ballista_armed = bool(saved.get("ballista_armed", false))
+	navigation_revision = maxi(0, int(saved.get("navigation_revision", 0)))
 	_build_fixture()
 	if state in [ROUTING, ATTACKING] and raider_health > 0:
 		var saved_position := _vector3_from_array(saved.get("raider_position", []), _start_position())
