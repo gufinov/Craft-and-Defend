@@ -36,7 +36,7 @@ func _run_phase1() -> void:
 	app.session.simulation_paused = true
 	var registry := app.session.registry
 	var missing_icons := ItemIconCatalog.missing_item_ids(registry.items.keys())
-	_record("T72_VISUAL_CATALOG", missing_icons.is_empty() and registry.items.size() == 25, "every registered item resolves a stable original atlas region", {"items": registry.items.size(), "missing": missing_icons})
+	_record("T72_VISUAL_CATALOG", missing_icons.is_empty() and registry.items.size() == 26, "every registered item resolves a stable original atlas region", {"items": registry.items.size(), "missing": missing_icons})
 
 	app.session.inventory.try_transaction({}, {"workbench": 1, "planks": 16, "stone": 16, "stick": 8, "iron_ingot": 8})
 	var workbench_cell := Vector3i(5, 0, 43)
