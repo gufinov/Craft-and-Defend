@@ -73,6 +73,8 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T61 | P3 | Defense phase, arena, wall integrity, ammunition, raider health/position and navigation revision survive service snapshot/restore without duplicating fixtures |
 | T62 | P3 | Save during an active attack and fully restart; Continue restores exact wall integrity, remaining bolts, raider health and one reconstructed physical raider |
 | T63 | P3 | A rendered 1280×720 frame shows the physical raider, damaged barricade, mounted ballista and readable defense HUD; owner playtest decides readability/fun |
+| T64 | P3 | The live gameplay HUD shows all nine held/hotbar slots, their key, item identity and count; changing keys moves the selected **HELD** state and mirrors the Tab inventory hotbar |
+| T65 | P3 | A ballista shot requires a clear direct physics ray to the raider; an inserted solid blocker causes no damage or ammunition consumption, and a clear shot renders a visible travelling bolt |
 
 ## Performance evidence, not invented guarantees
 
