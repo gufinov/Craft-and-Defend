@@ -66,6 +66,13 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T54 | P2 | A blocked unarmed agent reports `NO_ROUTE`; a basic raider attacks allowed earth/wood but not castle stone; a siege candidate can target fortification; no fake path is returned through an intact obstruction |
 | T55 | P2 | The fixed 13×5×13 fixture records full/incremental snapshot cost, median/p95 query time, visited cells, route validation and a clearly labelled memory-scale estimate for both approaches where available |
 | T56 | P2 | A rendered 1280×720 diagnostic visibly distinguishes start, goal, wall, local route and 1×2 probe at the goal; it is evidence only and does not imply production enemy locomotion |
+| T57 | P3 | An explicit paused-menu action creates one practice barricade and one stationary mounted ballista, then gives a readable five-second warning before exactly one raider spawns |
+| T58 | P3 | One physical 1×2 raider follows the selected P2 local obstruction plan; voxel and placed-entity add/remove events refresh only exact changed cells in its bounded snapshot |
+| T59 | P3 | The raider visibly damages the barricade; Shift-use through the real physics target path consumes exactly one Planks item and restores six integrity; full/no-material attempts do not mutate state |
+| T60 | P3 | The stationary ballista engages after the first wall hit, consumes exactly four visible bolts for four five-damage shots and defeats exactly one 20-health raider while retaining readable wall damage |
+| T61 | P3 | Defense phase, arena, wall integrity, ammunition, raider health/position and navigation revision survive service snapshot/restore without duplicating fixtures |
+| T62 | P3 | Save during an active attack and fully restart; Continue restores exact wall integrity, remaining bolts, raider health and one reconstructed physical raider |
+| T63 | P3 | A rendered 1280×720 frame shows the physical raider, damaged barricade, mounted ballista and readable defense HUD; owner playtest decides readability/fun |
 
 ## Performance evidence, not invented guarantees
 

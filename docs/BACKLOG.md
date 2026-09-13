@@ -67,6 +67,14 @@ Run T37–T41 plus the complete F0–F5 regression and matching exported-runtime
 
 **P3 candidate boundary:** prototype one attacker with bounded local snapshots, edit-driven incremental refresh and route invalidation. Keep `VoxelAStarGrid3D` as a benchmark/reference. Do not expand this result into global or army-scale pathfinding, production combat, damage animation, drops or raid behavior. Placed-entity change signals, physical enemy locomotion and persistence remain required P3 work. Hybrid sector/local routing remains a hypothesis.
 
+**Owner decision:** Tony accepted the corrected P2 rendered/automation result on 2026-09-13 and authorized P3.
+
+## P3 — bounded defense slice
+
+Prove the smallest readable defense loop before adding campaign scale: one explicit five-second warning, one physical basic raider using the selected P2 local planner, one stationary mounted practice ballista with finite ammunition, one damageable plank barricade, and player repair that consumes an existing material atomically. Propagate exact placed-entity occupied cells into route invalidation and persist all live drill state in the existing checkpoint envelope. Run T57–T63 plus all prior regressions in the matching Windows export with the editor closed.
+
+**Candidate result:** `feature/p3-defense-slice` passes T57–T63 in the pinned runtime and matching editor-closed export. The pause menu starts a deliberately labelled practice drill; the raider physically approaches an obstruction, damages it, and the ballista consumes four bolts to defeat it. Shift-use on the damaged wall consumes exactly one Planks item and restores six integrity. A clean-process Continue restores an attacking drill with exact wall, ammunition and raider state. Owner readability/fun playtest remains the gate; the practice ballista is not yet a craftable P1 socket-mounted inventory item.
+
 ## Card completion discipline
 
 Update relevant contracts/tests, source ledger and `docs/STATUS.md`; record exact commands/results/limitations; commit a coherent increment. Future systems remain backlog items until their gate is active. Do not automatically merge or publish builds.
