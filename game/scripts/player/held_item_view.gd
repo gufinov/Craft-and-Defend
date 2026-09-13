@@ -73,7 +73,7 @@ func _build_block(voxel_id: int) -> void:
 	var texture_path := ""
 	if voxel_id > 0 and voxel_id < WorldAdapter.BLOCK_NAMES.size():
 		texture_path = "res://assets/blocks/%s.svg" % WorldAdapter.BLOCK_NAMES[voxel_id]
-	var color := WorldAdapter.BLOCK_COLORS[voxel_id] if voxel_id >= 0 and voxel_id < WorldAdapter.BLOCK_COLORS.size() else Color("b88954")
+	var color: Color = WorldAdapter.BLOCK_COLORS[voxel_id] if voxel_id >= 0 and voxel_id < WorldAdapter.BLOCK_COLORS.size() else Color("b88954")
 	_add_box(Vector3(0.34, 0.34, 0.34), Vector3.ZERO, color, texture_path)
 
 

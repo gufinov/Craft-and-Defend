@@ -37,14 +37,14 @@ func _run_phase1() -> void:
 	var batch_start_revision := batch_inventory.revision
 	var batch_crafting := CraftingService.new(registry, batch_inventory)
 	var crafted := batch_crafting.try_craft_many("planks", "hand", 5)
-	var exact_five := crafted.get("ok", false) and batch_inventory.count("log") == 0 and batch_inventory.count("planks") == 20 and batch_inventory.revision == batch_start_revision + 1
+	var exact_five: bool = crafted.get("ok", false) and batch_inventory.count("log") == 0 and batch_inventory.count("planks") == 20 and batch_inventory.revision == batch_start_revision + 1
 
 	var reject_inventory := F0Inventory.new(registry)
 	reject_inventory.try_transaction({}, {"log": 4})
 	var reject_before := reject_inventory.snapshot()
 	var reject_crafting := CraftingService.new(registry, reject_inventory)
 	var rejected := reject_crafting.try_craft_many("planks", "hand", 5)
-	var atomic_reject := not rejected.get("ok", false) and rejected.get("reason") == "INSUFFICIENT_INPUT" and reject_inventory.snapshot() == reject_before
+	var atomic_reject: bool = not rejected.get("ok", false) and rejected.get("reason") == "INSUFFICIENT_INPUT" and reject_inventory.snapshot() == reject_before
 	var tooltip_ok := app.craft_selected_button.tooltip_text.contains("five batches")
 	_record("T79_SHIFT_CRAFT", exact_five and atomic_reject and tooltip_ok, "Shift+Click crafts exactly five recipe batches in one atomic inventory transaction and insufficient materials change nothing", {"crafted": crafted, "logs": batch_inventory.count("log"), "planks": batch_inventory.count("planks"), "revision_delta": batch_inventory.revision - batch_start_revision, "rejected": rejected, "atomic_reject": atomic_reject, "tooltip_ok": tooltip_ok})
 
@@ -72,13 +72,13 @@ func _run_phase1() -> void:
 	var removed := true
 	for cell in tree_cells:
 		removed = removed and int(app.session.world.query_cell(cell).get("voxel_id", -1)) == InteractionService.AIR
-	var axe_ok := felled.get("ok", false) and felled.get("reason") == "TREE_FELLED" and felled.get("changes", {}).get("cells", []).size() == 4 and app.session.inventory.count("log") == logs_before + 4 and removed
+	var axe_ok: bool = felled.get("ok", false) and felled.get("reason") == "TREE_FELLED" and felled.get("changes", {}).get("cells", []).size() == 4 and app.session.inventory.count("log") == logs_before + 4 and removed
 	_record("T81_WOOD_AXE", axe_ok, "a selected wood axe atomically fells the bounded connected starter trunk and gathers every removed log", {"result": felled, "logs_before": logs_before, "logs_after": app.session.inventory.count("log"), "removed": removed})
 
 	var preview := app.session.interaction.preview_place_item(Vector3i(5, 0, 40), "dirt", 0)
 	var marker_label := _find_label(app.session._resource_markers)
 	var iron_cell := app.session.world.query_cell(Vector3i(-8, -4, 35))
-	var feedback_ok := preview.get("ok", false) and preview.get("kind") == "block" and int(preview.get("voxel_id", 0)) == InteractionService.DIRT and marker_label != null and marker_label.text.contains("DIG 2 BLOCKS") and int(iron_cell.get("voxel_id", 0)) == P1TerrainGenerator.IRON_ORE
+	var feedback_ok: bool = preview.get("ok", false) and preview.get("kind") == "block" and int(preview.get("voxel_id", 0)) == InteractionService.DIRT and marker_label != null and marker_label.text.contains("DIG 2 BLOCKS") and int(iron_cell.get("voxel_id", 0)) == P1TerrainGenerator.IRON_ORE
 	_record("T82_WORLD_FEEDBACK", feedback_ok, "block placement exposes the same non-mutating validation used by placement and the visible marker points to the real guaranteed iron vein", {"preview": preview, "marker": marker_label.text if marker_label != null else "", "iron_cell": iron_cell})
 
 
