@@ -144,6 +144,16 @@ def validate_bundle(bundle):
             require(item["places_entity"] in entities, "unknown placeable entity")
         if "pick_tier" in item:
             require(integer(item["pick_tier"], 1) and item["max_stack"] == 1, "invalid tool")
+        weapon = item.get("weapon")
+        if weapon is not None:
+            require(isinstance(weapon, dict) and weapon.get("kind") == "melee"
+                    and integer(weapon.get("damage"), 1)
+                    and type(weapon.get("range")) in (int, float) and weapon["range"] > 0
+                    and type(weapon.get("cooldown_seconds")) in (int, float) and weapon["cooldown_seconds"] > 0
+                    and item["max_stack"] == 1, "invalid weapon")
+    mount_types = {socket.get("type") for entity in entities.values()
+                   for socket in entity.get("mount_sockets", [])
+                   if isinstance(socket, dict) and isinstance(socket.get("type"), str)}
     for entity in entities.values():
         offsets = entity["occupied_offsets"]
         require(offsets and all(vector(v) for v in offsets + entity["support_offsets"]), "invalid entity offsets")
@@ -165,6 +175,25 @@ def validate_bundle(bundle):
                     and socket["id"] not in socket_ids and re.fullmatch(r"[a-z][a-z0-9_]*", socket.get("type", ""))
                     and numeric_vector(socket.get("offset", [])), "invalid mount socket")
             socket_ids.add(socket["id"])
+        mount = entity.get("mount")
+        if mount is not None:
+            allowed = mount.get("allowed", []) if isinstance(mount, dict) else []
+            require(isinstance(allowed, list) and allowed and all(isinstance(value, str) for value in allowed)
+                    and len(set(allowed)) == len(allowed)
+                    and all(value == "ground" or value in mount_types for value in allowed), "invalid entity mount")
+        siege = entity.get("siege")
+        if siege is not None:
+            require(isinstance(siege, dict) and siege.get("fire_mode") in ("direct", "ballistic")
+                    and integer(siege.get("damage"), 1)
+                    and type(siege.get("minimum_range")) in (int, float) and siege["minimum_range"] >= 0
+                    and type(siege.get("maximum_range")) in (int, float) and siege["maximum_range"] > siege["minimum_range"]
+                    and type(siege.get("cooldown_seconds")) in (int, float) and siege["cooldown_seconds"] > 0
+                    and integer(siege.get("starting_ammo"), 1)
+                    and siege.get("ammo_item") in items
+                    and numeric_vector(siege.get("muzzle_offset", [])), "invalid siege definition")
+            if siege["fire_mode"] == "ballistic":
+                require(type(siege.get("arc_height")) in (int, float) and siege["arc_height"] > 0,
+                        "invalid siege arc")
     for recipe in content["recipes"]:
         require(recipe["station"] == "hand" or recipe["station"] in entities, "unknown recipe station")
         require(type(recipe["duration_seconds"]) in (int, float) and recipe["duration_seconds"] >= 0, "invalid recipe time")

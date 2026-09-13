@@ -1,0 +1,196 @@
+class_name SiegeDefenseService
+extends Node3D
+
+signal state_changed(message: String)
+signal feedback(message: String)
+
+const ARC_SEGMENTS := 18
+
+var workstations: WorkstationService
+var core_defense: CoreDefenseService
+var visual_bodies: Dictionary = {}
+var _blocked_reported: Dictionary = {}
+
+
+func initialize(station_service: WorkstationService, core_service: CoreDefenseService) -> void:
+	workstations = station_service
+	core_defense = core_service
+
+
+func register_visual(instance_id: String, body: CollisionObject3D) -> void:
+	visual_bodies[instance_id] = body
+
+
+func unregister_visual(instance_id: String) -> void:
+	visual_bodies.erase(instance_id)
+	_blocked_reported.erase(instance_id)
+
+
+func advance(delta: float, paused: bool = false) -> void:
+	if paused or delta <= 0.0 or workstations == null or core_defense == null:
+		return
+	workstations.advance_siege_cooldowns(delta)
+	if not core_defense.is_active() or not is_instance_valid(core_defense.raider):
+		return
+	for instance_id: String in workstations.stations.keys():
+		var status := workstations.siege_status(instance_id)
+		if not status.get("ok", false):
+			continue
+		var details: Dictionary = status.get("details", {})
+		if int(details.get("ammo", 0)) <= 0 or float(details.get("cooldown", 0.0)) > 0.0:
+			continue
+		_attempt_fire(instance_id, details)
+
+
+func hud_suffix() -> String:
+	if workstations == null:
+		return ""
+	var ballista_count := 0
+	var ballista_ammo := 0
+	var catapult_count := 0
+	var catapult_ammo := 0
+	for instance_id: String in workstations.stations:
+		var status := workstations.siege_status(instance_id)
+		if not status.get("ok", false):
+			continue
+		var details: Dictionary = status.get("details", {})
+		if str(details.get("entity_id", "")) == "ballista":
+			ballista_count += 1
+			ballista_ammo += int(details.get("ammo", 0))
+		elif str(details.get("entity_id", "")) == "catapult":
+			catapult_count += 1
+			catapult_ammo += int(details.get("ammo", 0))
+	if ballista_count + catapult_count == 0:
+		return ""
+	return " · ballista %d/%d bolts · catapult %d/%d shot" % [ballista_count, ballista_ammo, catapult_count, catapult_ammo]
+
+
+func trajectory_result(instance_id: String, target: Vector3) -> Dictionary:
+	var status := workstations.siege_status(instance_id)
+	if not status.get("ok", false):
+		return status
+	var details: Dictionary = status.get("details", {})
+	var siege: Dictionary = details.get("definition", {})
+	var origin := _muzzle_position(details)
+	var distance := origin.distance_to(target)
+	var minimum := float(siege.get("minimum_range", 0.0))
+	var maximum := float(siege.get("maximum_range", 0.0))
+	if distance < minimum:
+		return {"ok": false, "reason": "TARGET_TOO_CLOSE", "distance": distance, "origin": origin}
+	if distance > maximum:
+		return {"ok": false, "reason": "TARGET_TOO_FAR", "distance": distance, "origin": origin}
+	var mode := str(siege.get("fire_mode", ""))
+	if mode == "direct":
+		return _direct_trajectory(instance_id, origin, target)
+	if mode == "ballistic":
+		return _ballistic_trajectory(instance_id, origin, target, float(siege.get("arc_height", 7.0)))
+	return {"ok": false, "reason": "UNKNOWN_FIRE_MODE"}
+
+
+func _attempt_fire(instance_id: String, details: Dictionary) -> Dictionary:
+	var target := core_defense.raider_target_position()
+	if not target.is_finite():
+		return {"ok": false, "reason": "NO_RAIDER"}
+	var trajectory := trajectory_result(instance_id, target)
+	if not trajectory.get("ok", false):
+		var reason := str(trajectory.get("reason", "BLOCKED"))
+		if reason in ["LINE_OF_SIGHT_BLOCKED", "ARC_BLOCKED"] and not _blocked_reported.has(instance_id):
+			_blocked_reported[instance_id] = true
+			feedback.emit("%s is holding fire: its %s is blocked." % [str(details.get("entity_id", "siege weapon")).replace("_", " ").capitalize(), "line of sight" if reason == "LINE_OF_SIGHT_BLOCKED" else "ballistic arc"])
+		return trajectory
+	_blocked_reported.erase(instance_id)
+	var committed := workstations.commit_siege_shot(instance_id)
+	if not committed.get("ok", false):
+		return committed
+	var siege: Dictionary = details.get("definition", {})
+	var damage := int(siege.get("damage", 0))
+	var damage_result := core_defense.try_damage_raider(damage, str(details.get("entity_id", "siege_weapon")))
+	var points: Array = trajectory.get("points", [])
+	if str(siege.get("fire_mode", "")) == "ballistic":
+		_spawn_catapult_shot(points)
+	else:
+		_spawn_ballista_bolt(trajectory.get("origin", Vector3.ZERO), target)
+	state_changed.emit("")
+	return {"ok": damage_result.get("ok", false), "reason": damage_result.get("reason", "SHOT_FAILED"), "committed": committed, "damage": damage_result, "trajectory": trajectory}
+
+
+func _direct_trajectory(instance_id: String, origin: Vector3, target: Vector3) -> Dictionary:
+	var query := PhysicsRayQueryParameters3D.create(origin, target, 1)
+	query.exclude = _excluded_rids(instance_id)
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty() or hit.get("collider") == core_defense.raider:
+		return {"ok": true, "reason": "CLEAR", "origin": origin, "target": target, "points": [origin, target]}
+	return {"ok": false, "reason": "LINE_OF_SIGHT_BLOCKED", "origin": origin, "target": target, "collider": str(hit.get("collider"))}
+
+
+func _ballistic_trajectory(instance_id: String, origin: Vector3, target: Vector3, height: float) -> Dictionary:
+	var points: Array[Vector3] = []
+	for index in range(ARC_SEGMENTS + 1):
+		var t := float(index) / float(ARC_SEGMENTS)
+		points.append(origin.lerp(target, t) + Vector3.UP * (4.0 * height * t * (1.0 - t)))
+	var excluded := _excluded_rids(instance_id)
+	for index in range(points.size() - 1):
+		var query := PhysicsRayQueryParameters3D.create(points[index], points[index + 1], 1)
+		query.exclude = excluded
+		var hit := get_world_3d().direct_space_state.intersect_ray(query)
+		if not hit.is_empty() and hit.get("collider") != core_defense.raider:
+			return {"ok": false, "reason": "ARC_BLOCKED", "origin": origin, "target": target, "blocked_segment": index, "points": points}
+	return {"ok": true, "reason": "CLEAR", "origin": origin, "target": target, "points": points}
+
+
+func _excluded_rids(instance_id: String) -> Array[RID]:
+	var excluded: Array[RID] = []
+	var body: Variant = visual_bodies.get(instance_id)
+	if body is CollisionObject3D and is_instance_valid(body):
+		excluded.append(body.get_rid())
+	return excluded
+
+
+func _muzzle_position(details: Dictionary) -> Vector3:
+	var anchor: Vector3i = details.get("anchor", Vector3i.ZERO)
+	var siege: Dictionary = details.get("definition", {})
+	var raw: Array = siege.get("muzzle_offset", [0.5, 0.8, 0.5])
+	var local := Vector3(float(raw[0]), float(raw[1]), float(raw[2])) if raw.size() == 3 else Vector3(0.5, 0.8, 0.5)
+	var centered := local - Vector3(0.5, 0.0, 0.5)
+	centered = centered.rotated(Vector3.UP, -float(int(details.get("rotation_quarters", 0))) * PI / 2.0)
+	return Vector3(anchor) + Vector3(0.5, 0.0, 0.5) + centered
+
+
+func _spawn_ballista_bolt(origin: Vector3, target: Vector3) -> void:
+	var bolt := MeshInstance3D.new()
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 0.035
+	mesh.bottom_radius = 0.035
+	mesh.height = 0.75
+	bolt.mesh = mesh
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color("f2d18b")
+	material.emission_enabled = true
+	material.emission = Color("eaa850")
+	bolt.material_override = material
+	add_child(bolt)
+	bolt.global_position = origin
+	bolt.look_at(target, Vector3.UP)
+	bolt.rotate_object_local(Vector3.RIGHT, PI / 2.0)
+	var tween := create_tween()
+	tween.tween_property(bolt, "global_position", target, clampf(origin.distance_to(target) / 34.0, 0.15, 0.65))
+	tween.finished.connect(bolt.queue_free)
+
+
+func _spawn_catapult_shot(points: Array) -> void:
+	if points.size() < 2:
+		return
+	var shot := MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.16
+	mesh.height = 0.32
+	shot.mesh = mesh
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color("596169")
+	shot.material_override = material
+	add_child(shot)
+	shot.global_position = points[0]
+	var tween := create_tween()
+	for index in range(1, points.size()):
+		tween.tween_property(shot, "global_position", points[index], 0.055)
+	tween.finished.connect(shot.queue_free)

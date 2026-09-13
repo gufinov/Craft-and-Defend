@@ -10,6 +10,7 @@ const ROUTING := "routing"
 const ATTACKING_STRUCTURE := "attacking_structure"
 const ATTACKING_CORE := "attacking_core"
 const FAILED := "failed"
+const WON := "won"
 const WARNING_SECONDS := 20.0
 const CORE_MAX_INTEGRITY := 30
 const RAIDER_MAX_HEALTH := 20
@@ -74,7 +75,7 @@ func restore_after_world_ready() -> Dictionary:
 	var saved := _pending_restore
 	_pending_restore = {}
 	var restored_state := str(saved.get("state", IDLE))
-	if restored_state not in [IDLE, WARNING, ROUTING, ATTACKING_STRUCTURE, ATTACKING_CORE, FAILED]:
+	if restored_state not in [IDLE, WARNING, ROUTING, ATTACKING_STRUCTURE, ATTACKING_CORE, FAILED, WON]:
 		return {"ok": false, "reason": "INVALID_CORE_DEFENSE_SNAPSHOT"}
 	state = restored_state
 	if state == IDLE:
@@ -166,6 +167,27 @@ func snapshot() -> Dictionary:
 	}
 
 
+func try_damage_raider(amount: int, source: String = "player") -> Dictionary:
+	if amount <= 0:
+		return {"ok": false, "reason": "INVALID_DAMAGE"}
+	if not is_active() or not is_instance_valid(raider) or raider_health <= 0:
+		return {"ok": false, "reason": "NO_RAIDER"}
+	var before := raider_health
+	raider_health = maxi(0, raider_health - amount)
+	if raider_health <= 0:
+		state = WON
+		raider.active = false
+		feedback.emit("Defense won: %s defeated the raider." % source.replace("_", " ").capitalize())
+	else:
+		feedback.emit("%s hit the raider for %d. Raider health: %d/%d." % [source.replace("_", " ").capitalize(), amount, raider_health, RAIDER_MAX_HEALTH])
+	_emit_state()
+	return {"ok": true, "reason": "RAIDER_DEFEATED" if raider_health <= 0 else "RAIDER_DAMAGED", "handled": true, "changes": {"health_before": before, "health": raider_health, "damage": amount, "source": source}}
+
+
+func raider_target_position() -> Vector3:
+	return raider.global_position + Vector3.UP * 0.65 if is_active() and is_instance_valid(raider) and raider_health > 0 else Vector3.INF
+
+
 func hud_text() -> String:
 	match state:
 		IDLE:
@@ -173,13 +195,15 @@ func hud_text() -> String:
 		WARNING:
 			return "⚠ CORE SETUP · raider in %d · build across the field-side approach · core %d/%d" % [ceili(warning_remaining), core_integrity, CORE_MAX_INTEGRITY]
 		ROUTING:
-			return "RAIDER ROUTING TO CORE · open path preferred · core %d/%d" % [core_integrity, CORE_MAX_INTEGRITY]
+			return "RAIDER ROUTING TO CORE · HP %d/%d · open path preferred · core %d/%d" % [raider_health, RAIDER_MAX_HEALTH, core_integrity, CORE_MAX_INTEGRITY]
 		ATTACKING_STRUCTURE:
 			var status := workstations.defense_status(active_target_id)
 			var details: Dictionary = status.get("details", {})
-			return "BREACHING %s · %d/%d · core %d/%d" % [registry.display_name(str(details.get("entity_id", "wood_barricade"))), int(details.get("integrity", 0)), int(details.get("max_integrity", 0)), core_integrity, CORE_MAX_INTEGRITY]
+			return "BREACHING %s · raider %d/%d · wall %d/%d · core %d/%d" % [registry.display_name(str(details.get("entity_id", "wood_barricade"))), raider_health, RAIDER_MAX_HEALTH, int(details.get("integrity", 0)), int(details.get("max_integrity", 0)), core_integrity, CORE_MAX_INTEGRITY]
 		ATTACKING_CORE:
-			return "CORE UNDER ATTACK · %d/%d · no open defense remains" % [core_integrity, CORE_MAX_INTEGRITY]
+			return "CORE UNDER ATTACK · raider %d/%d · core %d/%d · no open defense remains" % [raider_health, RAIDER_MAX_HEALTH, core_integrity, CORE_MAX_INTEGRITY]
+		WON:
+			return "DEFENSE WON · core %d/%d · raider defeated" % [core_integrity, CORE_MAX_INTEGRITY]
 		FAILED:
 			return "CORE DEFENSE FAILED · prototype core destroyed"
 	return "CORE DEFENSE PROTOTYPE"

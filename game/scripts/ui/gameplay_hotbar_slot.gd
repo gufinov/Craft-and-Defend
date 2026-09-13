@@ -1,22 +1,6 @@
 class_name GameplayHotbarSlot
 extends PanelContainer
 
-const ICON_ALIASES := {
-	"stick": "log",
-	"coal": "coal_ore",
-	"iron_ingot": "iron_ore",
-	"wood_pick": "planks",
-	"stone_pick": "stone",
-	"iron_pick": "iron_ore",
-	"workbench": "planks",
-	"furnace": "stone",
-	"stone_stair": "castle_stone",
-	"wall_walk_slab": "castle_stone",
-	"parapet_merlon": "castle_stone",
-	"tower_platform": "castle_stone",
-	"gate_frame": "castle_stone",
-}
-
 var slot_index := -1
 var item_id := ""
 var selected := false
@@ -95,10 +79,8 @@ func _refresh() -> void:
 	_name_label.text = _display_name
 	_count_label.text = "×%d" % _count if not item_id.is_empty() else ""
 	tooltip_text = "Key %d — %s%s" % [slot_index + 1, _display_name, " ×%d" % _count if not item_id.is_empty() else ""]
-	var icon_id := str(ICON_ALIASES.get(item_id, item_id))
-	var icon_path := "res://assets/blocks/%s.svg" % icon_id
-	var has_texture := not item_id.is_empty() and ResourceLoader.exists(icon_path)
-	_icon.texture = load(icon_path) as Texture2D if has_texture else null
+	_icon.texture = ItemIconCatalog.texture_for(item_id)
+	var has_texture := not item_id.is_empty() and _icon.texture != null
 	_icon.visible = has_texture
 	_fallback_icon.visible = not has_texture
 	_fallback_icon.text = "—" if item_id.is_empty() else _initials(_display_name)

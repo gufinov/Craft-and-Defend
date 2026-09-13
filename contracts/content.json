@@ -212,6 +212,34 @@
       "category": "building",
       "max_stack": 16,
       "places_entity": "wood_barricade"
+    },
+    {
+      "id": "iron_sword",
+      "category": "tool",
+      "max_stack": 1,
+      "weapon": {"kind": "melee", "damage": 7, "range": 3.25, "cooldown_seconds": 0.55}
+    },
+    {
+      "id": "ballista_bolt",
+      "category": "resource",
+      "max_stack": 32
+    },
+    {
+      "id": "stone_shot",
+      "category": "resource",
+      "max_stack": 32
+    },
+    {
+      "id": "ballista",
+      "category": "building",
+      "max_stack": 4,
+      "places_entity": "ballista"
+    },
+    {
+      "id": "catapult",
+      "category": "building",
+      "max_stack": 4,
+      "places_entity": "catapult"
     }
   ],
   "entities": [
@@ -313,6 +341,35 @@
       ]},
       "navigation": {"material_tags": ["wood", "breachable_wood"], "integrity": 30},
       "defense": {"max_integrity": 30, "repair_item": "planks", "repair_amount": 6},
+      "dismantle_policy": "inventory_capacity_required"
+    },
+    {
+      "id": "ballista",
+      "occupied_offsets": [[0, 0, 0], [1, 0, 0], [0, 0, 1], [1, 0, 1]],
+      "support_offsets": [[0, -1, 0], [1, -1, 0], [0, -1, 1], [1, -1, 1]],
+      "mount": {"allowed": ["ground", "light_siege"]},
+      "visual": {"color": "9a6338", "parts": [
+        {"offset": [0.5, -0.25, 0.5], "size": [1.8, 0.22, 1.35]},
+        {"offset": [0.5, 0.15, 0.5], "size": [0.28, 0.62, 0.28]},
+        {"offset": [0.5, 0.55, 0.45], "size": [1.75, 0.18, 0.22]},
+        {"offset": [0.5, 0.55, -0.05], "size": [0.18, 0.18, 1.35]}
+      ]},
+      "siege": {"fire_mode": "direct", "damage": 6, "minimum_range": 4.0, "maximum_range": 28.0, "cooldown_seconds": 1.5, "starting_ammo": 8, "ammo_item": "ballista_bolt", "muzzle_offset": [0.5, 0.65, -0.35]},
+      "dismantle_policy": "inventory_capacity_required"
+    },
+    {
+      "id": "catapult",
+      "occupied_offsets": [[0, 0, 0], [1, 0, 0], [0, 0, 1], [1, 0, 1]],
+      "support_offsets": [[0, -1, 0], [1, -1, 0], [0, -1, 1], [1, -1, 1]],
+      "mount": {"allowed": ["ground"]},
+      "visual": {"color": "83542f", "parts": [
+        {"offset": [0.5, -0.2, 0.5], "size": [1.8, 0.3, 1.5]},
+        {"offset": [0.15, 0.35, 0.5], "size": [0.2, 0.9, 0.2]},
+        {"offset": [0.85, 0.35, 0.5], "size": [0.2, 0.9, 0.2]},
+        {"offset": [0.5, 0.75, 0.45], "size": [0.22, 0.22, 1.7]},
+        {"offset": [0.5, 0.55, 1.12], "size": [0.6, 0.55, 0.55]}
+      ]},
+      "siege": {"fire_mode": "ballistic", "damage": 9, "minimum_range": 8.0, "maximum_range": 34.0, "cooldown_seconds": 3.2, "starting_ammo": 5, "ammo_item": "stone_shot", "muzzle_offset": [0.5, 1.15, 0.65], "arc_height": 7.0},
       "dismantle_policy": "inventory_capacity_required"
     }
   ],
@@ -462,6 +519,46 @@
       "inputs": {"planks": 4},
       "outputs": {"wood_barricade": 1},
       "duration_seconds": 0
+    },
+    {
+      "id": "iron_sword",
+      "station": "workbench",
+      "recipe_book_priority": 95,
+      "inputs": {"iron_ingot": 2, "stick": 1},
+      "outputs": {"iron_sword": 1},
+      "duration_seconds": 0
+    },
+    {
+      "id": "ballista_bolt",
+      "station": "workbench",
+      "recipe_book_priority": 85,
+      "inputs": {"iron_ingot": 1, "stick": 2},
+      "outputs": {"ballista_bolt": 4},
+      "duration_seconds": 0
+    },
+    {
+      "id": "stone_shot",
+      "station": "workbench",
+      "recipe_book_priority": 84,
+      "inputs": {"stone": 2},
+      "outputs": {"stone_shot": 4},
+      "duration_seconds": 0
+    },
+    {
+      "id": "ballista",
+      "station": "workbench",
+      "recipe_book_priority": 93,
+      "inputs": {"planks": 4, "iron_ingot": 2, "stick": 2},
+      "outputs": {"ballista": 1},
+      "duration_seconds": 0
+    },
+    {
+      "id": "catapult",
+      "station": "workbench",
+      "recipe_book_priority": 92,
+      "inputs": {"planks": 5, "stone": 2, "stick": 2},
+      "outputs": {"catapult": 1},
+      "duration_seconds": 0
     }
   ],
   "progression_goals": [
@@ -470,6 +567,11 @@
     "stone_pick",
     "furnace",
     "iron_ingot",
-    "iron_pick"
+    "iron_pick",
+    "iron_sword",
+    "ballista_bolt",
+    "stone_shot",
+    "ballista",
+    "catapult"
   ]
 }

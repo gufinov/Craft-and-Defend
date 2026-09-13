@@ -41,6 +41,11 @@ const REASON_TEXT := {
 	"MISSING_REPAIR_MATERIAL": "Repair requires one Planks item in carried inventory or the hotbar.",
 	"NO_REPAIR_NEEDED": "That barricade is already at full integrity.",
 	"REPAIRED": "Barricade repaired; one Planks item was consumed.",
+	"INVALID_MOUNT": "That siege device needs fully supported ground or its allowed tower socket.",
+	"MELEE_COOLDOWN": "The sword is still recovering.",
+	"SWORD_MISS": "The sword swing did not reach a raider.",
+	"RAIDER_DAMAGED": "Sword strike landed.",
+	"RAIDER_DEFEATED": "Raider defeated — the core is safe.",
 }
 
 var world: WorldAdapter
@@ -53,6 +58,7 @@ var interaction: InteractionService
 var clock: DayNightClock
 var defense: DefenseService
 var core_defense: CoreDefenseService
+var siege_defense: SiegeDefenseService
 var open_data: Dictionary
 var world_ready := false
 var saving := false
@@ -67,6 +73,7 @@ var _sun: DirectionalLight3D
 var _sun_visual: MeshInstance3D
 var _last_visual_minute := -1
 var _navigation_elapsed := 0.0
+var _melee_cooldown := 0.0
 
 
 func initialize(session_data: Dictionary) -> Dictionary:
@@ -134,8 +141,15 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	core_defense.name = "CoreDefenseService"
 	add_child(core_defense)
 	core_defense.initialize(world, registry, workstations, snapshot.get("core_defense", {}))
+	siege_defense = SiegeDefenseService.new()
+	siege_defense.name = "SiegeDefenseService"
+	add_child(siege_defense)
+	siege_defense.initialize(workstations, core_defense)
+	siege_defense.feedback.connect(_on_interaction_feedback)
+	siege_defense.state_changed.connect(_on_defense_state_changed)
 	interaction = InteractionService.new(world, inventory, player.get_body_aabb, registry, workstations, _raycast_station, _defense_interact)
 	player.interaction = interaction
+	player.primary_action = _player_primary_action
 	world.spawn_area_ready.connect(_on_spawn_area_ready)
 	world.status_changed.connect(status_changed.emit)
 	inventory.changed.connect(_on_inventory_changed)
@@ -160,6 +174,10 @@ func _process(delta: float) -> void:
 		defense.advance(delta, simulation_paused or saving)
 	if core_defense != null:
 		core_defense.advance(delta, simulation_paused or saving)
+	if siege_defense != null:
+		siege_defense.advance(delta, simulation_paused or saving)
+	if not simulation_paused:
+		_melee_cooldown = maxf(0.0, _melee_cooldown - delta)
 	if workstations != null and not saving:
 		workstations.advance(delta, simulation_paused)
 	if clock != null and not saving:
@@ -479,6 +497,8 @@ func _spawn_station_visual(record: Dictionary) -> void:
 	add_child(body)
 	_station_visuals[instance_id] = body
 	_station_visual_materials[instance_id] = material
+	if siege_defense != null and not definition.get("siege", {}).is_empty():
+		siege_defense.register_visual(instance_id, body)
 	if record.has("integrity"):
 		_update_station_visual(instance_id, int(record.integrity), int(definition.get("defense", {}).get("max_integrity", 1)))
 
@@ -556,6 +576,8 @@ func _remove_station_visual(instance_id: String) -> void:
 		return
 	var body: Node = _station_visuals[instance_id]
 	body.queue_free()
+	if siege_defense != null:
+		siege_defense.unregister_visual(instance_id)
 	_station_visuals.erase(instance_id)
 	_station_visual_materials.erase(instance_id)
 
@@ -601,8 +623,63 @@ func _defense_interact(origin: Vector3, direction: Vector3) -> Dictionary:
 	return workstations.try_repair_structure(structure_id)
 
 
+func _player_primary_action(origin: Vector3, direction: Vector3) -> Dictionary:
+	var item_id := inventory.active_item_id()
+	var item := registry.item(item_id)
+	var weapon: Dictionary = item.get("weapon", {})
+	if str(weapon.get("kind", "")) != "melee":
+		return {"handled": false}
+	if _melee_cooldown > 0.0:
+		return {"handled": true, "ok": false, "reason": "MELEE_COOLDOWN"}
+	_melee_cooldown = maxf(0.05, float(weapon.get("cooldown_seconds", 0.55)))
+	_spawn_sword_swing()
+	if core_defense == null or not is_instance_valid(core_defense.raider):
+		return {"handled": true, "ok": false, "reason": "SWORD_MISS"}
+	var reach := float(weapon.get("range", 3.25))
+	var aim_direction := direction.normalized()
+	var target_position := core_defense.raider_target_position()
+	var target_offset := target_position - origin
+	if target_offset.length() > reach or aim_direction.dot(target_offset.normalized()) < 0.94:
+		return {"handled": true, "ok": false, "reason": "SWORD_MISS"}
+	# Trace to the raider's center instead of past its capsule. This keeps walls as
+	# blockers while remaining stable when a diagnostic moves the body directly.
+	var query := PhysicsRayQueryParameters3D.create(origin, target_position, 1)
+	query.exclude = [player.get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty() and hit.get("collider") != core_defense.raider:
+		return {"handled": true, "ok": false, "reason": "SWORD_MISS"}
+	var result := core_defense.try_damage_raider(int(weapon.get("damage", 0)), item_id)
+	result["handled"] = true
+	return result
+
+
+func _spawn_sword_swing() -> void:
+	if player == null or player.camera == null:
+		return
+	var blade := MeshInstance3D.new()
+	blade.name = "SwordSwing"
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.08, 0.65, 0.08)
+	blade.mesh = mesh
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color("dce8ed")
+	material.emission_enabled = true
+	material.emission = Color("7fcfe8")
+	material.emission_energy_multiplier = 1.3
+	blade.material_override = material
+	player.camera.add_child(blade)
+	blade.position = Vector3(0.35, -0.22, -0.7)
+	blade.rotation = Vector3(0.15, 0.0, -0.65)
+	var tween := create_tween()
+	tween.tween_property(blade, "rotation:z", 0.75, 0.16)
+	tween.tween_interval(0.08)
+	tween.finished.connect(blade.queue_free)
+
+
 func _on_defense_state_changed(_text: String) -> void:
 	if core_defense != null and (core_defense.is_active() or core_defense.state == CoreDefenseService.FAILED):
-		defense_changed.emit(core_defense.hud_text())
+		defense_changed.emit(core_defense.hud_text() + (siege_defense.hud_suffix() if siege_defense != null else ""))
+	elif core_defense != null and core_defense.state == CoreDefenseService.WON:
+		defense_changed.emit(core_defense.hud_text() + (siege_defense.hud_suffix() if siege_defense != null else ""))
 	elif defense != null:
 		defense_changed.emit(defense.hud_text())

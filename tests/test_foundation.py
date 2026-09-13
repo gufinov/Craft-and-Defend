@@ -96,6 +96,21 @@ class FoundationTests(unittest.TestCase):
         entity['mount_sockets'].append(copy.deepcopy(entity['mount_sockets'][0]))
         self.rejects('invalid mount socket')
 
+    def test_unknown_siege_mount_rejected(self):
+        entity = next(e for e in self.bundle['content']['entities'] if e['id'] == 'ballista')
+        entity['mount']['allowed'] = ['imaginary_socket']
+        self.rejects('invalid entity mount')
+
+    def test_invalid_siege_range_rejected(self):
+        entity = next(e for e in self.bundle['content']['entities'] if e['id'] == 'catapult')
+        entity['siege']['maximum_range'] = entity['siege']['minimum_range']
+        self.rejects('invalid siege definition')
+
+    def test_invalid_weapon_damage_rejected(self):
+        item = next(i for i in self.bundle['content']['items'] if i['id'] == 'iron_sword')
+        item['weapon']['damage'] = 0
+        self.rejects('invalid weapon')
+
     def test_multicell_overlap_cannot_claim_success(self):
         case = next(c for c in self.bundle['placement_cases']['cases'] if c['id'] == 'multicell_partial_overlap')
         case['expected'] = 'OK'
@@ -140,6 +155,15 @@ class FoundationTests(unittest.TestCase):
         self.assertIn('Review: %DIAGNOSTIC_LOG%', launcher)
         self.assertIn('P2_DIAGNOSTIC_NO_OPEN', launcher)
         self.assertIn('p2-navigation-spike.png', launcher)
+
+    def test_p3c_has_one_click_exported_gameplay_and_visual_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        launcher = (root / 'TEST_P3C_PLAYER_DEFENSE.cmd').read_text(encoding='utf-8')
+        self.assertIn('start_game.ps1" -PrepareOnly', launcher)
+        self.assertIn('--p3c-player-defense-automation=phase1', launcher)
+        self.assertIn('--p3c-player-defense-automation=visual', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3c-visual-catalog.png"', launcher)
+        self.assertIn('P3C_DIAGNOSTIC_NO_OPEN', launcher)
 
 
 class ArchiveTests(unittest.TestCase):

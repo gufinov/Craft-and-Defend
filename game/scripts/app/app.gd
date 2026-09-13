@@ -6,6 +6,7 @@ enum AppState { MAIN_MENU, LOADING, PLAYING, PAUSED, INVENTORY, CRAFTING, SAVING
 const DISPLAY_CONFIRM_SECONDS := 10.0
 const PRINT_SCREEN_FOCUS_WINDOW_MSEC := 2000
 const SCREENSHOT_CLICK_GUARD_SECONDS := 0.20
+const RECIPE_PAGE_SIZE := 12
 const INVENTORY_FILTERS: Array[Dictionary] = [
 	{"id": "all", "label": "All"},
 	{"id": "resource", "label": "Resources"},
@@ -72,8 +73,11 @@ var crafting_title_label: Label
 var crafting_context_label: Label
 var crafting_inventory_grid: GridContainer
 var crafting_inventory_slots: Array[CraftingItemSlot] = []
-var crafting_recipe_list: VBoxContainer
+var crafting_recipe_list: GridContainer
 var crafting_recipe_search: LineEdit
+var crafting_recipe_previous: Button
+var crafting_recipe_next: Button
+var crafting_recipe_page_label: Label
 var crafting_grid: GridContainer
 var crafting_grid_slots: Array[CraftingItemSlot] = []
 var crafting_output_label: Label
@@ -84,6 +88,7 @@ var _crafting_station_type := "hand"
 var _selected_recipe_id := ""
 var _craft_grid_items: Array[String] = []
 var _crafting_selected_inventory_item := ""
+var _crafting_recipe_page := 0
 var _inventory_move_source := -1
 var _inventory_filter := "all"
 var sensitivity_slider: HSlider
@@ -185,6 +190,11 @@ func _ready() -> void:
 		var p3b_core_automation := P3BCoreDefenseAutomation.new()
 		add_child(p3b_core_automation)
 		p3b_core_automation.call_deferred("run", self, p3b_core_mode)
+	var p3c_mode := _argument_value("--p3c-player-defense-automation=")
+	if not p3c_mode.is_empty():
+		var p3c_automation := P3CPlayerDefenseAutomation.new()
+		add_child(p3c_automation)
+		p3c_automation.call_deferred("run", self, p3c_mode)
 
 
 func _process(delta: float) -> void:
@@ -696,7 +706,7 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	crafting_panel.add_child(center)
 	var modal := PanelContainer.new()
-	modal.custom_minimum_size = Vector2(1160, 650)
+	modal.custom_minimum_size = Vector2(1220, 680)
 	modal.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("0d1a23"), Color("4e8294"), 12, 22))
 	center.add_child(modal)
 	var root := VBoxContainer.new()
@@ -717,7 +727,7 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	root.add_child(columns)
 
 	var inventory_card := PanelContainer.new()
-	inventory_card.custom_minimum_size.x = 270
+	inventory_card.custom_minimum_size.x = 250
 	inventory_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	inventory_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 14))
 	columns.add_child(inventory_card)
@@ -743,7 +753,7 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	inventory_scroll.add_child(crafting_inventory_grid)
 	for index in range(F0Inventory.SLOT_COUNT):
 		var inventory_slot := CraftingItemSlot.new()
-		inventory_slot.custom_minimum_size = Vector2(74, 50)
+		inventory_slot.custom_minimum_size = Vector2(68, 54)
 		inventory_slot.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		inventory_slot.tooltip_text = "Drag to the crafting grid, or select and then choose a grid cell"
 		inventory_slot.pressed.connect(_select_crafting_inventory_slot.bind(index))
@@ -753,7 +763,7 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 		crafting_inventory_grid.add_child(inventory_slot)
 
 	var grid_card := PanelContainer.new()
-	grid_card.custom_minimum_size.x = 350
+	grid_card.custom_minimum_size.x = 330
 	grid_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 14))
 	columns.add_child(grid_card)
 	var grid_column := VBoxContainer.new()
@@ -775,12 +785,12 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	crafting_output_label = Label.new()
 	crafting_output_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	crafting_output_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	crafting_output_label.custom_minimum_size = Vector2(350, 64)
+	crafting_output_label.custom_minimum_size = Vector2(330, 64)
 	crafting_output_label.add_theme_color_override("font_color", Color("c9f4ff"))
 	grid_column.add_child(crafting_output_label)
-	craft_selected_button = _button("Craft", _craft_selected_recipe, Vector2(350, 48))
+	craft_selected_button = _button("Craft", _craft_selected_recipe, Vector2(330, 48))
 	grid_column.add_child(craft_selected_button)
-	grid_column.add_child(_button("Clear Grid", _clear_crafting_grid, Vector2(350, 42)))
+	grid_column.add_child(_button("Clear Grid", _clear_crafting_grid, Vector2(330, 42)))
 	crafting_message = Label.new()
 	crafting_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	crafting_message.add_theme_color_override("font_color", Color("ffd488"))
@@ -803,14 +813,24 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	crafting_recipe_search.text_changed.connect(_on_crafting_recipe_search_changed)
 	crafting_recipe_search.text_submitted.connect(_on_crafting_recipe_search_submitted)
 	recipe_column.add_child(crafting_recipe_search)
-	var recipe_scroll := ScrollContainer.new()
-	recipe_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	recipe_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	recipe_scroll.follow_focus = true
-	recipe_column.add_child(recipe_scroll)
-	crafting_recipe_list = VBoxContainer.new()
+	crafting_recipe_list = GridContainer.new()
+	crafting_recipe_list.columns = 4
 	crafting_recipe_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	recipe_scroll.add_child(crafting_recipe_list)
+	crafting_recipe_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	crafting_recipe_list.add_theme_constant_override("h_separation", 6)
+	crafting_recipe_list.add_theme_constant_override("v_separation", 6)
+	recipe_column.add_child(crafting_recipe_list)
+	var page_row := HBoxContainer.new()
+	page_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	page_row.add_theme_constant_override("separation", 10)
+	recipe_column.add_child(page_row)
+	crafting_recipe_previous = _button("‹ Previous", _change_recipe_page.bind(-1), Vector2(118, 36))
+	page_row.add_child(crafting_recipe_previous)
+	crafting_recipe_page_label = _centered_label("Page 1 / 1")
+	crafting_recipe_page_label.custom_minimum_size = Vector2(100, 36)
+	page_row.add_child(crafting_recipe_page_label)
+	crafting_recipe_next = _button("Next ›", _change_recipe_page.bind(1), Vector2(118, 36))
+	page_row.add_child(crafting_recipe_next)
 
 
 func _build_hud(canvas: CanvasLayer) -> void:
@@ -1029,6 +1049,7 @@ func _show_crafting(station_id: String = "", station_type: String = "hand") -> v
 	_selected_recipe_id = ""
 	_craft_grid_items.clear()
 	_crafting_selected_inventory_item = ""
+	_crafting_recipe_page = 0
 	crafting_recipe_search.clear()
 	state = AppState.CRAFTING
 	session.pause_game(true)
@@ -1147,13 +1168,14 @@ func _refresh_inventory_panel() -> void:
 	for index in range(inventory_slot_buttons.size()):
 		var slot: Dictionary = slots[index] if index < slots.size() else {"item_id": "", "count": 0}
 		var item_id := str(slot.get("item_id", ""))
-		var prefix := "%d\n" % (index + 1) if index < F0Inventory.HOTBAR_COUNT else "C%d\n" % (index - F0Inventory.HOTBAR_COUNT + 1)
+		var slot_label := "%d" % (index + 1) if index < F0Inventory.HOTBAR_COUNT else "C%d" % (index - F0Inventory.HOTBAR_COUNT + 1)
 		var marker := "↔" if index == _inventory_move_source else ("▶" if index == int(snapshot.get("selected_hotbar", 0)) and index < F0Inventory.HOTBAR_COUNT else "")
-		var item_text := "Empty" if item_id.is_empty() else "%s ×%d" % [session.registry.display_name(item_id), int(slot.get("count", 0))]
-		inventory_slot_buttons[index].text = marker + prefix + item_text
+		var display_name := "Empty" if item_id.is_empty() else session.registry.display_name(item_id)
+		var item_text := "Empty" if item_id.is_empty() else "%s ×%d" % [display_name, int(slot.get("count", 0))]
 		inventory_slot_buttons[index].tooltip_text = ("Hotbar key %d" % (index + 1) if index < F0Inventory.HOTBAR_COUNT else "Carried slot %d" % (index - F0Inventory.HOTBAR_COUNT + 1)) + " · " + item_text
 		inventory_slot_buttons[index].disabled = false
 		inventory_slot_buttons[index].configure(index, item_id)
+		inventory_slot_buttons[index].set_presentation(slot_label, display_name, int(slot.get("count", 0)), marker)
 		if index >= F0Inventory.HOTBAR_COUNT:
 			inventory_slot_buttons[index].visible = _inventory_filter == "all" or (not item_id.is_empty() and session.registry.item_category(item_id) == _inventory_filter)
 	var visible_carried := 0
@@ -1202,17 +1224,26 @@ func _refresh_crafting_panel() -> void:
 		crafting_recipe_list.remove_child(child)
 		child.queue_free()
 	var recipe_query := crafting_recipe_search.text.strip_edges().to_lower()
-	var visible_recipe_count := 0
+	var filtered_recipes: Array[Dictionary] = []
 	for recipe in recipes:
 		if not recipe_query.is_empty() and not _recipe_search_text(recipe).contains(recipe_query):
 			continue
-		visible_recipe_count += 1
+		filtered_recipes.append(recipe)
+	var page_count := maxi(1, ceili(float(filtered_recipes.size()) / float(RECIPE_PAGE_SIZE)))
+	_crafting_recipe_page = clampi(_crafting_recipe_page, 0, page_count - 1)
+	var first_index := _crafting_recipe_page * RECIPE_PAGE_SIZE
+	var last_index := mini(first_index + RECIPE_PAGE_SIZE, filtered_recipes.size())
+	for index in range(first_index, last_index):
+		var recipe: Dictionary = filtered_recipes[index]
 		_add_recipe_card(recipe, _recipe_status(recipe), str(recipe.id) == _selected_recipe_id)
-	if visible_recipe_count == 0:
+	if filtered_recipes.is_empty():
 		var no_matches := Label.new()
 		no_matches.text = "No recipes match this search."
 		no_matches.add_theme_color_override("font_color", Color("8fa5af"))
 		crafting_recipe_list.add_child(no_matches)
+	crafting_recipe_page_label.text = "Page %d / %d" % [_crafting_recipe_page + 1, page_count]
+	crafting_recipe_previous.disabled = _crafting_recipe_page <= 0
+	crafting_recipe_next.disabled = _crafting_recipe_page >= page_count - 1
 	for index in range(grid_capacity):
 		var cell := CraftingItemSlot.new()
 		cell.custom_minimum_size = Vector2(94, 74)
@@ -1222,9 +1253,9 @@ func _refresh_crafting_panel() -> void:
 		var empty_label := "Empty"
 		if _crafting_station_type == "furnace":
 			empty_label = "Ore" if index == 0 else "Fuel"
-		cell.text = empty_label if item_id.is_empty() else session.registry.display_name(item_id)
 		cell.tooltip_text = "Drop an inventory item here" if item_id.is_empty() else "Drag to another cell or click to clear"
 		cell.configure_source("grid", index, item_id)
+		cell.set_presentation(empty_label if item_id.is_empty() else session.registry.display_name(item_id), 0)
 		cell.configure_target("grid", index)
 		cell.item_dropped.connect(_on_crafting_item_dropped)
 		cell.pressed.connect(_on_crafting_grid_slot_pressed.bind(index))
@@ -1310,9 +1341,9 @@ func _refresh_crafting_inventory() -> void:
 		var item_id := str(slot.get("item_id", ""))
 		var count := int(slot.get("count", 0))
 		var marker := "▶ " if item_id == _crafting_selected_inventory_item and not item_id.is_empty() else ""
-		crafting_inventory_slots[index].text = "%s%d\n%s" % [marker, index + 1, "Empty" if item_id.is_empty() else "%s ×%d" % [session.registry.display_name(item_id), count]]
 		crafting_inventory_slots[index].disabled = item_id.is_empty()
 		crafting_inventory_slots[index].configure_source("inventory", index, item_id)
+		crafting_inventory_slots[index].set_presentation("%d · %s" % [index + 1, "Empty" if item_id.is_empty() else session.registry.display_name(item_id)], count, marker)
 
 
 func _select_crafting_inventory_slot(index: int) -> void:
@@ -1449,6 +1480,12 @@ func _recipe_search_text(recipe: Dictionary) -> String:
 
 
 func _on_crafting_recipe_search_changed(_query: String) -> void:
+	_crafting_recipe_page = 0
+	_refresh_crafting_panel()
+
+
+func _change_recipe_page(direction: int) -> void:
+	_crafting_recipe_page = maxi(0, _crafting_recipe_page + direction)
 	_refresh_crafting_panel()
 
 
@@ -1462,29 +1499,9 @@ func _on_crafting_recipe_search_submitted(_query: String) -> void:
 
 
 func _add_recipe_card(recipe: Dictionary, status: Dictionary, selected: bool) -> void:
-	var card := PanelContainer.new()
-	card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("152732") if selected else Color("101a23"), Color("78cbe0") if selected else Color("344c5a"), 7, 8))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	card.add_child(row)
-	var thumbnail := PanelContainer.new()
-	thumbnail.custom_minimum_size = Vector2(58, 58)
-	thumbnail.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("233d4a"), Color("6aaac0"), 6, 4))
-	var thumbnail_label := Label.new()
-	thumbnail_label.text = session.registry.display_name(str(recipe.id)).left(2).to_upper()
-	thumbnail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	thumbnail_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	thumbnail_label.add_theme_font_size_override("font_size", 18)
-	thumbnail.add_child(thumbnail_label)
-	row.add_child(thumbnail)
-	var selected_marker := "▶ " if selected else ""
-	var button := _button(selected_marker + _recipe_button_text(recipe, status), _select_crafting_recipe.bind(str(recipe.id)), Vector2(250, 76))
-	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	button.clip_text = true
-	button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	button.tooltip_text = "Load this recipe into the grid when ingredients are available"
-	row.add_child(button)
+	var card := RecipeCatalogCard.new()
+	card.pressed.connect(_select_crafting_recipe.bind(str(recipe.id)))
+	card.configure(recipe, session.registry.display_name(str(recipe.id)), bool(status.get("ok", false)), selected, _recipe_button_text(recipe, status) + "\nClick to stage this recipe")
 	crafting_recipe_list.add_child(card)
 
 

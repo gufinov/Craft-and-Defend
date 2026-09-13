@@ -15,6 +15,7 @@ const STEP_FLOOR_PROBE := 0.08
 var camera: Camera3D
 var collision_shape: CollisionShape3D
 var interaction: InteractionService
+var primary_action: Callable
 var active := false
 var look_pitch := 0.0
 var mouse_sensitivity := SettingsStore.DEFAULT_MOUSE_SENSITIVITY
@@ -113,6 +114,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		apply_mouse_look(event.relative)
 	elif event.is_action_pressed("primary") and interaction != null:
+		if primary_action.is_valid():
+			var primary_result: Dictionary = primary_action.call(camera.global_position, -camera.global_basis.z)
+			if primary_result.get("handled", false):
+				_report(primary_result)
+				return
 		_report(interaction.break_from_view(camera.global_position, -camera.global_basis.z))
 	elif event.is_action_pressed("secondary") and interaction != null:
 		_report(interaction.secondary_from_view(camera.global_position, -camera.global_basis.z))

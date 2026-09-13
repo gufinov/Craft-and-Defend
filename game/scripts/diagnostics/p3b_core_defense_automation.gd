@@ -224,7 +224,7 @@ func _inspect_workbench_barricade_recipe(workbench_id: String) -> Dictionary:
 	var search_cards := app.crafting_recipe_list.get_child_count()
 	var search_card_text := _first_recipe_button_text()
 	var result := {
-		"ok": first_recipe_id == "wood_barricade" and initial_cards == recipes.size() and first_card_text.contains("Wood Barricade") and search_cards == 1 and search_card_text.contains("Wood Barricade"),
+		"ok": first_recipe_id == "wood_barricade" and initial_cards == mini(app.RECIPE_PAGE_SIZE, recipes.size()) and first_card_text.contains("Wood Barricade") and search_cards == 1 and search_card_text.contains("Wood Barricade"),
 		"first_recipe_id": first_recipe_id,
 		"recipe_count": recipes.size(),
 		"initial_cards": initial_cards,
@@ -240,8 +240,8 @@ func _inspect_workbench_barricade_recipe(workbench_id: String) -> Dictionary:
 func _first_recipe_button_text() -> String:
 	if app.crafting_recipe_list.get_child_count() == 0:
 		return ""
-	var buttons := app.crafting_recipe_list.get_child(0).find_children("*", "Button", true, false)
-	return str(buttons[0].text) if not buttons.is_empty() else ""
+	var card := app.crafting_recipe_list.get_child(0)
+	return str(card.tooltip_text) if card is Control else ""
 
 
 func _add_structure_label(instance_id: String) -> void:

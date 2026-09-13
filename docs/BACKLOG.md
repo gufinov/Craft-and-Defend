@@ -83,7 +83,13 @@ The raider must first ask for a valid open route. It may select a wooden obstruc
 
 **Boundary:** one raider only. No player aggro, multiple units, wave director, damageable voxel-region aggregation, moving/craftable ballista, catapult, rewards, drops, armor combat or campaign progression.
 
-**Candidate result:** `feature/p3-core-defense` passes T66–T71 in the pinned runtime and matching editor-closed Windows export. The Workbench creates a two-cell player-placeable wooden barricade with 30 persisted integrity and atomic Planks repair. The single field-side raider prefers an open core route, breaches one exact wooden barricade only when the local lane is fully blocked, releases both occupied cells without refund and replans through the opening. Castle-kit entities remain outside basic-raider damage while the siege-candidate material rule remains distinguishable. Owner ultrawide playtest and acceptance are pending; this result does not authorize the excluded expansion.
+**Owner-accepted result:** `feature/p3-core-defense` passes T66–T71 in the pinned runtime and matching editor-closed Windows export. The Workbench creates a two-cell player-placeable wooden barricade with 30 persisted integrity and atomic Planks repair. The single field-side raider prefers an open core route, breaches one exact wooden barricade only when the local lane is fully blocked, releases both occupied cells without refund and replans through the opening. Castle-kit entities remain outside basic-raider damage while the siege-candidate material rule remains distinguishable. Tony accepted the repaired visible-recipe build on 2026-09-13.
+
+## P3C — player defense and visual catalog
+
+Replace the text-heavy inventory and vertical recipe list with an original icon-first, paged interface while retaining the accepted three-panel crafting and three-section inventory contracts. Add one usable carried sword and craftable/player-placeable ballista and catapult entities. The sword must prioritize a valid raider strike over terrain edits. The ballista must require direct physics line of sight; the catapult must use a clear sampled ballistic arc plus minimum/maximum range. Persist finite siege ammunition with the placed entity. Run T72–T78 plus P3B and prior regression gates.
+
+**Boundary:** one active P3B raider remains the only combat target. Do not claim player health, armor behavior, waves, army-scale targeting, drops, magic, campaign balance or final art. See [the P3C contract](P3C_PLAYER_DEFENSE_AND_VISUAL_CATALOG.md).
 
 ## Card completion discipline
 
