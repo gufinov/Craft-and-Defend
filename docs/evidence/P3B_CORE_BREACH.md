@@ -1,6 +1,6 @@
 # Evidence — P3B core and player-built breach prototype — 2026-09-13
 
-STATUS: CANDIDATE PASS — automated/runtime/export gates pass; owner ultrawide playtest pending
+STATUS: PASS — automated/runtime/export gates pass; Tony accepted the corrected player-visible recipe path on 2026-09-13
 
 DONE:
 
@@ -32,7 +32,7 @@ TEST:
 | P3 regression | Preserve accepted drill behavior | T57–T61 and T64–T65 all pass from the final matching export | PASS | `artifacts/exported-p3b-recipe-fix-344367fb313c46899d9db36af3e50ab4/p3_regression/p3_regression.log` |
 | F5 regression | Preserve crafting contexts, search/autofill and graphics | T31, T33, T35 and T36 all pass from the final matching export | PASS | `artifacts/exported-p3b-recipe-fix-344367fb313c46899d9db36af3e50ab4/f5_regression/f5_regression.log` |
 | Static | Preserve repository contracts | Foundation validator reports 11 blocks, 20 items, 15 recipes; 29/29 unit tests pass including optional recipe-priority type rejection | PASS | command output recorded during this checkpoint |
-| Owner | Ultrawide graphical behavior and feel | Not yet run | NOT RUN | owner playtest requested |
+| Owner | Corrected player-visible Workbench path and bounded P3B behavior | Tony confirmed Wood Barricade is available and working | PASS | owner report 2026-09-13 |
 
 LIMITATIONS/FAILURES:
 
@@ -45,7 +45,7 @@ LIMITATIONS/FAILURES:
 
 NEXT:
 
-Tony tests the current exported build at 3440×1440. Record owner acceptance or exact correction evidence before activating another slice.
+Preserve this accepted checkpoint while the separately authorized P3C player-defense and visual-catalog slice proceeds in its own worktree.
 
 GIT/REPRODUCIBILITY:
 

@@ -15,7 +15,8 @@ Advance on evidence, not elapsed time. Estimates are intentionally not presented
 | P1B — first castle kit | Wall masonry plus stair, wall-walk slab, parapet merlon, 2×2 tower platform and open gate frame; preview, rotation, support, dismantle and save | T42–T50 plus construction playtest | Owner accepted 2026-09-13 |
 | P2 — navigation risk spike | One attacker routes around, through and against edited structures | T51–T56 bounded comparison and visual diagnostic | PASS; owner accepted 2026-09-13 |
 | P3 — defense slice | One warned attack, field-side approach, one direct-fire stationary weapon, repair loop and live held hotbar | T57–T65 plus owner readability/fun playtest | Owner accepted 2026-09-13 |
-| P3B — core and breach prototype | One strategic-core prototype, opening-first targeting, one player-built wooden defense with persisted damage/repair/breach | T66–T71 plus P3 regression and owner playtest | Candidate PASS; owner playtest pending |
+| P3B — core and breach prototype | One strategic-core prototype, opening-first targeting, one player-built wooden defense with persisted damage/repair/breach | T66–T71 plus P3 regression and owner playtest | Owner accepted 2026-09-13 |
+| P3C — player defense and visual catalog | Paged icon-first inventory/recipe UX, one usable sword, craftable ballista and catapult with distinct targeting contracts | Player-visible crafting/equipment/combat/siege gates plus P3B regression | Authorized; not started |
 | P4 — campaign systems | Threat sources, rifts, escalation, wizard final siege | Balance/scaling evidence; scope review | Not started |
 | Later | Automation/templates, more biomes/content, packaging/store | Separate decisions based on tests | Not started |
 
