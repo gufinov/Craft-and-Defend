@@ -78,6 +78,8 @@ Potential castle-defense roles include a rune table or focus altar, ward anchors
 6. **Expanded stations/logistics:** chest, forge/anvil and oven only as their dependent systems arrive.
 7. **Magic review:** approve or reject a bounded magic role before implementation.
 
+The accepted king/core, opening preference, material capability, ballista line-of-sight, catapult minimum-range and multi-unit wave direction is maintained in [Defense, targeting and castle-obstacle contract](DEFENSE_TARGETING_CONTRACT.md). Player-built castle pieces are currently navigation obstacles, not yet a unified damageable structure system.
+
 ## Decisions still required
 
 - positional recipes versus recipe-driven auto-fill;

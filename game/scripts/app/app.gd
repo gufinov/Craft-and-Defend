@@ -52,6 +52,8 @@ var hud_label: Label
 var feedback_label: Label
 var navigation_label: Label
 var defense_label: Label
+var gameplay_hotbar: HBoxContainer
+var gameplay_hotbar_slots: Array[GameplayHotbarSlot] = []
 var inventory_contents_label: Label
 var keybind_search: LineEdit
 var binding_rows: Dictionary = {}
@@ -844,6 +846,20 @@ func _build_hud(canvas: CanvasLayer) -> void:
 	crosshair.set_anchors_preset(Control.PRESET_CENTER)
 	crosshair.position = Vector2(-7, -16)
 	hud_layer.add_child(crosshair)
+	gameplay_hotbar = HBoxContainer.new()
+	gameplay_hotbar.name = "HeldHotbar"
+	gameplay_hotbar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	gameplay_hotbar.position = Vector2(-420, -94)
+	gameplay_hotbar.size = Vector2(840, 80)
+	gameplay_hotbar.alignment = BoxContainer.ALIGNMENT_CENTER
+	gameplay_hotbar.add_theme_constant_override("separation", 5)
+	gameplay_hotbar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_layer.add_child(gameplay_hotbar)
+	for index in range(F0Inventory.HOTBAR_COUNT):
+		var slot := GameplayHotbarSlot.new()
+		gameplay_hotbar_slots.append(slot)
+		gameplay_hotbar.add_child(slot)
+		slot.set_slot(index, "", "Empty", 0, index == 0)
 
 
 func _build_display_confirmation(canvas: CanvasLayer) -> void:
@@ -942,6 +958,7 @@ func _on_session_ready() -> void:
 	loading_panel.hide()
 	hud_layer.show()
 	feedback_label.text = ""
+	_refresh_gameplay_hotbar(session.inventory_snapshot())
 
 
 func _pause_game() -> void:
@@ -1035,11 +1052,25 @@ func _close_crafting() -> void:
 	_crafting_selected_inventory_item = ""
 
 
-func _on_session_inventory_changed(_snapshot: Dictionary) -> void:
+func _on_session_inventory_changed(snapshot: Dictionary) -> void:
+	_refresh_gameplay_hotbar(snapshot)
 	if inventory_panel != null and inventory_panel.visible:
 		_refresh_inventory_panel()
 	if crafting_panel != null and crafting_panel.visible:
 		_refresh_crafting_panel()
+
+
+func _refresh_gameplay_hotbar(snapshot: Dictionary = {}) -> void:
+	if session == null or gameplay_hotbar_slots.is_empty():
+		return
+	var current := snapshot if not snapshot.is_empty() else session.inventory_snapshot()
+	var slots: Array = current.get("slots", [])
+	var selected_index := int(current.get("selected_hotbar", 0))
+	for index in range(gameplay_hotbar_slots.size()):
+		var slot: Dictionary = slots[index] if index < slots.size() else {"item_id": "", "count": 0}
+		var item_id := str(slot.get("item_id", ""))
+		var display_name := "Empty" if item_id.is_empty() else session.registry.display_name(item_id)
+		gameplay_hotbar_slots[index].set_slot(index, item_id, display_name, int(slot.get("count", 0)), index == selected_index)
 
 
 func _select_inventory_slot(index: int) -> void:

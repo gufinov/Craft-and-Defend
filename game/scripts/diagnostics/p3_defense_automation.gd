@@ -33,6 +33,12 @@ func _run_phase1() -> void:
 	if not await _wait_ready():
 		return
 	app.session.player.deactivate()
+	app.session.inventory.try_transaction({}, {"dirt": 2, "planks": 3})
+	app.session.inventory.select_hotbar(1)
+	await get_tree().process_frame
+	var hotbar_slots := app.gameplay_hotbar_slots
+	var hotbar_visible := hotbar_slots.size() == F0Inventory.HOTBAR_COUNT and hotbar_slots[0].item_id == "dirt" and hotbar_slots[1].item_id == "planks" and hotbar_slots[1].selected and app.gameplay_hotbar.visible
+	_record("T64_HELD_HOTBAR", hotbar_visible, "the live HUD displays all nine held slots with the selected key, item identity, count and available block artwork", {"slots": hotbar_slots.size(), "slot_1": hotbar_slots[0].item_id if hotbar_slots.size() > 0 else "", "slot_2": hotbar_slots[1].item_id if hotbar_slots.size() > 1 else "", "selected": hotbar_slots[1].selected if hotbar_slots.size() > 1 else false})
 	var defense := app.session.defense
 	var started := defense.start_drill()
 	_record("T57_WARNED_WAVE", started.get("ok", false) and defense.state == DefenseService.WARNING and is_instance_valid(defense._wall_root) and is_instance_valid(defense._ballista_root) and defense.ballista_bolts == DefenseService.BALLISTA_STARTING_BOLTS, "an explicit drill creates one barricade and one mounted stationary ballista before a visible five-second warning", {"started": started, "hud": defense.hud_text()})
@@ -48,7 +54,7 @@ func _run_phase1() -> void:
 		app.session.interaction.try_dismantle_station(str(placed.get("changes", {}).get("station", {}).get("instance_id", "")))
 	_record("T58_PHYSICAL_ROUTE_INVALIDATION", route_valid and placed.get("ok", false) and placed_invalidated and defense.exact_invalidations > invalidations_before + 1, "the 1x2 physical raider receives the P2 obstruction plan and placed-entity add/remove events refresh exact occupied cells", {"route_reason": defense.last_route_reason, "route_cells": defense.raider.route.size() if physical else 0, "placed": placed, "invalidations": defense.exact_invalidations})
 
-	defense.raider.global_position = Vector3(defense.arena_center + Vector3i(0, 0, 1)) + Vector3(0.5, 0.9, 0.5)
+	defense.raider.global_position = Vector3(defense.arena_center + Vector3i(0, 0, -1)) + Vector3(0.5, 0.9, 0.5)
 	defense._on_raider_route_finished()
 	defense.advance(0.3, false)
 	var damaged := defense.wall_integrity == DefenseService.WALL_MAX_INTEGRITY - DefenseService.RAIDER_DAMAGE
@@ -65,9 +71,32 @@ func _run_phase1() -> void:
 	defense.raider_health = DefenseService.RAIDER_MAX_HEALTH
 	defense.ballista_bolts = DefenseService.BALLISTA_STARTING_BOLTS
 	defense.state = DefenseService.ATTACKING
+	defense.ballista_armed = true
+	defense._aim_ballista()
+	await get_tree().physics_frame
+	var clear_before_result := defense.ballista_line_of_sight_result()
+	var clear_before := bool(clear_before_result.get("clear", false))
+	var blocker := _add_ballista_blocker(defense)
+	await get_tree().physics_frame
+	var blocked_ammo := defense.ballista_bolts
+	var blocked_health := defense.raider_health
+	var blocked_shot := defense._ballista_fire()
+	var rejected_blocked: bool = blocked_shot.get("reason") == "LINE_OF_SIGHT_BLOCKED" and defense.ballista_bolts == blocked_ammo and defense.raider_health == blocked_health
+	blocker.queue_free()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var clear_after_result := defense.ballista_line_of_sight_result()
+	var clear_after := bool(clear_after_result.get("clear", false))
+	var clear_shot := defense._ballista_fire()
+	var visible_bolt := defense.get_children().any(func(child: Node) -> bool: return child.name == "BallistaBoltTrail")
+	_record("T65_BALLISTA_LINE_OF_SIGHT", clear_before and rejected_blocked and clear_after and clear_shot.get("ok", false) and visible_bolt, "the elevated ballista sees the field approach, refuses an occluded target without spending ammunition, and renders a travelling bolt only after a clear shot", {"clear_before": clear_before_result, "blocked": blocked_shot, "clear_after": clear_after_result, "fired": clear_shot, "visible_bolt": visible_bolt})
+
+	defense.raider_health = DefenseService.RAIDER_MAX_HEALTH
+	defense.ballista_bolts = DefenseService.BALLISTA_STARTING_BOLTS
+	var all_shots_clear := true
 	for _shot in range(DefenseService.BALLISTA_STARTING_BOLTS):
-		defense._ballista_fire()
-	_record("T60_BALLISTA_AMMUNITION", defense.state == DefenseService.COMPLETE and defense.raider_health == 0 and defense.ballista_bolts == 0 and defense.wall_integrity > 0, "the stationary ballista consumes four visible bolts exactly once and defeats the single raider after the wall has taken readable damage", {"state": defense.state, "raider_health": defense.raider_health, "bolts": defense.ballista_bolts, "wall": defense.wall_integrity})
+		all_shots_clear = all_shots_clear and defense._ballista_fire().get("ok", false)
+	_record("T60_BALLISTA_AMMUNITION", all_shots_clear and defense.state == DefenseService.COMPLETE and defense.raider_health == 0 and defense.ballista_bolts == 0 and defense.wall_integrity > 0, "the stationary ballista consumes four visible bolts exactly once and defeats the single raider while retaining readable wall damage", {"state": defense.state, "raider_health": defense.raider_health, "bolts": defense.ballista_bolts, "wall": defense.wall_integrity, "all_shots_clear": all_shots_clear})
 
 	var saved := defense.snapshot()
 	var restored := DefenseService.new()
@@ -84,6 +113,9 @@ func _run_visual() -> void:
 	if not await _wait_ready():
 		return
 	app.session.player.deactivate()
+	app.session.inventory.try_transaction({}, {"dirt": 12, "planks": 8, "castle_stone": 6, "stone_pick": 1})
+	app.session.inventory.select_hotbar(1)
+	await get_tree().process_frame
 	var defense := app.session.defense
 	var started := defense.start_drill()
 	if not started.get("ok", false):
@@ -95,13 +127,18 @@ func _run_visual() -> void:
 	defense.wall_integrity = 12
 	defense.ballista_bolts = 3
 	defense.raider_health = 15
+	defense.ballista_armed = true
 	defense._update_wall_presentation()
 	defense._emit_state()
 	app.session.simulation_paused = true
 	app.session.player.position = Vector3(defense.arena_center) + Vector3(10.0, 10.0, 10.0)
 	app.session.player.camera.look_at(Vector3(defense.arena_center) + Vector3(0.0, 0.7, 0.0), Vector3.UP)
 	_add_caption()
-	for _frame in range(90):
+	for _frame in range(30):
+		await get_tree().process_frame
+	await get_tree().physics_frame
+	defense._ballista_fire()
+	for _frame in range(3):
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var image := get_viewport().get_texture().get_image()
@@ -144,13 +181,26 @@ func _run_restore_checkpoint() -> void:
 
 func _add_caption() -> void:
 	var caption := Label.new()
-	caption.text = "P3 DEFENSE SLICE · ONE WARNED RAIDER\nBROWN/RED: damaged repairable wall   WOOD/STEEL: mounted ballista   RED: physical raider\nShift-use wall with Planks to repair · bounded drill, not campaign gameplay"
+	caption.text = "P3 DEFENSE SLICE · FIELD-SIDE APPROACH + REAL LINE OF SIGHT\nBROWN/RED: labelled practice barricade   TOWER: elevated ballista   GOLD: visible bolt   RED: physical raider\nShift-use wall with Planks to repair · bounded drill, not player-built castle combat"
 	caption.position = Vector2(20, 138)
 	caption.add_theme_font_size_override("font_size", 18)
 	caption.add_theme_color_override("font_color", Color.WHITE)
 	caption.add_theme_constant_override("outline_size", 4)
 	caption.add_theme_color_override("font_outline_color", Color.BLACK)
 	app.add_child(caption)
+
+
+func _add_ballista_blocker(defense: DefenseService) -> StaticBody3D:
+	var blocker := StaticBody3D.new()
+	blocker.name = "DiagnosticLineOfSightBlocker"
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(0.8, 0.8, 0.8)
+	collision.shape = shape
+	blocker.add_child(collision)
+	defense.add_child(blocker)
+	blocker.global_position = (defense._ballista_muzzle_position() + defense._ballista_target_position()) * 0.5
+	return blocker
 
 
 func _wait_ready() -> bool:
