@@ -26,6 +26,7 @@ TEST:
 | T56 | Rendered diagnostic is legible and truthful | 1280×720 export image shows wall, cyan detour, green start, red goal and yellow 1×2 probe; route 17 cells / 0 stuck; labels state diagnostic only | PASS | `artifacts/p2-export-final-visual/p2-navigation-spike.png`, `artifacts/p2-export-final-visual.console.log` |
 | Static | Contracts/source/docs remain coherent | Validator PASS; 28/28 Python tests PASS; `git diff --check` PASS | PASS | terminal run 2026-09-13 |
 | Export regression | Existing accepted slices remain intact | Final exported F0, F1, F2, F5 and castle phase1/phase2 runs all exited 0 and reported PASS from isolated roots | PASS | `artifacts/p2-final-regress-*.console.log` |
+| Viewer launcher | Root double-click action runs the diagnostic rather than normal game | Corrected full launcher exited 0, printed T56/P2 PASS and created a newly timestamped `artifacts/manual-p2-navigation/p2-navigation-spike.png` | PASS | `artifacts/manual-p2-navigation/p2-navigation-spike.log` |
 
 LIMITATIONS/FAILURES:
 
@@ -35,7 +36,8 @@ LIMITATIONS/FAILURES:
 - The visual probe is moved along logical waypoints for evidence. It is not a CharacterBody enemy, physics-following result, raid, combat loop or army-scale proof.
 - Voxel edits emit exact change events. Placed-entity placement/dismantle does not yet emit an equivalent navigation invalidation signal; P3 must add it before live use.
 - Initial iterations exposed and preserved: GDScript diagnostic type errors, a trench fixture that allowed an unintended edge detour, and local query-copy overhead. Corrected runs are in `artifacts/p2-phase1-final.log`.
-- First exported launch omitted Godot's `--` separator and failed before game code while opening its default log. The first F0 regression then reused a prior settings root and failed its default-E precondition. Final reruns used explicit project-local logs and new data roots and passed.
+- The first delivered `VIEW_NAVIGATION_SPIKE.cmd` omitted Godot's required `--` user-argument separator. Tony correctly observed the normal menu; closing it returned zero, after which the launcher tried to open an image that had never been generated. The correction adds the separator, a dedicated project-local log, a mandatory image-existence check and a regression assertion for their exact order. The complete launcher then exited 0 and generated a new image.
+- A separate first exported command test also omitted the separator and failed before game code while opening its default log. The first F0 regression reused a prior settings root and failed its default-E precondition. Final reruns used explicit project-local logs and new data roots and passed.
 - The pinned Windows runtime reports a non-fatal root-certificate warning; restricted test execution also reports non-fatal GLES shader-cache save warnings during rendered capture.
 
 NEXT:

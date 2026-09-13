@@ -127,7 +127,14 @@ class FoundationTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         launcher = (root / 'VIEW_NAVIGATION_SPIKE.cmd').read_text(encoding='utf-8')
         self.assertIn('start_game.ps1" -PrepareOnly', launcher)
-        self.assertIn('--p2-navigation-automation=visual', launcher)
+        run_line = next(line for line in launcher.splitlines() if '--p2-navigation-automation=visual' in line)
+        self.assertRegex(
+            run_line,
+            r'CraftAndDefend\.exe" --log-file .* -- --f0-data-root=.* --p2-navigation-automation=visual$',
+        )
+        self.assertIn('if not exist "%DIAGNOSTIC_IMAGE%"', launcher)
+        self.assertIn('Review: %DIAGNOSTIC_LOG%', launcher)
+        self.assertIn('P2_DIAGNOSTIC_NO_OPEN', launcher)
         self.assertIn('p2-navigation-spike.png', launcher)
 
 
