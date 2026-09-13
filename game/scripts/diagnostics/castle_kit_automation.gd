@@ -51,7 +51,7 @@ func _run_phase1() -> void:
 		"gate_frame": 1,
 	})
 	for support in [
-		Vector3i(-5, 0, 38), Vector3i(-3, 0, 38), Vector3i(-1, 0, 38),
+		Vector3i(-6, 0, 38), Vector3i(-5, 0, 38), Vector3i(-4, 0, 38), Vector3i(-3, 0, 38), Vector3i(-1, 0, 38),
 		Vector3i(1, 0, 38), Vector3i(0, 0, 38), Vector3i(1, 0, 37), Vector3i(0, 0, 37),
 		Vector3i(5, 0, 36), Vector3i(5, 0, 38),
 	]:
@@ -65,6 +65,7 @@ func _run_phase1() -> void:
 	var platform_record: Dictionary = platform.get("changes", {}).get("station", {})
 	var gate_record: Dictionary = gate.get("changes", {}).get("station", {})
 	_record("T44_CASTLE_PLACEMENT", placed_all and int(platform_record.get("rotation_quarters", -1)) == 2 and int(gate_record.get("rotation_quarters", -1)) == 1 and app.session.workstations.stations.size() == 5, "five castle kit pieces place atomically with their requested orientation", {"stair": stair, "slab": slab, "merlon": merlon, "platform": platform, "gate": gate})
+	await _test_stair_walk(str(stair.get("changes", {}).get("station", {}).get("instance_id", "")))
 	var saved := await app.saves.save_session(app.session)
 	_record("T45_CASTLE_SAVE", saved.get("ok", false), "oriented castle entities and inventory publish in the coherent checkpoint", saved)
 
@@ -221,6 +222,58 @@ func _test_footprints_and_rotation() -> void:
 	var rotated_cells := [Vector3i(0, 0, 0), Vector3i(0, 0, 1), Vector3i(-1, 0, 0), Vector3i(-1, 0, 1)]
 	var rotation_ok := rotated_cells.all(func(cell: Vector3i) -> bool: return cell in cells)
 	_record("T43_CASTLE_FOOTPRINT", preview.get("ok", false) and before_reservations == after_reservations and unsupported.get("reason") == "UNSUPPORTED" and placed.get("ok", false) and rotation_ok, "preview is non-mutating; all support cells are required; 90-degree placement rotates the full footprint atomically", {"preview": preview, "unsupported": unsupported, "placed": placed, "cells": cells})
+
+
+func _test_stair_walk(instance_id: String) -> void:
+	if instance_id.is_empty() or not app.session._station_visuals.has(instance_id):
+		_record("T50_STAIR_WALK", false, "two half-block steps climb under ordinary forward movement without Jump", {"reason": "missing stair visual", "instance_id": instance_id})
+		return
+	var stair_body: StaticBody3D = app.session._station_visuals[instance_id]
+	var ascent := (stair_body.global_basis * Vector3(0.0, 0.0, 1.0)).normalized()
+	var player := app.session.player
+	for _frame in range(30):
+		await get_tree().physics_frame
+	player.deactivate()
+	player.global_position = stair_body.global_position - ascent * 1.0
+	player.global_position.y = stair_body.global_position.y - 0.48
+	player.look_at(player.global_position + ascent, Vector3.UP)
+	Input.action_release("jump")
+	player.activate(false)
+	var settle_frames := 0
+	while not player.is_on_floor() and settle_frames < 90:
+		await get_tree().physics_frame
+		settle_frames += 1
+	var start := player.global_position
+	var max_height := start.y
+	Input.action_press("move_forward")
+	for _frame in range(36):
+		await get_tree().physics_frame
+		max_height = maxf(max_height, player.global_position.y)
+	Input.action_release("move_forward")
+	player.deactivate()
+	var forward_distance := (player.global_position - start).dot(ascent)
+	var climbed_height := max_height - start.y
+	_record("T50_STAIR_WALK", settle_frames < 90 and climbed_height >= 0.85 and forward_distance >= 1.25, "two half-block steps climb under ordinary forward movement without Jump", {"start": start, "finish": player.global_position, "climbed_height": climbed_height, "forward_distance": forward_distance, "settle_frames": settle_frames, "step_height": PlayerController.MAX_STEP_HEIGHT})
+	for cell in [Vector3i(4, 0, 38), Vector3i(4, 0, 39), Vector3i(4, 0, 40), Vector3i(4, 1, 40)]:
+		app.session.world.set_cell(cell, 8)
+	for _frame in range(24):
+		await get_tree().physics_frame
+	player.global_position = Vector3(4.5, 1.02, 39.0)
+	player.look_at(player.global_position + Vector3(0.0, 0.0, 1.0), Vector3.UP)
+	player.activate(false)
+	for _frame in range(8):
+		await get_tree().physics_frame
+	var barrier_start := player.global_position
+	var barrier_max_height := barrier_start.y
+	Input.action_press("move_forward")
+	for _frame in range(36):
+		await get_tree().physics_frame
+		barrier_max_height = maxf(barrier_max_height, player.global_position.y)
+	Input.action_release("move_forward")
+	player.deactivate()
+	var barrier_distance := player.global_position.z - barrier_start.z
+	var barrier_climb := barrier_max_height - barrier_start.y
+	_record("T50_FULL_BLOCK_BARRIER", barrier_climb < 0.3 and barrier_distance < 1.0, "the stair helper remains capped below one full block", {"start": barrier_start, "finish": player.global_position, "climbed_height": barrier_climb, "forward_distance": barrier_distance, "step_height": PlayerController.MAX_STEP_HEIGHT})
 
 
 func _wait_ready() -> bool:

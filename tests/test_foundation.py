@@ -80,6 +80,13 @@ class FoundationTests(unittest.TestCase):
         entity['visual']['parts'][0]['size'][1] = 0
         self.rejects('invalid entity visual')
 
+    def test_stair_uses_two_half_block_steps(self):
+        entity = next(e for e in self.bundle['content']['entities'] if e['id'] == 'stone_stair')
+        parts = entity['visual']['parts']
+        self.assertEqual(len(parts), 2)
+        self.assertEqual([part['size'][2] for part in parts], [0.5, 0.5])
+        self.assertEqual([part['size'][1] for part in parts], [0.5, 1.0])
+
     def test_duplicate_mount_socket_rejected(self):
         entity = next(e for e in self.bundle['content']['entities'] if e['id'] == 'tower_platform')
         entity['mount_sockets'].append(copy.deepcopy(entity['mount_sockets'][0]))

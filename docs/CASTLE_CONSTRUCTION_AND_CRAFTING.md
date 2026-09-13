@@ -94,7 +94,7 @@ Potential castle-defense roles include a rune table or focus altar, ward anchors
 The first castle-kit slice makes the smallest reversible choices needed for an owner building-feel test. They are implemented candidates, not permanent content law:
 
 - Existing `castle_stone` remains the full curtain-wall masonry voxel.
-- `stone_stair`, `wall_walk_slab` and `parapet_merlon` are one-cell placed entities with explicit support and data-driven box-part collision.
+- `stone_stair`, `wall_walk_slab` and `parapet_merlon` are one-cell placed entities with explicit support and data-driven box-part collision. Stone stairs use exactly two half-block steps; the player controller's capped step-up path climbs them under ordinary forward movement without Jump.
 - `tower_platform` is one whole 2×2 supported entity. It records a centered typed `light_siege` socket but mounts no weapon yet.
 - `gate_frame` is a three-cell-wide, three-cell-high open frame. The two-cell passage is not reserved or blocked; doors, portcullises and drawbridges remain later mechanisms.
 - Structural entities rotate in 90-degree steps with rebindable physical X. Preview validation is non-mutating and uses green/red geometry.

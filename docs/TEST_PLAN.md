@@ -59,6 +59,7 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T47 | P1 | Tab separates 18 carried slots, one equipped 1–9 hotbar row and a full-height six-position armor loadout without changing the authoritative 27-slot accounting |
 | T48 | P1 | The three-section inventory and original character guide are readable and unclipped at 1280×720 and the 1720×720 logical ultrawide viewport used for 3440×1440 fullscreen validation; unavailable armor interaction is stated truthfully |
 | T49 | P1 | Drag/drop and the two-click keyboard fallback move or swap exact Carried/Hotbar slots; category filters are view-only; sorting reorders only the 18 Carried slots in one inventory revision; the resulting snapshot restores exactly |
+| T50 | P1 | Stone stairs render and collide as exactly two half-block steps; sustained ordinary forward movement climbs both without Jump, while step-up remains capped below a full block |
 
 ## Performance evidence, not invented guarantees
 

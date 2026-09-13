@@ -9,6 +9,8 @@ const SPRINT_SPEED := 8.0
 const CROUCH_SPEED := 2.5
 const JUMP_VELOCITY := 5.0
 const GRAVITY := 14.0
+const MAX_STEP_HEIGHT := 0.55
+const STEP_FLOOR_PROBE := 0.08
 
 var camera: Camera3D
 var collision_shape: CollisionShape3D
@@ -79,8 +81,30 @@ func _physics_process(delta: float) -> void:
 		camera.position.y = 1.6
 	velocity.x = direction.x * speed
 	velocity.z = direction.z * speed
+	var normal_floor_snap := floor_snap_length
+	if _try_step_up(Vector3(velocity.x, 0.0, velocity.z) * delta):
+		floor_snap_length = MAX_STEP_HEIGHT + STEP_FLOOR_PROBE
 	move_and_slide()
+	floor_snap_length = normal_floor_snap
 	_position_inside_world()
+
+
+func _try_step_up(horizontal_motion: Vector3) -> bool:
+	if not is_on_floor() or velocity.y > 0.0 or horizontal_motion.length_squared() <= 0.000001:
+		return false
+	if not test_move(global_transform, horizontal_motion):
+		return false
+	var upward_motion := Vector3.UP * MAX_STEP_HEIGHT
+	if test_move(global_transform, upward_motion):
+		return false
+	var raised_transform := global_transform.translated(upward_motion)
+	if test_move(raised_transform, horizontal_motion):
+		return false
+	var advanced_transform := raised_transform.translated(horizontal_motion)
+	if not test_move(advanced_transform, Vector3.DOWN * (MAX_STEP_HEIGHT + STEP_FLOOR_PROBE)):
+		return false
+	global_position += upward_motion
+	return true
 
 
 func _unhandled_input(event: InputEvent) -> void:
