@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "status": "p2_spike_only",
+  "agent": {
+    "id": "attacker_1x2",
+    "size_cells": [1, 2, 1],
+    "max_step_up": 1,
+    "max_drop_down": 1,
+    "cardinal_movement_only": true
+  },
+  "materials": [
+    {"id": "dirt", "integrity": 18, "tags": ["earth"], "protected": false},
+    {"id": "planks", "integrity": 24, "tags": ["wood"], "protected": false},
+    {"id": "stone", "integrity": 60, "tags": ["stone"], "protected": false},
+    {"id": "castle_stone", "integrity": 90, "tags": ["fortification", "stone"], "protected": false},
+    {"id": "bedrock", "integrity": 0, "tags": ["protected"], "protected": true}
+  ],
+  "capabilities": [
+    {
+      "id": "basic_raider",
+      "damage_per_hit": {"earth": 6, "wood": 6},
+      "cannot_damage_tags": ["stone", "fortification", "protected"]
+    },
+    {
+      "id": "siege_breaker_candidate",
+      "damage_per_hit": {"earth": 12, "wood": 12, "stone": 5, "fortification": 3},
+      "cannot_damage_tags": ["protected"]
+    }
+  ],
+  "benchmark": {
+    "region_size_cells": [13, 5, 13],
+    "iterations": 20,
+    "scenarios": ["corridor_detour", "trench", "two_step_stair", "bridge_removal", "two_cell_tunnel", "capability_blocked_wall"]
+  }
+}

@@ -14,6 +14,8 @@ These are implementation contracts, not claims that modules already exist. Prefe
 | Simulation clock | Day phase, cycle-enabled state and gameplay time | unpaused delta or validated world-setting command → time/lighting | Wall-clock catch-up |
 | Persistence | Slot identity, snapshot capture, terrain flush, metadata, recovery | save/load intents → completed snapshot or error | Inventing missing content |
 | Content registry | Stable blocks/items/recipes; validated lookup | JSON/resources → immutable definitions | Per-save state |
+| Navigation snapshot | Bounded immutable terrain/entity occupancy plus source revision | world queries/change events → local pathfinding input | Scene mutation, UI, global terrain ownership |
+| Local navigation planner | One-agent standability, route validation and capability-specific obstruction intent | snapshot + start/goal/capability → route, attack intent or no route | Block damage commits, drops, animation, save I/O |
 | Presentation/UI | Menus, HUD, inventory-only overlay, hand/station crafting modals, feedback and game-viewport screenshots | state snapshots → display/files; user intent → commands | Authoritative game rules, desktop capture |
 
 ## Command flow
@@ -60,4 +62,8 @@ The player controller owns a bounded step-up probe for stair traversal. A horizo
 
 P1 keeps the flat generator solely for pre-P1 save compatibility and selects a versioned seeded hills/trees/ore generator for new worlds. Generator callbacks must not access mutable scene state or global random state from worker threads. Snapshot immutable generation parameters and refuse unknown generator IDs. Do not hot-edit a script generator while engine worker threads are using it.
 
-Future enemies consume world-change events to invalidate relevant paths; they do not rebuild navigation through UI calls. Machines and templates should use the same placement/inventory commands as the player. These boundaries support later work without implementing those systems now.
+P2 establishes a bounded navigation-spike boundary rather than a global navigation service. `NavigationSnapshot` captures loaded voxel and placed-entity occupancy for a small AABB and records the source world revision. Exact voxel `cell_changed` events support incremental refresh; P3 must add the equivalent placed-entity change signal before relying on live invalidation. `LocalGridPathfinder` treats the agent as one cell wide and two cells high, validates headroom/floor support, permits only bounded cardinal step/drop transitions, and returns either a valid route, an explicit `ATTACK_OBSTRUCTION` intent allowed by capability tags, or `NO_ROUTE`. It never commits damage or fabricates a path through an intact block.
+
+The pinned experimental `VoxelAStarGrid3D` adapter remains a terrain-only benchmark/reference. It is much faster in the tiny P2 fixture but does not see non-voxel castle entities and has no capability or attack semantics. P3 may prototype one physical attacker against the project-owned bounded snapshot/grid contract, with initial full capture outside critical gameplay moments and edit-driven incremental refresh afterward. Army-scale search, global unrestricted edits, sector routing, asynchronous scheduling and path sharing remain unproven; hybrid sector/local routing is only a hypothesis.
+
+Future enemies consume world/entity-change events to invalidate relevant paths; they do not rebuild navigation through UI calls. Machines and templates should use the same placement/inventory commands as the player. These boundaries support later work without implementing those systems now.

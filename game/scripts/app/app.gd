@@ -167,6 +167,11 @@ func _ready() -> void:
 		var castle_automation := CastleKitAutomation.new()
 		add_child(castle_automation)
 		castle_automation.call_deferred("run", self, castle_mode)
+	var p2_navigation_mode := _argument_value("--p2-navigation-automation=")
+	if not p2_navigation_mode.is_empty():
+		var p2_navigation_automation := P2NavigationAutomation.new()
+		add_child(p2_navigation_automation)
+		p2_navigation_automation.call_deferred("run", self, p2_navigation_mode)
 
 
 func _process(delta: float) -> void:

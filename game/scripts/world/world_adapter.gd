@@ -3,6 +3,7 @@ extends Node3D
 
 signal spawn_area_ready
 signal status_changed(message: String)
+signal cell_changed(cell: Vector3i, previous_voxel_id: int, new_voxel_id: int, revision: int)
 
 const WORLD_MIN := Vector3i(-32, -16, -64)
 const WORLD_SIZE := Vector3i(64, 32, 128)
@@ -148,10 +149,14 @@ func set_cell(cell: Vector3i, voxel_id: int) -> bool:
 	var query := query_cell(cell)
 	if query.get("state") != "LOADED":
 		return false
+	var previous_voxel_id := int(query.get("voxel_id", 0))
+	if previous_voxel_id == voxel_id:
+		return true
 	voxel_tool.set_voxel(cell, voxel_id)
 	if voxel_tool.get_voxel(cell) != voxel_id:
 		return false
 	revision += 1
+	cell_changed.emit(cell, previous_voxel_id, voxel_id, revision)
 	return true
 
 

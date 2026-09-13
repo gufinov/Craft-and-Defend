@@ -111,6 +111,25 @@ class FoundationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValidationError, 'duplicate JSON key'):
                 read_json(path)
 
+    def test_navigation_spike_is_bounded_and_capability_specific(self):
+        root = Path(__file__).resolve().parents[1]
+        navigation = read_json(root / 'contracts' / 'navigation_spike.json')
+        runtime = read_json(root / 'game' / 'data' / 'navigation_spike.json')
+        self.assertEqual(navigation, runtime)
+        self.assertEqual(navigation['agent']['size_cells'], [1, 2, 1])
+        self.assertEqual(navigation['benchmark']['region_size_cells'], [13, 5, 13])
+        capabilities = {row['id']: row for row in navigation['capabilities']}
+        self.assertIn('wood', capabilities['basic_raider']['damage_per_hit'])
+        self.assertNotIn('stone', capabilities['basic_raider']['damage_per_hit'])
+        self.assertIn('fortification', capabilities['siege_breaker_candidate']['damage_per_hit'])
+
+    def test_navigation_spike_has_one_click_visual_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        launcher = (root / 'VIEW_NAVIGATION_SPIKE.cmd').read_text(encoding='utf-8')
+        self.assertIn('start_game.ps1" -PrepareOnly', launcher)
+        self.assertIn('--p2-navigation-automation=visual', launcher)
+        self.assertIn('p2-navigation-spike.png', launcher)
+
 
 class ArchiveTests(unittest.TestCase):
     def test_valid_and_corrupt_same_size_archives(self):

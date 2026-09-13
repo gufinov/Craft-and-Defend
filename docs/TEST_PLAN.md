@@ -60,6 +60,12 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T48 | P1 | The three-section inventory and original character guide are readable and unclipped at 1280×720 and the 1720×720 logical ultrawide viewport used for 3440×1440 fullscreen validation; unavailable armor interaction is stated truthfully |
 | T49 | P1 | Drag/drop and the two-click keyboard fallback move or swap exact Carried/Hotbar slots; category filters are view-only; sorting reorders only the 18 Carried slots in one inventory revision; the resulting snapshot restores exactly |
 | T50 | P1 | Stone stairs render and collide as exactly two half-block steps; sustained ordinary forward movement climbs both without Jump, while step-up remains capped below a full block |
+| T51 | P2 | The pinned Module exposes the inspected `VoxelAStarGrid3D` API and the local spike contract fixes one cardinal 1×2-cell agent with bounded step/drop rules |
+| T52 | P2 | Both planners route a single agent around a corridor wall; the local planner also accounts for a placed stair entity and validates every returned transition with zero stuck cases |
+| T53 | P2 | A two-cell trench and one-cell tunnel clearance produce no unsafe route; removing one bridge cell invalidates the route and an incremental snapshot refresh observes the exact changed cell |
+| T54 | P2 | A blocked unarmed agent reports `NO_ROUTE`; a basic raider attacks allowed earth/wood but not castle stone; a siege candidate can target fortification; no fake path is returned through an intact obstruction |
+| T55 | P2 | The fixed 13×5×13 fixture records full/incremental snapshot cost, median/p95 query time, visited cells, route validation and a clearly labelled memory-scale estimate for both approaches where available |
+| T56 | P2 | A rendered 1280×720 diagnostic visibly distinguishes start, goal, wall, local route and 1×2 probe at the goal; it is evidence only and does not imply production enemy locomotion |
 
 ## Performance evidence, not invented guarantees
 

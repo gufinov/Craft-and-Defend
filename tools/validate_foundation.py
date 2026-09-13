@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_SHA = "f238c37f3f9509b2a152e632503b7a4e16ab8fd4377dcc32122717e30c13cebd"
 ITEM_CATEGORIES = {"resource", "building", "tool", "station", "food"}
+NAVIGATION_SCENARIOS = {"corridor_detour", "trench", "two_step_stair", "bridge_removal", "two_cell_tunnel", "capability_blocked_wall"}
 
 
 class ValidationError(ValueError):
@@ -245,6 +246,33 @@ def validate_repo(root=ROOT):
     runtime_world = read_json(root / "game" / "data" / "world.json")
     require(runtime_world == bundle["world"],
             "runtime world configuration differs from canonical contracts/world.json")
+    navigation = read_json(root / "contracts" / "navigation_spike.json")
+    runtime_navigation = read_json(root / "game" / "data" / "navigation_spike.json")
+    require(runtime_navigation == navigation,
+            "runtime navigation spike differs from canonical contracts/navigation_spike.json")
+    require(navigation.get("schema_version") == 1 and navigation.get("status") == "p2_spike_only",
+            "invalid navigation spike header")
+    agent = navigation.get("agent", {})
+    require(agent.get("size_cells") == [1, 2, 1] and agent.get("max_step_up") == 1
+            and agent.get("max_drop_down") == 1 and agent.get("cardinal_movement_only") is True,
+            "invalid navigation spike agent")
+    materials = index(navigation.get("materials", []), "id", "navigation materials")
+    require(set(materials) >= {"dirt", "planks", "stone", "castle_stone", "bedrock"},
+            "missing navigation material")
+    require(all(integer(row.get("integrity"), 0) and isinstance(row.get("tags"), list)
+                and row["tags"] and type(row.get("protected")) is bool for row in materials.values()),
+            "invalid navigation material")
+    capabilities = index(navigation.get("capabilities", []), "id", "navigation capabilities")
+    require(set(capabilities) == {"basic_raider", "siege_breaker_candidate"},
+            "invalid navigation capability set")
+    for capability in capabilities.values():
+        require(capability.get("damage_per_hit") and all(isinstance(tag, str) and integer(value, 1)
+                for tag, value in capability["damage_per_hit"].items()), "invalid navigation damage capability")
+    benchmark = navigation.get("benchmark", {})
+    require(benchmark.get("region_size_cells") == [13, 5, 13]
+            and integer(benchmark.get("iterations"), 1)
+            and set(benchmark.get("scenarios", [])) == NAVIGATION_SCENARIOS,
+            "invalid navigation benchmark")
     versions = read_json(root / "tools/versions.json")
     require(versions["edition"] == "module" and versions["precision"] == "single", "unexpected engine edition/precision")
     assets = index(versions["assets"], "name", "release assets")
@@ -269,7 +297,8 @@ def validate_repo(root=ROOT):
             require(dest.exists(), f"broken local link: {path.name}: {target}")
             links += 1
     return {"blocks": len(bundle["content"]["blocks"]), "items": len(bundle["content"]["items"]),
-            "recipes": len(bundle["content"]["recipes"]), "placement_cases": len(bundle["placement_cases"]["cases"]), "local_links": links}
+            "recipes": len(bundle["content"]["recipes"]), "placement_cases": len(bundle["placement_cases"]["cases"]),
+            "navigation_scenarios": len(benchmark["scenarios"]), "local_links": links}
 
 
 if __name__ == "__main__":
