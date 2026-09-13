@@ -1,6 +1,6 @@
 # P3C — player defense and visual catalog
 
-Status: AUTHORIZED / IMPLEMENTATION ACTIVE
+Status: CANDIDATE PASS / OWNER PLAYTEST PENDING
 
 ## Outcome
 
