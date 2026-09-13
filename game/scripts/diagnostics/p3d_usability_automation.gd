@@ -1,0 +1,188 @@
+class_name P3DUsabilityAutomation
+extends Node
+
+var app: CraftAndDefendApp
+var failures: Array[String] = []
+var records: Array[Dictionary] = []
+
+
+func run(application: CraftAndDefendApp, mode: String) -> void:
+	app = application
+	match mode:
+		"phase1":
+			await _run_phase1()
+		"visual":
+			await _run_visual()
+		_:
+			failures.append("unknown mode " + mode)
+	_write_json(app.data_root.path_join("p3d_usability_results.json"), {"failures": failures, "records": records})
+	if failures.is_empty():
+		print("P3D_USABILITY_AUTOMATION_PASS")
+		get_tree().quit(0)
+	else:
+		push_error("P3D_USABILITY_AUTOMATION_FAIL " + "; ".join(failures))
+		get_tree().quit(1)
+
+
+func _run_phase1() -> void:
+	app._on_start_pressed()
+	if not await _wait_ready():
+		return
+	app.session.player.deactivate()
+	app.session.simulation_paused = true
+	var registry := app.session.registry
+
+	var batch_inventory := F0Inventory.new(registry)
+	batch_inventory.try_transaction({}, {"log": 5})
+	var batch_start_revision := batch_inventory.revision
+	var batch_crafting := CraftingService.new(registry, batch_inventory)
+	var crafted := batch_crafting.try_craft_many("planks", "hand", 5)
+	var exact_five := crafted.get("ok", false) and batch_inventory.count("log") == 0 and batch_inventory.count("planks") == 20 and batch_inventory.revision == batch_start_revision + 1
+
+	var reject_inventory := F0Inventory.new(registry)
+	reject_inventory.try_transaction({}, {"log": 4})
+	var reject_before := reject_inventory.snapshot()
+	var reject_crafting := CraftingService.new(registry, reject_inventory)
+	var rejected := reject_crafting.try_craft_many("planks", "hand", 5)
+	var atomic_reject := not rejected.get("ok", false) and rejected.get("reason") == "INSUFFICIENT_INPUT" and reject_inventory.snapshot() == reject_before
+	var tooltip_ok := app.craft_selected_button.tooltip_text.contains("five batches")
+	_record("T79_SHIFT_CRAFT", exact_five and atomic_reject and tooltip_ok, "Shift+Click crafts exactly five recipe batches in one atomic inventory transaction and insufficient materials change nothing", {"crafted": crafted, "logs": batch_inventory.count("log"), "planks": batch_inventory.count("planks"), "revision_delta": batch_inventory.revision - batch_start_revision, "rejected": rejected, "atomic_reject": atomic_reject, "tooltip_ok": tooltip_ok})
+
+	app.session.inventory.try_transaction({}, {"wood_axe": 1, "wood_pick": 1, "iron_sword": 1, "dirt": 1})
+	var axe_slot := _move_to_hotbar("wood_axe", 0)
+	app.session.inventory.select_hotbar(axe_slot)
+	await get_tree().process_frame
+	var held := app.session._held_item_view
+	var axe_parts := held.model_root.get_child_count()
+	var axe_height := held._base_position.y
+	var dirt_slot := _move_to_hotbar("dirt", 1)
+	app.session.inventory.select_hotbar(dirt_slot)
+	await get_tree().process_frame
+	var dirt_parts := held.model_root.get_child_count()
+	var block_height := held._base_position.y
+	var held_ok := held.current_item_id == "dirt" and axe_parts >= 3 and dirt_parts == 1 and block_height < axe_height
+	_record("T80_HELD_ITEMS", held_ok, "the active hotbar item owns a persistent first-person model; tools are raised while placeable blocks are held lower", {"axe_parts": axe_parts, "axe_height": axe_height, "block_parts": dirt_parts, "block_height": block_height, "current": held.current_item_id})
+
+	app.session.inventory.select_hotbar(axe_slot)
+	var tree_cells: Array[Vector3i] = [Vector3i(4, 0, 40), Vector3i(4, 1, 40), Vector3i(4, 2, 40), Vector3i(4, 3, 40)]
+	if not await _wait_cells(tree_cells):
+		return
+	var logs_before := app.session.inventory.count("log")
+	var felled := app.session.interaction.try_break_cell(tree_cells[0])
+	var removed := true
+	for cell in tree_cells:
+		removed = removed and int(app.session.world.query_cell(cell).get("voxel_id", -1)) == InteractionService.AIR
+	var axe_ok := felled.get("ok", false) and felled.get("reason") == "TREE_FELLED" and felled.get("changes", {}).get("cells", []).size() == 4 and app.session.inventory.count("log") == logs_before + 4 and removed
+	_record("T81_WOOD_AXE", axe_ok, "a selected wood axe atomically fells the bounded connected starter trunk and gathers every removed log", {"result": felled, "logs_before": logs_before, "logs_after": app.session.inventory.count("log"), "removed": removed})
+
+	var preview := app.session.interaction.preview_place_item(Vector3i(5, 0, 40), "dirt", 0)
+	var marker_label := _find_label(app.session._resource_markers)
+	var iron_cell := app.session.world.query_cell(Vector3i(-8, -4, 35))
+	var feedback_ok := preview.get("ok", false) and preview.get("kind") == "block" and int(preview.get("voxel_id", 0)) == InteractionService.DIRT and marker_label != null and marker_label.text.contains("DIG 2 BLOCKS") and int(iron_cell.get("voxel_id", 0)) == P1TerrainGenerator.IRON_ORE
+	_record("T82_WORLD_FEEDBACK", feedback_ok, "block placement exposes the same non-mutating validation used by placement and the visible marker points to the real guaranteed iron vein", {"preview": preview, "marker": marker_label.text if marker_label != null else "", "iron_cell": iron_cell})
+
+
+func _run_visual() -> void:
+	app._on_start_pressed()
+	if not await _wait_ready():
+		return
+	app.session.inventory.try_transaction({}, {"wood_axe": 1, "dirt": 16})
+	var axe_slot := _move_to_hotbar("wood_axe", 0)
+	var dirt_slot := _move_to_hotbar("dirt", 1)
+	app.session.player.deactivate()
+	app.session.simulation_paused = false
+	app.session.player.global_position = Vector3(-2.5, 1.0, 31.0)
+	app.session.player.look_at(GameSession.STARTER_IRON_MARKER + Vector3(0.0, 1.0, 0.0), Vector3.UP)
+	app.session.inventory.select_hotbar(axe_slot)
+	await _settle_frames(30)
+	var axe_path := app.data_root.path_join("p3d-held-axe-iron-marker.png")
+	var axe_image_ok := await _save_viewport(axe_path)
+
+	app.session.player.global_position = Vector3(4.5, 1.0, 36.0)
+	app.session.player.look_at(Vector3(4.5, 0.5, 39.5), Vector3.UP)
+	app.session.inventory.select_hotbar(dirt_slot)
+	app.session._placement_preview_key = ""
+	await _settle_frames(30)
+	var ghost_visible := app.session._placement_preview != null and app.session._held_item_view.current_item_id == "dirt"
+	var block_path := app.data_root.path_join("p3d-held-block-placement-ghost.png")
+	var block_image_ok := await _save_viewport(block_path)
+	_record("T83_PRESENTATION", axe_image_ok and block_image_ok and ghost_visible, "rendered evidence shows the held axe beside the real iron marker and a low held block with its world placement ghost", {"axe_path": axe_path, "block_path": block_path, "size": get_viewport().get_visible_rect().size, "ghost_visible": ghost_visible})
+
+
+func _move_to_hotbar(item_id: String, target: int) -> int:
+	var source := _slot_for(item_id)
+	if source < 0:
+		return target
+	if source != target:
+		app.session.inventory.swap_slots(source, target)
+	return target
+
+
+func _slot_for(item_id: String) -> int:
+	for index in range(F0Inventory.SLOT_COUNT):
+		if str(app.session.inventory.slots[index].get("item_id", "")) == item_id:
+			return index
+	return -1
+
+
+func _find_label(root: Node) -> Label3D:
+	if root == null:
+		return null
+	for child in root.get_children():
+		if child is Label3D:
+			return child
+		var nested := _find_label(child)
+		if nested != null:
+			return nested
+	return null
+
+
+func _wait_ready() -> bool:
+	var deadline := Time.get_ticks_msec() + 30000
+	while app.session == null or not app.session.world_ready:
+		if Time.get_ticks_msec() >= deadline:
+			failures.append("world ready timeout")
+			return false
+		await get_tree().process_frame
+	return true
+
+
+func _wait_cells(cells: Array[Vector3i]) -> bool:
+	var deadline := Time.get_ticks_msec() + 10000
+	while Time.get_ticks_msec() < deadline:
+		var loaded := true
+		for cell in cells:
+			if app.session.world.query_cell(cell).get("state") != "LOADED":
+				loaded = false
+				break
+		if loaded:
+			return true
+		await get_tree().process_frame
+	failures.append("required cells did not load")
+	return false
+
+
+func _settle_frames(count: int) -> void:
+	for _frame in range(count):
+		await get_tree().process_frame
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+
+
+func _save_viewport(path: String) -> bool:
+	var texture := get_viewport().get_texture()
+	var image := texture.get_image() if texture != null else null
+	return image != null and image.get_size() == Vector2i(1280, 720) and image.save_png(path) == OK
+
+
+func _record(test_id: String, ok: bool, expected: String, evidence: Variant) -> void:
+	records.append({"id": test_id, "ok": ok, "expected": expected, "evidence": evidence})
+	print("%s %s expected=%s evidence=%s" % [test_id, "PASS" if ok else "FAIL", expected, JSON.stringify(evidence)])
+	if not ok:
+		failures.append(test_id)
+
+
+func _write_json(path: String, value: Variant) -> void:
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(value, "  ") + "\n")

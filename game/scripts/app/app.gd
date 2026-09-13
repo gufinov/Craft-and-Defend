@@ -195,6 +195,11 @@ func _ready() -> void:
 		var p3c_automation := P3CPlayerDefenseAutomation.new()
 		add_child(p3c_automation)
 		p3c_automation.call_deferred("run", self, p3c_mode)
+	var p3d_mode := _argument_value("--p3d-usability-automation=")
+	if not p3d_mode.is_empty():
+		var p3d_automation := P3DUsabilityAutomation.new()
+		add_child(p3d_automation)
+		p3d_automation.call_deferred("run", self, p3d_mode)
 
 
 func _process(delta: float) -> void:
@@ -789,6 +794,7 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	crafting_output_label.add_theme_color_override("font_color", Color("c9f4ff"))
 	grid_column.add_child(crafting_output_label)
 	craft_selected_button = _button("Craft", _craft_selected_recipe, Vector2(330, 48))
+	craft_selected_button.tooltip_text = "Click to craft one batch. Hold Shift while clicking to craft exactly five batches atomically."
 	grid_column.add_child(craft_selected_button)
 	grid_column.add_child(_button("Clear Grid", _clear_crafting_grid, Vector2(330, 42)))
 	crafting_message = Label.new()
@@ -1261,7 +1267,7 @@ func _refresh_crafting_panel() -> void:
 		cell.pressed.connect(_on_crafting_grid_slot_pressed.bind(index))
 		crafting_grid_slots.append(cell)
 		crafting_grid.add_child(cell)
-	craft_selected_button.text = "Start Processing" if _crafting_station_type == "furnace" else "Craft"
+	craft_selected_button.text = "Start Processing" if _crafting_station_type == "furnace" else "Craft ×1  ·  Shift+Click ×5"
 	var selected_recipe := session.registry.recipe(_selected_recipe_id)
 	if selected_recipe.is_empty() or not _grid_matches_recipe(selected_recipe):
 		crafting_output_label.text = "No matching recipe\nDrag ingredients or choose from the recipe book"
@@ -1287,6 +1293,13 @@ func _select_crafting_recipe(recipe_id: String) -> void:
 
 
 func _craft_selected_recipe() -> void:
+	var batches := 1
+	if _crafting_station_type != "furnace" and Input.is_key_pressed(KEY_SHIFT):
+		batches = 5
+	_craft_selected_recipe_batches(batches)
+
+
+func _craft_selected_recipe_batches(batches: int) -> void:
 	if session == null:
 		return
 	var recipe := session.registry.recipe(_selected_recipe_id)
@@ -1296,8 +1309,8 @@ func _craft_selected_recipe() -> void:
 		return
 	var recipe_station := str(recipe.get("station", ""))
 	var station_id := "" if recipe_station == "hand" else _crafting_station_id
-	var result := session.try_craft(_selected_recipe_id, recipe_station, station_id)
-	crafting_message.text = "%s crafted." % session.registry.display_name(_selected_recipe_id) if result.get("ok", false) else _craft_reason_text(str(result.get("reason", "CRAFT_FAILED")), str(result.get("item_id", "")))
+	var result := session.try_craft(_selected_recipe_id, recipe_station, station_id, batches)
+	crafting_message.text = "%s crafted%s." % [session.registry.display_name(_selected_recipe_id), " × %d batches" % batches if batches > 1 else ""] if result.get("ok", false) else _craft_reason_text(str(result.get("reason", "CRAFT_FAILED")), str(result.get("item_id", "")))
 	if result.get("ok", false) and not _fill_grid_from_recipe(recipe):
 		_clear_crafting_grid(false, false)
 	_refresh_crafting_panel()

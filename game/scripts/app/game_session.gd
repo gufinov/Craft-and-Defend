@@ -46,7 +46,10 @@ const REASON_TEXT := {
 	"SWORD_MISS": "The sword swing did not reach a raider.",
 	"RAIDER_DAMAGED": "Sword strike landed.",
 	"RAIDER_DEFEATED": "Raider defeated — the core is safe.",
+	"TREE_FELLED": "Axe felled the connected trunk and gathered its logs.",
 }
+
+const STARTER_IRON_MARKER := Vector3(-6.5, 0.0, 36.5)
 
 var world: WorldAdapter
 var player: PlayerController
@@ -68,6 +71,8 @@ var _station_visuals: Dictionary = {}
 var _station_visual_materials: Dictionary = {}
 var _placement_preview: Node3D
 var _placement_preview_key := ""
+var _held_item_view: HeldItemView
+var _resource_markers: Node3D
 var _environment: Environment
 var _sun: DirectionalLight3D
 var _sun_visual: MeshInstance3D
@@ -117,6 +122,9 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	player = PlayerController.new()
 	player.name = "Player"
 	add_child(player)
+	_held_item_view = HeldItemView.new(registry)
+	_held_item_view.name = "HeldItemView"
+	player.camera.add_child(_held_item_view)
 	if not player.restore(snapshot.get("player", {})):
 		return {"ok": false, "reason": "INVALID_PLAYER_SNAPSHOT"}
 	var viewer := VoxelViewer.new()
@@ -169,6 +177,8 @@ func initialize(session_data: Dictionary) -> Dictionary:
 
 
 func _process(delta: float) -> void:
+	if _held_item_view != null:
+		_held_item_view.set_gameplay_visible(world_ready and not simulation_paused and not saving)
 	_update_placement_preview()
 	if defense != null:
 		defense.advance(delta, simulation_paused or saving)
@@ -254,12 +264,16 @@ func recipe_status(recipe_id: String, station_type: String, station_id: String =
 	return crafting.check_recipe(recipe_id, station_type)
 
 
-func try_craft(recipe_id: String, station_type: String, station_id: String = "") -> Dictionary:
+func try_craft(recipe_id: String, station_type: String, station_id: String = "", batches: int = 1) -> Dictionary:
+	if station_type == "furnace" and batches != 1:
+		return {"ok": false, "reason": "TIMED_RECIPE_BATCH_UNAVAILABLE"}
 	var checked := recipe_status(recipe_id, station_type, station_id)
+	if batches > 1 and station_type != "furnace":
+		checked = crafting.check_recipe(recipe_id, station_type, batches)
 	if not checked.get("ok", false):
 		_on_interaction_feedback(str(checked.get("reason", "CRAFT_FAILED")))
 		return checked
-	var result := workstations.try_start_furnace(station_id, recipe_id) if station_type == "furnace" else crafting.try_craft(recipe_id, station_type)
+	var result := workstations.try_start_furnace(station_id, recipe_id) if station_type == "furnace" else crafting.try_craft_many(recipe_id, station_type, batches)
 	_on_interaction_feedback(str(result.get("reason", "CRAFT_FAILED")))
 	return result
 
@@ -317,6 +331,7 @@ func _on_spawn_area_ready() -> void:
 		status_changed.emit("Core-defense restore failed: %s" % core_restore.get("reason", "UNKNOWN"))
 		return
 	world_ready = true
+	_spawn_starter_resource_markers()
 	simulation_paused = false
 	player.activate(not DisplayServer.get_name().contains("headless"))
 	status_changed.emit("Ready — Tab inventory, B hand crafting, right-click stations, X rotates castle previews")
@@ -366,6 +381,8 @@ func snapshot() -> Dictionary:
 
 
 func _on_inventory_changed(data: Dictionary) -> void:
+	if _held_item_view != null:
+		_held_item_view.present(inventory.active_item_id())
 	_emit_hud()
 	inventory_changed.emit(data)
 
@@ -385,7 +402,8 @@ func _emit_navigation() -> void:
 	var offset := Vector2(WorldAdapter.SPAWN_FEET.x - player.global_position.x, WorldAdapter.SPAWN_FEET.z - player.global_position.z)
 	var distance := offset.length()
 	if distance <= 8.0:
-		navigation_changed.emit("HOME CLEARING")
+		var iron_distance := Vector2(STARTER_IRON_MARKER.x - player.global_position.x, STARTER_IRON_MARKER.z - player.global_position.z).length()
+		navigation_changed.emit("HOME CLEARING  ·  IRON MARKER %d m" % roundi(iron_distance))
 		return
 	var angle := atan2(offset.x, -offset.y)
 	var directions := ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
@@ -448,6 +466,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _on_interaction_result(result: Dictionary) -> void:
+	if _held_item_view != null and str(result.get("reason", "")) != "OPEN_STATION":
+		_held_item_view.play_use()
 	var changes: Dictionary = result.get("changes", {})
 	if result.get("ok", false) and str(result.get("reason", "")) == "OPEN_STATION":
 		var station_record: Dictionary = changes.get("station", {})
@@ -543,13 +563,11 @@ func _update_placement_preview() -> void:
 		_hide_placement_preview()
 		return
 	var anchor: Vector3i = preview.anchor
-	var key := "%s|%s|%d|%s" % [preview.entity_id, anchor, int(preview.rotation_quarters), str(preview.ok)]
+	var kind := str(preview.get("kind", "entity"))
+	var key := "%s|%s|%s|%d|%s" % [kind, str(preview.get("entity_id", preview.get("voxel_id", 0))), anchor, int(preview.rotation_quarters), str(preview.ok)]
 	if key == _placement_preview_key:
 		return
 	_hide_placement_preview()
-	var definition := registry.entity(str(preview.entity_id))
-	if definition.is_empty():
-		return
 	_placement_preview = Node3D.new()
 	_placement_preview.name = "PlacementPreview"
 	_placement_preview.position = Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
@@ -559,7 +577,19 @@ func _update_placement_preview() -> void:
 	material.albedo_color = Color(0.2, 0.9, 0.45, 0.48) if preview.ok else Color(0.95, 0.2, 0.2, 0.48)
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.no_depth_test = true
-	_add_visual_parts(_placement_preview, definition.get("visual", {}).get("parts", []), material, false)
+	if kind == "block":
+		var voxel_id := int(preview.get("voxel_id", 0))
+		if voxel_id > 0 and voxel_id < WorldAdapter.BLOCK_NAMES.size():
+			var texture_path := "res://assets/blocks/%s.svg" % WorldAdapter.BLOCK_NAMES[voxel_id]
+			if ResourceLoader.exists(texture_path):
+				material.albedo_texture = load(texture_path)
+		_add_visual_parts(_placement_preview, [{"offset": [0.0, 0.0, 0.0], "size": [0.96, 0.96, 0.96]}], material, false)
+	else:
+		var definition := registry.entity(str(preview.get("entity_id", "")))
+		if definition.is_empty():
+			_hide_placement_preview()
+			return
+		_add_visual_parts(_placement_preview, definition.get("visual", {}).get("parts", []), material, false)
 	add_child(_placement_preview)
 	_placement_preview_key = key
 
@@ -654,26 +684,49 @@ func _player_primary_action(origin: Vector3, direction: Vector3) -> Dictionary:
 
 
 func _spawn_sword_swing() -> void:
-	if player == null or player.camera == null:
+	if _held_item_view != null:
+		_held_item_view.play_use()
+
+
+func _spawn_starter_resource_markers() -> void:
+	if _resource_markers != null:
 		return
-	var blade := MeshInstance3D.new()
-	blade.name = "SwordSwing"
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.08, 0.65, 0.08)
-	blade.mesh = mesh
-	var material := StandardMaterial3D.new()
-	material.albedo_color = Color("dce8ed")
-	material.emission_enabled = true
-	material.emission = Color("7fcfe8")
-	material.emission_energy_multiplier = 1.3
-	blade.material_override = material
-	player.camera.add_child(blade)
-	blade.position = Vector3(0.35, -0.22, -0.7)
-	blade.rotation = Vector3(0.15, 0.0, -0.65)
-	var tween := create_tween()
-	tween.tween_property(blade, "rotation:z", 0.75, 0.16)
-	tween.tween_interval(0.08)
-	tween.finished.connect(blade.queue_free)
+	_resource_markers = Node3D.new()
+	_resource_markers.name = "StarterResourceMarkers"
+	_resource_markers.position = STARTER_IRON_MARKER
+	add_child(_resource_markers)
+	var marker_material := StandardMaterial3D.new()
+	marker_material.albedo_color = Color("d98145")
+	marker_material.emission_enabled = true
+	marker_material.emission = Color("8e3f24")
+	marker_material.emission_energy_multiplier = 0.55
+	for x_offset in [-0.52, 0.52]:
+		var post := MeshInstance3D.new()
+		var post_mesh := CylinderMesh.new()
+		post_mesh.top_radius = 0.045
+		post_mesh.bottom_radius = 0.065
+		post_mesh.height = 1.15
+		post.mesh = post_mesh
+		post.position = Vector3(x_offset, 0.58, 0.0)
+		post.material_override = marker_material
+		_resource_markers.add_child(post)
+	var crossbar := MeshInstance3D.new()
+	var crossbar_mesh := BoxMesh.new()
+	crossbar_mesh.size = Vector3(1.15, 0.10, 0.10)
+	crossbar.mesh = crossbar_mesh
+	crossbar.position = Vector3(0.0, 1.05, 0.0)
+	crossbar.material_override = marker_material
+	_resource_markers.add_child(crossbar)
+	var label := Label3D.new()
+	label.text = "IRON VEIN\nDIG 2 BLOCKS"
+	label.position = Vector3(0.0, 1.55, 0.0)
+	label.font_size = 34
+	label.outline_size = 8
+	label.modulate = Color("ffd1a3")
+	label.outline_modulate = Color(0.08, 0.03, 0.02, 0.94)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = false
+	_resource_markers.add_child(label)
 
 
 func _on_defense_state_changed(_text: String) -> void:

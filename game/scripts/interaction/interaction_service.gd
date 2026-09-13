@@ -63,45 +63,40 @@ func try_break_cell(cell: Vector3i, expected_world_revision: int = -1) -> Dictio
 		return _finish(false, "SUPPORT_IN_USE")
 	if inventory.active_pick_tier() < int(block.get("min_pick_tier", 0)):
 		return _finish(false, "WRONG_TOOL")
+	var break_cells: Array[Vector3i] = _axe_log_cells(cell, block)
 	var drop_value: Variant = block.get("drop")
-	var additions: Dictionary = {} if drop_value == null else {str(drop_value): 1}
+	var additions: Dictionary = {} if drop_value == null else {str(drop_value): break_cells.size()}
 	if not inventory.can_transaction({}, additions):
 		return _finish(false, "INVENTORY_FULL")
-	if not world.set_cell(cell, AIR):
-		return _finish(false, "WORLD_WRITE_FAILED")
+	var changed_cells: Array[Vector3i] = []
+	for break_cell in break_cells:
+		if not world.set_cell(break_cell, AIR):
+			for rollback_cell in changed_cells:
+				world.set_cell(rollback_cell, voxel_id)
+			return _finish(false, "WORLD_WRITE_FAILED")
+		changed_cells.append(break_cell)
 	var committed := inventory.try_transaction({}, additions)
 	if not committed.get("ok", false):
-		world.set_cell(cell, voxel_id)
+		for rollback_cell in changed_cells:
+			world.set_cell(rollback_cell, voxel_id)
 		return _finish(false, "INVENTORY_COMMIT_FAILED")
-	return _finish(true, "OK", {"cell": cell, "voxel_before": voxel_id, "voxel_after": AIR, "drops": additions})
+	var reason := "TREE_FELLED" if break_cells.size() > 1 else "OK"
+	return _finish(true, reason, {"cell": cell, "cells": break_cells, "voxel_before": voxel_id, "voxel_after": AIR, "drops": additions})
 
 
 func try_place_item(cell: Vector3i, item_id: String, expected_world_revision: int = -1, rotation_quarters: int = -1) -> Dictionary:
 	if expected_world_revision >= 0 and expected_world_revision != world.revision:
 		return _finish(false, "STALE_REVISION")
+	var rotation := placement_rotation_quarters if rotation_quarters < 0 else rotation_quarters
+	var checked := preview_place_item(cell, item_id, rotation)
+	if not checked.get("ok", false):
+		return _finish(false, str(checked.get("reason", "PLACEMENT_FAILED")))
 	var item := registry.item(item_id)
-	if item.is_empty():
-		return _finish(false, "NO_RESOURCE")
-	if item.has("places_entity"):
+	if checked.get("kind") == "entity":
 		if workstations == null:
 			return _finish(false, "PLACEMENT_UNAVAILABLE")
-		var rotation := placement_rotation_quarters if rotation_quarters < 0 else rotation_quarters
 		var station_result := workstations.try_place(str(item.places_entity), cell, world.query_cell, player_body_aabb.call(), rotation)
 		return _finish(bool(station_result.get("ok", false)), str(station_result.get("reason", "PLACEMENT_FAILED")), station_result.get("details", {}))
-	if not item.has("places_block"):
-		return _finish(false, "NOT_PLACEABLE")
-	var query := world.query_cell(cell)
-	if query.get("state") != "LOADED":
-		return _finish(false, query.get("state", "UNLOADED"))
-	if int(query.get("voxel_id", AIR)) != AIR or (workstations != null and not workstations.station_at_cell(cell).is_empty()):
-		return _finish(false, "OCCUPIED")
-	if player_body_aabb.is_valid() and player_body_aabb.call().intersects(AABB(Vector3(cell), Vector3.ONE)):
-		return _finish(false, "PLAYER_OVERLAP")
-	var support_result := _block_support_result(cell)
-	if not support_result.get("ok", false):
-		return _finish(false, str(support_result.get("reason", "UNSUPPORTED")))
-	if inventory.count(item_id) < 1:
-		return _finish(false, "NO_RESOURCE")
 	var voxel_id := int(item.places_block)
 	if not world.set_cell(cell, voxel_id):
 		return _finish(false, "WORLD_WRITE_FAILED")
@@ -110,6 +105,32 @@ func try_place_item(cell: Vector3i, item_id: String, expected_world_revision: in
 		world.set_cell(cell, AIR)
 		return _finish(false, "INVENTORY_COMMIT_FAILED")
 	return _finish(true, "OK", {"cell": cell, "voxel_before": AIR, "voxel_after": voxel_id, "items": {item_id: -1}})
+
+
+func preview_place_item(cell: Vector3i, item_id: String, rotation_quarters: int = -1) -> Dictionary:
+	var item := registry.item(item_id)
+	if item.is_empty() or inventory.count(item_id) < 1:
+		return {"ok": false, "reason": "NO_RESOURCE"}
+	var rotation := placement_rotation_quarters if rotation_quarters < 0 else rotation_quarters
+	if item.has("places_entity"):
+		if workstations == null:
+			return {"ok": false, "reason": "PLACEMENT_UNAVAILABLE"}
+		var entity_id := str(item.places_entity)
+		var entity_result := workstations.preview_placement(entity_id, cell, rotation, world.query_cell, player_body_aabb.call())
+		return {"ok": bool(entity_result.get("ok", false)), "reason": str(entity_result.get("reason", "PLACEMENT_FAILED")), "kind": "entity", "entity_id": entity_id, "rotation_quarters": rotation}
+	if not item.has("places_block"):
+		return {"ok": false, "reason": "NOT_PLACEABLE"}
+	var query := world.query_cell(cell)
+	if query.get("state") != "LOADED":
+		return {"ok": false, "reason": str(query.get("state", "UNLOADED"))}
+	if int(query.get("voxel_id", AIR)) != AIR or (workstations != null and not workstations.station_at_cell(cell).is_empty()):
+		return {"ok": false, "reason": "OCCUPIED"}
+	if player_body_aabb.is_valid() and player_body_aabb.call().intersects(AABB(Vector3(cell), Vector3.ONE)):
+		return {"ok": false, "reason": "PLAYER_OVERLAP"}
+	var support_result := _block_support_result(cell)
+	if not support_result.get("ok", false):
+		return {"ok": false, "reason": str(support_result.get("reason", "UNSUPPORTED"))}
+	return {"ok": true, "reason": "OK", "kind": "block", "voxel_id": int(item.places_block), "rotation_quarters": rotation}
 
 
 func try_place_dirt(cell: Vector3i, expected_world_revision: int = -1) -> Dictionary:
@@ -155,22 +176,50 @@ func place_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
 func placement_preview_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
 	var item_id := inventory.active_item_id()
 	var item := registry.item(item_id)
-	if item.is_empty() or not item.has("places_entity") or workstations == null:
+	if item.is_empty() or (not item.has("places_entity") and not item.has("places_block")):
 		return {"visible": false}
 	var hit := world.raycast(origin, direction)
 	if hit == null:
 		return {"visible": false, "reason": "NO_TARGET"}
 	var anchor: Vector3i = hit.previous_position
-	var checked := workstations.preview_placement(str(item.places_entity), anchor, placement_rotation_quarters, world.query_cell, player_body_aabb.call())
+	var checked := preview_place_item(anchor, item_id, placement_rotation_quarters)
 	return {
 		"visible": true,
 		"ok": bool(checked.get("ok", false)),
 		"reason": str(checked.get("reason", "PLACEMENT_FAILED")),
 		"item_id": item_id,
-		"entity_id": str(item.places_entity),
+		"kind": str(checked.get("kind", "entity" if item.has("places_entity") else "block")),
+		"entity_id": str(checked.get("entity_id", "")),
+		"voxel_id": int(checked.get("voxel_id", item.get("places_block", AIR))),
 		"anchor": anchor,
 		"rotation_quarters": placement_rotation_quarters,
 	}
+
+
+func _axe_log_cells(cell: Vector3i, block: Dictionary) -> Array[Vector3i]:
+	var result: Array[Vector3i] = [cell]
+	if str(block.get("id", "")) != "log":
+		return result
+	var active_tool := registry.item(inventory.active_item_id())
+	if str(active_tool.get("tool_kind", "")) != "axe":
+		return result
+	var bottom := cell
+	for _step in range(5):
+		var below := bottom + Vector3i.DOWN
+		var below_query := world.query_cell(below)
+		if below_query.get("state") != "LOADED" or str(registry.block_for_voxel(int(below_query.get("voxel_id", AIR))).get("id", "")) != "log":
+			break
+		bottom = below
+	result.clear()
+	for step in range(6):
+		var candidate := bottom + Vector3i.UP * step
+		var candidate_query := world.query_cell(candidate)
+		if candidate_query.get("state") != "LOADED" or str(registry.block_for_voxel(int(candidate_query.get("voxel_id", AIR))).get("id", "")) != "log":
+			break
+		if workstations != null and workstations.supported_by(candidate):
+			break
+		result.append(candidate)
+	return result if not result.is_empty() else [cell]
 
 
 func rotate_placement() -> int:

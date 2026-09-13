@@ -144,6 +144,8 @@ def validate_bundle(bundle):
             require(item["places_entity"] in entities, "unknown placeable entity")
         if "pick_tier" in item:
             require(integer(item["pick_tier"], 1) and item["max_stack"] == 1, "invalid tool")
+        if "tool_kind" in item:
+            require(item["tool_kind"] == "axe" and item["max_stack"] == 1, "invalid specialized tool")
         weapon = item.get("weapon")
         if weapon is not None:
             require(isinstance(weapon, dict) and weapon.get("kind") == "melee"

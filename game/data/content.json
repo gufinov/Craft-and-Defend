@@ -29,6 +29,7 @@
     {"id": "wood_pick", "category": "tool", "max_stack": 1, "pick_tier": 1},
     {"id": "stone_pick", "category": "tool", "max_stack": 1, "pick_tier": 2},
     {"id": "iron_pick", "category": "tool", "max_stack": 1, "pick_tier": 3},
+    {"id": "wood_axe", "category": "tool", "max_stack": 1, "tool_kind": "axe"},
     {"id": "workbench", "category": "station", "max_stack": 1, "places_entity": "workbench"},
     {"id": "furnace", "category": "station", "max_stack": 1, "places_entity": "furnace"},
     {"id": "stone_stair", "category": "building", "max_stack": 16, "places_entity": "stone_stair"},
@@ -64,6 +65,7 @@
     {"id": "furnace", "station": "workbench", "inputs": {"stone": 8}, "outputs": {"furnace": 1}, "duration_seconds": 0},
     {"id": "iron_ingot", "station": "furnace", "inputs": {"iron_ore": 1, "coal": 1}, "outputs": {"iron_ingot": 1}, "duration_seconds": 5},
     {"id": "iron_pick", "station": "workbench", "inputs": {"iron_ingot": 3, "stick": 2}, "outputs": {"iron_pick": 1}, "duration_seconds": 0},
+    {"id": "wood_axe", "station": "workbench", "recipe_book_priority": 90, "inputs": {"planks": 3, "stick": 2}, "outputs": {"wood_axe": 1}, "duration_seconds": 0},
     {"id": "castle_stone", "station": "workbench", "inputs": {"stone": 1}, "outputs": {"castle_stone": 1}, "duration_seconds": 0},
     {"id": "stone_stair", "station": "workbench", "inputs": {"castle_stone": 6}, "outputs": {"stone_stair": 4}, "duration_seconds": 0},
     {"id": "wall_walk_slab", "station": "workbench", "inputs": {"castle_stone": 3}, "outputs": {"wall_walk_slab": 6}, "duration_seconds": 0},
@@ -77,5 +79,5 @@
     {"id": "ballista", "station": "workbench", "recipe_book_priority": 93, "inputs": {"planks": 4, "iron_ingot": 2, "stick": 2}, "outputs": {"ballista": 1}, "duration_seconds": 0},
     {"id": "catapult", "station": "workbench", "recipe_book_priority": 92, "inputs": {"planks": 5, "stone": 2, "stick": 2}, "outputs": {"catapult": 1}, "duration_seconds": 0}
   ],
-  "progression_goals": ["workbench", "wood_pick", "stone_pick", "furnace", "iron_ingot", "iron_pick", "iron_sword", "ballista_bolt", "stone_shot", "ballista", "catapult"]
+  "progression_goals": ["workbench", "wood_pick", "wood_axe", "stone_pick", "furnace", "iron_ingot", "iron_pick", "iron_sword", "ballista_bolt", "stone_shot", "ballista", "catapult"]
 }

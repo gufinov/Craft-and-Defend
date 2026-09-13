@@ -1,7 +1,7 @@
 class_name ItemIconCatalog
 extends RefCounted
 
-const ATLAS_PATH := "res://assets/ui/item_icon_atlas.png"
+const ATLAS_PATH := "res://assets/ui/item_icon_atlas_p3d.png"
 const CELL_SIZE := Vector2(256, 256)
 const ITEM_CELLS := {
 	"dirt": 0,
@@ -25,7 +25,7 @@ const ITEM_CELLS := {
 	"gate_frame": 18,
 	"wood_barricade": 19,
 	"iron_sword": 20,
-	"shield": 21,
+	"wood_axe": 21,
 	"ballista": 22,
 	"catapult": 23,
 	"ballista_bolt": 5,

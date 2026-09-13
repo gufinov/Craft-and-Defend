@@ -14,3 +14,10 @@ Cell order, left-to-right and top-to-bottom:
 4. gate frame, 20. wood barricade, 21. iron sword, 22. shield, 23. ballista, 24. catapult
 
 The runtime uses atlas regions rather than splitting or duplicating the source file.
+
+P3D adds `item_icon_atlas_p3d.png`, a non-destructive successor with the unused
+shield tile replaced by a distinct wood-axe icon. It was produced with the
+built-in OpenAI image-generation edit workflow from the P3C atlas. The edit
+prompt required every other tile, the 1536 × 1024 dimensions, and the 6 × 4 grid
+to remain unchanged. SHA-256:
+`46f46eb49e3ad8be4477a1ffdbae333860d60f2281800dfdd5c31c028ded85cf`.

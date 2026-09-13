@@ -166,6 +166,12 @@
       "pick_tier": 3
     },
     {
+      "id": "wood_axe",
+      "category": "tool",
+      "max_stack": 1,
+      "tool_kind": "axe"
+    },
+    {
       "id": "workbench",
       "category": "station",
       "max_stack": 1,
@@ -467,6 +473,19 @@
       "duration_seconds": 0
     },
     {
+      "id": "wood_axe",
+      "station": "workbench",
+      "recipe_book_priority": 90,
+      "inputs": {
+        "planks": 3,
+        "stick": 2
+      },
+      "outputs": {
+        "wood_axe": 1
+      },
+      "duration_seconds": 0
+    },
+    {
       "id": "castle_stone",
       "station": "workbench",
       "inputs": {
@@ -564,6 +583,7 @@
   "progression_goals": [
     "workbench",
     "wood_pick",
+    "wood_axe",
     "stone_pick",
     "furnace",
     "iron_ingot",

@@ -167,6 +167,21 @@ class FoundationTests(unittest.TestCase):
         self.assertIn('if not exist "%VISUAL_ROOT%\\p3c-visual-catalog.png"', launcher)
         self.assertIn('P3C_DIAGNOSTIC_NO_OPEN', launcher)
 
+    def test_p3d_has_one_click_exported_gameplay_and_visual_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        launcher = (root / 'TEST_P3D_USABILITY.cmd').read_text(encoding='utf-8')
+        self.assertIn('start_game.ps1" -PrepareOnly', launcher)
+        self.assertIn('--p3d-usability-automation=phase1', launcher)
+        self.assertIn('--p3d-usability-automation=visual', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3d-held-axe-iron-marker.png"', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3d-held-block-placement-ghost.png"', launcher)
+        self.assertIn('P3D_DIAGNOSTIC_NO_OPEN', launcher)
+
+    def test_invalid_specialized_tool_kind_is_rejected(self):
+        axe = next(item for item in self.bundle['content']['items'] if item['id'] == 'wood_axe')
+        axe['tool_kind'] = 'chainsaw'
+        self.rejects('invalid specialized tool')
+
 
 class ArchiveTests(unittest.TestCase):
     def test_valid_and_corrupt_same_size_archives(self):
