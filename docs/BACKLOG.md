@@ -91,6 +91,16 @@ Replace the text-heavy inventory and vertical recipe list with an original icon-
 
 **Boundary:** one active P3B raider remains the only combat target. Do not claim player health, armor behavior, waves, army-scale targeting, drops, magic, campaign balance or final art. See [the P3C contract](P3C_PLAYER_DEFENSE_AND_VISUAL_CATALOG.md).
 
+**Candidate result:** T72–T78 and accepted regressions pass from the provenance-matched Windows export. P3D extends this same unpromoted candidate; owner playtest remains required for the sword, siege devices and presentation.
+
+## P3D — tools and world feedback
+
+Make the immediate craft/build loop readable in first person without expanding campaign scope. Shift+Click crafts exactly five complete immediate-recipe batches atomically. The active hotbar item renders in hand, with tools/weapons raised and blocks held lower. All placeable blocks expose the same green/red non-mutating world preview used by real placement. Add one craftable Wood Axe that fells a bounded connected vertical trunk atomically, and make the existing guaranteed starter iron vein discoverable without changing generator identity or accepted saves. Run T79–T83 plus P3C/P3B/F5 regressions in the matching editor-closed export.
+
+**Boundary:** no durability, variable mining speed, enchantment, animation rig, general ore detector, branch-recursive tree physics, resource respawn, player health, waves or campaign systems. Timed furnace jobs do not support five-batch queueing. See [the P3D contract](P3D_TOOLS_AND_WORLD_FEEDBACK.md).
+
+**Candidate result:** T79–T83 and the accepted regressions pass from the provenance-matched Windows export. Owner playtest remains required before promotion.
+
 ## Card completion discipline
 
 Update relevant contracts/tests, source ledger and `docs/STATUS.md`; record exact commands/results/limitations; commit a coherent increment. Future systems remain backlog items until their gate is active. Do not automatically merge or publish builds.

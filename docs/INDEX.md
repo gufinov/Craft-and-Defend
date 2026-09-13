@@ -13,6 +13,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [Content and crafting](CONTENT_AND_CRAFTING.md)
 - [Castle construction and crafting plan](CASTLE_CONSTRUCTION_AND_CRAFTING.md)
 - [P3C player defense and visual catalog](P3C_PLAYER_DEFENSE_AND_VISUAL_CATALOG.md)
+- [P3D tools and world feedback](P3D_TOOLS_AND_WORLD_FEEDBACK.md)
 
 ## Technical
 
@@ -40,5 +41,6 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [F3 persistence-hardening evidence](evidence/F3_PERSISTENCE_HARDENING.md)
 - [F4 Foundation acceptance candidate](evidence/F4_FOUNDATION_ACCEPTANCE.md)
 - [P3C player defense and visual catalog evidence](evidence/P3C_PLAYER_DEFENSE_AND_VISUAL_CATALOG.md)
+- [P3D tools and world feedback evidence](evidence/P3D_TOOLS_AND_WORLD_FEEDBACK.md)
 - [Tool usage](../tools/README.md)
 - [Current status](STATUS.md)

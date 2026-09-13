@@ -81,6 +81,18 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T69 | P3B | Basic-raider capability cannot select castle-stone voxels or castle-kit entities for damage; a bounded siege-candidate capability can identify the same fortification without fabricating a route through it |
 | T70 | P3B | Save during an active core attack and fully restart; Continue restores exact core health, raider health/position, active target and every surviving player-built defense integrity once |
 | T71 | P3B | Rendered 1280×720 evidence clearly shows the strategic core, field-side raider, an open entrance and player-built barricade health/target feedback; owner ultrawide playtest decides readability |
+| T72 | P3C | Every registered item resolves a stable icon; inventory, hotbar and crafting expose graphical identity and counts |
+| T73 | P3C | Workbench recipe book shows at most 12 fixed cards per page with bounded Previous/Next and deterministic search |
+| T74 | P3C | Equipped sword performs one clear bounded raider hit; miss/cooldown do not mutate terrain or enemy state; lethal strike wins |
+| T75 | P3C | Ballista accepts supported ground/typed tower socket, holds fire through obstruction and consumes one bolt only on a clear shot |
+| T76 | P3C | Catapult rejects below-minimum/beyond-maximum/blocked arcs and consumes one shot only for a valid clear ballistic arc |
+| T77 | P3C | Carried sword plus placed siege identity, ammunition and cooldown survive atomic save and separate-process Continue |
+| T78 | P3C | Rendered 1280×720 Workbench shows 12 populated icon cards, paging and three distinct crafting panels |
+| T79 | P3D | Shift+Click on an immediate recipe crafts exactly five batches in one revision; insufficient input changes nothing; timed jobs remain single |
+| T80 | P3D | Active sword, picks and axe render raised in first person; placeable blocks render lower; hotbar identity remains authoritative |
+| T81 | P3D | Wood Axe recipe is reachable; selected axe removes/gathers one bounded vertical connected trunk atomically without recursive branch destruction |
+| T82 | P3D | Placeable blocks expose the same non-mutating validation in their green/red world ghost; the starter marker points to actual guaranteed iron ore |
+| T83 | P3D | Rendered 1280×720 evidence visibly shows the held axe/iron marker and the low held block/world placement ghost; owner ultrawide test decides scale/readability |
 
 ## Performance evidence, not invented guarantees
 

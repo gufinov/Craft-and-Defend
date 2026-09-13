@@ -1,6 +1,6 @@
 # Coding-agent handoff
 
-> **Checkpoint update (2026-09-11):** This was the original F0 commission and is retained for provenance. F0–F4 are owner-accepted after physical Windows testing. F5 separates Tab inventory from B hand crafting and right-click station interfaces on an isolated candidate branch. Use [current status](STATUS.md), [roadmap](ROADMAP.md), [castle construction and crafting plan](CASTLE_CONSTRUCTION_AND_CRAFTING.md) and recorded evidence for current truth. The historical instructions below are not a fresh commission.
+> **Checkpoint update (2026-09-13):** This was the original F0 commission and is retained for provenance. F0–F5, P1, P2, P3 and P3B are owner-accepted. P3C plus the P3D tools/world-feedback extension is the current isolated matching-export candidate. Use [current status](STATUS.md), [roadmap](ROADMAP.md), [P3D contract](P3D_TOOLS_AND_WORLD_FEEDBACK.md), [castle construction and crafting plan](CASTLE_CONSTRUCTION_AND_CRAFTING.md) and recorded evidence for current truth. The historical instructions below are not a fresh commission.
 
 You are implementing Craft-and-Defend, an independent first-person voxel survival fortress game. This repo already contains the supervisory foundation. **Do not restart Deep Research or rewrite the groundwork before implementing the next gate.**
 
