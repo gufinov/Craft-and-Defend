@@ -83,6 +83,8 @@ The raider must first ask for a valid open route. It may select a wooden obstruc
 
 **Boundary:** one raider only. No player aggro, multiple units, wave director, damageable voxel-region aggregation, moving/craftable ballista, catapult, rewards, drops, armor combat or campaign progression.
 
+**Candidate result:** `feature/p3-core-defense` passes T66–T71 in the pinned runtime and matching editor-closed Windows export. The Workbench creates a two-cell player-placeable wooden barricade with 30 persisted integrity and atomic Planks repair. The single field-side raider prefers an open core route, breaches one exact wooden barricade only when the local lane is fully blocked, releases both occupied cells without refund and replans through the opening. Castle-kit entities remain outside basic-raider damage while the siege-candidate material rule remains distinguishable. Owner ultrawide playtest and acceptance are pending; this result does not authorize the excluded expansion.
+
 ## Card completion discipline
 
 Update relevant contracts/tests, source ledger and `docs/STATUS.md`; record exact commands/results/limitations; commit a coherent increment. Future systems remain backlog items until their gate is active. Do not automatically merge or publish builds.

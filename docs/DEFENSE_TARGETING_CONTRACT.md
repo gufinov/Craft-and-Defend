@@ -1,6 +1,6 @@
 # Defense, targeting and castle-obstacle contract
 
-Status: accepted product direction; P3 is accepted and the bounded P3B core/breach prototype is active.
+Status: accepted product direction; P3 is accepted and the bounded P3B core/breach candidate passes automated/export gates with owner playtest pending.
 
 This contract separates what the current practice drill proves from the castle-defense behavior that still needs implementation. It does not convert a temporary fixture into a production wall, weapon, wave or core.
 
@@ -73,3 +73,5 @@ This revision does not implement the king/core hierarchy, production castle dura
 ## Active P3B boundary
 
 P3B uses a deliberately labelled `strategic_core_prototype` fixture so targeting can be tested without deciding whether the final fiction is a throne, power source or another object. It adds one player-craftable `wood_barricade` entity with stable persisted integrity. The basic raider must prefer any open route to the core approach; only a complete local blockage permits it to attack one exact wooden barricade. Destroying that entity releases its whole two-cell footprint without an inventory refund and triggers one exact navigation update. Castle stone remains immune to the basic raider. Player aggro, waves, voxel-region durability and final core fiction remain later decisions.
+
+The P3B candidate implements and passes this bounded behavior in the pinned runtime and matching editor-closed export. This is implementation evidence for the prototype only; it does not promote the remaining later decisions into active scope.
