@@ -75,6 +75,12 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T63 | P3 | A rendered 1280×720 frame shows the physical raider, damaged barricade, mounted ballista and readable defense HUD; owner playtest decides readability/fun |
 | T64 | P3 | The live gameplay HUD shows all nine held/hotbar slots, their key, item identity and count; changing keys moves the selected **HELD** state and mirrors the Tab inventory hotbar |
 | T65 | P3 | A ballista shot requires a clear direct physics ray to the raider; an inserted solid blocker causes no damage or ammunition consumption, and a clear shot renders a visible travelling bolt |
+| T66 | P3B | A workbench recipe creates one two-cell-high wooden barricade; ordinary placement consumes one item and creates one stable entity with data-driven wood tags, current/max integrity and exact occupied cells |
+| T67 | P3B | One clearly labelled strategic-core prototype is the default target; when any valid route reaches its approach, the raider selects that route and does not damage a nearby wooden or castle defense |
+| T68 | P3B | When wooden barricades close every valid local route, the basic raider selects one exact obstruction, deals bounded damage, destroys the whole entity without refund, releases its occupied cells once and replans toward the core |
+| T69 | P3B | Basic-raider capability cannot select castle-stone voxels or castle-kit entities for damage; a bounded siege-candidate capability can identify the same fortification without fabricating a route through it |
+| T70 | P3B | Save during an active core attack and fully restart; Continue restores exact core health, raider health/position, active target and every surviving player-built defense integrity once |
+| T71 | P3B | Rendered 1280×720 evidence clearly shows the strategic core, field-side raider, an open entrance and player-built barricade health/target feedback; owner ultrawide playtest decides readability |
 
 ## Performance evidence, not invented guarantees
 

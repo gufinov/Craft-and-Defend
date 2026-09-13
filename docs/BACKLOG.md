@@ -75,6 +75,14 @@ Prove the smallest readable defense loop before adding campaign scale: one expli
 
 **Owner-accepted result:** `feature/p3-defense-slice` passes T57–T65 in the pinned runtime and matching editor-closed export. The live HUD shows the authoritative nine-slot held loadout. The raider enters from the field side; the raised practice ballista renders travelling bolts and damages only through a clear direct physics ray, while a blocker consumes neither health nor ammunition. Shift-use on the damaged practice barricade consumes exactly one Planks item and restores six integrity. A clean-process Continue restores an attacking drill with exact wall, ammunition and raider state. Tony confirmed the revision works at ultrawide resolution and marked it PASS on 2026-09-13. The accepted future direction is recorded in [the defense targeting contract](DEFENSE_TARGETING_CONTRACT.md), but player-built structure durability, king/core targeting, waves and catapult ballistics are not implemented by this slice. The practice ballista is not yet a craftable P1 socket-mounted inventory item.
 
+## P3B — core and player-built breach prototype
+
+Add a deliberately labelled strategic-core prototype as the raider's default destination without choosing final throne/power-source fiction. Add one data-driven, craftable and player-placeable two-cell-high wooden barricade using the existing recipe, inventory, placement, occupancy, interaction and save paths. Its stable instance record owns current/max integrity and material capability tags. Shift-use repair consumes Planks atomically; raider damage destroys the whole entity without a refund, releases its exact occupied cells once and replans toward the core.
+
+The raider must first ask for a valid open route. It may select a wooden obstruction only when no open route reaches the core approach and must never damage a nearby defense merely because it exists. Existing castle-stone voxels and castle-kit entities remain impassable to the basic raider; a later siege-capable unit is required to breach them. Persist the core, active target, raider and player-built integrity in the existing envelopes and prove clean-process Continue. Run T66–T71 plus the accepted P3 and prior regression gates in the matching editor-closed Windows export.
+
+**Boundary:** one raider only. No player aggro, multiple units, wave director, damageable voxel-region aggregation, moving/craftable ballista, catapult, rewards, drops, armor combat or campaign progression.
+
 ## Card completion discipline
 
 Update relevant contracts/tests, source ledger and `docs/STATUS.md`; record exact commands/results/limitations; commit a coherent increment. Future systems remain backlog items until their gate is active. Do not automatically merge or publish builds.
