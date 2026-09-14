@@ -135,6 +135,14 @@ Move current live Furnace, harvesting and defense tuning into a named validated 
 
 **Candidate result:** T99–T102, static validation, 40 Python tests and exported P3E/P3G regressions pass from the provenance-matched Windows export. Owner ultrawide playtest remains required.
 
+## P3H.1 — item atlas and held framing repair
+
+Replace the source atlas pair without overwriting earlier art, enforce filter-clipped row-isolated regions, retain full long-item silhouettes, clip recipe-card contents and lower the first-person anchors. Strengthen P3F presentation coverage with both Workbench pages and representative held tools/buildings/siege pieces. Run strengthened T91/T92 plus T103.
+
+**Boundary:** no new item IDs, final 3D hand rig, animation, recipe unlocks, chest runtime, balance change or save migration.
+
+**Candidate result:** strengthened T91/T92 and T103 pass from the provenance-matched Windows export; both rendered Workbench pages and the held contact sheet were inspected without neighboring fragments or cut long-item silhouettes. Static validation and 40 Python tests pass. Owner ultrawide playtest remains required.
+
 ## P3I–P3M — staged storage, siege, durability and ecology
 
 Proceed in bounded order: small/large persistent storage chests with lossless container gestures; siege Interact/loading/upgrades and dismantle/move; articulated Catapult facing/arm/release/projectile behavior; persistent tool durability plus data-owned harvesting balance; then species-aware gradual leaf decay/drops. Chest capacities, footprints and recipes require their own bounded UI/placement playtest rather than an implicit clone of another voxel game's double-chest rule. Each later stage must extend the canonical balance catalogue only with values consumed by its implemented runtime and must preserve save migration/recovery. P4 army/wave simulation remains separate.
