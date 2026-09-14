@@ -149,7 +149,7 @@ Use Tony's marked-up sword and Furnace screenshots as the presentation contract.
 
 **Boundary:** no hand/arm rig, skeletal or per-tool animation set, combat tuning, new content, storage runtime, save migration or final 3D art.
 
-**Current result:** implementation and static validation pass; exported T91/T92/T103/T104 and owner ultrawide playtest remain required.
+**Candidate result:** strengthened T91/T92/T103 and T104 pass from the provenance-matched Windows export; the two Workbench pages, eight-item held sheet and Sword/swing/Furnace comparison were inspected. Exported P3D T79–T83, static validation and 40 Python tests pass. Owner ultrawide playtest remains required.
 
 ## P3I–P3M — staged storage, siege, durability and ecology
 
