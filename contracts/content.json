@@ -6,6 +6,34 @@
     "slots": 27,
     "hotbar_slots": 9
   },
+  "balance": {
+    "furnace": {
+      "fuel_item": "coal",
+      "operations_per_fuel": 3
+    },
+    "harvesting": {
+      "maximum_connected_trunk_blocks": 6
+    },
+    "practice_defense": {
+      "wall_integrity": 24,
+      "repair_amount": 6,
+      "warning_seconds": 5.0,
+      "raider_health": 20,
+      "raider_damage": 6,
+      "raider_attack_interval_seconds": 1.4,
+      "ballista_damage": 5,
+      "ballista_starting_bolts": 4,
+      "ballista_interval_seconds": 1.5,
+      "ballista_maximum_range": 28.0
+    },
+    "core_defense": {
+      "core_integrity": 30,
+      "warning_seconds": 20.0,
+      "raider_health": 20,
+      "raider_damage": 6,
+      "raider_attack_interval_seconds": 1.4
+    }
+  },
   "blocks": [
     {
       "voxel_id": 0,

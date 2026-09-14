@@ -49,6 +49,7 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 	var record := {"instance_id": instance_id, "entity_id": entity_id, "anchor": anchor, "rotation_quarters": posmod(rotation_quarters, 4)}
 	if entity_id == "furnace":
 		record["furnace_slots"] = _empty_furnace_slots()
+		record["furnace_fuel_operations"] = 0
 	var defense_definition: Dictionary = definition.get("defense", {})
 	if not defense_definition.is_empty():
 		record["integrity"] = maxi(1, int(defense_definition.get("max_integrity", 1)))
@@ -102,14 +103,17 @@ func try_start_furnace(instance_id: String, recipe_id: String) -> Dictionary:
 	var slots: Dictionary = stations[instance_id].get("furnace_slots", _empty_furnace_slots()).duplicate(true)
 	for item_id: String in recipe.inputs:
 		var role := _furnace_role_for_item(item_id)
+		if role == "fuel":
+			continue
 		var taken := _take_from_stack(slots.get(role, _empty_stack()), int(recipe.inputs[item_id]))
 		if not taken.get("ok", false):
 			return taken
 		slots[role] = taken.stack
 	stations[instance_id]["furnace_slots"] = slots
+	_consume_furnace_operation(instance_id)
 	_next_job += 1
 	jobs[instance_id] = {"job_id": job_id, "recipe_id": recipe_id, "remaining_seconds": float(recipe.duration_seconds), "duration_seconds": float(recipe.duration_seconds), "completed": false}
-	var result := _result(true, "JOB_STARTED", {"instance_id": instance_id, "job": jobs[instance_id].duplicate(true), "furnace_slots": slots.duplicate(true)})
+	var result := _result(true, "JOB_STARTED", {"instance_id": instance_id, "job": jobs[instance_id].duplicate(true), "furnace_slots": furnace_slots(instance_id), "fuel": furnace_fuel_status(instance_id).get("details", {})})
 	station_changed.emit(result)
 	return result
 
@@ -126,6 +130,8 @@ func check_furnace_recipe(instance_id: String, recipe_id: String) -> Dictionary:
 	for item_id: String in recipe.inputs:
 		var role := _furnace_role_for_item(item_id)
 		var stack: Dictionary = slots.get(role, _empty_stack())
+		if role == "fuel" and _furnace_available_operations(instance_id) >= int(recipe.inputs[item_id]):
+			continue
 		if str(stack.get("item_id", "")) != item_id or int(stack.get("count", 0)) < int(recipe.inputs[item_id]):
 			return {"ok": false, "reason": "INSUFFICIENT_INPUT", "item_id": item_id}
 	var outputs: Dictionary = recipe.get("outputs", {})
@@ -153,7 +159,8 @@ func furnace_recipe_availability(instance_id: String, recipe_id: String) -> Dict
 		var stack_id := str(stack.get("item_id", ""))
 		if not stack_id.is_empty() and stack_id != item_id:
 			return _result(false, "SLOT_OCCUPIED")
-		var missing := maxi(0, int(recipe.inputs[item_id]) - int(stack.get("count", 0)))
+		var staged := _furnace_available_operations(instance_id) if role == "fuel" else int(stack.get("count", 0))
+		var missing := maxi(0, int(recipe.inputs[item_id]) - staged)
 		if inventory.count(item_id) < missing:
 			return {"ok": false, "reason": "INSUFFICIENT_INPUT", "item_id": item_id}
 	return _result(true, "READY_TO_LOAD")
@@ -172,7 +179,8 @@ func try_load_furnace_recipe(instance_id: String, recipe_id: String) -> Dictiona
 	for item_id: String in recipe.inputs:
 		var role := _furnace_role_for_item(item_id)
 		var stack: Dictionary = slots.get(role, _empty_stack())
-		var missing := maxi(0, int(recipe.inputs[item_id]) - int(stack.get("count", 0)))
+		var staged := _furnace_available_operations(instance_id) if role == "fuel" else int(stack.get("count", 0))
+		var missing := maxi(0, int(recipe.inputs[item_id]) - staged)
 		if missing > 0:
 			removals[item_id] = missing
 	var removed := inventory.try_transaction(removals, {})
@@ -190,6 +198,20 @@ func furnace_slots(instance_id: String) -> Dictionary:
 	if str(record.get("entity_id", "")) != "furnace":
 		return _empty_furnace_slots()
 	return record.get("furnace_slots", _empty_furnace_slots()).duplicate(true)
+
+
+func furnace_fuel_status(instance_id: String) -> Dictionary:
+	var record: Dictionary = stations.get(instance_id, {})
+	if str(record.get("entity_id", "")) != "furnace":
+		return _result(false, "WRONG_WORKSTATION")
+	var operations_per_fuel := _furnace_operations_per_fuel()
+	var remaining := clampi(int(record.get("furnace_fuel_operations", 0)), 0, operations_per_fuel - 1)
+	return _result(true, "OK", {
+		"fuel_item": _furnace_fuel_item(),
+		"operations_per_fuel": operations_per_fuel,
+		"stored_operations": remaining,
+		"available_operations": _furnace_available_operations(instance_id),
+	})
 
 
 func furnace_job_status(instance_id: String) -> Dictionary:
@@ -214,8 +236,8 @@ func furnace_autoload_status(instance_id: String, recipe_id: String) -> Dictiona
 	if recipe.is_empty() or str(recipe.get("station", "")) != "furnace":
 		return _result(false, "WRONG_WORKSTATION")
 	var slots := furnace_slots(instance_id)
-	var limit := 0
-	var current := 0
+	var limit := 64
+	var current := 64
 	var active_batches := 1 if str(jobs.get(instance_id, {}).get("recipe_id", "")) == recipe_id else 0
 	var used_roles: Dictionary = {}
 	for item_id: String in recipe.inputs:
@@ -226,9 +248,22 @@ func furnace_autoload_status(instance_id: String, recipe_id: String) -> Dictiona
 		var required := maxi(1, int(recipe.inputs[item_id]))
 		var stack: Dictionary = slots.get(role, _empty_stack())
 		var stack_count := int(stack.get("count", 0)) if str(stack.get("item_id", "")) == item_id else 0
-		var available := stack_count + inventory.count(item_id)
-		limit = maxi(limit, mini(64, active_batches + floori(float(mini(available, registry.max_stack(item_id))) / float(required))))
-		current = maxi(current, active_batches + ceili(float(stack_count) / float(required)))
+		var available_batches := 0
+		var staged_batches := 0
+		if role == "fuel":
+			var stored_operations := int(stations[instance_id].get("furnace_fuel_operations", 0))
+			var available_fuel_count := mini(stack_count + inventory.count(item_id), registry.max_stack(item_id))
+			available_batches = floori(float(stored_operations + available_fuel_count * _furnace_operations_per_fuel()) / float(required))
+			staged_batches = floori(float(stored_operations + stack_count * _furnace_operations_per_fuel()) / float(required))
+		else:
+			var available := stack_count + inventory.count(item_id)
+			available_batches = floori(float(mini(available, registry.max_stack(item_id))) / float(required))
+			staged_batches = floori(float(stack_count) / float(required))
+		limit = mini(limit, mini(64, active_batches + available_batches))
+		current = mini(current, active_batches + staged_batches)
+	if used_roles.is_empty():
+		limit = 0
+		current = 0
 	return _result(true, "OK", {"limit": limit, "current": mini(current, limit), "slots": slots})
 
 
@@ -251,7 +286,14 @@ func try_set_furnace_autoload_target(instance_id: String, recipe_id: String, req
 			return _result(false, "SLOT_OCCUPIED")
 		var current := int(stack.get("count", 0))
 		var total := current + inventory.count(item_id)
-		var desired := mini(maxi(0, requested - active_batches) * maxi(1, int(recipe.inputs[item_id])), mini(total, registry.max_stack(item_id)))
+		var desired_operations := maxi(0, requested - active_batches) * maxi(1, int(recipe.inputs[item_id]))
+		var desired := 0
+		if role == "fuel":
+			desired_operations = maxi(0, desired_operations - int(stations[instance_id].get("furnace_fuel_operations", 0)))
+			desired = ceili(float(desired_operations) / float(_furnace_operations_per_fuel()))
+		else:
+			desired = desired_operations
+		desired = mini(desired, mini(total, registry.max_stack(item_id)))
 		desired_by_role[role] = {"item_id": item_id, "count": desired}
 		if desired > current:
 			removals[item_id] = desired - current
@@ -637,6 +679,11 @@ func restore(data: Dictionary, world_query: Callable) -> Dictionary:
 					return _result(false, "INVALID_STATION_SNAPSHOT")
 				clean_slots[slot_name] = clean_stack
 			record["furnace_slots"] = clean_slots
+			var operations_per_fuel := _furnace_operations_per_fuel()
+			var stored_operations := int(record.get("furnace_fuel_operations", 0))
+			if stored_operations < 0 or stored_operations >= operations_per_fuel:
+				return _result(false, "INVALID_STATION_SNAPSHOT")
+			record["furnace_fuel_operations"] = stored_operations
 		var reserved := footprints.try_reserve(str(record.instance_id), record.anchor, _vector_list(definition.occupied_offsets), int(record.get("rotation_quarters", 0)), world_query, AABB(), _vector_list(definition.support_offsets))
 		if not reserved.get("ok", false):
 			return _result(false, "INVALID_STATION_SNAPSHOT", reserved)
@@ -695,12 +742,41 @@ func _result(ok: bool, reason: String, details: Dictionary = {}) -> Dictionary:
 
 
 func _furnace_role_for_item(item_id: String) -> String:
-	if item_id == "coal":
+	if item_id == _furnace_fuel_item():
 		return "fuel"
 	for recipe in registry.recipes_for("furnace"):
 		if recipe.get("inputs", {}).has(item_id):
 			return "input"
 	return ""
+
+
+func _furnace_fuel_item() -> String:
+	return registry.balance_string("furnace.fuel_item", "coal")
+
+
+func _furnace_operations_per_fuel() -> int:
+	return maxi(1, registry.balance_integer("furnace.operations_per_fuel", 1))
+
+
+func _furnace_available_operations(instance_id: String) -> int:
+	var record: Dictionary = stations.get(instance_id, {})
+	var slots: Dictionary = record.get("furnace_slots", _empty_furnace_slots())
+	var fuel: Dictionary = slots.get("fuel", _empty_stack())
+	var fuel_count := int(fuel.get("count", 0)) if str(fuel.get("item_id", "")) == _furnace_fuel_item() else 0
+	return maxi(0, int(record.get("furnace_fuel_operations", 0))) + fuel_count * _furnace_operations_per_fuel()
+
+
+func _consume_furnace_operation(instance_id: String) -> void:
+	var remaining := maxi(0, int(stations[instance_id].get("furnace_fuel_operations", 0)))
+	if remaining <= 0:
+		var slots := furnace_slots(instance_id)
+		var taken := _take_from_stack(slots.get("fuel", _empty_stack()), 1)
+		if not taken.get("ok", false):
+			return
+		slots["fuel"] = taken.stack
+		stations[instance_id]["furnace_slots"] = slots
+		remaining = _furnace_operations_per_fuel()
+	stations[instance_id]["furnace_fuel_operations"] = remaining - 1
 
 
 func _can_add_to_furnace(instance_id: String, slot_name: String, item_id: String, amount: int) -> Dictionary:

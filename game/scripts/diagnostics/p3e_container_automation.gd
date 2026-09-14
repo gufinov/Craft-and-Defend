@@ -67,7 +67,7 @@ func _run_gate() -> void:
 	var service_restored := restored_service.restore(snapshot, app.session.world.query_cell)
 	var restored_output := restored_service.furnace_slots(furnace_id)
 	var collected := restored_service.try_collect_furnace_stack(furnace_id, "output")
-	_record("T86_RETAINED_OUTPUT", started.get("ok", false) and before_collect == 0 and int(retained.output.count) == 1 and str(retained.output.item_id) == "iron_ingot" and inventory_restored and service_restored.get("ok", false) and int(restored_output.output.count) == 1 and collected.get("ok", false) and restored_inventory.count("iron_ingot") == 1 and str(restored_service.furnace_slots(furnace_id).output.item_id).is_empty(), "smelting consumes one input/fuel, retains output in the placed Furnace across restore, and only collection moves it to inventory", {"started": started, "retained": retained, "restored": service_restored, "collected": collected})
+	_record("T86_RETAINED_OUTPUT", started.get("ok", false) and before_collect == 0 and int(retained.output.count) == 1 and str(retained.output.item_id) == "iron_ingot" and inventory_restored and service_restored.get("ok", false) and int(restored_output.output.count) == 1 and collected.get("ok", false) and restored_inventory.count("iron_ingot") == 1 and str(restored_service.furnace_slots(furnace_id).output.item_id).is_empty(), "smelting consumes one input and one counted fuel operation, retains output in the placed Furnace across restore, and only collection moves it to inventory", {"started": started, "retained": retained, "restored": service_restored, "collected": collected})
 
 	app.state = app.AppState.PLAYING
 	app._show_crafting(furnace_id, "furnace")

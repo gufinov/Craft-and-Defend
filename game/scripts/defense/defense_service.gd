@@ -34,6 +34,16 @@ var world: WorldAdapter
 var inventory: F0Inventory
 var registry: ContentRegistry
 var workstations: WorkstationService
+var wall_max_integrity := WALL_MAX_INTEGRITY
+var repair_amount := REPAIR_AMOUNT
+var warning_seconds := WARNING_SECONDS
+var raider_max_health := RAIDER_MAX_HEALTH
+var ballista_damage := BALLISTA_DAMAGE
+var ballista_starting_bolts := BALLISTA_STARTING_BOLTS
+var ballista_interval := BALLISTA_INTERVAL
+var ballista_max_range := BALLISTA_MAX_RANGE
+var raider_damage := RAIDER_DAMAGE
+var raider_attack_interval := RAIDER_ATTACK_INTERVAL
 var state := IDLE
 var arena_center := Vector3i.ZERO
 var warning_remaining := 0.0
@@ -63,6 +73,17 @@ func initialize(world_adapter: WorldAdapter, player_inventory: F0Inventory, cont
 	inventory = player_inventory
 	registry = content_registry
 	workstations = station_service
+	wall_max_integrity = maxi(1, registry.balance_integer("practice_defense.wall_integrity", WALL_MAX_INTEGRITY))
+	repair_amount = maxi(1, registry.balance_integer("practice_defense.repair_amount", REPAIR_AMOUNT))
+	warning_seconds = maxf(0.1, registry.balance_number("practice_defense.warning_seconds", WARNING_SECONDS))
+	raider_max_health = maxi(1, registry.balance_integer("practice_defense.raider_health", RAIDER_MAX_HEALTH))
+	ballista_damage = maxi(1, registry.balance_integer("practice_defense.ballista_damage", BALLISTA_DAMAGE))
+	ballista_starting_bolts = maxi(1, registry.balance_integer("practice_defense.ballista_starting_bolts", BALLISTA_STARTING_BOLTS))
+	ballista_interval = maxf(0.05, registry.balance_number("practice_defense.ballista_interval_seconds", BALLISTA_INTERVAL))
+	ballista_max_range = maxf(1.0, registry.balance_number("practice_defense.ballista_maximum_range", BALLISTA_MAX_RANGE))
+	raider_damage = maxi(1, registry.balance_integer("practice_defense.raider_damage", RAIDER_DAMAGE))
+	raider_attack_interval = maxf(0.05, registry.balance_number("practice_defense.raider_attack_interval_seconds", RAIDER_ATTACK_INTERVAL))
+	wall_integrity = wall_max_integrity
 	_pending_restore = saved.duplicate(true)
 	world.cell_changed.connect(_on_world_cell_changed)
 	set_process(false)
@@ -88,9 +109,9 @@ func restore_after_world_ready() -> Dictionary:
 	if not _arena_is_available(arena_center):
 		return {"ok": false, "reason": "DEFENSE_ARENA_BLOCKED"}
 	warning_remaining = maxf(0.0, float(saved.get("warning_remaining", 0.0)))
-	wall_integrity = clampi(int(saved.get("wall_integrity", WALL_MAX_INTEGRITY)), 0, WALL_MAX_INTEGRITY)
-	ballista_bolts = clampi(int(saved.get("ballista_bolts", 0)), 0, BALLISTA_STARTING_BOLTS)
-	raider_health = clampi(int(saved.get("raider_health", 0)), 0, RAIDER_MAX_HEALTH)
+	wall_integrity = clampi(int(saved.get("wall_integrity", wall_max_integrity)), 0, wall_max_integrity)
+	ballista_bolts = clampi(int(saved.get("ballista_bolts", 0)), 0, ballista_starting_bolts)
+	raider_health = clampi(int(saved.get("raider_health", 0)), 0, raider_max_health)
 	ballista_armed = bool(saved.get("ballista_armed", false))
 	navigation_revision = maxi(0, int(saved.get("navigation_revision", 0)))
 	_build_fixture()
@@ -111,12 +132,12 @@ func start_drill() -> Dictionary:
 	_clear_fixture()
 	arena_center = found.center
 	state = WARNING
-	warning_remaining = WARNING_SECONDS
-	wall_integrity = WALL_MAX_INTEGRITY
-	ballista_bolts = BALLISTA_STARTING_BOLTS
-	raider_health = RAIDER_MAX_HEALTH
-	attack_timer = RAIDER_ATTACK_INTERVAL
-	ballista_timer = BALLISTA_INTERVAL
+	warning_remaining = warning_seconds
+	wall_integrity = wall_max_integrity
+	ballista_bolts = ballista_starting_bolts
+	raider_health = raider_max_health
+	attack_timer = raider_attack_interval
+	ballista_timer = ballista_interval
 	ballista_armed = false
 	_ballista_los_blocked_reported = false
 	exact_invalidations = 0
@@ -141,7 +162,7 @@ func clear_for_other_mode() -> void:
 func try_repair(structure_id: String) -> Dictionary:
 	if structure_id != "training_wall" or wall_integrity <= 0:
 		return {"handled": false}
-	if wall_integrity >= WALL_MAX_INTEGRITY:
+	if wall_integrity >= wall_max_integrity:
 		return {"handled": true, "ok": false, "reason": "NO_REPAIR_NEEDED"}
 	if inventory.count("planks") < 1:
 		return {"handled": true, "ok": false, "reason": "MISSING_REPAIR_MATERIAL"}
@@ -149,7 +170,7 @@ func try_repair(structure_id: String) -> Dictionary:
 	if not committed.get("ok", false):
 		return {"handled": true, "ok": false, "reason": str(committed.get("reason", "REPAIR_FAILED"))}
 	var before := wall_integrity
-	wall_integrity = mini(WALL_MAX_INTEGRITY, wall_integrity + REPAIR_AMOUNT)
+	wall_integrity = mini(wall_max_integrity, wall_integrity + repair_amount)
 	_update_wall_presentation()
 	_emit_state()
 	return {"handled": true, "ok": true, "reason": "REPAIRED", "changes": {"structure_id": structure_id, "before": before, "after": wall_integrity, "consumed": {"planks": 1}}}
@@ -178,13 +199,13 @@ func hud_text() -> String:
 		IDLE:
 			return "DEFENSE DRILL · Pause and choose Start Defense Drill"
 		WARNING:
-			return "⚠ RAID WARNING · one raider in %d · wall %d/%d · ballista %d bolts" % [ceili(warning_remaining), wall_integrity, WALL_MAX_INTEGRITY, ballista_bolts]
+			return "⚠ RAID WARNING · one raider in %d · wall %d/%d · ballista %d bolts" % [ceili(warning_remaining), wall_integrity, wall_max_integrity, ballista_bolts]
 		ROUTING:
-			return "RAIDER APPROACHING · HP %d/%d · wall %d/%d · ballista %d bolts" % [raider_health, RAIDER_MAX_HEALTH, wall_integrity, WALL_MAX_INTEGRITY, ballista_bolts]
+			return "RAIDER APPROACHING · HP %d/%d · wall %d/%d · ballista %d bolts" % [raider_health, raider_max_health, wall_integrity, wall_max_integrity, ballista_bolts]
 		ATTACKING:
-			return "WALL UNDER ATTACK · HP %d/%d · wall %d/%d · ballista %d bolts · Shift-use wall with Planks" % [raider_health, RAIDER_MAX_HEALTH, wall_integrity, WALL_MAX_INTEGRITY, ballista_bolts]
+			return "WALL UNDER ATTACK · HP %d/%d · wall %d/%d · ballista %d bolts · Shift-use wall with Planks" % [raider_health, raider_max_health, wall_integrity, wall_max_integrity, ballista_bolts]
 		COMPLETE:
-			return "DEFENSE WON · wall %d/%d · Shift-use damaged wall with Planks to repair" % [wall_integrity, WALL_MAX_INTEGRITY]
+			return "DEFENSE WON · wall %d/%d · Shift-use damaged wall with Planks to repair" % [wall_integrity, wall_max_integrity]
 		FAILED:
 			return "DEFENSE FAILED · barricade breached · restart the drill from Pause"
 	return "DEFENSE DRILL"
@@ -202,12 +223,12 @@ func advance(delta: float, paused: bool = false) -> void:
 		if state == ATTACKING:
 			attack_timer -= delta
 			if attack_timer <= 0.0:
-				attack_timer += RAIDER_ATTACK_INTERVAL
+				attack_timer += raider_attack_interval
 				_raider_attack()
 		if ballista_armed and ballista_bolts > 0 and raider_health > 0:
 			ballista_timer -= delta
 			if ballista_timer <= 0.0:
-				ballista_timer += BALLISTA_INTERVAL
+				ballista_timer += ballista_interval
 				_ballista_fire()
 
 
@@ -228,7 +249,7 @@ func _plan_from_raider() -> void:
 		return
 	var start := raider.feet_cell()
 	var goal := _goal_cell()
-	var capability := {"max_step_up": 1, "max_drop_down": 1, "damage_per_hit": {"earth": 6, "wood": 6}}
+	var capability := {"max_step_up": 1, "max_drop_down": 1, "damage_per_hit": {"earth": raider_damage, "wood": raider_damage}}
 	var planner := LocalGridPathfinder.new()
 	var plan := planner.plan_next(navigation_snapshot, start, goal, capability)
 	last_route_reason = str(plan.get("reason", "NO_ROUTE"))
@@ -265,9 +286,9 @@ func _on_raider_route_finished() -> void:
 func _raider_attack() -> void:
 	if wall_integrity <= 0:
 		return
-	wall_integrity = maxi(0, wall_integrity - RAIDER_DAMAGE)
+	wall_integrity = maxi(0, wall_integrity - raider_damage)
 	_update_wall_presentation()
-	feedback.emit("Raider hit the barricade for %d. Wall integrity: %d/%d." % [RAIDER_DAMAGE, wall_integrity, WALL_MAX_INTEGRITY])
+	feedback.emit("Raider hit the barricade for %d. Wall integrity: %d/%d." % [raider_damage, wall_integrity, wall_max_integrity])
 	_emit_state()
 	if wall_integrity <= 0:
 		_break_wall()
@@ -281,7 +302,7 @@ func _ballista_fire() -> Dictionary:
 	_aim_ballista()
 	var muzzle := _ballista_muzzle_position()
 	var target := _ballista_target_position()
-	if muzzle.distance_to(target) > BALLISTA_MAX_RANGE:
+	if muzzle.distance_to(target) > ballista_max_range:
 		return {"ok": false, "reason": "TARGET_OUT_OF_RANGE"}
 	if not ballista_has_line_of_sight():
 		if not _ballista_los_blocked_reported:
@@ -290,9 +311,9 @@ func _ballista_fire() -> Dictionary:
 		return {"ok": false, "reason": "LINE_OF_SIGHT_BLOCKED"}
 	_ballista_los_blocked_reported = false
 	ballista_bolts -= 1
-	raider_health = maxi(0, raider_health - BALLISTA_DAMAGE)
+	raider_health = maxi(0, raider_health - ballista_damage)
 	_spawn_bolt_visual(muzzle, target)
-	feedback.emit("Ballista fired: raider HP %d/%d; %d bolts remain." % [raider_health, RAIDER_MAX_HEALTH, ballista_bolts])
+	feedback.emit("Ballista fired: raider HP %d/%d; %d bolts remain." % [raider_health, raider_max_health, ballista_bolts])
 	_emit_state()
 	if raider_health <= 0:
 		state = COMPLETE
@@ -488,7 +509,7 @@ func _add_box(parent: Node3D, offset: Vector3, size: Vector3, color: Color) -> v
 func _update_wall_presentation() -> void:
 	if _wall_material == null:
 		return
-	var ratio := float(wall_integrity) / float(WALL_MAX_INTEGRITY)
+	var ratio := float(wall_integrity) / float(wall_max_integrity)
 	_wall_material.albedo_color = Color("754224").lerp(Color("c64a3c"), 1.0 - ratio)
 
 

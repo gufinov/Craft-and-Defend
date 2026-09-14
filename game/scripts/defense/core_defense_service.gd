@@ -27,6 +27,11 @@ const ARENA_CANDIDATES: Array[Vector3i] = [
 var world: WorldAdapter
 var registry: ContentRegistry
 var workstations: WorkstationService
+var warning_seconds := WARNING_SECONDS
+var core_max_integrity := CORE_MAX_INTEGRITY
+var raider_max_health := RAIDER_MAX_HEALTH
+var raider_damage := RAIDER_DAMAGE
+var raider_attack_interval := RAIDER_ATTACK_INTERVAL
 var state := IDLE
 var arena_center := Vector3i.ZERO
 var warning_remaining := 0.0
@@ -51,6 +56,13 @@ func initialize(world_adapter: WorldAdapter, content_registry: ContentRegistry, 
 	world = world_adapter
 	registry = content_registry
 	workstations = station_service
+	warning_seconds = maxf(0.1, registry.balance_number("core_defense.warning_seconds", WARNING_SECONDS))
+	core_max_integrity = maxi(1, registry.balance_integer("core_defense.core_integrity", CORE_MAX_INTEGRITY))
+	raider_max_health = maxi(1, registry.balance_integer("core_defense.raider_health", RAIDER_MAX_HEALTH))
+	raider_damage = maxi(1, registry.balance_integer("core_defense.raider_damage", RAIDER_DAMAGE))
+	raider_attack_interval = maxf(0.05, registry.balance_number("core_defense.raider_attack_interval_seconds", RAIDER_ATTACK_INTERVAL))
+	core_integrity = core_max_integrity
+	raider_health = raider_max_health
 	_pending_restore = saved.duplicate(true)
 	world.cell_changed.connect(_on_world_cell_changed)
 
@@ -88,8 +100,8 @@ func restore_after_world_ready() -> Dictionary:
 	if not _arena_is_available(arena_center):
 		return {"ok": false, "reason": "CORE_ARENA_BLOCKED"}
 	warning_remaining = maxf(0.0, float(saved.get("warning_remaining", 0.0)))
-	core_integrity = clampi(int(saved.get("core_integrity", CORE_MAX_INTEGRITY)), 0, CORE_MAX_INTEGRITY)
-	raider_health = clampi(int(saved.get("raider_health", RAIDER_MAX_HEALTH)), 0, RAIDER_MAX_HEALTH)
+	core_integrity = clampi(int(saved.get("core_integrity", core_max_integrity)), 0, core_max_integrity)
+	raider_health = clampi(int(saved.get("raider_health", raider_max_health)), 0, raider_max_health)
 	navigation_revision = maxi(0, int(saved.get("navigation_revision", 0)))
 	active_target_type = str(saved.get("active_target_type", ""))
 	active_target_id = str(saved.get("active_target_id", ""))
@@ -112,10 +124,10 @@ func start_prototype() -> Dictionary:
 	_clear_fixture()
 	arena_center = found.get("center", Vector3i.ZERO)
 	state = WARNING
-	warning_remaining = WARNING_SECONDS
-	core_integrity = CORE_MAX_INTEGRITY
-	raider_health = RAIDER_MAX_HEALTH
-	attack_timer = RAIDER_ATTACK_INTERVAL
+	warning_remaining = warning_seconds
+	core_integrity = core_max_integrity
+	raider_health = raider_max_health
+	attack_timer = raider_attack_interval
 	active_target_type = ""
 	active_target_id = ""
 	active_target_cell = Vector3i.ZERO
@@ -139,7 +151,7 @@ func advance(delta: float, paused: bool = false) -> void:
 	elif state in [ATTACKING_STRUCTURE, ATTACKING_CORE]:
 		attack_timer -= delta
 		if attack_timer <= 0.0:
-			attack_timer += RAIDER_ATTACK_INTERVAL
+			attack_timer += raider_attack_interval
 			if state == ATTACKING_STRUCTURE:
 				_attack_structure()
 			else:
@@ -179,7 +191,7 @@ func try_damage_raider(amount: int, source: String = "player") -> Dictionary:
 		raider.active = false
 		feedback.emit("Defense won: %s defeated the raider." % source.replace("_", " ").capitalize())
 	else:
-		feedback.emit("%s hit the raider for %d. Raider health: %d/%d." % [source.replace("_", " ").capitalize(), amount, raider_health, RAIDER_MAX_HEALTH])
+		feedback.emit("%s hit the raider for %d. Raider health: %d/%d." % [source.replace("_", " ").capitalize(), amount, raider_health, raider_max_health])
 	_emit_state()
 	return {"ok": true, "reason": "RAIDER_DEFEATED" if raider_health <= 0 else "RAIDER_DAMAGED", "handled": true, "changes": {"health_before": before, "health": raider_health, "damage": amount, "source": source}}
 
@@ -193,17 +205,17 @@ func hud_text() -> String:
 		IDLE:
 			return "CORE DEFENSE · Pause and choose Start Core Defense Prototype"
 		WARNING:
-			return "⚠ CORE SETUP · raider in %d · build across the field-side approach · core %d/%d" % [ceili(warning_remaining), core_integrity, CORE_MAX_INTEGRITY]
+			return "⚠ CORE SETUP · raider in %d · build across the field-side approach · core %d/%d" % [ceili(warning_remaining), core_integrity, core_max_integrity]
 		ROUTING:
-			return "RAIDER ROUTING TO CORE · HP %d/%d · open path preferred · core %d/%d" % [raider_health, RAIDER_MAX_HEALTH, core_integrity, CORE_MAX_INTEGRITY]
+			return "RAIDER ROUTING TO CORE · HP %d/%d · open path preferred · core %d/%d" % [raider_health, raider_max_health, core_integrity, core_max_integrity]
 		ATTACKING_STRUCTURE:
 			var status := workstations.defense_status(active_target_id)
 			var details: Dictionary = status.get("details", {})
-			return "BREACHING %s · raider %d/%d · wall %d/%d · core %d/%d" % [registry.display_name(str(details.get("entity_id", "wood_barricade"))), raider_health, RAIDER_MAX_HEALTH, int(details.get("integrity", 0)), int(details.get("max_integrity", 0)), core_integrity, CORE_MAX_INTEGRITY]
+			return "BREACHING %s · raider %d/%d · wall %d/%d · core %d/%d" % [registry.display_name(str(details.get("entity_id", "wood_barricade"))), raider_health, raider_max_health, int(details.get("integrity", 0)), int(details.get("max_integrity", 0)), core_integrity, core_max_integrity]
 		ATTACKING_CORE:
-			return "CORE UNDER ATTACK · raider %d/%d · core %d/%d · no open defense remains" % [raider_health, RAIDER_MAX_HEALTH, core_integrity, CORE_MAX_INTEGRITY]
+			return "CORE UNDER ATTACK · raider %d/%d · core %d/%d · no open defense remains" % [raider_health, raider_max_health, core_integrity, core_max_integrity]
 		WON:
-			return "DEFENSE WON · core %d/%d · raider defeated" % [core_integrity, CORE_MAX_INTEGRITY]
+			return "DEFENSE WON · core %d/%d · raider defeated" % [core_integrity, core_max_integrity]
 		FAILED:
 			return "CORE DEFENSE FAILED · prototype core destroyed"
 	return "CORE DEFENSE PROTOTYPE"
@@ -274,7 +286,7 @@ func _on_raider_route_finished() -> void:
 
 
 func _attack_structure() -> void:
-	var result := workstations.try_damage(active_target_id, RAIDER_DAMAGE)
+	var result := workstations.try_damage(active_target_id, raider_damage)
 	if not result.get("ok", false):
 		_queue_replan()
 		return
@@ -283,16 +295,16 @@ func _attack_structure() -> void:
 		feedback.emit("Wooden barricade breached. The raider is replanning toward the core.")
 		_queue_replan()
 	else:
-		feedback.emit("Raider hit %s for %d. Integrity: %d/%d." % [registry.display_name(str(details.get("entity_id", "wood_barricade"))), RAIDER_DAMAGE, int(details.get("integrity", 0)), int(details.get("max_integrity", 0))])
+		feedback.emit("Raider hit %s for %d. Integrity: %d/%d." % [registry.display_name(str(details.get("entity_id", "wood_barricade"))), raider_damage, int(details.get("integrity", 0)), int(details.get("max_integrity", 0))])
 	_emit_state()
 
 
 func _attack_core() -> void:
 	if core_integrity <= 0:
 		return
-	core_integrity = maxi(0, core_integrity - RAIDER_DAMAGE)
+	core_integrity = maxi(0, core_integrity - raider_damage)
 	_update_core_presentation()
-	feedback.emit("Raider hit the strategic core for %d. Core integrity: %d/%d." % [RAIDER_DAMAGE, core_integrity, CORE_MAX_INTEGRITY])
+	feedback.emit("Raider hit the strategic core for %d. Core integrity: %d/%d." % [raider_damage, core_integrity, core_max_integrity])
 	if core_integrity <= 0:
 		state = FAILED
 		if is_instance_valid(raider):
@@ -302,7 +314,7 @@ func _attack_core() -> void:
 
 
 func _basic_raider_capability() -> Dictionary:
-	return {"max_step_up": 1, "max_drop_down": 1, "damage_per_hit": {"breachable_wood": RAIDER_DAMAGE}}
+	return {"max_step_up": 1, "max_drop_down": 1, "damage_per_hit": {"breachable_wood": raider_damage}}
 
 
 func _capture_navigation() -> void:
@@ -445,7 +457,7 @@ func _build_core_visual() -> void:
 func _update_core_presentation() -> void:
 	if _core_material == null:
 		return
-	var ratio := float(core_integrity) / float(CORE_MAX_INTEGRITY)
+	var ratio := float(core_integrity) / float(core_max_integrity)
 	var color := Color("52e5ff").lerp(Color("ff4d6d"), 1.0 - ratio)
 	_core_material.albedo_color = color
 	_core_material.emission = color

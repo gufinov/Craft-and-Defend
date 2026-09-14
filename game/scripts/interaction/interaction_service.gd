@@ -204,14 +204,15 @@ func _axe_log_cells(cell: Vector3i, block: Dictionary) -> Array[Vector3i]:
 	if str(active_tool.get("tool_kind", "")) != "axe":
 		return result
 	var bottom := cell
-	for _step in range(5):
+	var maximum_trunk_blocks := maxi(1, registry.balance_integer("harvesting.maximum_connected_trunk_blocks", 6))
+	for _step in range(maximum_trunk_blocks - 1):
 		var below := bottom + Vector3i.DOWN
 		var below_query := world.query_cell(below)
 		if below_query.get("state") != "LOADED" or str(registry.block_for_voxel(int(below_query.get("voxel_id", AIR))).get("id", "")) != "log":
 			break
 		bottom = below
 	result.clear()
-	for step in range(6):
+	for step in range(maximum_trunk_blocks):
 		var candidate := bottom + Vector3i.UP * step
 		var candidate_query := world.query_cell(candidate)
 		if candidate_query.get("state") != "LOADED" or str(registry.block_for_voxel(int(candidate_query.get("voxel_id", AIR))).get("id", "")) != "log":
@@ -222,8 +223,8 @@ func _axe_log_cells(cell: Vector3i, block: Dictionary) -> Array[Vector3i]:
 	return result if not result.is_empty() else [cell]
 
 
-func rotate_placement() -> int:
-	placement_rotation_quarters = posmod(placement_rotation_quarters + 1, 4)
+func rotate_placement(direction: int = 1) -> int:
+	placement_rotation_quarters = posmod(placement_rotation_quarters + signi(direction), 4)
 	return placement_rotation_quarters
 
 

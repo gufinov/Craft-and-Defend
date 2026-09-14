@@ -51,7 +51,7 @@ func _run_gate() -> void:
 	var lowered := auto_service.try_set_furnace_autoload_target(auto_id, "iron_ingot", 4)
 	var lowered_slots := auto_service.furnace_slots(auto_id)
 	var auto_status := auto_service.furnace_autoload_status(auto_id, "iron_ingot")
-	_record("T94_TRANSACTIONAL_AUTOLOAD", target_15.get("ok", false) and int(loaded_slots.input.count) == 15 and int(loaded_slots.fuel.count) == 10 and lowered.get("ok", false) and int(lowered_slots.input.count) == 4 and int(lowered_slots.fuel.count) == 4 and auto_inventory.count("iron_ore") + int(lowered_slots.input.count) == 15 and auto_inventory.count("coal") + int(lowered_slots.fuel.count) == 10 and int(auto_status.get("details", {}).get("limit", 0)) == 15, "the 0–64 target independently fills each ingredient up to its available amount and safely returns excess when lowered", {"loaded": loaded_slots, "lowered": lowered_slots, "status": auto_status.get("details", {})})
+	_record("T94_TRANSACTIONAL_AUTOLOAD", target_15.get("ok", false) and int(loaded_slots.input.count) == 15 and int(loaded_slots.fuel.count) == 5 and lowered.get("ok", false) and int(lowered_slots.input.count) == 4 and int(lowered_slots.fuel.count) == 2 and auto_inventory.count("iron_ore") + int(lowered_slots.input.count) == 15 and auto_inventory.count("coal") + int(lowered_slots.fuel.count) == 10 and int(auto_status.get("details", {}).get("limit", 0)) == 15, "the 0–64 target loads the counted 1:3 coal ratio, lowers transactionally and conserves exact totals", {"loaded": loaded_slots, "lowered": lowered_slots, "status": auto_status.get("details", {})})
 
 	var timed := _fixture(3, 3)
 	var timed_service: WorkstationService = timed.service
@@ -63,7 +63,8 @@ func _run_gate() -> void:
 	timed_service.advance(2.5, false)
 	var after_one := timed_service.furnace_slots(timed_id)
 	var next_job := timed_service.furnace_job_status(timed_id)
-	_record("T95_ITEM_PROGRESS_SEQUENCE", started.get("ok", false) and absf(float(halfway.progress) - 0.5) < 0.01 and int(after_one.output.count) == 1 and bool(next_job.active) and float(next_job.progress) < 0.01 and int(after_one.input.count) == 1 and int(after_one.fuel.count) == 1, "each item exposes measurable progress, deposits one retained output, then resets for the next loaded item", {"halfway": halfway, "after_one": after_one, "next_job": next_job})
+	var fuel_after_one := timed_service.furnace_fuel_status(timed_id)
+	_record("T95_ITEM_PROGRESS_SEQUENCE", started.get("ok", false) and absf(float(halfway.progress) - 0.5) < 0.01 and int(after_one.output.count) == 1 and bool(next_job.active) and float(next_job.progress) < 0.01 and int(after_one.input.count) == 1 and str(after_one.fuel.item_id).is_empty() and int(fuel_after_one.get("details", {}).get("stored_operations", -1)) == 1, "each item exposes measurable progress, deposits one retained output, resets for the next loaded item and spends only one stored fuel operation", {"halfway": halfway, "after_one": after_one, "next_job": next_job, "fuel": fuel_after_one})
 
 	app.session.inventory.try_transaction({}, {"furnace": 1, "iron_ore": 2, "coal": 2})
 	var placed := app.session.workstations.try_place("furnace", Vector3i(3, 0, 38), app.session.world.query_cell, app.session.player.get_body_aabb())

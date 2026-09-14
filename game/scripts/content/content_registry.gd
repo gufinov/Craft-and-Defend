@@ -7,6 +7,7 @@ const ITEM_CATEGORIES: Array[String] = ["resource", "building", "tool", "station
 var content_version := ""
 var inventory_slots := 0
 var hotbar_slots := 0
+var balance: Dictionary = {}
 var blocks_by_voxel: Dictionary = {}
 var blocks_by_id: Dictionary = {}
 var items: Dictionary = {}
@@ -27,6 +28,7 @@ func load_registry(path: String = REGISTRY_PATH) -> Dictionary:
 	items.clear()
 	entities.clear()
 	recipes.clear()
+	balance.clear()
 	if not FileAccess.file_exists(path):
 		return {"ok": false, "reason": "REGISTRY_MISSING", "path": path}
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -37,6 +39,10 @@ func load_registry(path: String = REGISTRY_PATH) -> Dictionary:
 		return {"ok": false, "reason": "REGISTRY_SCHEMA_UNSUPPORTED"}
 	content_version = str(document.get("content_version", ""))
 	var inventory: Dictionary = document.get("inventory", {})
+	var balance_value: Variant = document.get("balance", {})
+	if not balance_value is Dictionary:
+		return {"ok": false, "reason": "REGISTRY_BALANCE_INVALID"}
+	balance = balance_value.duplicate(true)
 	inventory_slots = int(inventory.get("slots", 0))
 	hotbar_slots = int(inventory.get("hotbar_slots", 0))
 	if content_version.is_empty() or inventory_slots < 1 or hotbar_slots < 1 or hotbar_slots > inventory_slots:
@@ -106,3 +112,27 @@ func item_category(item_id: String) -> String:
 
 func display_name(stable_id: String) -> String:
 	return stable_id.replace("_", " ").capitalize()
+
+
+func balance_value(path: String, fallback: Variant = null) -> Variant:
+	var current: Variant = balance
+	for segment in path.split(".", false):
+		if not current is Dictionary or not current.has(segment):
+			return fallback
+		current = current[segment]
+	return current
+
+
+func balance_number(path: String, fallback: float) -> float:
+	var value := balance_value(path, fallback)
+	return float(value) if value is int or value is float else fallback
+
+
+func balance_integer(path: String, fallback: int) -> int:
+	var value := balance_value(path, fallback)
+	return int(value) if value is int or value is float else fallback
+
+
+func balance_string(path: String, fallback: String) -> String:
+	var value := balance_value(path, fallback)
+	return str(value) if value is String else fallback

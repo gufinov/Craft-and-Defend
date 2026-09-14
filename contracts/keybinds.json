@@ -64,8 +64,14 @@
       "implemented_in_foundation": true
     },
     {
-      "id": "rotate_build",
-      "key": "X",
+      "id": "rotate_build_clockwise",
+      "key": "W",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "rotate_build_counterclockwise",
+      "key": "R",
       "context": "gameplay",
       "implemented_in_foundation": true
     },

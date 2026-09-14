@@ -34,7 +34,7 @@ const REASON_TEXT := {
 	"STATION_BUSY": "That furnace is already working.",
 	"STATION_NOT_EMPTY": "Remove the Furnace input, fuel and output before dismantling it.",
 	"SUPPORT_IN_USE": "Dismantle the supported placed object before removing this block.",
-	"JOB_STARTED": "Furnace started; one ore and one fuel were consumed.",
+	"JOB_STARTED": "Furnace started; one ore and one stored fuel operation were consumed.",
 	"JOB_COMPLETED": "Furnace finished; collect the retained output from its Output slot.",
 	"DEFENSE_ALREADY_ACTIVE": "A defense drill is already active.",
 	"DEFENSE_ARENA_BLOCKED": "No clear practice lane is available near home. Move or dismantle nearby builds, then try again.",
@@ -43,7 +43,7 @@ const REASON_TEXT := {
 	"NO_REPAIR_NEEDED": "That barricade is already at full integrity.",
 	"REPAIRED": "Barricade repaired; one Planks item was consumed.",
 	"INVALID_MOUNT": "That siege device needs fully supported ground or its allowed tower socket.",
-	"MELEE_COOLDOWN": "The sword is still recovering.",
+	"MELEE_COOLDOWN": "The sword is between swings; release and strike again.",
 	"SWORD_MISS": "The sword swing did not reach a raider.",
 	"RAIDER_DAMAGED": "Sword strike landed.",
 	"RAIDER_DEFEATED": "Raider defeated — the core is safe.",
@@ -349,7 +349,7 @@ func _on_spawn_area_ready() -> void:
 	_spawn_starter_resource_markers()
 	simulation_paused = false
 	player.activate(not DisplayServer.get_name().contains("headless"))
-	status_changed.emit("Ready — Tab inventory, B hand crafting, right-click stations, X rotates castle previews")
+	status_changed.emit("Ready — Tab inventory, B hand crafting, right-click stations, W/R rotate castle previews")
 	_emit_navigation()
 	ready_for_play.emit()
 
@@ -467,8 +467,9 @@ func _on_boundary_feedback(message: String) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not world_ready or simulation_paused or saving:
 		return
-	if event.is_action_pressed("rotate_build"):
-		var rotation := interaction.rotate_placement()
+	var rotation_direction := 1 if event.is_action_pressed("rotate_build_clockwise") else -1 if event.is_action_pressed("rotate_build_counterclockwise") else 0
+	if rotation_direction != 0:
+		var rotation := interaction.rotate_placement(rotation_direction)
 		_placement_preview_key = ""
 		_on_interaction_feedback("Build orientation: %s" % ["North", "East", "South", "West"][rotation])
 		get_viewport().set_input_as_handled()
@@ -810,7 +811,7 @@ func _player_primary_action(origin: Vector3, direction: Vector3) -> Dictionary:
 	if str(weapon.get("kind", "")) != "melee":
 		return {"handled": false}
 	if _melee_cooldown > 0.0:
-		return {"handled": true, "ok": false, "reason": "MELEE_COOLDOWN"}
+		return {"handled": true, "ok": false, "reason": "MELEE_COOLDOWN", "remaining_seconds": _melee_cooldown}
 	_melee_cooldown = maxf(0.05, float(weapon.get("cooldown_seconds", 0.55)))
 	_spawn_sword_swing()
 	if core_defense == null or not is_instance_valid(core_defense.raider):

@@ -23,6 +23,10 @@ class FoundationTests(unittest.TestCase):
         validate_bundle(self.bundle)
         self.assertIn('iron_pick', reachable_items(self.bundle['content'], self.bundle['world']))
 
+    def test_invalid_furnace_fuel_ratio_rejected(self):
+        self.bundle['content']['balance']['furnace']['operations_per_fuel'] = 0
+        self.rejects('invalid furnace balance')
+
     def test_duplicate_voxel_identity_rejected(self):
         self.bundle['content']['blocks'][1]['voxel_id'] = 0
         self.rejects('duplicate voxel_id')
@@ -205,6 +209,16 @@ class FoundationTests(unittest.TestCase):
         self.assertIn('if not exist "%VISUAL_ROOT%\\p3g-furnace-autoload-progress.png"', launcher)
         self.assertIn('if not exist "%VISUAL_ROOT%\\p3g-catapult-world-model.png"', launcher)
         self.assertIn('P3G_DIAGNOSTIC_NO_OPEN', launcher)
+
+    def test_p3h_has_one_click_balance_and_controls_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        launcher = (root / 'TEST_P3H_BALANCE_CONTROLS.cmd').read_text(encoding='utf-8')
+        self.assertIn('start_game.ps1" -PrepareOnly', launcher)
+        self.assertIn('--p3h-balance-controls-automation=gate', launcher)
+        self.assertIn('--p3h-balance-controls-automation=visual', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3h-furnace-fuel-ratio.png"', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3h-directional-controls.png"', launcher)
+        self.assertIn('P3H_DIAGNOSTIC_NO_OPEN', launcher)
 
     def test_invalid_specialized_tool_kind_is_rejected(self):
         axe = next(item for item in self.bundle['content']['items'] if item['id'] == 'wood_axe')

@@ -123,6 +123,27 @@ def validate_bundle(bundle):
     items = index(content["items"], "id", "items")
     entities = index(content["entities"], "id", "entities")
     index(content["recipes"], "id", "recipes")
+    balance = content.get("balance")
+    require(isinstance(balance, dict), "missing balance catalogue")
+    furnace_balance = balance.get("furnace", {})
+    require(furnace_balance.get("fuel_item") in items
+            and integer(furnace_balance.get("operations_per_fuel"), 1), "invalid furnace balance")
+    require(any(recipe.get("station") == "furnace"
+                and recipe.get("inputs", {}).get(furnace_balance["fuel_item"]) == 1
+                for recipe in content["recipes"]), "furnace fuel must be an explicit recipe input")
+    harvesting_balance = balance.get("harvesting", {})
+    require(integer(harvesting_balance.get("maximum_connected_trunk_blocks"), 1), "invalid harvesting balance")
+    for section_name, integer_fields, number_fields in (
+        ("practice_defense", ("wall_integrity", "repair_amount", "raider_health", "raider_damage", "ballista_damage", "ballista_starting_bolts"),
+         ("warning_seconds", "raider_attack_interval_seconds", "ballista_interval_seconds", "ballista_maximum_range")),
+        ("core_defense", ("core_integrity", "raider_health", "raider_damage"),
+         ("warning_seconds", "raider_attack_interval_seconds")),
+    ):
+        section = balance.get(section_name, {})
+        require(isinstance(section, dict)
+                and all(integer(section.get(field), 1) for field in integer_fields)
+                and all(type(section.get(field)) in (int, float) and section[field] > 0 for field in number_fields),
+                f"invalid {section_name} balance")
     require(numeric[0]["id"] == "air" and not numeric[0]["solid"], "air must be non-solid ID 0")
     for group in (blocks, items, entities):
         require(all(isinstance(k, str) and re.fullmatch(r"[a-z][a-z0-9_]*", k) for k in group),
@@ -247,7 +268,7 @@ def validate_bundle(bundle):
 
     actions = index(keys["actions"], "id", "actions")
     defaults = {"move_forward": "E", "move_backward": "D", "strafe_left": "S", "strafe_right": "F",
-                "sprint": "A", "crouch": "Z", "jump": "Space", "interact": "Shift", "inventory": "Tab", "build": "B", "rotate_build": "X", "pause": "Escape",
+                "sprint": "A", "crouch": "Z", "jump": "Space", "interact": "Shift", "inventory": "Tab", "build": "B", "rotate_build_clockwise": "W", "rotate_build_counterclockwise": "R", "pause": "Escape",
                 "reload": "G", "primary": "MouseLeft", "secondary": "MouseRight", "capture_screenshot": "F2"}
     defaults.update({f"hotbar_{i}": str(i) for i in range(1, 10)})
     require(keys["escape_recovery"] is True and keys["keyboard_mode"] == "physical_qwerty", "unsafe input recovery/default mode")

@@ -17,7 +17,7 @@ const INVENTORY_FILTERS: Array[Dictionary] = [
 ]
 const BINDING_GROUPS: Array[Dictionary] = [
 	{"title": "MOVEMENT", "actions": ["move_forward", "move_backward", "strafe_left", "strafe_right", "sprint", "crouch", "jump"]},
-	{"title": "WORLD & MENUS", "actions": ["primary", "secondary", "interact", "inventory", "build", "rotate_build", "pause", "capture_screenshot"]},
+	{"title": "WORLD & MENUS", "actions": ["primary", "secondary", "interact", "inventory", "build", "rotate_build_clockwise", "rotate_build_counterclockwise", "pause", "capture_screenshot"]},
 	{"title": "HOTBAR", "actions": ["hotbar_1", "hotbar_2", "hotbar_3", "hotbar_4", "hotbar_5", "hotbar_6", "hotbar_7", "hotbar_8", "hotbar_9"]},
 ]
 
@@ -227,6 +227,11 @@ func _ready() -> void:
 		var p3g_automation := P3GFurnaceUsabilityAutomation.new()
 		add_child(p3g_automation)
 		p3g_automation.call_deferred("run", self, p3g_mode)
+	var p3h_mode := _argument_value("--p3h-balance-controls-automation=")
+	if not p3h_mode.is_empty():
+		var p3h_automation := P3HBalanceAndControlsAutomation.new()
+		add_child(p3h_automation)
+		p3h_automation.call_deferred("run", self, p3h_mode)
 
 
 func _process(delta: float) -> void:
@@ -867,7 +872,7 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	furnace_auto_load_slider.value_changed.connect(_on_furnace_auto_load_changed)
 	furnace_controls.add_child(furnace_auto_load_slider)
 	var auto_load_help := Label.new()
-	auto_load_help.text = "Auto-loads input + fuel toward the target. Drag and Shift+Click remain available."
+	auto_load_help.text = "Auto-loads input + the counted fuel needed for the target. Drag and Shift+Click remain available."
 	auto_load_help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	auto_load_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	auto_load_help.add_theme_font_size_override("font_size", 11)
@@ -1517,12 +1522,17 @@ func _refresh_furnace_live_status() -> void:
 	var auto_details: Dictionary = autoload.get("details", {})
 	var auto_limit := int(auto_details.get("limit", 0)) if autoload.get("ok", false) else 0
 	var auto_current := int(auto_details.get("current", 0)) if autoload.get("ok", false) else 0
+	var fuel_status := session.workstations.furnace_fuel_status(_crafting_station_id)
+	var fuel_details: Dictionary = fuel_status.get("details", {})
+	var fuel_item_name := session.registry.display_name(str(fuel_details.get("fuel_item", "coal")))
+	var operations_per_fuel := int(fuel_details.get("operations_per_fuel", 1))
+	var stored_operations := int(fuel_details.get("stored_operations", 0))
 	_furnace_slider_refreshing = true
 	furnace_auto_load_slider.max_value = float(maxi(1, auto_limit))
 	furnace_auto_load_slider.set_value_no_signal(float(clampi(auto_current, 0, auto_limit)))
 	furnace_auto_load_slider.editable = autoload.get("ok", false) and auto_limit > 0
 	_furnace_slider_refreshing = false
-	furnace_auto_load_label.text = "AUTO-LOAD TARGET: %d  ·  AVAILABLE UP TO %d" % [auto_current, auto_limit] if autoload.get("ok", false) else "AUTO-LOAD: CHOOSE OR LOAD A RECIPE"
+	furnace_auto_load_label.text = "AUTO-LOAD: %d / %d items  ·  FUEL: 1 %s → %d items  ·  %d stored" % [auto_current, auto_limit, fuel_item_name, operations_per_fuel, stored_operations] if autoload.get("ok", false) else "AUTO-LOAD: CHOOSE OR LOAD A RECIPE"
 	var progress := clampf(float(job.get("progress", 0.0)), 0.0, 1.0)
 	furnace_progress_bar.value = progress * 100.0
 	if bool(job.get("active", false)):
@@ -2321,14 +2331,16 @@ func _refresh_hud() -> void:
 	if hud_label == null or settings == null or _hud_state_text.is_empty():
 		return
 	var movement := "%s%s%s%s" % [settings.get_binding_label("move_forward"), settings.get_binding_label("strafe_left"), settings.get_binding_label("move_backward"), settings.get_binding_label("strafe_right")]
-	hud_label.text = "%s   |   %s move · %s sprint · %s crouch · %s use/place · %s build · %s rotate · %s inventory · %s pause · %s capture" % [
+	hud_label.text = "%s   |   %s move · %s sprint · %s crouch · %s interact · %s use/place · %s build · %s/%s rotate · %s inventory · %s pause · %s capture" % [
 		_hud_state_text,
 		movement,
 		settings.get_binding_label("sprint"),
 		settings.get_binding_label("crouch"),
+		settings.get_binding_label("interact"),
 		settings.get_binding_label("secondary"),
 		settings.get_binding_label("build"),
-		settings.get_binding_label("rotate_build"),
+		settings.get_binding_label("rotate_build_clockwise"),
+		settings.get_binding_label("rotate_build_counterclockwise"),
 		settings.get_binding_label("inventory"),
 		settings.get_binding_label("pause"),
 		settings.get_binding_label("capture_screenshot"),
