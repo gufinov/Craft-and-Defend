@@ -1,6 +1,6 @@
 # P3E — furnace containers and visual identity
 
-Status: CANDIDATE / OWNER PLAYTEST PENDING
+Status: PASS / OWNER ACCEPTED 2026-09-14
 
 ## Outcome
 

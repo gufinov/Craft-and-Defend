@@ -99,6 +99,9 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T87 | P3E | Furnace modal has three real slots; placed stations and selected key tools use the revised visual identity |
 | T88 | P3E | Manual hand/workbench patterns are recognized without recipe-book selection or search |
 | T89 | P3E | Rendered 1280×720 evidence visibly shows the three-slot Furnace and revised world/held identity |
+| T90 | P3F | Workbench recipes use an exact stable progression order from hand fundamentals through tools, castle construction, iron equipment and siege recipes |
+| T91 | P3F | All 26 registered items resolve transparent held references; all ten non-air voxel cubes declare complete 1×1 texture geometry |
+| T92 | P3F | Rendered contact sheet shows representative raised/low held items plus textured placed Castle Stone without opaque inventory-card backgrounds |
 
 ## Performance evidence, not invented guarantees
 

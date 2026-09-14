@@ -39,9 +39,9 @@ class FoundationTests(unittest.TestCase):
         self.bundle['content']['recipes'][0]['inputs']['log'] = True
         self.rejects('invalid recipe item/count')
 
-    def test_boolean_is_not_recipe_book_priority(self):
-        self.bundle['content']['recipes'][0]['recipe_book_priority'] = True
-        self.rejects('invalid recipe book priority')
+    def test_boolean_is_not_recipe_book_order(self):
+        self.bundle['content']['recipes'][0]['recipe_book_order'] = True
+        self.rejects('invalid recipe book order')
 
     def test_unknown_item_category_rejected(self):
         self.bundle['content']['items'][0]['category'] = 'mystery'
@@ -186,6 +186,15 @@ class FoundationTests(unittest.TestCase):
         self.assertIn('if not exist "%VISUAL_ROOT%\\p3e-furnace-container.png"', launcher)
         self.assertIn('if not exist "%VISUAL_ROOT%\\p3e-world-and-held-identity.png"', launcher)
         self.assertIn('P3E_DIAGNOSTIC_NO_OPEN', launcher)
+
+    def test_p3f_has_one_click_exported_order_and_visual_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        launcher = (root / 'TEST_P3F_PRESENTATION.cmd').read_text(encoding='utf-8')
+        self.assertIn('start_game.ps1" -PrepareOnly', launcher)
+        self.assertIn('--p3f-presentation-automation=gate', launcher)
+        self.assertIn('--p3f-presentation-automation=visual', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3f-held-item-contact-sheet.png"', launcher)
+        self.assertIn('P3F_DIAGNOSTIC_NO_OPEN', launcher)
 
     def test_invalid_specialized_tool_kind_is_rejected(self):
         axe = next(item for item in self.bundle['content']['items'] if item['id'] == 'wood_axe')

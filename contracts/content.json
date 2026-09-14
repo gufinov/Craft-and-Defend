@@ -383,6 +383,7 @@
     {
       "id": "planks",
       "station": "hand",
+      "recipe_book_order": 0,
       "inputs": {
         "log": 1
       },
@@ -394,6 +395,7 @@
     {
       "id": "sticks",
       "station": "hand",
+      "recipe_book_order": 10,
       "inputs": {
         "planks": 2
       },
@@ -405,6 +407,7 @@
     {
       "id": "workbench",
       "station": "hand",
+      "recipe_book_order": 20,
       "inputs": {
         "planks": 4
       },
@@ -416,6 +419,7 @@
     {
       "id": "wood_pick",
       "station": "workbench",
+      "recipe_book_order": 30,
       "inputs": {
         "planks": 3,
         "stick": 2
@@ -428,6 +432,7 @@
     {
       "id": "stone_pick",
       "station": "workbench",
+      "recipe_book_order": 50,
       "inputs": {
         "stone": 3,
         "stick": 2
@@ -440,6 +445,7 @@
     {
       "id": "furnace",
       "station": "workbench",
+      "recipe_book_order": 60,
       "inputs": {
         "stone": 8
       },
@@ -451,6 +457,7 @@
     {
       "id": "iron_ingot",
       "station": "furnace",
+      "recipe_book_order": 0,
       "inputs": {
         "iron_ore": 1,
         "coal": 1
@@ -463,6 +470,7 @@
     {
       "id": "iron_pick",
       "station": "workbench",
+      "recipe_book_order": 140,
       "inputs": {
         "iron_ingot": 3,
         "stick": 2
@@ -475,7 +483,7 @@
     {
       "id": "wood_axe",
       "station": "workbench",
-      "recipe_book_priority": 90,
+      "recipe_book_order": 40,
       "inputs": {
         "planks": 3,
         "stick": 2
@@ -488,6 +496,7 @@
     {
       "id": "castle_stone",
       "station": "workbench",
+      "recipe_book_order": 70,
       "inputs": {
         "stone": 1
       },
@@ -499,6 +508,7 @@
     {
       "id": "stone_stair",
       "station": "workbench",
+      "recipe_book_order": 80,
       "inputs": {"castle_stone": 6},
       "outputs": {"stone_stair": 4},
       "duration_seconds": 0
@@ -506,6 +516,7 @@
     {
       "id": "wall_walk_slab",
       "station": "workbench",
+      "recipe_book_order": 90,
       "inputs": {"castle_stone": 3},
       "outputs": {"wall_walk_slab": 6},
       "duration_seconds": 0
@@ -513,6 +524,7 @@
     {
       "id": "parapet_merlon",
       "station": "workbench",
+      "recipe_book_order": 100,
       "inputs": {"castle_stone": 3},
       "outputs": {"parapet_merlon": 6},
       "duration_seconds": 0
@@ -520,6 +532,7 @@
     {
       "id": "tower_platform",
       "station": "workbench",
+      "recipe_book_order": 110,
       "inputs": {"castle_stone": 4, "planks": 2},
       "outputs": {"tower_platform": 1},
       "duration_seconds": 0
@@ -527,6 +540,7 @@
     {
       "id": "gate_frame",
       "station": "workbench",
+      "recipe_book_order": 120,
       "inputs": {"castle_stone": 8},
       "outputs": {"gate_frame": 1},
       "duration_seconds": 0
@@ -534,7 +548,7 @@
     {
       "id": "wood_barricade",
       "station": "workbench",
-      "recipe_book_priority": 100,
+      "recipe_book_order": 130,
       "inputs": {"planks": 4},
       "outputs": {"wood_barricade": 1},
       "duration_seconds": 0
@@ -542,7 +556,7 @@
     {
       "id": "iron_sword",
       "station": "workbench",
-      "recipe_book_priority": 95,
+      "recipe_book_order": 150,
       "inputs": {"iron_ingot": 2, "stick": 1},
       "outputs": {"iron_sword": 1},
       "duration_seconds": 0
@@ -550,7 +564,7 @@
     {
       "id": "ballista_bolt",
       "station": "workbench",
-      "recipe_book_priority": 85,
+      "recipe_book_order": 160,
       "inputs": {"iron_ingot": 1, "stick": 2},
       "outputs": {"ballista_bolt": 4},
       "duration_seconds": 0
@@ -558,7 +572,7 @@
     {
       "id": "stone_shot",
       "station": "workbench",
-      "recipe_book_priority": 84,
+      "recipe_book_order": 170,
       "inputs": {"stone": 2},
       "outputs": {"stone_shot": 4},
       "duration_seconds": 0
@@ -566,7 +580,7 @@
     {
       "id": "ballista",
       "station": "workbench",
-      "recipe_book_priority": 93,
+      "recipe_book_order": 180,
       "inputs": {"planks": 4, "iron_ingot": 2, "stick": 2},
       "outputs": {"ballista": 1},
       "duration_seconds": 0
@@ -574,7 +588,7 @@
     {
       "id": "catapult",
       "station": "workbench",
-      "recipe_book_priority": 92,
+      "recipe_book_order": 190,
       "inputs": {"planks": 5, "stone": 2, "stick": 2},
       "outputs": {"catapult": 1},
       "duration_seconds": 0

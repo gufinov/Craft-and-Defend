@@ -211,6 +211,11 @@ func _ready() -> void:
 		var p3e_automation := P3EContainerAutomation.new()
 		add_child(p3e_automation)
 		p3e_automation.call_deferred("run", self, p3e_mode)
+	var p3f_mode := _argument_value("--p3f-presentation-automation=")
+	if not p3f_mode.is_empty():
+		var p3f_automation := P3FPresentationAutomation.new()
+		add_child(p3f_automation)
+		p3f_automation.call_deferred("run", self, p3f_mode)
 
 
 func _process(delta: float) -> void:
@@ -1493,10 +1498,10 @@ func _available_crafting_recipes() -> Array[Dictionary]:
 	if _crafting_station_type == "workbench":
 		recipes.append_array(session.recipes_for("hand"))
 	recipes.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		var priority_a := int(a.get("recipe_book_priority", 0))
-		var priority_b := int(b.get("recipe_book_priority", 0))
-		if priority_a != priority_b:
-			return priority_a > priority_b
+		var order_a := int(a.get("recipe_book_order", 2147483647))
+		var order_b := int(b.get("recipe_book_order", 2147483647))
+		if order_a != order_b:
+			return order_a < order_b
 		return session.registry.display_name(str(a.id)) < session.registry.display_name(str(b.id))
 	)
 	return recipes

@@ -2,9 +2,9 @@ class_name ItemIconCatalog
 extends RefCounted
 
 const ATLAS_PATH := "res://assets/ui/item_icon_atlas_p3d.png"
-const WORLD_REFERENCE_PATH := "res://assets/ui/world_item_reference_p3e.png"
+const WORLD_REFERENCE_PATH := "res://assets/ui/held_item_atlas_p3f.png"
 const CELL_SIZE := Vector2(256, 256)
-const WORLD_REFERENCE_CELL_SIZE := Vector2(543, 724)
+const WORLD_REFERENCE_CELL_SIZE := Vector2(256, 256)
 const ITEM_CELLS := {
 	"dirt": 0,
 	"stone": 1,
@@ -65,8 +65,7 @@ static func recipe_texture(recipe: Dictionary) -> Texture2D:
 
 
 static func world_reference_texture_for(item_id: String) -> Texture2D:
-	var cells := {"workbench": 0, "furnace": 1, "stone_pick": 2, "wood_axe": 3}
-	if not cells.has(item_id):
+	if item_id.is_empty() or not ITEM_CELLS.has(item_id):
 		return null
 	if _world_reference_textures.has(item_id):
 		return _world_reference_textures[item_id]
@@ -76,7 +75,8 @@ static func world_reference_texture_for(item_id: String) -> Texture2D:
 		return null
 	var texture := AtlasTexture.new()
 	texture.atlas = _world_reference
-	texture.region = Rect2(Vector2(int(cells[item_id]), 0) * WORLD_REFERENCE_CELL_SIZE, WORLD_REFERENCE_CELL_SIZE)
+	var index := int(ITEM_CELLS[item_id])
+	texture.region = Rect2(Vector2(index % 6, index / 6) * WORLD_REFERENCE_CELL_SIZE, WORLD_REFERENCE_CELL_SIZE)
 	_world_reference_textures[item_id] = texture
 	return texture
 
@@ -86,5 +86,14 @@ static func missing_item_ids(item_ids: Array) -> Array[String]:
 	for value in item_ids:
 		var item_id := str(value)
 		if texture_for(item_id) == null:
+			missing.append(item_id)
+	return missing
+
+
+static func missing_world_reference_item_ids(item_ids: Array) -> Array[String]:
+	var missing: Array[String] = []
+	for value in item_ids:
+		var item_id := str(value)
+		if world_reference_texture_for(item_id) == null:
 			missing.append(item_id)
 	return missing

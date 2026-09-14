@@ -69,10 +69,15 @@ func initialize(database_path: String, ready_feet: Vector3 = SPAWN_FEET, world_s
 	for block_id in range(1, BLOCK_NAMES.size()):
 		var model := VoxelBlockyModelCube.new()
 		model.resource_name = BLOCK_NAMES[block_id]
+		# Every block currently owns one complete face texture, not a shared atlas.
+		# Declaring the 1x1 tile geometry is required so Voxel Tools emits UVs for
+		# the full texture instead of sampling only an atlas-sized corner.
+		model.atlas_size_in_tiles = Vector2i.ONE
 		model.color = BLOCK_COLORS[block_id]
 		var material := StandardMaterial3D.new()
 		material.vertex_color_use_as_albedo = true
 		material.roughness = 1.0
+		material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 		var texture_path := "res://assets/blocks/%s.svg" % BLOCK_NAMES[block_id]
 		if ResourceLoader.exists(texture_path):
 			material.albedo_texture = load(texture_path)

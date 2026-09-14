@@ -91,7 +91,7 @@ Replace the text-heavy inventory and vertical recipe list with an original icon-
 
 **Boundary:** one active P3B raider remains the only combat target. Do not claim player health, armor behavior, waves, army-scale targeting, drops, magic, campaign balance or final art. See [the P3C contract](P3C_PLAYER_DEFENSE_AND_VISUAL_CATALOG.md).
 
-**Candidate result:** T72–T78 and accepted regressions pass from the provenance-matched Windows export. P3D extends this same unpromoted candidate; owner playtest remains required for the sword, siege devices and presentation.
+**Owner-accepted result:** T72–T78 and accepted regressions pass from the provenance-matched Windows export. Tony subsequently exercised the sword/siege catalog and accepted the integrated result on 2026-09-14.
 
 ## P3D — tools and world feedback
 
@@ -99,7 +99,7 @@ Make the immediate craft/build loop readable in first person without expanding c
 
 **Boundary:** no durability, variable mining speed, enchantment, animation rig, general ore detector, branch-recursive tree physics, resource respawn, player health, waves or campaign systems. Timed furnace jobs do not support five-batch queueing. See [the P3D contract](P3D_TOOLS_AND_WORLD_FEEDBACK.md).
 
-**Candidate result:** T79–T83 and the accepted regressions pass from the provenance-matched Windows export. Owner playtest remains required before promotion.
+**Owner-accepted result:** T79–T83 and the accepted regressions pass from the provenance-matched Windows export. Tony exercised held tools/blocks, Wood Axe, iron discovery and placement, then accepted the integrated result on 2026-09-14.
 
 ## P3E — furnace containers and visual identity
 
@@ -107,7 +107,15 @@ Replace the Furnace's invisible inventory reservation with three persistent stat
 
 **Boundary:** no job queue, multiple smelting recipes, automated item transport, general chest UI, final 3D asset production, animation rig or durability. See [the P3E contract](P3E_FURNACE_CONTAINERS_AND_VISUAL_IDENTITY.md).
 
-**Candidate result:** T84–T89 and F2/F3/F5/P3D/P3C affected regressions pass from the provenance-matched Windows export. Completed output is station-owned and explicitly collected; exact cursor/container counts survive restore. Owner ultrawide playtest remains required before promotion.
+**Owner-accepted result:** T84–T89 and F2/F3/F5/P3D/P3C affected regressions pass from the provenance-matched Windows export. Completed output is station-owned and explicitly collected; exact cursor/container counts survive restore. Tony confirmed the improved behavior works and marked it PASS on 2026-09-14.
+
+## P3F — recipe progression order and held visual catalog
+
+Replace temporary high-priority recipe promotion with an explicit basic-to-advanced progression order. Keep hand materials and starter tools first, castle construction in the middle, and iron/siege recipes later. Give every registered carried item a transparent first-person reference matching the inventory catalog, with tools/weapons raised and placeables/materials low. Correct the Voxel Tools cube UV contract so each placed block maps its complete authored face texture. Run T90–T92 plus P3C/P3D/P3E affected regressions in the matching editor-closed export.
+
+**Boundary:** ordering prepares for future recipe discovery but does not invent unlock triggers or persistence. No final 3D models, hand rig, animation set, dedicated ammunition art, PBR material overhaul, new block IDs or save migration.
+
+**Candidate result:** source runtime T90–T92, static validation, 37 Python tests and P3C/P3D/P3E affected gates pass. Matching exported-runtime verification and owner playtest remain required.
 
 ## Card completion discipline
 
