@@ -127,6 +127,18 @@ Add maximum-compatible Shift+Click transfer between player inventory and Furnace
 
 **Candidate result:** provenance-matched exported T93–T98, inspected Furnace/Catapult renders, 38 Python tests and exported P3E/P3F regressions pass. Owner ultrawide playtest remains required.
 
+## P3H — balance catalogue, counted fuel and directional controls
+
+Move current live Furnace, harvesting and defense tuning into a named validated content catalogue. Replace one-Coal-per-ingot with a counted work ratio of one Coal to three smelting operations, persist unused operations per placed Furnace and show the ratio/count rather than a percentage. Split preview rotation into rebindable W clockwise and R counterclockwise actions while retaining Left Shift Interact. Clarify sword cooldown feedback so it is not mistaken for broken equipment. Run T99–T102 plus P3E/P3G affected regressions.
+
+**Boundary:** do not add inert durability/unit/tree values for mechanics that do not exist. Siege ammo, upgrades, articulation, ecology, waves and armies require their own gates. See [the P3H contract](P3H_BALANCE_FUEL_AND_CONTROLS.md) and [future system contract](BALANCE_ECOLOGY_AND_SIEGE_SYSTEMS.md).
+
+**Candidate result:** T99–T102, static validation, 40 Python tests and exported P3E/P3G regressions pass from the provenance-matched Windows export. Owner ultrawide playtest remains required.
+
+## P3I–P3L — staged siege, durability and ecology
+
+Proceed in bounded order: siege Interact/loading/upgrades and dismantle/move; articulated Catapult facing/arm/release/projectile behavior; persistent tool durability plus data-owned harvesting balance; then species-aware gradual leaf decay/drops. Each stage must extend the canonical balance catalogue only with values consumed by its implemented runtime and must preserve save migration/recovery. P4 army/wave simulation remains separate.
+
 ## Card completion discipline
 
 Update relevant contracts/tests, source ledger and `docs/STATUS.md`; record exact commands/results/limitations; commit a coherent increment. Future systems remain backlog items until their gate is active. Do not automatically merge or publish builds.

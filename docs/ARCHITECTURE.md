@@ -41,7 +41,7 @@ Error reasons should be stable symbols such as OUT_OF_BOUNDS, UNLOADED, OCCUPIED
 
 Ordinary block placement accepts any loaded solid voxel on the destination's six orthogonal faces as support, enabling horizontal ledges and overhead attachment. It does not provide free-floating placement or general structural collapse. Entity definitions retain their own explicit support offsets; Foundation workbenches and furnaces still require floor support.
 
-Crafting has two storage models. Hand/Workbench grids are non-consuming one-item recipe patterns; selecting a recipe is optional because a manually arranged valid pattern is recognized. A placed Furnace is instead a persistent container with explicit Raw Input, Fuel and Output stacks plus at most one timed job. Starting the job consumes from the station once, and completion writes to retained Output. Inventory owns the one cursor-held stack used for half/one/spread gestures so save and close paths have one loss-prevention authority.
+Crafting has two storage models. Hand/Workbench grids are non-consuming one-item recipe patterns; selecting a recipe is optional because a manually arranged valid pattern is recognized. A placed Furnace is instead a persistent container with explicit Raw Input, Fuel and Output stacks, residual counted fuel work and at most one timed job. Starting the job consumes from the station once, and completion writes to retained Output. Inventory owns the one cursor-held stack used for half/one/spread gestures so save and close paths have one loss-prevention authority. Current cross-system tuning is resolved through the validated `content.json` balance catalogue; services own behavior and save state while the catalogue owns adjustable prototype values.
 
 ## Scene responsibilities
 

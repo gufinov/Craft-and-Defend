@@ -16,6 +16,8 @@ F5 candidate status: every currently implemented action below except reserved `r
 | interact | Shift | gameplay |
 | inventory | Tab | gameplay |
 | build | B | gameplay |
+| rotate_build_clockwise | W | gameplay |
+| rotate_build_counterclockwise | R | gameplay |
 | pause | Escape | system |
 | hotbar_1 … hotbar_9 | 1 … 9 | gameplay |
 | reload | G | gameplay, reserved until relevant |
@@ -23,7 +25,7 @@ F5 candidate status: every currently implemented action below except reserved `r
 | secondary | MouseRight | gameplay |
 | capture_screenshot | F2 | gameplay |
 
-`Z` implements crouch; prone is deferred. Sprint is hold-to-run initially. `G` is reserved; do not invent a reload mechanic for a pickaxe. Left mouse breaks/dismantles. Right mouse first opens a targeted station and otherwise places the selected item. Shift remains a general future interact action but does not open crafting/processing stations; targeting one explains that right-click is required.
+`Z` implements crouch; prone is deferred. Sprint is hold-to-run initially. `G` is reserved; do not invent a reload mechanic for a pickaxe. Left mouse breaks/dismantles. Right mouse first opens a targeted station and otherwise places the selected item. Shift remains the general Interact action but does not open current crafting/processing stations; targeting one explains that right-click is required. P3H assigns separate W clockwise and R counterclockwise preview rotation actions. W is intentionally a build control, not forward movement; physical E remains forward under the ESDF layout.
 
 Tab toggles inventory only. B toggles the limited hand-build/crafting modal; a workbench or processing-station modal is entered only by right-clicking that world object. Escape closes the active modal before pausing. F2 captures the game viewport to the global `screenshots` folder without pausing gameplay; it can be rebound like every other implemented action and remains separate from Windows Print Screen focus handling. Preserve an Escape recovery/cancel path even if users rebind their preferred pause action. UI navigation may use conventional keys only while the UI owns input; ESDF gameplay input must not leak through it.
 

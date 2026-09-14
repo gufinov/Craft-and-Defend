@@ -95,7 +95,7 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T83 | P3D | Rendered 1280×720 evidence visibly shows the held axe/iron marker and the low held block/world placement ghost; owner ultrawide test decides scale/readability |
 | T84 | P3E | Whole compatible inventory stacks transfer into distinct persistent Furnace Raw Input and Fuel slots without duplication |
 | T85 | P3E | Right-click takes the larger half; right-click deposit and right-drag distribute one per compatible slot with exact counts |
-| T86 | P3E | Furnace consumes one input/fuel, retains exactly one Output across clean restore and moves it only on explicit collection |
+| T86 | P3E | Furnace consumes one input and one counted fuel operation, retains exactly one Output across clean restore and moves it only on explicit collection |
 | T87 | P3E | Furnace modal has three real slots; placed stations and selected key tools use the revised visual identity |
 | T88 | P3E | Manual hand/workbench patterns are recognized without recipe-book selection or search |
 | T89 | P3E | Rendered 1280×720 evidence visibly shows the three-slot Furnace and revised world/held identity |
@@ -108,6 +108,10 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T96 | P3G | Furnace progress advances while its modal is open while world, enemy and player simulation remain paused |
 | T97 | P3G | Placed Catapult renders a distinct four-wheel chassis, axle, frame, throwing arm, basket and projectile without changing footprint/combat identity |
 | T98 | P3G | Rendered evidence shows the auto-load/progress panel and revised placed Catapult |
+| T99 | P3H | Named catalogue values drive the active Furnace, harvesting and defense services |
+| T100 | P3H | One Coal funds exactly three outputs; residual work survives restore and no fourth output is free |
+| T101 | P3H | W rotates clockwise, R counterclockwise and Left Shift remains Interact |
+| T102 | P3H | Rendered evidence shows the counted fuel ratio/stored work and separate W/R Keybind rows |
 
 ## Performance evidence, not invented guarantees
 

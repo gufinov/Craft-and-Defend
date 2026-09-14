@@ -2,6 +2,8 @@
 
 Status: CANDIDATE / OWNER PLAYTEST PENDING
 
+> P3H supersedes this slice's original one-fuel-item-per-output assumption. Auto-load and sequencing now count the validated ratio of one Coal to three operations; the gesture and progress contracts below remain active.
+
 ## Outcome
 
 Make the Furnace understandable and usable for repeated production without removing manual inventory learning, and give the placed Catapult a recognizable world form consistent with its catalog identity.
@@ -19,7 +21,7 @@ Make the Furnace understandable and usable for repeated production without remov
 - Start Processing consumes one recipe batch and creates one persisted timed job.
 - While the Furnace modal is open, only its appliance clock advances. World time, enemies and player simulation remain paused.
 - The modal shows one per-item progress bar with percentage and remaining time. Completion adds exactly one recipe output batch to the retained Output slot.
-- If another complete batch is already loaded and Output has capacity, the Furnace immediately starts the next item and resets the progress bar. It stops on missing input, missing fuel or blocked Output.
+- If another complete batch is already loaded and counted fuel work remains available, the Furnace immediately starts the next item and resets the progress bar. It stops on missing input, missing fuel work or blocked Output.
 - Output remains in the placed Furnace until the player manually transfers it. Save compatibility remains within the existing station slots/jobs schema.
 
 ## Placed siege identity
@@ -33,8 +35,8 @@ Make the Furnace understandable and usable for repeated production without remov
 | Test | Required evidence |
 |---|---|
 | T93 — Shift quick transfer | Maximum legal amount moves both directions without loss or duplication. |
-| T94 — transactional auto-load | A 15 target with 15 Ore/10 Coal loads 15/10; lowering returns excess and conserves totals. |
-| T95 — per-item sequence | Progress reaches 50%, one Output is deposited, and the next loaded item starts at 0%. |
+| T94 — transactional auto-load | At the P3H ratio, a 15 target loads 15 Ore/5 Coal; lowering returns excess and conserves totals. |
+| T95 — per-item sequence | Progress reaches 50%, one Output is deposited, the next loaded item starts at 0%, and only one stored fuel operation is spent. |
 | T96 — live modal | Progress advances while the Furnace panel is open and the rest of the scene tree remains paused. |
 | T97 — Catapult identity | Placed Catapult has four wheels and the complete recognizable prototype assembly. |
 | T98 — presentation | Rendered evidence shows the Furnace controls/progress and revised placed Catapult. |

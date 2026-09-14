@@ -2,6 +2,8 @@
 
 STATUS: PASS — matching Windows export, T93–T98, rendered inspection and affected regressions pass; owner ultrawide playtest pending
 
+> Historical evidence note: this records the original P3G 1:1 loading behavior and remains valid for that commit. P3H supersedes only the fuel ratio with one Coal to three operations; see the current status and P3H evidence for active behavior.
+
 DONE:
 
 - Added maximum-legal-amount Shift+Click transfer in Furnace/inventory surfaces while retaining drag, split and one-item gestures.
