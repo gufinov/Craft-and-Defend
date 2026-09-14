@@ -20,7 +20,7 @@ Advance on evidence, not elapsed time. Estimates are intentionally not presented
 | P3D — tools and world feedback | Atomic five-batch craft shortcut, first-person held items, block ghosts, Wood Axe and discoverable starter iron | T79–T83 plus P3C/P3B/F5 regression and owner playtest | Owner accepted 2026-09-14 |
 | P3E — furnace containers and visual identity | Persistent Furnace input/fuel/output, retained results, familiar stack gestures, manual recipe discovery and closer icon/world identity | T84–T89 plus F2/F3/F5/P3D/P3C regression and owner playtest | Owner accepted 2026-09-14 |
 | P3F — recipe order and held visual catalog | Basic-to-advanced recipe order, transparent first-person art for every carried item, and complete voxel face UVs | T90–T92 plus P3C/P3D/P3E regression and owner playtest | Owner accepted 2026-09-14 |
-| P3G — Furnace usability and placed siege identity | Shift-transfer, reversible auto-load, per-item progress/continuation and recognizable placed Catapult | T93–T98 plus P3E/P3F regression and owner playtest | Source gate PASS; Windows candidate pending |
+| P3G — Furnace usability and placed siege identity | Shift-transfer, reversible auto-load, per-item progress/continuation and recognizable placed Catapult | T93–T98 plus P3E/P3F regression and owner playtest | Candidate PASS; owner playtest pending |
 | P4 — campaign systems | Threat sources, rifts, escalation, wizard final siege | Balance/scaling evidence; scope review | Not started |
 | Later | Automation/templates, more biomes/content, packaging/store | Separate decisions based on tests | Not started |
 

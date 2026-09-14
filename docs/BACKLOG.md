@@ -125,7 +125,7 @@ Add maximum-compatible Shift+Click transfer between player inventory and Furnace
 
 **Boundary:** no transport/chest automation, parallel processing, offline catch-up, recipe unlocking, final 3D production art, siege animation, waves or campaign expansion. See [the P3G contract](P3G_FURNACE_USABILITY_AND_SIEGE_VISUAL.md).
 
-**Current result:** source-runtime T93–T97 and 38 Python tests pass. Matching exported T93–T98, rendered-image inspection and owner ultrawide playtest remain required.
+**Candidate result:** provenance-matched exported T93–T98, inspected Furnace/Catapult renders, 38 Python tests and exported P3E/P3F regressions pass. Owner ultrawide playtest remains required.
 
 ## Card completion discipline
 
