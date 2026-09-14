@@ -49,12 +49,15 @@ Siege devices should be entities with footprints, mount requirements, aim/fire/r
 ### Logistics and stations
 
 - workbench: general 3×3 construction/tool recipes;
-- chest: persistent storage with transfer rules;
+- small storage chest: a compact placeable container with persistent per-instance contents;
+- large storage chest: a deliberately larger placeable container with its own footprint and capacity, not an automatic adjacent-chest merge;
 - furnace/forge: fuel + ore and timed metal output;
 - oven/hearth: fuel + food and timed cooked output;
 - anvil/smithy: equipment creation, repair or upgrade after durability is decided;
 - armory, barracks and supply store only when units and provisioning have real consumers;
 - well and fire/light infrastructure only when their world systems exist.
+
+Both storage chests open their own inventory surface and use the established item gestures: drag/drop, Shift+Click whole-stack transfer, double-click whole-stack transfer where unambiguous, right-click half-pickup or single-item deposit, and right-drag distribution. A chest cannot be dismantled while it contains items unless the entire contents and chest item can be returned atomically without loss. Small/large slot counts, footprints and recipes remain a bounded playtest decision; this plan does not silently copy another game's double-chest behavior or capacities.
 
 ### Player tools, weapons and armor
 
@@ -75,7 +78,7 @@ Potential castle-defense roles include a rune table or focus altar, ward anchors
 3. **P2 navigation spike:** prove one attacker understands the new footprints, openings, stairs, gates and removable supports.
 4. **P3 defense slice:** one warned wave, one stationary mounted defense, ammunition, damage/repair and readable attack paths.
 5. **Equipment slice:** player health/combat contract, equipment slots, one armor progression and a small weapon/tool set.
-6. **Expanded stations/logistics:** chest, forge/anvil and oven only as their dependent systems arrive.
+6. **Expanded stations/logistics:** small and large storage chests first, then forge/anvil and oven only as their dependent systems arrive.
 7. **Magic review:** approve or reject a bounded magic role before implementation.
 
 The accepted king/core, opening preference, material capability, ballista line-of-sight, catapult minimum-range and multi-unit wave direction is maintained in [Defense, targeting and castle-obstacle contract](DEFENSE_TARGETING_CONTRACT.md). Player-built castle pieces are currently navigation obstacles, not yet a unified damageable structure system.

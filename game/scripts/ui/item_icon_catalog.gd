@@ -1,10 +1,12 @@
 class_name ItemIconCatalog
 extends RefCounted
 
-const ATLAS_PATH := "res://assets/ui/item_icon_atlas_p3d.png"
-const WORLD_REFERENCE_PATH := "res://assets/ui/held_item_atlas_p3f.png"
+const ATLAS_PATH := "res://assets/ui/item_icon_atlas_p3h1.png"
+const WORLD_REFERENCE_PATH := "res://assets/ui/held_item_atlas_p3h1.png"
 const CELL_SIZE := Vector2(256, 256)
-const WORLD_REFERENCE_CELL_SIZE := Vector2(256, 256)
+const SAFE_THIRD_ROW_HEIGHT := 224.0
+const SAFE_BOTTOM_ROW_START := 736.0
+const SAFE_BOTTOM_ROW_HEIGHT := 288.0
 const ITEM_CELLS := {
 	"dirt": 0,
 	"stone": 1,
@@ -51,8 +53,19 @@ static func texture_for(item_id: String) -> Texture2D:
 		return null
 	var index := int(ITEM_CELLS[item_id])
 	var texture := AtlasTexture.new()
-	texture.atlas = _atlas
-	texture.region = Rect2(Vector2(index % 6, index / 6) * CELL_SIZE, CELL_SIZE)
+	# The final six silhouettes are deliberately allowed a taller source window so
+	# long weapons and gate towers remain complete. Their transparent atlas keeps
+	# that recovery band from importing a neighboring card background.
+	if index >= 18:
+		if _world_reference == null:
+			_world_reference = load(WORLD_REFERENCE_PATH) as Texture2D
+		if _world_reference == null:
+			return null
+		texture.atlas = _world_reference
+	else:
+		texture.atlas = _atlas
+	texture.region = region_for_index(index)
+	texture.filter_clip = true
 	_textures[item_id] = texture
 	return texture
 
@@ -76,9 +89,20 @@ static func world_reference_texture_for(item_id: String) -> Texture2D:
 	var texture := AtlasTexture.new()
 	texture.atlas = _world_reference
 	var index := int(ITEM_CELLS[item_id])
-	texture.region = Rect2(Vector2(index % 6, index / 6) * WORLD_REFERENCE_CELL_SIZE, WORLD_REFERENCE_CELL_SIZE)
+	texture.region = region_for_index(index)
+	texture.filter_clip = true
 	_world_reference_textures[item_id] = texture
 	return texture
+
+
+static func region_for_index(index: int) -> Rect2:
+	var column := index % 6
+	var row := index / 6
+	if row == 2:
+		return Rect2(Vector2(column * CELL_SIZE.x, CELL_SIZE.y * 2.0), Vector2(CELL_SIZE.x, SAFE_THIRD_ROW_HEIGHT))
+	if row == 3:
+		return Rect2(Vector2(column * CELL_SIZE.x, SAFE_BOTTOM_ROW_START), Vector2(CELL_SIZE.x, SAFE_BOTTOM_ROW_HEIGHT))
+	return Rect2(Vector2(column * CELL_SIZE.x, row * CELL_SIZE.y), CELL_SIZE)
 
 
 static func missing_item_ids(item_ids: Array) -> Array[String]:

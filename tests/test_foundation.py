@@ -198,6 +198,8 @@ class FoundationTests(unittest.TestCase):
         self.assertIn('--p3f-presentation-automation=gate', launcher)
         self.assertIn('--p3f-presentation-automation=visual', launcher)
         self.assertIn('if not exist "%VISUAL_ROOT%\\p3f-held-item-contact-sheet.png"', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3f-workbench-page-1.png"', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3f-workbench-page-2.png"', launcher)
         self.assertIn('P3F_DIAGNOSTIC_NO_OPEN', launcher)
 
     def test_p3g_has_one_click_furnace_usability_and_visual_evidence(self):

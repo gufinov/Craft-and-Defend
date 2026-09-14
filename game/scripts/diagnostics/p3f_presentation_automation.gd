@@ -7,7 +7,10 @@ const EXPECTED_WORKBENCH_ORDER: Array[String] = [
 	"parapet_merlon", "tower_platform", "gate_frame", "wood_barricade",
 	"iron_pick", "iron_sword", "ballista_bolt", "stone_shot", "ballista", "catapult",
 ]
-const VISUAL_ITEMS: Array[String] = ["wood_pick", "stick", "castle_stone", "dirt", "ballista", "catapult"]
+const VISUAL_ITEMS: Array[String] = [
+	"wood_pick", "iron_sword", "wood_axe", "stick",
+	"castle_stone", "gate_frame", "ballista", "catapult",
+]
 
 var app: CraftAndDefendApp
 var failures: Array[String] = []
@@ -67,7 +70,20 @@ func _run_gate() -> void:
 		var model := library.get_model(block_id) as VoxelBlockyModelCube
 		if model == null or model.atlas_size_in_tiles != Vector2i.ONE:
 			block_failures.append(WorldAdapter.BLOCK_NAMES[block_id])
-	_record("T91_HELD_AND_BLOCK_IDENTITY", missing.is_empty() and held_failures.is_empty() and block_failures.is_empty(), "all 26 carried items use transparent catalog cutouts and every voxel cube maps its complete authored face texture", {"items": item_ids.size(), "missing": missing, "held_failures": held_failures, "block_failures": block_failures})
+	var region_failures: Array[String] = []
+	for value in item_ids:
+		var item_id := str(value)
+		var card_texture := ItemIconCatalog.texture_for(item_id) as AtlasTexture
+		var held_texture := ItemIconCatalog.world_reference_texture_for(item_id) as AtlasTexture
+		if card_texture == null or held_texture == null or not card_texture.filter_clip or not held_texture.filter_clip:
+			region_failures.append(item_id)
+	var workbench_region := ItemIconCatalog.region_for_index(12)
+	var gate_region := ItemIconCatalog.region_for_index(18)
+	var regions_isolated := workbench_region == Rect2(0.0, 512.0, 256.0, 224.0) \
+		and gate_region == Rect2(0.0, 736.0, 256.0, 288.0)
+	app.session._held_item_view.present("iron_sword")
+	var held_anchor_ok := app.session._held_item_view.model_root.position.y <= -0.39
+	_record("T91_HELD_AND_BLOCK_IDENTITY", missing.is_empty() and held_failures.is_empty() and block_failures.is_empty() and region_failures.is_empty() and regions_isolated and held_anchor_ok, "all carried items use clipped, row-isolated catalog regions; long bottom-row silhouettes remain complete; raised held tools stay below the viewport edge; and voxel cubes retain complete face textures", {"items": item_ids.size(), "missing": missing, "held_failures": held_failures, "block_failures": block_failures, "region_failures": region_failures, "workbench_region": workbench_region, "gate_region": gate_region, "held_y": app.session._held_item_view.model_root.position.y})
 
 
 func _run_visual() -> void:
@@ -94,12 +110,26 @@ func _run_visual() -> void:
 		var frame := texture.get_image() if texture != null else null
 		if frame == null:
 			continue
-		frame.resize(640, 360, Image.INTERPOLATE_LANCZOS)
-		contact.blit_rect(frame, Rect2i(Vector2i.ZERO, frame.get_size()), Vector2i((index % 3) * 640, (index / 3) * 360))
+		frame.resize(480, 360, Image.INTERPOLATE_LANCZOS)
+		contact.blit_rect(frame, Rect2i(Vector2i.ZERO, frame.get_size()), Vector2i((index % 4) * 480, (index / 4) * 360))
 		captured += 1
 	var path := app.data_root.path_join("p3f-held-item-contact-sheet.png")
 	var error := contact.save_png(path)
-	_record("T92_PRESENTATION", placed_castle_stone and captured == VISUAL_ITEMS.size() and error == OK, "one rendered contact sheet shows raised Wood Pick plus low held Sticks, textured placed/held blocks, Ballista and Catapult without opaque inventory-card backgrounds", {"path": path, "items": VISUAL_ITEMS, "placed_castle_stone": placed_castle_stone, "captured": captured, "size": contact.get_size(), "error": error})
+	_record("T92_PRESENTATION", placed_castle_stone and captured == VISUAL_ITEMS.size() and error == OK, "one rendered contact sheet shows complete Pick, Sword and Axe silhouettes plus representative low-held building and siege items without opaque inventory-card backgrounds", {"path": path, "items": VISUAL_ITEMS, "placed_castle_stone": placed_castle_stone, "captured": captured, "size": contact.get_size(), "error": error})
+
+	app.session.inventory.try_transaction({}, {"workbench": 1, "planks": 64, "stone": 64, "stick": 64, "iron_ingot": 16})
+	var placed := app.session.workstations.try_place("workbench", Vector3i(5, 0, 43), app.session.world.query_cell, AABB(), 0)
+	var workbench_id := str(placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	app._show_crafting(workbench_id, "workbench")
+	await _settle_frames(8)
+	var page_one_path := app.data_root.path_join("p3f-workbench-page-1.png")
+	var page_one_ok := await _save_viewport(page_one_path)
+	app._crafting_recipe_page = 1
+	app._refresh_crafting_panel()
+	await _settle_frames(8)
+	var page_two_path := app.data_root.path_join("p3f-workbench-page-2.png")
+	var page_two_ok := await _save_viewport(page_two_path)
+	_record("T103_ATLAS_CARD_ALIGNMENT", placed.get("ok", false) and page_one_ok and page_two_ok and app.crafting_recipe_page_label.text == "Page 2 / 2", "both rendered Workbench pages keep each icon entirely inside its own recipe card with complete bottom-row tools and no neighboring fragments", {"page_one_path": page_one_path, "page_two_path": page_two_path, "page": app.crafting_recipe_page_label.text, "size": get_viewport().get_visible_rect().size})
 
 
 func _move_to_hotbar(item_id: String, target: int) -> void:
@@ -125,6 +155,12 @@ func _settle_frames(count: int) -> void:
 		await get_tree().process_frame
 	if DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
+
+
+func _save_viewport(path: String) -> bool:
+	var texture := get_viewport().get_texture()
+	var image := texture.get_image() if texture != null else null
+	return image != null and image.get_size() == Vector2i(1280, 720) and image.save_png(path) == OK
 
 
 func _record(test_id: String, ok: bool, expected: String, evidence: Variant) -> void:

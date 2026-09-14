@@ -62,11 +62,11 @@ func play_use() -> void:
 
 
 func _build_reference_item(item_id: String, raised: bool) -> void:
-	_base_position = Vector3(0.43, -0.29, -0.78) if raised else Vector3(0.46, -0.49, -0.90)
+	_base_position = Vector3(0.43, -0.40, -0.78) if raised else Vector3(0.46, -0.54, -0.90)
 	_base_rotation = Vector3(0.05, 0.0, -0.16) if raised else Vector3(-0.08, 0.0, 0.02)
 	var sprite := Sprite3D.new()
 	sprite.texture = ItemIconCatalog.world_reference_texture_for(item_id)
-	sprite.pixel_size = 0.00225 if raised else 0.00180
+	sprite.pixel_size = 0.00205 if raised else 0.00170
 	sprite.no_depth_test = true
 	sprite.shaded = false
 	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD

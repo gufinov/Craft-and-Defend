@@ -22,7 +22,7 @@ Advance on evidence, not elapsed time. Estimates are intentionally not presented
 | P3F — recipe order and held visual catalog | Basic-to-advanced recipe order, transparent first-person art for every carried item, and complete voxel face UVs | T90–T92 plus P3C/P3D/P3E regression and owner playtest | Owner accepted 2026-09-14 |
 | P3G — Furnace usability and placed siege identity | Shift-transfer, reversible auto-load, per-item progress/continuation and recognizable placed Catapult | T93–T98 plus P3E/P3F regression and owner playtest | Candidate PASS; owner playtest pending |
 | P3H — balance, fuel and controls | Named live balance catalogue, counted 1:3 Furnace fuel, W/R directional preview rotation and clearer sword recovery | T99–T102 plus P3E/P3G regression and owner playtest | Candidate PASS; owner playtest pending |
-| P3I–P3L — siege servicing, artillery, durability and ecology | Interactable ammo/upgrades; articulated projectiles; tunable wear/harvesting; species-aware tree decay | Separate bounded gates and owner playtests | Planned; not started |
+| P3I–P3M — storage, siege servicing, artillery, durability and ecology | Small/large persistent chests; interactable ammo/upgrades; articulated projectiles; tunable wear/harvesting; species-aware tree decay | Separate bounded gates and owner playtests | Planned; not started |
 | P4 — campaign systems | Threat sources, rifts, escalation, wizard final siege | Balance/scaling evidence; scope review | Not started |
 | Later | Automation/templates, more biomes/content, packaging/store | Separate decisions based on tests | Not started |
 

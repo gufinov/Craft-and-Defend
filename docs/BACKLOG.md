@@ -135,9 +135,9 @@ Move current live Furnace, harvesting and defense tuning into a named validated 
 
 **Candidate result:** T99–T102, static validation, 40 Python tests and exported P3E/P3G regressions pass from the provenance-matched Windows export. Owner ultrawide playtest remains required.
 
-## P3I–P3L — staged siege, durability and ecology
+## P3I–P3M — staged storage, siege, durability and ecology
 
-Proceed in bounded order: siege Interact/loading/upgrades and dismantle/move; articulated Catapult facing/arm/release/projectile behavior; persistent tool durability plus data-owned harvesting balance; then species-aware gradual leaf decay/drops. Each stage must extend the canonical balance catalogue only with values consumed by its implemented runtime and must preserve save migration/recovery. P4 army/wave simulation remains separate.
+Proceed in bounded order: small/large persistent storage chests with lossless container gestures; siege Interact/loading/upgrades and dismantle/move; articulated Catapult facing/arm/release/projectile behavior; persistent tool durability plus data-owned harvesting balance; then species-aware gradual leaf decay/drops. Chest capacities, footprints and recipes require their own bounded UI/placement playtest rather than an implicit clone of another voxel game's double-chest rule. Each later stage must extend the canonical balance catalogue only with values consumed by its implemented runtime and must preserve save migration/recovery. P4 army/wave simulation remains separate.
 
 ## Card completion discipline
 

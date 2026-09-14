@@ -52,8 +52,9 @@ Archers placed along walls, multiple allied defenders and army management are P4
 
 ## Ordered gates
 
-1. P3I — siege servicing: Shift interaction, persistent ammo slots, legal loading, upgrades scaffold and safe dismantle/move.
-2. P3J — articulated Catapult shot: facing/traverse limit, arm release, visible ballistic projectile, minimum range and deterministic impact.
-3. P3K — durability and harvest balance: tool condition/repair plus data-owned resource strike requirements.
-4. P3L — tree ecology: root loss, gradual leaf decay and species drops.
-5. P4 — wave/army systems: far-field entries, multiple roles, player/core aggro, predictive targeting and performance evidence.
+1. P3I — storage containers: small and large placeable chests, persistent contents, lossless transfers and safe dismantle.
+2. P3J — siege servicing: Shift interaction, persistent ammo slots, legal loading, upgrades scaffold and safe dismantle/move.
+3. P3K — articulated Catapult shot: facing/traverse limit, arm release, visible ballistic projectile, minimum range and deterministic impact.
+4. P3L — durability and harvest balance: tool condition/repair plus data-owned resource strike requirements.
+5. P3M — tree ecology: root loss, gradual leaf decay and species drops.
+6. P4 — wave/army systems: far-field entries, multiple roles, player/core aggro, predictive targeting and performance evidence.
