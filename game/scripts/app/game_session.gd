@@ -533,6 +533,10 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_build_workbench_visual(body)
 	elif entity_id == "furnace":
 		_build_furnace_visual(body)
+	elif entity_id == "ballista":
+		_build_ballista_visual(body)
+	elif entity_id == "catapult":
+		_build_catapult_visual(body)
 	else:
 		_add_visual_parts(body, visual.get("parts", []), material, true)
 	add_child(body)
@@ -599,6 +603,50 @@ func _build_furnace_visual(parent: Node3D) -> void:
 	_add_mesh_box(parent, Vector3(0.94, 0.08, 0.94), Vector3(0.0, 0.34, 0.0), stone)
 
 
+func _build_ballista_visual(parent: Node3D) -> void:
+	_add_collision_box(parent, Vector3(1.90, 1.10, 1.90), Vector3(0.5, 0.02, 0.5))
+	var wood := _visual_material(Color("a96532"), "res://assets/blocks/planks.svg")
+	var dark_wood := _visual_material(Color("5b321e"), "res://assets/blocks/log.svg")
+	var iron := _visual_material(Color("aeb7bd"))
+	_add_mesh_box(parent, Vector3(1.72, 0.18, 1.16), Vector3(0.5, -0.28, 0.52), dark_wood)
+	_add_mesh_box(parent, Vector3(0.22, 0.62, 0.22), Vector3(0.5, 0.02, 0.52), iron)
+	_add_mesh_box(parent, Vector3(0.34, 0.14, 1.68), Vector3(0.5, 0.36, 0.28), wood)
+	var bow := Node3D.new()
+	bow.name = "BallistaBow"
+	bow.position = Vector3(0.5, 0.42, -0.20)
+	parent.add_child(bow)
+	var left_arm := _add_mesh_box(bow, Vector3(0.98, 0.13, 0.17), Vector3(-0.42, 0.0, 0.08), wood)
+	left_arm.rotation.y = -0.18
+	var right_arm := _add_mesh_box(bow, Vector3(0.98, 0.13, 0.17), Vector3(0.42, 0.0, 0.08), wood)
+	right_arm.rotation.y = 0.18
+	_add_mesh_box(parent, Vector3(0.07, 0.07, 1.72), Vector3(0.5, 0.48, -0.18), iron)
+	_add_mesh_box(parent, Vector3(0.28, 0.05, 0.07), Vector3(0.5, 0.48, -1.02), iron)
+
+
+func _build_catapult_visual(parent: Node3D) -> void:
+	_add_collision_box(parent, Vector3(1.90, 1.55, 1.90), Vector3(0.5, 0.22, 0.5))
+	var wood := _visual_material(Color("9b5f30"), "res://assets/blocks/planks.svg")
+	var dark_wood := _visual_material(Color("56301d"), "res://assets/blocks/log.svg")
+	var iron := _visual_material(Color("737d84"))
+	var stone := _visual_material(Color("8f969d"), "res://assets/blocks/stone.svg")
+	_add_mesh_box(parent, Vector3(1.74, 0.20, 1.26), Vector3(0.5, -0.28, 0.52), dark_wood)
+	_add_mesh_box(parent, Vector3(1.56, 0.12, 0.18), Vector3(0.5, -0.05, 0.12), wood)
+	_add_mesh_box(parent, Vector3(1.56, 0.12, 0.18), Vector3(0.5, -0.05, 0.92), wood)
+	var wheel_index := 0
+	for x in [-0.18, 1.18]:
+		for z in [0.08, 0.96]:
+			_add_mesh_cylinder(parent, 0.25, 0.16, Vector3(x, -0.30, z), Vector3(0.0, 0.0, PI / 2.0), dark_wood, "CatapultWheel_%d" % wheel_index)
+			wheel_index += 1
+	for x in [0.05, 0.95]:
+		var upright := _add_mesh_box(parent, Vector3(0.16, 1.10, 0.16), Vector3(x, 0.25, 0.52), wood)
+		upright.rotation.z = -0.20 if x < 0.5 else 0.20
+	_add_mesh_cylinder(parent, 0.10, 1.24, Vector3(0.5, 0.46, 0.52), Vector3(0.0, 0.0, PI / 2.0), iron, "CatapultAxle")
+	var arm := _add_mesh_box(parent, Vector3(0.18, 0.18, 1.86), Vector3(0.5, 0.78, 0.34), wood)
+	arm.rotation.x = -0.52
+	_add_mesh_box(parent, Vector3(0.58, 0.16, 0.52), Vector3(0.5, 1.25, 1.05), dark_wood)
+	_add_mesh_cylinder(parent, 0.20, 0.34, Vector3(0.5, 1.38, 1.05), Vector3.ZERO, stone, "CatapultStone")
+
+
 func _add_collision_box(parent: Node3D, size: Vector3, offset: Vector3) -> void:
 	var collision := CollisionShape3D.new()
 	var box := BoxShape3D.new()
@@ -614,6 +662,23 @@ func _add_mesh_box(parent: Node3D, size: Vector3, offset: Vector3, material: Mat
 	mesh.size = size
 	mesh_instance.mesh = mesh
 	mesh_instance.position = offset
+	mesh_instance.material_override = material
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	parent.add_child(mesh_instance)
+	return mesh_instance
+
+
+func _add_mesh_cylinder(parent: Node3D, radius: float, height: float, offset: Vector3, rotation: Vector3, material: Material, node_name: String) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.name = node_name
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = radius
+	mesh.bottom_radius = radius
+	mesh.height = height
+	mesh.radial_segments = 12
+	mesh_instance.mesh = mesh
+	mesh_instance.position = offset
+	mesh_instance.rotation = rotation
 	mesh_instance.material_override = material
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	parent.add_child(mesh_instance)

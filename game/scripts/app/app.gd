@@ -82,6 +82,11 @@ var crafting_grid: GridContainer
 var crafting_grid_slots: Array[CraftingItemSlot] = []
 var crafting_grid_help: Label
 var crafting_output_label: Label
+var furnace_controls: VBoxContainer
+var furnace_auto_load_label: Label
+var furnace_auto_load_slider: HSlider
+var furnace_progress_bar: ProgressBar
+var furnace_progress_label: Label
 var crafting_message: Label
 var craft_selected_button: Button
 var crafting_clear_button: Button
@@ -97,6 +102,7 @@ var _crafting_recipe_page := 0
 var _inventory_move_source := -1
 var _inventory_filter := "all"
 var _right_drag_visited: Dictionary = {}
+var _furnace_slider_refreshing := false
 var sensitivity_slider: HSlider
 var sensitivity_value_label: Label
 var invert_check: CheckButton
@@ -216,10 +222,21 @@ func _ready() -> void:
 		var p3f_automation := P3FPresentationAutomation.new()
 		add_child(p3f_automation)
 		p3f_automation.call_deferred("run", self, p3f_mode)
+	var p3g_mode := _argument_value("--p3g-furnace-usability-automation=")
+	if not p3g_mode.is_empty():
+		var p3g_automation := P3GFurnaceUsabilityAutomation.new()
+		add_child(p3g_automation)
+		p3g_automation.call_deferred("run", self, p3g_mode)
 
 
 func _process(delta: float) -> void:
 	_update_cursor_stack_visual()
+	if state == AppState.CRAFTING and _crafting_station_type == "furnace" and session != null and session.workstations != null:
+		var completed := session.workstations.advance(delta, false)
+		if completed.is_empty():
+			_refresh_furnace_live_status()
+		else:
+			_refresh_crafting_panel()
 	if not display_confirm_panel.visible:
 		return
 	_display_confirm_remaining = maxf(0.0, _display_confirm_remaining - delta)
@@ -835,6 +852,38 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	crafting_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	crafting_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	grid_column.add_child(crafting_grid)
+	furnace_controls = VBoxContainer.new()
+	furnace_controls.add_theme_constant_override("separation", 4)
+	grid_column.add_child(furnace_controls)
+	furnace_auto_load_label = Label.new()
+	furnace_auto_load_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	furnace_auto_load_label.add_theme_color_override("font_color", Color("9fd8e8"))
+	furnace_controls.add_child(furnace_auto_load_label)
+	furnace_auto_load_slider = HSlider.new()
+	furnace_auto_load_slider.min_value = 0.0
+	furnace_auto_load_slider.max_value = 64.0
+	furnace_auto_load_slider.step = 1.0
+	furnace_auto_load_slider.tooltip_text = "Set how many recipe batches to load. Limited ingredients load as far as available."
+	furnace_auto_load_slider.value_changed.connect(_on_furnace_auto_load_changed)
+	furnace_controls.add_child(furnace_auto_load_slider)
+	var auto_load_help := Label.new()
+	auto_load_help.text = "Auto-loads input + fuel toward the target. Drag and Shift+Click remain available."
+	auto_load_help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	auto_load_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	auto_load_help.add_theme_font_size_override("font_size", 11)
+	auto_load_help.add_theme_color_override("font_color", Color("8fa5af"))
+	furnace_controls.add_child(auto_load_help)
+	furnace_progress_bar = ProgressBar.new()
+	furnace_progress_bar.min_value = 0.0
+	furnace_progress_bar.max_value = 100.0
+	furnace_progress_bar.show_percentage = false
+	furnace_progress_bar.custom_minimum_size.y = 16
+	furnace_controls.add_child(furnace_progress_bar)
+	furnace_progress_label = Label.new()
+	furnace_progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	furnace_progress_label.add_theme_font_size_override("font_size", 12)
+	furnace_progress_label.add_theme_color_override("font_color", Color("ffd488"))
+	furnace_controls.add_child(furnace_progress_label)
 	crafting_output_label = Label.new()
 	crafting_output_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	crafting_output_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1209,8 +1258,13 @@ func _on_inventory_item_dropped(source_index: int, target_index: int) -> void:
 	_refresh_inventory_panel()
 
 
-func _on_inventory_stack_gesture(_source_kind: String, source_index: int, mouse_button: int, double_click: bool, dragging: bool) -> void:
+func _on_inventory_stack_gesture(_source_kind: String, source_index: int, mouse_button: int, double_click: bool, dragging: bool, shift_pressed: bool) -> void:
 	if session == null or state != AppState.INVENTORY:
+		return
+	if shift_pressed and mouse_button == MOUSE_BUTTON_LEFT and not dragging and str(session.inventory.cursor_stack.get("item_id", "")).is_empty():
+		var moved := session.inventory.quick_move_between_sections(source_index)
+		inventory_message.text = "Moved %d item%s between Carried Inventory and Hotbar." % [int(moved.get("count", 0)), "s" if int(moved.get("count", 0)) != 1 else ""] if moved.get("ok", false) else _stack_reason_text(str(moved.get("reason", "MOVE_FAILED")))
+		_refresh_inventory_panel()
 		return
 	_handle_inventory_cursor_gesture(source_index, mouse_button, double_click, dragging, inventory_message)
 
@@ -1362,8 +1416,9 @@ func _refresh_crafting_panel() -> void:
 		grid_size = 3
 		grid_capacity = 3
 		crafting_title_label.text = "FURNACE"
-		crafting_context_label.text = "INPUT + FUEL → RETAINED OUTPUT  ·  DOUBLE-CLICK MOVES A STACK  ·  RIGHT-CLICK SPLITS"
+		crafting_context_label.text = "INPUT + FUEL → RETAINED OUTPUT  ·  SHIFT+CLICK MOVES ALL  ·  RIGHT-CLICK SPLITS"
 		crafting_grid_help.text = "Real Furnace storage — input, fuel and finished output persist with this placed Furnace"
+	furnace_controls.visible = _crafting_station_type == "furnace"
 	_ensure_crafting_grid_capacity(grid_capacity)
 	crafting_grid.columns = grid_size
 	for child in crafting_grid.get_children():
@@ -1409,7 +1464,7 @@ func _refresh_crafting_panel() -> void:
 			item_id = str(furnace_stack.get("item_id", ""))
 			item_count = int(furnace_stack.get("count", 0))
 			empty_label = ["Raw Input", "Fuel", "Output"][index]
-			cell.tooltip_text = "%s · double-click transfers all; right-click picks half or deposits one" % empty_label
+			cell.tooltip_text = "%s · Shift+Click transfers all; right-click picks half or deposits one" % empty_label
 			cell.configure_source("furnace", index, item_id)
 			cell.configure_target("furnace", index)
 		else:
@@ -1439,6 +1494,8 @@ func _refresh_crafting_panel() -> void:
 		else:
 			crafting_output_label.text = "No matching recipe\nArrange the pattern manually or choose from the recipe book"
 		craft_selected_button.disabled = true
+		if _crafting_station_type == "furnace":
+			_refresh_furnace_live_status()
 		return
 	var selected_status := session.workstations.check_furnace_recipe(_crafting_station_id, _selected_recipe_id) if _crafting_station_type == "furnace" else _recipe_status(selected_recipe)
 	var outputs: PackedStringArray = PackedStringArray()
@@ -1446,6 +1503,50 @@ func _refresh_crafting_panel() -> void:
 		outputs.append("%d %s" % [int(selected_recipe.outputs[item_id]), session.registry.display_name(item_id)])
 	crafting_output_label.text = "OUTPUT  →  %s\n%s%s" % [" + ".join(outputs), "READY" if selected_status.get("ok", false) else _craft_reason_text(str(selected_status.get("reason", "UNAVAILABLE")), str(selected_status.get("item_id", ""))), " · remains in Furnace until collected" if _crafting_station_type == "furnace" else ""]
 	craft_selected_button.disabled = not selected_status.get("ok", false)
+	if _crafting_station_type == "furnace":
+		_refresh_furnace_live_status()
+
+
+func _refresh_furnace_live_status() -> void:
+	if session == null or furnace_controls == null or _crafting_station_type != "furnace" or _crafting_station_id.is_empty():
+		return
+	var job := session.workstations.furnace_job_status(_crafting_station_id)
+	if bool(job.get("active", false)):
+		_selected_recipe_id = str(job.get("recipe_id", _selected_recipe_id))
+	var autoload := session.workstations.furnace_autoload_status(_crafting_station_id, _selected_recipe_id)
+	var auto_details: Dictionary = autoload.get("details", {})
+	var auto_limit := int(auto_details.get("limit", 0)) if autoload.get("ok", false) else 0
+	var auto_current := int(auto_details.get("current", 0)) if autoload.get("ok", false) else 0
+	_furnace_slider_refreshing = true
+	furnace_auto_load_slider.max_value = float(maxi(1, auto_limit))
+	furnace_auto_load_slider.set_value_no_signal(float(clampi(auto_current, 0, auto_limit)))
+	furnace_auto_load_slider.editable = autoload.get("ok", false) and auto_limit > 0
+	_furnace_slider_refreshing = false
+	furnace_auto_load_label.text = "AUTO-LOAD TARGET: %d  ·  AVAILABLE UP TO %d" % [auto_current, auto_limit] if autoload.get("ok", false) else "AUTO-LOAD: CHOOSE OR LOAD A RECIPE"
+	var progress := clampf(float(job.get("progress", 0.0)), 0.0, 1.0)
+	furnace_progress_bar.value = progress * 100.0
+	if bool(job.get("active", false)):
+		var recipe := session.registry.recipe(str(job.get("recipe_id", "")))
+		var output_name := "Item"
+		if not recipe.is_empty() and not recipe.get("outputs", {}).is_empty():
+			output_name = session.registry.display_name(str(recipe.outputs.keys()[0]))
+		furnace_progress_label.text = "%s  ·  %d%%  ·  %.1fs remaining" % [output_name, roundi(progress * 100.0), float(job.get("remaining_seconds", 0.0))]
+		var output_stack: Dictionary = session.workstations.furnace_slots(_crafting_station_id).get("output", {"item_id": "", "count": 0})
+		var retained_text := "Empty" if str(output_stack.get("item_id", "")).is_empty() else "%s ×%d — Shift+Click to collect" % [session.registry.display_name(str(output_stack.item_id)), int(output_stack.count)]
+		crafting_output_label.text = "OUTPUT: %s\nPROCESSING %s — %d%%" % [retained_text, output_name, roundi(progress * 100.0)]
+		craft_selected_button.text = "Processing…"
+		craft_selected_button.disabled = true
+	else:
+		furnace_progress_label.text = "READY FOR THE NEXT ITEM" if not _selected_recipe_id.is_empty() else "LOAD OR CHOOSE A RECIPE"
+		craft_selected_button.text = "Start Processing"
+
+
+func _on_furnace_auto_load_changed(value: float) -> void:
+	if _furnace_slider_refreshing or session == null or state != AppState.CRAFTING or _crafting_station_type != "furnace" or _selected_recipe_id.is_empty():
+		return
+	var result := session.workstations.try_set_furnace_autoload_target(_crafting_station_id, _selected_recipe_id, roundi(value))
+	crafting_message.text = "Furnace auto-load target set to %d." % int(result.get("details", {}).get("requested", roundi(value))) if result.get("ok", false) else _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
+	_refresh_crafting_panel()
 
 
 func _select_crafting_recipe(recipe_id: String) -> void:
@@ -1593,7 +1694,7 @@ func _on_crafting_item_dropped(target_kind: String, target_index: int, payload: 
 			_refresh_crafting_panel()
 
 
-func _on_crafting_stack_gesture(source_kind: String, source_index: int, mouse_button: int, double_click: bool, dragging: bool) -> void:
+func _on_crafting_stack_gesture(source_kind: String, source_index: int, mouse_button: int, double_click: bool, dragging: bool, shift_pressed: bool) -> void:
 	if session == null or state != AppState.CRAFTING:
 		return
 	if _crafting_station_type != "furnace":
@@ -1619,14 +1720,14 @@ func _on_crafting_stack_gesture(source_kind: String, source_index: int, mouse_bu
 		return
 	var result: Dictionary
 	if source_kind == "inventory":
-		if double_click and not cursor_has_item:
+		if (shift_pressed or double_click) and not cursor_has_item:
 			result = session.transfer_inventory_stack_to_furnace(_crafting_station_id, source_index)
 		else:
 			_handle_inventory_cursor_gesture(source_index, mouse_button, double_click, false, crafting_message)
 			return
 	elif source_kind == "furnace" and source_index in [0, 1, 2]:
 		var slot_name: String = ["input", "fuel", "output"][source_index]
-		if double_click and not cursor_has_item:
+		if (shift_pressed or double_click) and not cursor_has_item:
 			result = session.collect_furnace_stack(_crafting_station_id, slot_name)
 		elif cursor_has_item:
 			result = session.workstations.cursor_deposit_furnace_stack(_crafting_station_id, slot_name, mouse_button == MOUSE_BUTTON_RIGHT)
@@ -1696,6 +1797,10 @@ func _recognize_furnace_recipe() -> void:
 	if _crafting_station_type != "furnace" or session == null:
 		return
 	_selected_recipe_id = ""
+	var job := session.workstations.furnace_job_status(_crafting_station_id)
+	if bool(job.get("active", false)):
+		_selected_recipe_id = str(job.get("recipe_id", ""))
+		return
 	for recipe in session.recipes_for("furnace"):
 		if session.workstations.check_furnace_recipe(_crafting_station_id, str(recipe.id)).get("ok", false):
 			_selected_recipe_id = str(recipe.id)

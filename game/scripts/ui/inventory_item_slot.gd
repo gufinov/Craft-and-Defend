@@ -2,7 +2,7 @@ class_name InventoryItemSlot
 extends Button
 
 signal item_dropped(source_index: int, target_index: int)
-signal stack_gesture(source_kind: String, source_index: int, mouse_button: int, double_click: bool, dragging: bool)
+signal stack_gesture(source_kind: String, source_index: int, mouse_button: int, double_click: bool, dragging: bool, shift_pressed: bool)
 
 var slot_index := -1
 var item_id := ""
@@ -113,8 +113,8 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_RIGHT or (event.button_index == MOUSE_BUTTON_LEFT and (event.double_click or cursor_active)):
-			stack_gesture.emit("inventory", slot_index, int(event.button_index), bool(event.double_click), false)
+		if event.button_index == MOUSE_BUTTON_RIGHT or (event.button_index == MOUSE_BUTTON_LEFT and (event.double_click or cursor_active or event.shift_pressed)):
+			stack_gesture.emit("inventory", slot_index, int(event.button_index), bool(event.double_click), false, bool(event.shift_pressed))
 			accept_event()
 	elif event is InputEventMouseMotion and bool(event.button_mask & MOUSE_BUTTON_MASK_RIGHT):
-		stack_gesture.emit("inventory", slot_index, MOUSE_BUTTON_RIGHT, false, true)
+		stack_gesture.emit("inventory", slot_index, MOUSE_BUTTON_RIGHT, false, true, bool(event.shift_pressed))

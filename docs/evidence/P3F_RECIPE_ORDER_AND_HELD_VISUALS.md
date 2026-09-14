@@ -1,6 +1,6 @@
 # Evidence — P3F recipe order and held visual catalog — 2026-09-14
 
-STATUS: PASS — matching Windows export and affected automated runtime/render/regression gates pass; owner ultrawide playtest pending
+STATUS: PASS — matching Windows export and affected automated runtime/render/regression gates pass; owner accepted 2026-09-14
 
 DONE:
 
@@ -37,7 +37,7 @@ LIMITATIONS/FAILURES:
 
 NEXT:
 
-Tony should use the normal playable export at 3440×1440, inspect the first and later Workbench pages, equip representative tools/materials/blocks/stations/siege pieces, and place Castle Stone beside other blocks. Correct any owner-reported issue before promotion. Recipe discovery needs its own accepted trigger and persistence contract before implementation.
+Tony accepted the recipe progression and revised carried/placed identities after ultrawide playtesting. P3G now owns the reported Furnace usability and placed-Catapult presentation follow-up. Recipe discovery still needs its own accepted trigger and persistence contract before implementation.
 
 GIT/REPRODUCIBILITY:
 

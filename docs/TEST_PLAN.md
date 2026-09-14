@@ -102,6 +102,12 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T90 | P3F | Workbench recipes use an exact stable progression order from hand fundamentals through tools, castle construction, iron equipment and siege recipes |
 | T91 | P3F | All 26 registered items resolve transparent held references; all ten non-air voxel cubes declare complete 1×1 texture geometry |
 | T92 | P3F | Rendered contact sheet shows representative raised/low held items plus textured placed Castle Stone without opaque inventory-card backgrounds |
+| T93 | P3G | Shift+Click moves the maximum compatible amount from inventory to Furnace and back without loss or duplication |
+| T94 | P3G | Auto-load target independently fills scarce/available input and fuel, lowers transactionally and conserves exact totals |
+| T95 | P3G | Per-item progress reaches a measurable midpoint, deposits one retained output and resets when the next loaded batch begins |
+| T96 | P3G | Furnace progress advances while its modal is open while world, enemy and player simulation remain paused |
+| T97 | P3G | Placed Catapult renders a distinct four-wheel chassis, axle, frame, throwing arm, basket and projectile without changing footprint/combat identity |
+| T98 | P3G | Rendered evidence shows the auto-load/progress panel and revised placed Catapult |
 
 ## Performance evidence, not invented guarantees
 

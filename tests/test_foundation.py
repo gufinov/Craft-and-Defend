@@ -196,6 +196,16 @@ class FoundationTests(unittest.TestCase):
         self.assertIn('if not exist "%VISUAL_ROOT%\\p3f-held-item-contact-sheet.png"', launcher)
         self.assertIn('P3F_DIAGNOSTIC_NO_OPEN', launcher)
 
+    def test_p3g_has_one_click_furnace_usability_and_visual_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        launcher = (root / 'TEST_P3G_FURNACE_USABILITY.cmd').read_text(encoding='utf-8')
+        self.assertIn('start_game.ps1" -PrepareOnly', launcher)
+        self.assertIn('--p3g-furnace-usability-automation=gate', launcher)
+        self.assertIn('--p3g-furnace-usability-automation=visual', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3g-furnace-autoload-progress.png"', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3g-catapult-world-model.png"', launcher)
+        self.assertIn('P3G_DIAGNOSTIC_NO_OPEN', launcher)
+
     def test_invalid_specialized_tool_kind_is_rejected(self):
         axe = next(item for item in self.bundle['content']['items'] if item['id'] == 'wood_axe')
         axe['tool_kind'] = 'chainsaw'

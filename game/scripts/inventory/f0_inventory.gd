@@ -62,6 +62,46 @@ func swap_slots(first: int, second: int) -> Dictionary:
 	return {"ok": true, "reason": "OK", "revision": revision}
 
 
+func quick_move_between_sections(source_index: int) -> Dictionary:
+	if source_index < 0 or source_index >= SLOT_COUNT:
+		return {"ok": false, "reason": "INVALID_SLOT"}
+	var source: Dictionary = slots[source_index]
+	var item_id := str(source.get("item_id", ""))
+	var remaining := int(source.get("count", 0))
+	if item_id.is_empty() or remaining <= 0:
+		return {"ok": false, "reason": "EMPTY_SLOT"}
+	var first_target := HOTBAR_COUNT if source_index < HOTBAR_COUNT else 0
+	var target_end := SLOT_COUNT if source_index < HOTBAR_COUNT else HOTBAR_COUNT
+	var candidate: Array[Dictionary] = slots.duplicate(true)
+	var maximum := registry.max_stack(item_id)
+	for target_index in range(first_target, target_end):
+		if target_index == source_index or str(candidate[target_index].get("item_id", "")) != item_id:
+			continue
+		var room := maximum - int(candidate[target_index].get("count", 0))
+		var moved := mini(remaining, maxi(0, room))
+		if moved > 0:
+			candidate[target_index]["count"] = int(candidate[target_index].get("count", 0)) + moved
+			remaining -= moved
+		if remaining <= 0:
+			break
+	for target_index in range(first_target, target_end):
+		if remaining <= 0:
+			break
+		if not str(candidate[target_index].get("item_id", "")).is_empty():
+			continue
+		var moved := mini(remaining, maximum)
+		candidate[target_index] = {"item_id": item_id, "count": moved}
+		remaining -= moved
+	var moved_total := int(source.get("count", 0)) - remaining
+	if moved_total <= 0:
+		return {"ok": false, "reason": "INVENTORY_FULL"}
+	candidate[source_index] = {"item_id": item_id, "count": remaining} if remaining > 0 else _empty_slot()
+	slots = candidate
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "QUICK_MOVED", "item_id": item_id, "count": moved_total, "revision": revision}
+
+
 func take_from_slot(index: int, amount: int) -> Dictionary:
 	if index < 0 or index >= SLOT_COUNT or amount <= 0:
 		return {"ok": false, "reason": "INVALID_SLOT"}

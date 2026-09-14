@@ -1,6 +1,6 @@
 # Coding-agent handoff
 
-> **Checkpoint update (2026-09-14):** This was the original F0 commission and is retained for provenance. F0–F5 and P1–P3E are owner-accepted. P3F recipe ordering and catalog-wide held/block visual identity is the current isolated candidate. Use [current status](STATUS.md), [roadmap](ROADMAP.md), [P3F contract](P3F_RECIPE_ORDER_AND_HELD_VISUALS.md), [castle construction and crafting plan](CASTLE_CONSTRUCTION_AND_CRAFTING.md) and recorded evidence for current truth. The historical instructions below are not a fresh commission.
+> **Checkpoint update (2026-09-14):** This was the original F0 commission and is retained for provenance. F0–F5 and P1–P3F are owner-accepted. P3G Furnace usability and placed Catapult identity is the current isolated candidate. Use [current status](STATUS.md), [roadmap](ROADMAP.md), [P3G contract](P3G_FURNACE_USABILITY_AND_SIEGE_VISUAL.md), [castle construction and crafting plan](CASTLE_CONSTRUCTION_AND_CRAFTING.md) and recorded evidence for current truth. The historical instructions below are not a fresh commission.
 
 You are implementing Craft-and-Defend, an independent first-person voxel survival fortress game. This repo already contains the supervisory foundation. **Do not restart Deep Research or rewrite the groundwork before implementing the next gate.**
 

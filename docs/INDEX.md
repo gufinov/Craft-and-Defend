@@ -16,6 +16,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P3D tools and world feedback](P3D_TOOLS_AND_WORLD_FEEDBACK.md)
 - [P3E Furnace containers and visual identity](P3E_FURNACE_CONTAINERS_AND_VISUAL_IDENTITY.md)
 - [P3F recipe order and held visual catalog](P3F_RECIPE_ORDER_AND_HELD_VISUALS.md)
+- [P3G Furnace usability and placed siege identity](P3G_FURNACE_USABILITY_AND_SIEGE_VISUAL.md)
 
 ## Technical
 
@@ -46,5 +47,6 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P3D tools and world feedback evidence](evidence/P3D_TOOLS_AND_WORLD_FEEDBACK.md)
 - [P3E Furnace containers and visual identity evidence](evidence/P3E_FURNACE_CONTAINERS_AND_VISUAL_IDENTITY.md)
 - [P3F recipe order and held visual catalog evidence](evidence/P3F_RECIPE_ORDER_AND_HELD_VISUALS.md)
+- [P3G Furnace usability and placed siege identity evidence](evidence/P3G_FURNACE_USABILITY_AND_SIEGE_VISUAL.md)
 - [Tool usage](../tools/README.md)
 - [Current status](STATUS.md)

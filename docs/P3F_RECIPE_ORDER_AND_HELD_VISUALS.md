@@ -1,6 +1,6 @@
 # P3F — recipe progression order and held visual catalog
 
-Status: CANDIDATE / OWNER PLAYTEST PENDING
+Status: OWNER ACCEPTED 2026-09-14
 
 ## Outcome
 

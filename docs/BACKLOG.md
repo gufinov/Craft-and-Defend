@@ -117,6 +117,16 @@ Replace temporary high-priority recipe promotion with an explicit basic-to-advan
 
 **Candidate result:** T90–T92, static validation, 37 Python tests and P3C/P3D/P3E affected gates pass from the provenance-matched Windows export. The inspected contact sheet confirms transparent held identities for representative tools, materials, blocks and siege pieces plus textured placed Castle Stone. Owner ultrawide playtest remains required.
 
+**Owner-accepted result:** Tony confirmed the revised recipe order, held identities and placed block visuals work and marked the update PASS on 2026-09-14.
+
+## P3G — Furnace usability and placed siege identity
+
+Add maximum-compatible Shift+Click transfer between player inventory and Furnace slots while retaining drag, split, single-item and distribution gestures. Add a reversible 0–64 auto-load target that independently fills each selected-recipe ingredient from available stock. Run one persisted timed item at a time, expose progress, retain each output and automatically continue only through already-loaded complete batches. Keep world simulation paused while allowing the open Furnace appliance to advance. Replace the placed Catapult's generic box stack with a recognizable original low-poly prototype. Run T93–T98 plus P3E/P3F affected regressions.
+
+**Boundary:** no transport/chest automation, parallel processing, offline catch-up, recipe unlocking, final 3D production art, siege animation, waves or campaign expansion. See [the P3G contract](P3G_FURNACE_USABILITY_AND_SIEGE_VISUAL.md).
+
+**Current result:** source-runtime T93–T97 and 38 Python tests pass. Matching exported T93–T98, rendered-image inspection and owner ultrawide playtest remain required.
+
 ## Card completion discipline
 
 Update relevant contracts/tests, source ledger and `docs/STATUS.md`; record exact commands/results/limitations; commit a coherent increment. Future systems remain backlog items until their gate is active. Do not automatically merge or publish builds.
