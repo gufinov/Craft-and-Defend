@@ -107,6 +107,8 @@ Replace the Furnace's invisible inventory reservation with three persistent stat
 
 **Boundary:** no job queue, multiple smelting recipes, automated item transport, general chest UI, final 3D asset production, animation rig or durability. See [the P3E contract](P3E_FURNACE_CONTAINERS_AND_VISUAL_IDENTITY.md).
 
+**Candidate result:** T84–T89 and F2/F3/F5/P3D/P3C affected regressions pass from the provenance-matched Windows export. Completed output is station-owned and explicitly collected; exact cursor/container counts survive restore. Owner ultrawide playtest remains required before promotion.
+
 ## Card completion discipline
 
 Update relevant contracts/tests, source ledger and `docs/STATUS.md`; record exact commands/results/limitations; commit a coherent increment. Future systems remain backlog items until their gate is active. Do not automatically merge or publish builds.

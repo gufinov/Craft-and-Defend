@@ -18,7 +18,7 @@ Advance on evidence, not elapsed time. Estimates are intentionally not presented
 | P3B — core and breach prototype | One strategic-core prototype, opening-first targeting, one player-built wooden defense with persisted damage/repair/breach | T66–T71 plus P3 regression and owner playtest | Owner accepted 2026-09-13 |
 | P3C — player defense and visual catalog | Paged icon-first inventory/recipe UX, one usable sword, craftable ballista and catapult with distinct targeting contracts | T72–T78 plus P3B/P3/F5 regression and owner playtest | Candidate PASS; owner playtest pending |
 | P3D — tools and world feedback | Atomic five-batch craft shortcut, first-person held items, block ghosts, Wood Axe and discoverable starter iron | T79–T83 plus P3C/P3B/F5 regression and owner playtest | Candidate PASS; owner playtest pending |
-| P3E — furnace containers and visual identity | Persistent Furnace input/fuel/output, retained results, familiar stack gestures, manual recipe discovery and closer icon/world identity | T84–T89 plus F2/F3/F5/P3D regression and owner playtest | Candidate; automated verification in progress |
+| P3E — furnace containers and visual identity | Persistent Furnace input/fuel/output, retained results, familiar stack gestures, manual recipe discovery and closer icon/world identity | T84–T89 plus F2/F3/F5/P3D/P3C regression and owner playtest | Candidate PASS; owner playtest pending |
 | P4 — campaign systems | Threat sources, rifts, escalation, wizard final siege | Balance/scaling evidence; scope review | Not started |
 | Later | Automation/templates, more biomes/content, packaging/store | Separate decisions based on tests | Not started |
 
