@@ -45,5 +45,6 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P3C player defense and visual catalog evidence](evidence/P3C_PLAYER_DEFENSE_AND_VISUAL_CATALOG.md)
 - [P3D tools and world feedback evidence](evidence/P3D_TOOLS_AND_WORLD_FEEDBACK.md)
 - [P3E Furnace containers and visual identity evidence](evidence/P3E_FURNACE_CONTAINERS_AND_VISUAL_IDENTITY.md)
+- [P3F recipe order and held visual catalog evidence](evidence/P3F_RECIPE_ORDER_AND_HELD_VISUALS.md)
 - [Tool usage](../tools/README.md)
 - [Current status](STATUS.md)

@@ -115,7 +115,7 @@ Replace temporary high-priority recipe promotion with an explicit basic-to-advan
 
 **Boundary:** ordering prepares for future recipe discovery but does not invent unlock triggers or persistence. No final 3D models, hand rig, animation set, dedicated ammunition art, PBR material overhaul, new block IDs or save migration.
 
-**Candidate result:** source runtime T90–T92, static validation, 37 Python tests and P3C/P3D/P3E affected gates pass. Matching exported-runtime verification and owner playtest remain required.
+**Candidate result:** T90–T92, static validation, 37 Python tests and P3C/P3D/P3E affected gates pass from the provenance-matched Windows export. The inspected contact sheet confirms transparent held identities for representative tools, materials, blocks and siege pieces plus textured placed Castle Stone. Owner ultrawide playtest remains required.
 
 ## Card completion discipline
 
