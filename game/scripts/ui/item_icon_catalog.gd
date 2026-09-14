@@ -1,8 +1,8 @@
 class_name ItemIconCatalog
 extends RefCounted
 
-const ATLAS_PATH := "res://assets/ui/item_icon_atlas_p3h1.png"
-const WORLD_REFERENCE_PATH := "res://assets/ui/held_item_atlas_p3h1.png"
+const ATLAS_PATH := "res://assets/ui/item_atlas_p3h2.png"
+const WORLD_REFERENCE_PATH := ATLAS_PATH
 const CELL_SIZE := Vector2(256, 256)
 const SAFE_THIRD_ROW_HEIGHT := 224.0
 const SAFE_BOTTOM_ROW_START := 736.0
@@ -53,17 +53,7 @@ static func texture_for(item_id: String) -> Texture2D:
 		return null
 	var index := int(ITEM_CELLS[item_id])
 	var texture := AtlasTexture.new()
-	# The final six silhouettes are deliberately allowed a taller source window so
-	# long weapons and gate towers remain complete. Their transparent atlas keeps
-	# that recovery band from importing a neighboring card background.
-	if index >= 18:
-		if _world_reference == null:
-			_world_reference = load(WORLD_REFERENCE_PATH) as Texture2D
-		if _world_reference == null:
-			return null
-		texture.atlas = _world_reference
-	else:
-		texture.atlas = _atlas
+	texture.atlas = _atlas
 	texture.region = region_for_index(index)
 	texture.filter_clip = true
 	_textures[item_id] = texture

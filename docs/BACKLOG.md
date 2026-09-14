@@ -143,6 +143,14 @@ Replace the source atlas pair without overwriting earlier art, enforce filter-cl
 
 **Candidate result:** strengthened T91/T92 and T103 pass from the provenance-matched Windows export; both rendered Workbench pages and the held contact sheet were inspected without neighboring fragments or cut long-item silhouettes. Static validation and 40 Python tests pass. Owner ultrawide playtest remains required.
 
+## P3H.2 — held scale, strike travel and unified alpha art
+
+Use Tony's marked-up sword and Furnace screenshots as the presentation contract. Give the Sword, all Picks and the Wood Axe one substantially larger common lower-right frame; expand tool use to a broad visible strike arc without changing hit authority. Double the former low-held pixel scale and raise blocks, stations, materials and siege references. Replace the split RGB/RGBA runtime paths with one versioned true-alpha atlas while preserving every accepted design and all earlier assets. Strengthen T91 and render T104 alongside T92/T103.
+
+**Boundary:** no hand/arm rig, skeletal or per-tool animation set, combat tuning, new content, storage runtime, save migration or final 3D art.
+
+**Current result:** implementation and static validation pass; exported T91/T92/T103/T104 and owner ultrawide playtest remain required.
+
 ## P3I–P3M — staged storage, siege, durability and ecology
 
 Proceed in bounded order: small/large persistent storage chests with lossless container gestures; siege Interact/loading/upgrades and dismantle/move; articulated Catapult facing/arm/release/projectile behavior; persistent tool durability plus data-owned harvesting balance; then species-aware gradual leaf decay/drops. Chest capacities, footprints and recipes require their own bounded UI/placement playtest rather than an implicit clone of another voxel game's double-chest rule. Each later stage must extend the canonical balance catalogue only with values consumed by its implemented runtime and must preserve save migration/recovery. P4 army/wave simulation remains separate.

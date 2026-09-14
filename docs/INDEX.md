@@ -18,6 +18,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P3F recipe order and held visual catalog](P3F_RECIPE_ORDER_AND_HELD_VISUALS.md)
 - [P3G Furnace usability and placed siege identity](P3G_FURNACE_USABILITY_AND_SIEGE_VISUAL.md)
 - [P3H balance, fuel and directional controls](P3H_BALANCE_FUEL_AND_CONTROLS.md)
+- [P3H.2 held scale, strike travel and unified alpha art](P3H2_HELD_SCALE_AND_ALPHA.md)
 - [Balance, ecology and siege systems](BALANCE_ECOLOGY_AND_SIEGE_SYSTEMS.md)
 
 ## Technical

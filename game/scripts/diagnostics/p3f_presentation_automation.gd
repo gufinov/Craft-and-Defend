@@ -81,9 +81,21 @@ func _run_gate() -> void:
 	var gate_region := ItemIconCatalog.region_for_index(18)
 	var regions_isolated := workbench_region == Rect2(0.0, 512.0, 256.0, 224.0) \
 		and gate_region == Rect2(0.0, 736.0, 256.0, 288.0)
+	var atlas_texture := load(ItemIconCatalog.ATLAS_PATH) as Texture2D
+	var atlas_image := atlas_texture.get_image() if atlas_texture != null else null
+	var alpha_atlas_ok := atlas_image != null and not atlas_image.is_empty() \
+		and atlas_image.get_format() == Image.FORMAT_RGBA8 \
+		and atlas_image.get_size() == Vector2i(1536, 1024) \
+		and atlas_image.get_pixel(0, 0).a <= 0.01
 	app.session._held_item_view.present("iron_sword")
-	var held_anchor_ok := app.session._held_item_view.model_root.position.y <= -0.39
-	_record("T91_HELD_AND_BLOCK_IDENTITY", missing.is_empty() and held_failures.is_empty() and block_failures.is_empty() and region_failures.is_empty() and regions_isolated and held_anchor_ok, "all carried items use clipped, row-isolated catalog regions; long bottom-row silhouettes remain complete; raised held tools stay below the viewport edge; and voxel cubes retain complete face textures", {"items": item_ids.size(), "missing": missing, "held_failures": held_failures, "block_failures": block_failures, "region_failures": region_failures, "workbench_region": workbench_region, "gate_region": gate_region, "held_y": app.session._held_item_view.model_root.position.y})
+	var presentation := app.session._held_item_view.debug_presentation()
+	var framing_ok := float(presentation.tool_pixel_size) >= 0.0034 \
+		and float(presentation.low_pixel_size) >= 0.0034 \
+		and float(presentation.low_pixel_size) >= 0.00170 * 2.0 \
+		and float(presentation.tool_position.y) >= -0.31 \
+		and float(presentation.low_position.y) >= -0.40 \
+		and float(presentation.tool_swing_arc_radians) >= 1.4
+	_record("T91_HELD_AND_BLOCK_IDENTITY", missing.is_empty() and held_failures.is_empty() and block_failures.is_empty() and region_failures.is_empty() and regions_isolated and alpha_atlas_ok and framing_ok, "all inventory and held items share one true-alpha, exact-cell atlas; tools use a common enlarged frame and broad swing arc; low-held blocks and stations are at least twice their prior scale; and voxel cubes retain complete face textures", {"items": item_ids.size(), "missing": missing, "held_failures": held_failures, "block_failures": block_failures, "region_failures": region_failures, "workbench_region": workbench_region, "gate_region": gate_region, "alpha_atlas_ok": alpha_atlas_ok, "presentation": presentation})
 
 
 func _run_visual() -> void:
@@ -93,9 +105,11 @@ func _run_visual() -> void:
 	var additions: Dictionary = {}
 	for item_id in VISUAL_ITEMS:
 		additions[item_id] = 1
+	additions["furnace"] = 1
 	app.session.inventory.try_transaction({}, additions)
 	for index in range(VISUAL_ITEMS.size()):
 		_move_to_hotbar(VISUAL_ITEMS[index], index)
+	_move_to_hotbar("furnace", 8)
 	app.session.player.deactivate()
 	app.session.simulation_paused = false
 	var placed_castle_stone := app.session.world.set_cell(Vector3i(1, 0, 39), 8)
@@ -116,6 +130,24 @@ func _run_visual() -> void:
 	var path := app.data_root.path_join("p3f-held-item-contact-sheet.png")
 	var error := contact.save_png(path)
 	_record("T92_PRESENTATION", placed_castle_stone and captured == VISUAL_ITEMS.size() and error == OK, "one rendered contact sheet shows complete Pick, Sword and Axe silhouettes plus representative low-held building and siege items without opaque inventory-card backgrounds", {"path": path, "items": VISUAL_ITEMS, "placed_castle_stone": placed_castle_stone, "captured": captured, "size": contact.get_size(), "error": error})
+
+	var motion_contact := Image.create_empty(1920, 360, false, Image.FORMAT_RGBA8)
+	app.session.inventory.select_hotbar(1)
+	app.session._held_item_view.present("iron_sword")
+	await _settle_frames(4)
+	var ready_ok := _blit_viewport_panel(motion_contact, Vector2i(0, 0))
+	app.session._held_item_view.play_use()
+	await get_tree().create_timer(0.09).timeout
+	await _settle_frames(1)
+	var swing_ok := _blit_viewport_panel(motion_contact, Vector2i(640, 0))
+	await get_tree().create_timer(0.30).timeout
+	app.session.inventory.select_hotbar(8)
+	app.session._held_item_view.present("furnace")
+	await _settle_frames(4)
+	var block_ok := _blit_viewport_panel(motion_contact, Vector2i(1280, 0))
+	var motion_path := app.data_root.path_join("p3h2-held-scale-and-swing.png")
+	var motion_error := motion_contact.save_png(motion_path)
+	_record("T104_HELD_SCALE_AND_SWING", ready_ok and swing_ok and block_ok and motion_error == OK, "a rendered three-panel comparison shows the enlarged ready sword, its broad active strike travel and an at-least-double-scale, higher Furnace presentation", {"path": motion_path, "ready": ready_ok, "swing": swing_ok, "block": block_ok, "size": motion_contact.get_size(), "error": motion_error})
 
 	app.session.inventory.try_transaction({}, {"workbench": 1, "planks": 64, "stone": 64, "stick": 64, "iron_ingot": 16})
 	var placed := app.session.workstations.try_place("workbench", Vector3i(5, 0, 43), app.session.world.query_cell, AABB(), 0)
@@ -161,6 +193,16 @@ func _save_viewport(path: String) -> bool:
 	var texture := get_viewport().get_texture()
 	var image := texture.get_image() if texture != null else null
 	return image != null and image.get_size() == Vector2i(1280, 720) and image.save_png(path) == OK
+
+
+func _blit_viewport_panel(target: Image, destination: Vector2i) -> bool:
+	var texture := get_viewport().get_texture()
+	var frame := texture.get_image() if texture != null else null
+	if frame == null:
+		return false
+	frame.resize(640, 360, Image.INTERPOLATE_LANCZOS)
+	target.blit_rect(frame, Rect2i(Vector2i.ZERO, frame.get_size()), destination)
+	return true
 
 
 func _record(test_id: String, ok: bool, expected: String, evidence: Variant) -> void:

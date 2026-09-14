@@ -112,6 +112,8 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T100 | P3H | One Coal funds exactly three outputs; residual work survives restore and no fourth output is free |
 | T101 | P3H | W rotates clockwise, R counterclockwise and Left Shift remains Interact |
 | T102 | P3H | Rendered evidence shows the counted fuel ratio/stored work and separate W/R Keybind rows |
+| T103 | P3H.1 | Both rendered Workbench pages keep every complete item silhouette inside its own recipe card without neighboring fragments |
+| T104 | P3H.2 | Exported three-panel evidence shows the enlarged ready Sword, broad active strike travel and doubled/higher low-held Furnace frame; the active 1536×1024 atlas is RGBA with alpha-zero background |
 
 ## Performance evidence, not invented guarantees
 

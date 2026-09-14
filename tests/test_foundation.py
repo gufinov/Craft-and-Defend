@@ -197,6 +197,7 @@ class FoundationTests(unittest.TestCase):
         self.assertIn('start_game.ps1" -PrepareOnly', launcher)
         self.assertIn('--p3f-presentation-automation=gate', launcher)
         self.assertIn('--p3f-presentation-automation=visual', launcher)
+        self.assertIn('p3h2-held-scale-and-swing.png', launcher)
         self.assertIn('if not exist "%VISUAL_ROOT%\\p3f-held-item-contact-sheet.png"', launcher)
         self.assertIn('if not exist "%VISUAL_ROOT%\\p3f-workbench-page-1.png"', launcher)
         self.assertIn('if not exist "%VISUAL_ROOT%\\p3f-workbench-page-2.png"', launcher)

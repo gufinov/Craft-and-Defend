@@ -15,7 +15,7 @@ mkdir "%GATE_ROOT%" 2>nul
 mkdir "%VISUAL_ROOT%" 2>nul
 
 echo.
-echo Running recipe progression, complete held catalog and block texture checks.
+echo Running recipe progression, true-alpha catalog, held-scale, swing and block texture checks.
 echo The diagnostic controls itself; it is not the playable game.
 "%EXE%" --headless --log-file "%GATE_ROOT%\gate.log" -- --f0-data-root="%GATE_ROOT%" --p3f-presentation-automation=gate
 if errorlevel 1 goto :gate_failed
@@ -29,6 +29,7 @@ if errorlevel 1 goto :visual_failed
 if not exist "%VISUAL_ROOT%\p3f-held-item-contact-sheet.png" goto :image_missing
 if not exist "%VISUAL_ROOT%\p3f-workbench-page-1.png" goto :image_missing
 if not exist "%VISUAL_ROOT%\p3f-workbench-page-2.png" goto :image_missing
+if not exist "%VISUAL_ROOT%\p3h2-held-scale-and-swing.png" goto :image_missing
 if /i "%P3F_DIAGNOSTIC_NO_OPEN%"=="1" (
   echo P3F PRESENTATION TEST: PASS
   echo Evidence folder: %TEST_ROOT%
@@ -37,9 +38,10 @@ if /i "%P3F_DIAGNOSTIC_NO_OPEN%"=="1" (
 start "" "%VISUAL_ROOT%\p3f-held-item-contact-sheet.png"
 start "" "%VISUAL_ROOT%\p3f-workbench-page-1.png"
 start "" "%VISUAL_ROOT%\p3f-workbench-page-2.png"
+start "" "%VISUAL_ROOT%\p3h2-held-scale-and-swing.png"
 echo.
 echo P3F PRESENTATION TEST: PASS
-echo The held-item contact sheet and both Workbench pages are opening now.
+echo The held-item contact sheet, scale/swing comparison and both Workbench pages are opening now.
 echo Evidence folder: %TEST_ROOT%
 pause
 exit /b 0
