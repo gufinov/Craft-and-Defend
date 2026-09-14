@@ -101,6 +101,12 @@ Make the immediate craft/build loop readable in first person without expanding c
 
 **Candidate result:** T79–T83 and the accepted regressions pass from the provenance-matched Windows export. Owner playtest remains required before promotion.
 
+## P3E — furnace containers and visual identity
+
+Replace the Furnace's invisible inventory reservation with three persistent station-owned stacks: Raw Input, Fuel and Output. A completed result remains visible in Output until explicitly collected. Add conventional whole-stack, half-stack, one-item and right-drag distribution gestures without allowing cursor-held items to disappear on panel close or save. Preserve manual recipe-pattern recognition independently of recipe-book search. Align the placed Workbench/Furnace and held Workbench/Furnace/Stone Pick/Wood Axe with the established inventory visual language. Run T84–T89 plus F2/F3/F5/P3D regressions in the matching editor-closed export.
+
+**Boundary:** no job queue, multiple smelting recipes, automated item transport, general chest UI, final 3D asset production, animation rig or durability. See [the P3E contract](P3E_FURNACE_CONTAINERS_AND_VISUAL_IDENTITY.md).
+
 ## Card completion discipline
 
 Update relevant contracts/tests, source ledger and `docs/STATUS.md`; record exact commands/results/limitations; commit a coherent increment. Future systems remain backlog items until their gate is active. Do not automatically merge or publish builds.

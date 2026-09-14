@@ -47,6 +47,8 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		return _result(false, consumed.get("reason", "INVENTORY_COMMIT_FAILED"))
 	_next_instance += 1
 	var record := {"instance_id": instance_id, "entity_id": entity_id, "anchor": anchor, "rotation_quarters": posmod(rotation_quarters, 4)}
+	if entity_id == "furnace":
+		record["furnace_slots"] = _empty_furnace_slots()
 	var defense_definition: Dictionary = definition.get("defense", {})
 	if not defense_definition.is_empty():
 		record["integrity"] = maxi(1, int(defense_definition.get("max_integrity", 1)))
@@ -66,6 +68,8 @@ func try_dismantle(instance_id: String, world_query: Callable, player_aabb: AABB
 	if jobs.has(instance_id):
 		return _result(false, "STATION_BUSY")
 	var record: Dictionary = stations[instance_id]
+	if str(record.get("entity_id", "")) == "furnace" and not _furnace_is_empty(record):
+		return _result(false, "STATION_NOT_EMPTY")
 	var item_id := str(record.entity_id)
 	if not inventory.can_transaction({}, {item_id: 1}):
 		return _result(false, "INVENTORY_FULL")
@@ -91,13 +95,182 @@ func try_start_furnace(instance_id: String, recipe_id: String) -> Dictionary:
 	var recipe := registry.recipe(recipe_id)
 	if recipe.is_empty() or str(recipe.get("station", "")) != "furnace" or float(recipe.get("duration_seconds", 0.0)) <= 0.0:
 		return _result(false, "WRONG_WORKSTATION")
+	var checked := check_furnace_recipe(instance_id, recipe_id)
+	if not checked.get("ok", false):
+		return checked
 	var job_id := "job_%04d" % _next_job
-	var reservation := inventory.try_reserve_and_remove(job_id, recipe.inputs, recipe.outputs)
-	if not reservation.get("ok", false):
-		return reservation
+	var slots: Dictionary = stations[instance_id].get("furnace_slots", _empty_furnace_slots()).duplicate(true)
+	for item_id: String in recipe.inputs:
+		var role := _furnace_role_for_item(item_id)
+		var taken := _take_from_stack(slots.get(role, _empty_stack()), int(recipe.inputs[item_id]))
+		if not taken.get("ok", false):
+			return taken
+		slots[role] = taken.stack
+	stations[instance_id]["furnace_slots"] = slots
 	_next_job += 1
 	jobs[instance_id] = {"job_id": job_id, "recipe_id": recipe_id, "remaining_seconds": float(recipe.duration_seconds), "duration_seconds": float(recipe.duration_seconds), "completed": false}
-	var result := _result(true, "JOB_STARTED", {"instance_id": instance_id, "job": jobs[instance_id].duplicate(true)})
+	var result := _result(true, "JOB_STARTED", {"instance_id": instance_id, "job": jobs[instance_id].duplicate(true), "furnace_slots": slots.duplicate(true)})
+	station_changed.emit(result)
+	return result
+
+
+func check_furnace_recipe(instance_id: String, recipe_id: String) -> Dictionary:
+	if not stations.has(instance_id) or str(stations[instance_id].get("entity_id", "")) != "furnace":
+		return _result(false, "WRONG_WORKSTATION")
+	if jobs.has(instance_id):
+		return _result(false, "STATION_BUSY")
+	var recipe := registry.recipe(recipe_id)
+	if recipe.is_empty() or str(recipe.get("station", "")) != "furnace":
+		return _result(false, "WRONG_WORKSTATION")
+	var slots: Dictionary = stations[instance_id].get("furnace_slots", _empty_furnace_slots())
+	for item_id: String in recipe.inputs:
+		var role := _furnace_role_for_item(item_id)
+		var stack: Dictionary = slots.get(role, _empty_stack())
+		if str(stack.get("item_id", "")) != item_id or int(stack.get("count", 0)) < int(recipe.inputs[item_id]):
+			return {"ok": false, "reason": "INSUFFICIENT_INPUT", "item_id": item_id}
+	var outputs: Dictionary = recipe.get("outputs", {})
+	if outputs.size() != 1:
+		return _result(false, "INVALID_FURNACE_RECIPE")
+	var output_id := str(outputs.keys()[0])
+	var output_count := int(outputs[output_id])
+	var output: Dictionary = slots.get("output", _empty_stack())
+	if not str(output.get("item_id", "")).is_empty() and str(output.get("item_id", "")) != output_id:
+		return _result(false, "OUTPUT_BLOCKED")
+	if int(output.get("count", 0)) + output_count > registry.max_stack(output_id):
+		return _result(false, "OUTPUT_BLOCKED")
+	return _result(true, "OK", {"inputs": recipe.inputs.duplicate(true), "outputs": outputs.duplicate(true)})
+
+
+func furnace_recipe_availability(instance_id: String, recipe_id: String) -> Dictionary:
+	var direct := check_furnace_recipe(instance_id, recipe_id)
+	if direct.get("ok", false) or str(direct.get("reason", "")) != "INSUFFICIENT_INPUT":
+		return direct
+	var recipe := registry.recipe(recipe_id)
+	var slots := furnace_slots(instance_id)
+	for item_id: String in recipe.get("inputs", {}):
+		var role := _furnace_role_for_item(item_id)
+		var stack: Dictionary = slots.get(role, _empty_stack())
+		var stack_id := str(stack.get("item_id", ""))
+		if not stack_id.is_empty() and stack_id != item_id:
+			return _result(false, "SLOT_OCCUPIED")
+		var missing := maxi(0, int(recipe.inputs[item_id]) - int(stack.get("count", 0)))
+		if inventory.count(item_id) < missing:
+			return {"ok": false, "reason": "INSUFFICIENT_INPUT", "item_id": item_id}
+	return _result(true, "READY_TO_LOAD")
+
+
+func try_load_furnace_recipe(instance_id: String, recipe_id: String) -> Dictionary:
+	var available := furnace_recipe_availability(instance_id, recipe_id)
+	if not available.get("ok", false):
+		return available
+	var direct := check_furnace_recipe(instance_id, recipe_id)
+	if direct.get("ok", false):
+		return _result(true, "UNCHANGED", {"instance_id": instance_id, "furnace_slots": furnace_slots(instance_id)})
+	var recipe := registry.recipe(recipe_id)
+	var slots := furnace_slots(instance_id)
+	var removals: Dictionary = {}
+	for item_id: String in recipe.inputs:
+		var role := _furnace_role_for_item(item_id)
+		var stack: Dictionary = slots.get(role, _empty_stack())
+		var missing := maxi(0, int(recipe.inputs[item_id]) - int(stack.get("count", 0)))
+		if missing > 0:
+			removals[item_id] = missing
+	var removed := inventory.try_transaction(removals, {})
+	if not removed.get("ok", false):
+		return removed
+	for item_id: String in removals:
+		_add_to_furnace_unchecked(instance_id, _furnace_role_for_item(item_id), item_id, int(removals[item_id]))
+	var result := _result(true, "RECIPE_LOADED", {"instance_id": instance_id, "recipe_id": recipe_id, "furnace_slots": furnace_slots(instance_id)})
+	station_changed.emit(result)
+	return result
+
+
+func furnace_slots(instance_id: String) -> Dictionary:
+	var record: Dictionary = stations.get(instance_id, {})
+	if str(record.get("entity_id", "")) != "furnace":
+		return _empty_furnace_slots()
+	return record.get("furnace_slots", _empty_furnace_slots()).duplicate(true)
+
+
+func try_transfer_inventory_stack_to_furnace(instance_id: String, inventory_index: int) -> Dictionary:
+	if inventory_index < 0 or inventory_index >= inventory.slots.size():
+		return _result(false, "INVALID_SLOT")
+	var source: Dictionary = inventory.slots[inventory_index]
+	var item_id := str(source.get("item_id", ""))
+	var amount := int(source.get("count", 0))
+	var role := _furnace_role_for_item(item_id)
+	if role.is_empty():
+		return _result(false, "INVALID_FURNACE_INPUT")
+	var accepted := _can_add_to_furnace(instance_id, role, item_id, amount)
+	if not accepted.get("ok", false):
+		return accepted
+	var taken := inventory.take_from_slot(inventory_index, amount)
+	if not taken.get("ok", false):
+		return taken
+	_add_to_furnace_unchecked(instance_id, role, item_id, amount)
+	var result := _result(true, "STACK_TRANSFERRED", {"instance_id": instance_id, "slot": role, "item_id": item_id, "count": amount})
+	station_changed.emit(result)
+	return result
+
+
+func try_collect_furnace_stack(instance_id: String, slot_name: String) -> Dictionary:
+	if slot_name not in ["input", "fuel", "output"]:
+		return _result(false, "INVALID_SLOT")
+	var slots := furnace_slots(instance_id)
+	var stack: Dictionary = slots.get(slot_name, _empty_stack())
+	var item_id := str(stack.get("item_id", ""))
+	var amount := int(stack.get("count", 0))
+	if item_id.is_empty() or amount <= 0:
+		return _result(false, "EMPTY_SLOT")
+	var added := inventory.try_transaction({}, {item_id: amount})
+	if not added.get("ok", false):
+		return added
+	slots[slot_name] = _empty_stack()
+	stations[instance_id]["furnace_slots"] = slots
+	var result := _result(true, "STACK_COLLECTED", {"instance_id": instance_id, "slot": slot_name, "item_id": item_id, "count": amount})
+	station_changed.emit(result)
+	return result
+
+
+func cursor_pick_furnace_stack(instance_id: String, slot_name: String, half: bool = false) -> Dictionary:
+	if slot_name not in ["input", "fuel", "output"]:
+		return _result(false, "INVALID_SLOT")
+	var slots := furnace_slots(instance_id)
+	var stack: Dictionary = slots.get(slot_name, _empty_stack())
+	var item_id := str(stack.get("item_id", ""))
+	var stack_count := int(stack.get("count", 0))
+	if item_id.is_empty() or stack_count <= 0:
+		return _result(false, "EMPTY_SLOT")
+	var amount := ceili(float(stack_count) / 2.0) if half else stack_count
+	var received := inventory.cursor_receive(item_id, amount)
+	if not received.get("ok", false):
+		return received
+	var remaining := stack_count - amount
+	slots[slot_name] = {"item_id": item_id, "count": remaining} if remaining > 0 else _empty_stack()
+	stations[instance_id]["furnace_slots"] = slots
+	var result := _result(true, "CURSOR_PICKED", {"instance_id": instance_id, "slot": slot_name, "item_id": item_id, "count": amount})
+	station_changed.emit(result)
+	return result
+
+
+func cursor_deposit_furnace_stack(instance_id: String, slot_name: String, one: bool = false) -> Dictionary:
+	if slot_name not in ["input", "fuel"]:
+		return _result(false, "OUTPUT_TAKE_ONLY")
+	var item_id := str(inventory.cursor_stack.get("item_id", ""))
+	var held_count := int(inventory.cursor_stack.get("count", 0))
+	if item_id.is_empty() or held_count <= 0:
+		return _result(false, "CURSOR_EMPTY")
+	if _furnace_role_for_item(item_id) != slot_name:
+		return _result(false, "INVALID_FURNACE_INPUT")
+	var amount := 1 if one else held_count
+	var accepted := _can_add_to_furnace(instance_id, slot_name, item_id, amount)
+	if not accepted.get("ok", false):
+		return accepted
+	var consumed := inventory.cursor_consume(amount)
+	if not consumed.get("ok", false):
+		return consumed
+	_add_to_furnace_unchecked(instance_id, slot_name, item_id, amount)
+	var result := _result(true, "CURSOR_DEPOSITED", {"instance_id": instance_id, "slot": slot_name, "item_id": item_id, "count": amount})
 	station_changed.emit(result)
 	return result
 
@@ -112,11 +285,18 @@ func advance(delta: float, paused: bool = false) -> Array[Dictionary]:
 		jobs[instance_id] = job
 		if float(job.remaining_seconds) > 0.0:
 			continue
-		var committed := inventory.commit_reservation(str(job.job_id))
-		if not committed.get("ok", false):
+		var recipe := registry.recipe(str(job.recipe_id))
+		var outputs: Dictionary = recipe.get("outputs", {}).duplicate(true)
+		if inventory.reservations.has(str(job.job_id)):
+			var legacy := inventory.claim_reservation(str(job.job_id))
+			if not legacy.get("ok", false):
+				continue
+			outputs = legacy.outputs
+		var stored := _store_furnace_outputs(instance_id, outputs)
+		if not stored.get("ok", false):
 			continue
 		jobs.erase(instance_id)
-		var result := _result(true, "JOB_COMPLETED", {"instance_id": instance_id, "job_id": job.job_id, "recipe_id": job.recipe_id, "outputs": committed.outputs})
+		var result := _result(true, "JOB_COMPLETED", {"instance_id": instance_id, "job_id": job.job_id, "recipe_id": job.recipe_id, "outputs": outputs.duplicate(true), "furnace_slots": furnace_slots(instance_id)})
 		completed.append(result)
 		job_completed.emit(result)
 	return completed
@@ -347,6 +527,19 @@ func restore(data: Dictionary, world_query: Callable) -> Dictionary:
 				return _result(false, "INVALID_STATION_SNAPSHOT")
 			record["siege_ammo"] = siege_ammo
 			record["siege_cooldown"] = siege_cooldown
+		if str(record.get("entity_id", "")) == "furnace":
+			var raw_slots: Variant = record.get("furnace_slots", _empty_furnace_slots())
+			if not raw_slots is Dictionary:
+				return _result(false, "INVALID_STATION_SNAPSHOT")
+			var clean_slots := _empty_furnace_slots()
+			for slot_name in ["input", "fuel", "output"]:
+				var clean_stack := _validated_stack(raw_slots.get(slot_name, _empty_stack()))
+				if clean_stack.is_empty():
+					return _result(false, "INVALID_STATION_SNAPSHOT")
+				if not str(clean_stack.get("item_id", "")).is_empty() and slot_name != "output" and _furnace_role_for_item(str(clean_stack.item_id)) != slot_name:
+					return _result(false, "INVALID_STATION_SNAPSHOT")
+				clean_slots[slot_name] = clean_stack
+			record["furnace_slots"] = clean_slots
 		var reserved := footprints.try_reserve(str(record.instance_id), record.anchor, _vector_list(definition.occupied_offsets), int(record.get("rotation_quarters", 0)), world_query, AABB(), _vector_list(definition.support_offsets))
 		if not reserved.get("ok", false):
 			return _result(false, "INVALID_STATION_SNAPSHOT", reserved)
@@ -402,3 +595,84 @@ func _validate_mount(definition: Dictionary, anchor: Vector3i, rotation_quarters
 
 func _result(ok: bool, reason: String, details: Dictionary = {}) -> Dictionary:
 	return {"ok": ok, "reason": reason, "details": details}
+
+
+func _furnace_role_for_item(item_id: String) -> String:
+	if item_id == "coal":
+		return "fuel"
+	for recipe in registry.recipes_for("furnace"):
+		if recipe.get("inputs", {}).has(item_id):
+			return "input"
+	return ""
+
+
+func _can_add_to_furnace(instance_id: String, slot_name: String, item_id: String, amount: int) -> Dictionary:
+	if not stations.has(instance_id) or str(stations[instance_id].get("entity_id", "")) != "furnace":
+		return _result(false, "WRONG_WORKSTATION")
+	if amount <= 0 or slot_name not in ["input", "fuel"] or _furnace_role_for_item(item_id) != slot_name:
+		return _result(false, "INVALID_FURNACE_INPUT")
+	var target: Dictionary = furnace_slots(instance_id).get(slot_name, _empty_stack())
+	var target_id := str(target.get("item_id", ""))
+	if not target_id.is_empty() and target_id != item_id:
+		return _result(false, "SLOT_OCCUPIED")
+	if int(target.get("count", 0)) + amount > registry.max_stack(item_id):
+		return _result(false, "STACK_FULL")
+	return _result(true, "OK")
+
+
+func _add_to_furnace_unchecked(instance_id: String, slot_name: String, item_id: String, amount: int) -> void:
+	var slots := furnace_slots(instance_id)
+	var target: Dictionary = slots.get(slot_name, _empty_stack())
+	slots[slot_name] = {"item_id": item_id, "count": int(target.get("count", 0)) + amount}
+	stations[instance_id]["furnace_slots"] = slots
+
+
+func _store_furnace_outputs(instance_id: String, outputs: Dictionary) -> Dictionary:
+	if outputs.size() != 1:
+		return _result(false, "INVALID_FURNACE_RECIPE")
+	var item_id := str(outputs.keys()[0])
+	var amount := int(outputs[item_id])
+	var slots := furnace_slots(instance_id)
+	var output: Dictionary = slots.get("output", _empty_stack())
+	if not str(output.get("item_id", "")).is_empty() and str(output.get("item_id", "")) != item_id:
+		return _result(false, "OUTPUT_BLOCKED")
+	if int(output.get("count", 0)) + amount > registry.max_stack(item_id):
+		return _result(false, "OUTPUT_BLOCKED")
+	slots["output"] = {"item_id": item_id, "count": int(output.get("count", 0)) + amount}
+	stations[instance_id]["furnace_slots"] = slots
+	return _result(true, "OK")
+
+
+func _take_from_stack(stack: Dictionary, amount: int) -> Dictionary:
+	if amount <= 0 or int(stack.get("count", 0)) < amount:
+		return _result(false, "INSUFFICIENT_INPUT")
+	var remaining := int(stack.get("count", 0)) - amount
+	return {"ok": true, "reason": "OK", "stack": {"item_id": str(stack.get("item_id", "")), "count": remaining} if remaining > 0 else _empty_stack()}
+
+
+func _furnace_is_empty(record: Dictionary) -> bool:
+	var slots: Dictionary = record.get("furnace_slots", _empty_furnace_slots())
+	for stack: Dictionary in slots.values():
+		if not str(stack.get("item_id", "")).is_empty():
+			return false
+	return true
+
+
+func _validated_stack(value: Variant) -> Dictionary:
+	if not value is Dictionary:
+		return {}
+	var item_id := str(value.get("item_id", ""))
+	var count := int(value.get("count", 0))
+	if item_id.is_empty() and count == 0:
+		return _empty_stack()
+	if registry.max_stack(item_id) <= 0 or count <= 0 or count > registry.max_stack(item_id):
+		return {}
+	return {"item_id": item_id, "count": count}
+
+
+static func _empty_stack() -> Dictionary:
+	return {"item_id": "", "count": 0}
+
+
+static func _empty_furnace_slots() -> Dictionary:
+	return {"input": _empty_stack(), "fuel": _empty_stack(), "output": _empty_stack()}

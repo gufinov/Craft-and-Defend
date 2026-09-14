@@ -60,8 +60,8 @@ func _run_phase1() -> void:
 	await get_tree().process_frame
 	var dirt_parts := held.model_root.get_child_count()
 	var block_height := held._base_position.y
-	var held_ok := held.current_item_id == "dirt" and axe_parts >= 3 and dirt_parts == 1 and block_height < axe_height
-	_record("T80_HELD_ITEMS", held_ok, "the active hotbar item owns a persistent first-person model; tools are raised while placeable blocks are held lower", {"axe_parts": axe_parts, "axe_height": axe_height, "block_parts": dirt_parts, "block_height": block_height, "current": held.current_item_id})
+	var held_ok := held.current_item_id == "dirt" and axe_parts >= 1 and held.model_root.get_child_count() == 1 and dirt_parts == 1 and block_height < axe_height and ItemIconCatalog.world_reference_texture_for("wood_axe") != null
+	_record("T80_HELD_ITEMS", held_ok, "the active hotbar item owns a persistent first-person model; the axe uses the matched transparent item reference while placeable blocks remain lower", {"axe_parts": axe_parts, "axe_height": axe_height, "block_parts": dirt_parts, "block_height": block_height, "current": held.current_item_id})
 
 	app.session.inventory.select_hotbar(axe_slot)
 	var tree_cells: Array[Vector3i] = [Vector3i(4, 0, 40), Vector3i(4, 1, 40), Vector3i(4, 2, 40), Vector3i(4, 3, 40)]

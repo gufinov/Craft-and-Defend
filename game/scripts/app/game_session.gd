@@ -32,9 +32,10 @@ const REASON_TEXT := {
 	"WRONG_WORKSTATION": "That recipe needs a different workstation.",
 	"INSUFFICIENT_INPUT": "Missing recipe materials.",
 	"STATION_BUSY": "That furnace is already working.",
+	"STATION_NOT_EMPTY": "Remove the Furnace input, fuel and output before dismantling it.",
 	"SUPPORT_IN_USE": "Dismantle the supported placed object before removing this block.",
-	"JOB_STARTED": "Furnace started; input and fuel were consumed once.",
-	"JOB_COMPLETED": "Furnace finished and delivered its reserved output.",
+	"JOB_STARTED": "Furnace started; one ore and one fuel were consumed.",
+	"JOB_COMPLETED": "Furnace finished; collect the retained output from its Output slot.",
 	"DEFENSE_ALREADY_ACTIVE": "A defense drill is already active.",
 	"DEFENSE_ARENA_BLOCKED": "No clear practice lane is available near home. Move or dismantle nearby builds, then try again.",
 	"CORE_ARENA_BLOCKED": "No clear core-defense lane is available near home. Move or dismantle nearby builds, then try again.",
@@ -258,24 +259,38 @@ func recipe_status(recipe_id: String, station_type: String, station_id: String =
 		if station_record.is_empty() or str(station_record.get("entity_id", "")) != station_type:
 			return {"ok": false, "reason": "WRONG_WORKSTATION"}
 	if station_type == "furnace":
-		if station_id.is_empty() or workstations.jobs.has(station_id):
-			return {"ok": false, "reason": "STATION_BUSY" if workstations.jobs.has(station_id) else "WRONG_WORKSTATION"}
-		return inventory._simulate(recipe.inputs, recipe.outputs)
+		return workstations.furnace_recipe_availability(station_id, recipe_id)
 	return crafting.check_recipe(recipe_id, station_type)
 
 
 func try_craft(recipe_id: String, station_type: String, station_id: String = "", batches: int = 1) -> Dictionary:
 	if station_type == "furnace" and batches != 1:
 		return {"ok": false, "reason": "TIMED_RECIPE_BATCH_UNAVAILABLE"}
+	if station_type == "furnace":
+		var furnace_result := workstations.try_start_furnace(station_id, recipe_id)
+		_on_interaction_feedback(str(furnace_result.get("reason", "CRAFT_FAILED")))
+		return furnace_result
 	var checked := recipe_status(recipe_id, station_type, station_id)
 	if batches > 1 and station_type != "furnace":
 		checked = crafting.check_recipe(recipe_id, station_type, batches)
 	if not checked.get("ok", false):
 		_on_interaction_feedback(str(checked.get("reason", "CRAFT_FAILED")))
 		return checked
-	var result := workstations.try_start_furnace(station_id, recipe_id) if station_type == "furnace" else crafting.try_craft_many(recipe_id, station_type, batches)
+	var result := crafting.try_craft_many(recipe_id, station_type, batches)
 	_on_interaction_feedback(str(result.get("reason", "CRAFT_FAILED")))
 	return result
+
+
+func load_furnace_recipe(station_id: String, recipe_id: String) -> Dictionary:
+	return workstations.try_load_furnace_recipe(station_id, recipe_id)
+
+
+func transfer_inventory_stack_to_furnace(station_id: String, inventory_index: int) -> Dictionary:
+	return workstations.try_transfer_inventory_stack_to_furnace(station_id, inventory_index)
+
+
+func collect_furnace_stack(station_id: String, slot_name: String) -> Dictionary:
+	return workstations.try_collect_furnace_stack(station_id, slot_name)
 
 
 func start_defense_drill() -> Dictionary:
@@ -513,7 +528,13 @@ func _spawn_station_visual(record: Dictionary) -> void:
 	material.roughness = 0.9
 	if not definition.get("defense", {}).is_empty():
 		body.set_meta("defense_structure_id", instance_id)
-	_add_visual_parts(body, visual.get("parts", []), material, true)
+	var entity_id := str(record.get("entity_id", ""))
+	if entity_id == "workbench":
+		_build_workbench_visual(body)
+	elif entity_id == "furnace":
+		_build_furnace_visual(body)
+	else:
+		_add_visual_parts(body, visual.get("parts", []), material, true)
 	add_child(body)
 	_station_visuals[instance_id] = body
 	_station_visual_materials[instance_id] = material
@@ -546,6 +567,70 @@ func _add_visual_parts(parent: Node3D, part_values: Array, material: Material, a
 		mesh_instance.material_override = material
 		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if not add_collision else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		parent.add_child(mesh_instance)
+
+
+func _build_workbench_visual(parent: Node3D) -> void:
+	_add_collision_box(parent, Vector3(0.90, 0.90, 0.90), Vector3.ZERO)
+	var wood := _visual_material(Color("b9783f"), "res://assets/blocks/planks.svg")
+	var dark_wood := _visual_material(Color("744326"), "res://assets/blocks/log.svg")
+	var iron := _visual_material(Color("9ca7ad"))
+	_add_mesh_box(parent, Vector3(0.94, 0.16, 0.94), Vector3(0.0, 0.34, 0.0), wood)
+	for x in [-0.34, 0.34]:
+		for z in [-0.34, 0.34]:
+			_add_mesh_box(parent, Vector3(0.14, 0.70, 0.14), Vector3(x, -0.09, z), dark_wood)
+	_add_mesh_box(parent, Vector3(0.72, 0.10, 0.12), Vector3(0.0, -0.05, 0.34), dark_wood)
+	_add_mesh_box(parent, Vector3(0.12, 0.10, 0.72), Vector3(0.34, -0.05, 0.0), dark_wood)
+	var hammer := Node3D.new()
+	hammer.position = Vector3(0.02, 0.46, 0.02)
+	hammer.rotation = Vector3(0.0, -0.58, 0.0)
+	parent.add_child(hammer)
+	_add_mesh_box(hammer, Vector3(0.07, 0.07, 0.46), Vector3(0.0, 0.0, 0.0), dark_wood)
+	_add_mesh_box(hammer, Vector3(0.34, 0.13, 0.13), Vector3(0.0, 0.0, -0.20), iron)
+
+
+func _build_furnace_visual(parent: Node3D) -> void:
+	_add_collision_box(parent, Vector3(0.90, 0.90, 0.90), Vector3.ZERO)
+	var stone := _visual_material(Color("9ca6ad"), "res://assets/blocks/stone.svg")
+	var dark := _visual_material(Color("171c20"))
+	var ember := _visual_material(Color("ff8a2b"), "", Color("ff5b18"))
+	_add_mesh_box(parent, Vector3(0.90, 0.90, 0.90), Vector3.ZERO, stone)
+	_add_mesh_box(parent, Vector3(0.56, 0.38, 0.035), Vector3(0.0, -0.10, 0.468), dark)
+	_add_mesh_box(parent, Vector3(0.34, 0.18, 0.040), Vector3(0.0, -0.13, 0.490), ember)
+	_add_mesh_box(parent, Vector3(0.94, 0.08, 0.94), Vector3(0.0, 0.34, 0.0), stone)
+
+
+func _add_collision_box(parent: Node3D, size: Vector3, offset: Vector3) -> void:
+	var collision := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	collision.shape = box
+	collision.position = offset
+	parent.add_child(collision)
+
+
+func _add_mesh_box(parent: Node3D, size: Vector3, offset: Vector3, material: Material) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	mesh_instance.mesh = mesh
+	mesh_instance.position = offset
+	mesh_instance.material_override = material
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	parent.add_child(mesh_instance)
+	return mesh_instance
+
+
+func _visual_material(color: Color, texture_path: String = "", emission: Color = Color.TRANSPARENT) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = 0.86
+	if not texture_path.is_empty() and ResourceLoader.exists(texture_path):
+		material.albedo_texture = load(texture_path)
+	if emission.a > 0.0:
+		material.emission_enabled = true
+		material.emission = emission
+		material.emission_energy_multiplier = 1.2
+	return material
 
 
 func _vector3_from_array(value: Variant, fallback: Vector3) -> Vector3:

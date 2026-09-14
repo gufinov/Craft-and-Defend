@@ -143,8 +143,10 @@ func _test_progression() -> void:
 	for x in range(-8, -5):
 		_require_ok(interaction.try_break_cell(Vector3i(x, -3, 35)), "T19 iron harvest")
 	for _index in range(3):
+		_require_ok(app.session.workstations.try_load_furnace_recipe(furnace_id, "iron_ingot"), "T19 furnace load")
 		_require_ok(app.session.try_craft("iron_ingot", "furnace", furnace_id), "T19 furnace start")
 		app.session.workstations.advance(5.0, false)
+		_require_ok(app.session.collect_furnace_stack(furnace_id, "output"), "T19 furnace collect")
 	_require_ok(app.session.try_craft("iron_pick", "workbench", bench_id), "T19 iron pick")
 	var reached := empty_start and inventory.count("wood_pick") == 1 and inventory.count("stone_pick") == 1 and inventory.count("iron_pick") == 1 and inventory.count("iron_ingot") == 0
 	_record("T19_PROGRESSION", reached, "empty inventory reaches wood pick, stone pick, three smelts and iron pick through world/crafting commands", inventory.snapshot())
@@ -231,26 +233,29 @@ func _test_furnace_jobs() -> void:
 	inventory.try_transaction({}, {"furnace": 1, "iron_ore": 1, "coal": 1})
 	var placed := service.try_place("furnace", Vector3i(1, 0, 0), query, AABB())
 	var instance_id := str(placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	var loaded := service.try_load_furnace_recipe(instance_id, "iron_ingot")
 	var started := service.try_start_furnace(instance_id, "iron_ingot")
 	var after_start := inventory.snapshot()
 	var duplicate := service.try_start_furnace(instance_id, "iron_ingot")
 	service.advance(20.0, true)
 	var paused_remaining := float(service.jobs[instance_id].remaining_seconds)
 	service.advance(4.0, false)
-	var before_finish := inventory.count("iron_ingot")
+	var before_finish := int(service.furnace_slots(instance_id).output.count)
 	service.advance(1.0, false)
-	var once := inventory.count("iron_ingot")
+	var once := int(service.furnace_slots(instance_id).output.count)
 	service.advance(10.0, false)
-	var after_extra := inventory.count("iron_ingot")
+	var after_extra := int(service.furnace_slots(instance_id).output.count)
+	var collected := service.try_collect_furnace_stack(instance_id, "output")
 	var busy_dismantle_inventory := F0Inventory.new(registry)
 	var busy_service := WorkstationService.new(registry, busy_dismantle_inventory)
 	busy_dismantle_inventory.try_transaction({}, {"furnace": 1, "iron_ore": 1, "coal": 1})
 	var busy_placed := busy_service.try_place("furnace", Vector3i(2, 0, 0), query, AABB())
 	var busy_id := str(busy_placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	busy_service.try_load_furnace_recipe(busy_id, "iron_ingot")
 	busy_service.try_start_furnace(busy_id, "iron_ingot")
 	var busy_dismantle := busy_service.try_dismantle(busy_id, query, AABB())
-	var passed: bool = bool(started.get("ok", false)) and after_start.get("reservations", {}).size() == 1 and inventory.count("iron_ore") == 0 and inventory.count("coal") == 0 and duplicate.get("reason") == "STATION_BUSY" and is_equal_approx(paused_remaining, 5.0) and before_finish == 0 and once == 1 and after_extra == 1 and busy_dismantle.get("reason") == "STATION_BUSY"
-	_record("T22_FURNACE", passed, "inputs/fuel consumed once; output reserved; pause freezes; completion occurs once; busy dismantle refused", {"started": started, "duplicate": duplicate, "paused_remaining": paused_remaining, "once": once, "after_extra": after_extra, "busy_dismantle": busy_dismantle})
+	var passed: bool = bool(loaded.get("ok", false)) and bool(started.get("ok", false)) and after_start.get("reservations", {}).is_empty() and inventory.count("iron_ore") == 0 and inventory.count("coal") == 0 and duplicate.get("reason") == "STATION_BUSY" and is_equal_approx(paused_remaining, 5.0) and before_finish == 0 and once == 1 and after_extra == 1 and collected.get("ok", false) and inventory.count("iron_ingot") == 1 and service.furnace_slots(instance_id).output.item_id == "" and busy_dismantle.get("reason") == "STATION_BUSY"
+	_record("T22_FURNACE", passed, "input/fuel are loaded and consumed once; pause freezes; completion retains one output until explicit collection; busy dismantle is refused", {"loaded": loaded, "started": started, "duplicate": duplicate, "paused_remaining": paused_remaining, "once": once, "after_extra": after_extra, "collected": collected, "busy_dismantle": busy_dismantle})
 
 
 func _select_item(item_id: String) -> void:

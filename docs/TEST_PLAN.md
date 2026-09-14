@@ -93,6 +93,12 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T81 | P3D | Wood Axe recipe is reachable; selected axe removes/gathers one bounded vertical connected trunk atomically without recursive branch destruction |
 | T82 | P3D | Placeable blocks expose the same non-mutating validation in their green/red world ghost; the starter marker points to actual guaranteed iron ore |
 | T83 | P3D | Rendered 1280×720 evidence visibly shows the held axe/iron marker and the low held block/world placement ghost; owner ultrawide test decides scale/readability |
+| T84 | P3E | Whole compatible inventory stacks transfer into distinct persistent Furnace Raw Input and Fuel slots without duplication |
+| T85 | P3E | Right-click takes the larger half; right-click deposit and right-drag distribute one per compatible slot with exact counts |
+| T86 | P3E | Furnace consumes one input/fuel, retains exactly one Output across clean restore and moves it only on explicit collection |
+| T87 | P3E | Furnace modal has three real slots; placed stations and selected key tools use the revised visual identity |
+| T88 | P3E | Manual hand/workbench patterns are recognized without recipe-book selection or search |
+| T89 | P3E | Rendered 1280×720 evidence visibly shows the three-slot Furnace and revised world/held identity |
 
 ## Performance evidence, not invented guarantees
 

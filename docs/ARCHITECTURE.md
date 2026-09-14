@@ -41,6 +41,8 @@ Error reasons should be stable symbols such as OUT_OF_BOUNDS, UNLOADED, OCCUPIED
 
 Ordinary block placement accepts any loaded solid voxel on the destination's six orthogonal faces as support, enabling horizontal ledges and overhead attachment. It does not provide free-floating placement or general structural collapse. Entity definitions retain their own explicit support offsets; Foundation workbenches and furnaces still require floor support.
 
+Crafting has two storage models. Hand/Workbench grids are non-consuming one-item recipe patterns; selecting a recipe is optional because a manually arranged valid pattern is recognized. A placed Furnace is instead a persistent container with explicit Raw Input, Fuel and Output stacks plus at most one timed job. Starting the job consumes from the station once, and completion writes to retained Output. Inventory owns the one cursor-held stack used for half/one/spread gestures so save and close paths have one loss-prevention authority.
+
 ## Scene responsibilities
 
 A persistent app root owns menu overlays and the save coordinator. A session root owns world, player, inventory, workstations and clock. Pause disables gameplay processing, while menus and persistence coordination remain responsive. Create a **new** terrain stream per session, never a scene-embedded shared stream reused by altering its path.

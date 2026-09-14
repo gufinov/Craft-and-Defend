@@ -2,14 +2,20 @@ class_name InventoryItemSlot
 extends Button
 
 signal item_dropped(source_index: int, target_index: int)
+signal stack_gesture(source_kind: String, source_index: int, mouse_button: int, double_click: bool, dragging: bool)
 
 var slot_index := -1
 var item_id := ""
+var cursor_active := false
 var _drag_label := "Empty"
 var _icon: TextureRect
 var _slot_label: Label
 var _count_label: Label
 var _name_label: Label
+var _presentation_slot := ""
+var _presentation_name := "Empty"
+var _presentation_count := 0
+var _presentation_marker := ""
 
 
 func _ready() -> void:
@@ -49,6 +55,7 @@ func _ready() -> void:
 	_name_label.add_theme_font_size_override("font_size", 10)
 	_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stack.add_child(_name_label)
+	_apply_presentation()
 
 
 func configure(index: int, stable_item_id: String) -> void:
@@ -57,16 +64,28 @@ func configure(index: int, stable_item_id: String) -> void:
 	mouse_default_cursor_shape = Control.CURSOR_DRAG if not item_id.is_empty() else Control.CURSOR_ARROW
 
 
+func set_cursor_active(active: bool) -> void:
+	cursor_active = active
+
+
 func set_presentation(slot_label: String, display_name: String, count: int, marker: String = "") -> void:
+	_presentation_slot = slot_label
+	_presentation_name = display_name
+	_presentation_count = count
+	_presentation_marker = marker
 	_drag_label = "%s %s ×%d" % [slot_label, display_name, count] if not item_id.is_empty() else "%s Empty" % slot_label
 	if _icon == null:
 		return
-	_slot_label.text = "%s%s" % [marker, slot_label]
-	_slot_label.add_theme_color_override("font_color", Color("ffe08a") if marker.contains("▶") else Color("b8cad1"))
+	_apply_presentation()
+
+
+func _apply_presentation() -> void:
+	_slot_label.text = "%s%s" % [_presentation_marker, _presentation_slot]
+	_slot_label.add_theme_color_override("font_color", Color("ffe08a") if _presentation_marker.contains("▶") else Color("b8cad1"))
 	_icon.texture = ItemIconCatalog.texture_for(item_id)
 	_icon.visible = not item_id.is_empty() and _icon.texture != null
-	_count_label.text = "×%d" % count if not item_id.is_empty() else ""
-	_name_label.text = display_name if not item_id.is_empty() else "Empty"
+	_count_label.text = "×%d" % _presentation_count if not item_id.is_empty() else ""
+	_name_label.text = _presentation_name if not item_id.is_empty() else "Empty"
 
 
 func _get_drag_data(_at_position: Vector2) -> Variant:
@@ -90,3 +109,12 @@ func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
 
 func _drop_data(_at_position: Vector2, data: Variant) -> void:
 	item_dropped.emit(int(data.get("source_index", -1)), slot_index)
+
+
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_RIGHT or (event.button_index == MOUSE_BUTTON_LEFT and (event.double_click or cursor_active)):
+			stack_gesture.emit("inventory", slot_index, int(event.button_index), bool(event.double_click), false)
+			accept_event()
+	elif event is InputEventMouseMotion and bool(event.button_mask & MOUSE_BUTTON_MASK_RIGHT):
+		stack_gesture.emit("inventory", slot_index, MOUSE_BUTTON_RIGHT, false, true)

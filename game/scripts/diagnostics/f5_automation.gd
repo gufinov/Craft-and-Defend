@@ -61,9 +61,9 @@ func _run_phase1() -> void:
 	_record("T31_CONTEXTS", inventory_only and hand_only and app.state == app.AppState.PLAYING and not get_tree().paused and app.session.player.active, "Tab inventory and three-panel hand crafting are separate paused UI contexts and return cleanly to play", {"inventory_only": inventory_only, "hand_only": hand_only, "state": app.state})
 	_record("T36_CRAFTING_INPUT", recipe_autofill and manual_grid and search_autofill, "inventory-to-grid staging, manual recognition and Enter-to-autofill recipe search all work", {"recipe_autofill": recipe_autofill, "manual_grid": manual_grid, "search_autofill": search_autofill})
 	app._show_crafting("furnace_diagnostic", "furnace")
-	var furnace_only := app.state == app.AppState.CRAFTING and app.crafting_title_label.text == "FURNACE" and app.crafting_grid.columns == 2 and app.crafting_grid.get_child_count() == 2 and app.craft_selected_button.text == "Start Processing" and app.crafting_inventory_slots.size() == F0Inventory.SLOT_COUNT
+	var furnace_only := app.state == app.AppState.CRAFTING and app.crafting_title_label.text == "FURNACE" and app.crafting_grid.columns == 3 and app.crafting_grid.get_child_count() == 3 and app.craft_selected_button.text == "Start Processing" and app.crafting_inventory_slots.size() == F0Inventory.SLOT_COUNT and app.crafting_clear_button.text == "Return Input + Fuel"
 	app._close_crafting()
-	_record("T33_FURNACE_MODAL", furnace_only and app.state == app.AppState.PLAYING, "Furnace owns a distinct ore-and-fuel processing modal and returns cleanly to play", {"furnace_modal": furnace_only, "state": app.state})
+	_record("T33_FURNACE_MODAL", furnace_only and app.state == app.AppState.PLAYING, "Furnace owns distinct input, fuel and retained-output slots and returns cleanly to play", {"furnace_modal": furnace_only, "state": app.state})
 
 
 func _run_phase2() -> void:

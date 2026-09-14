@@ -80,9 +80,14 @@ var crafting_recipe_next: Button
 var crafting_recipe_page_label: Label
 var crafting_grid: GridContainer
 var crafting_grid_slots: Array[CraftingItemSlot] = []
+var crafting_grid_help: Label
 var crafting_output_label: Label
 var crafting_message: Label
 var craft_selected_button: Button
+var crafting_clear_button: Button
+var cursor_stack_panel: PanelContainer
+var cursor_stack_icon: TextureRect
+var cursor_stack_count: Label
 var _crafting_station_id := ""
 var _crafting_station_type := "hand"
 var _selected_recipe_id := ""
@@ -91,6 +96,7 @@ var _crafting_selected_inventory_item := ""
 var _crafting_recipe_page := 0
 var _inventory_move_source := -1
 var _inventory_filter := "all"
+var _right_drag_visited: Dictionary = {}
 var sensitivity_slider: HSlider
 var sensitivity_value_label: Label
 var invert_check: CheckButton
@@ -200,9 +206,15 @@ func _ready() -> void:
 		var p3d_automation := P3DUsabilityAutomation.new()
 		add_child(p3d_automation)
 		p3d_automation.call_deferred("run", self, p3d_mode)
+	var p3e_mode := _argument_value("--p3e-container-automation=")
+	if not p3e_mode.is_empty():
+		var p3e_automation := P3EContainerAutomation.new()
+		add_child(p3e_automation)
+		p3e_automation.call_deferred("run", self, p3e_mode)
 
 
 func _process(delta: float) -> void:
+	_update_cursor_stack_visual()
 	if not display_confirm_panel.visible:
 		return
 	_display_confirm_remaining = maxf(0.0, _display_confirm_remaining - delta)
@@ -238,6 +250,35 @@ func _build_interface() -> void:
 	_build_crafting(canvas)
 	_build_hud(canvas)
 	_build_display_confirmation(canvas)
+	_build_cursor_stack(canvas)
+
+
+func _build_cursor_stack(canvas: CanvasLayer) -> void:
+	cursor_stack_panel = PanelContainer.new()
+	cursor_stack_panel.custom_minimum_size = Vector2(74, 64)
+	cursor_stack_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cursor_stack_panel.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("132733e8"), Color("ffe08a"), 7, 6))
+	canvas.add_child(cursor_stack_panel)
+	var holder := Control.new()
+	holder.custom_minimum_size = Vector2(62, 52)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cursor_stack_panel.add_child(holder)
+	cursor_stack_icon = TextureRect.new()
+	cursor_stack_icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	cursor_stack_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	cursor_stack_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	cursor_stack_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(cursor_stack_icon)
+	cursor_stack_count = Label.new()
+	cursor_stack_count.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	cursor_stack_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	cursor_stack_count.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	cursor_stack_count.add_theme_font_size_override("font_size", 16)
+	cursor_stack_count.add_theme_constant_override("outline_size", 4)
+	cursor_stack_count.add_theme_color_override("font_outline_color", Color("071016"))
+	cursor_stack_count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(cursor_stack_count)
+	cursor_stack_panel.hide()
 
 
 func _build_main_menu(canvas: CanvasLayer) -> void:
@@ -643,6 +684,7 @@ func _build_inventory(canvas: CanvasLayer) -> void:
 		slot_button.custom_minimum_size = Vector2(58, 58)
 		slot_button.pressed.connect(_select_inventory_slot.bind(index))
 		slot_button.item_dropped.connect(_on_inventory_item_dropped)
+		slot_button.stack_gesture.connect(_on_inventory_stack_gesture)
 		slot_button.alignment = HORIZONTAL_ALIGNMENT_CENTER
 		slot_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		slot_button.add_theme_font_size_override("font_size", 13)
@@ -763,6 +805,7 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 		inventory_slot.tooltip_text = "Drag to the crafting grid, or select and then choose a grid cell"
 		inventory_slot.pressed.connect(_select_crafting_inventory_slot.bind(index))
 		inventory_slot.item_dropped.connect(_on_crafting_item_dropped)
+		inventory_slot.stack_gesture.connect(_on_crafting_stack_gesture)
 		inventory_slot.configure_target("inventory", index)
 		crafting_inventory_slots.append(inventory_slot)
 		crafting_inventory_grid.add_child(inventory_slot)
@@ -777,12 +820,12 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	grid_heading.text = "CRAFTING GRID"
 	grid_heading.add_theme_color_override("font_color", Color("9fd8e8"))
 	grid_column.add_child(grid_heading)
-	var grid_help := Label.new()
-	grid_help.text = "Staged only — inventory is consumed when Craft is pressed"
-	grid_help.add_theme_font_size_override("font_size", 13)
-	grid_help.add_theme_color_override("font_color", Color("8fa5af"))
-	grid_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	grid_column.add_child(grid_help)
+	crafting_grid_help = Label.new()
+	crafting_grid_help.text = "Staged pattern — manual recipe discovery works without selecting the recipe book"
+	crafting_grid_help.add_theme_font_size_override("font_size", 13)
+	crafting_grid_help.add_theme_color_override("font_color", Color("8fa5af"))
+	crafting_grid_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	grid_column.add_child(crafting_grid_help)
 	crafting_grid = GridContainer.new()
 	crafting_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	crafting_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -796,7 +839,8 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	craft_selected_button = _button("Craft", _craft_selected_recipe, Vector2(330, 48))
 	craft_selected_button.tooltip_text = "Click to craft one batch. Hold Shift while clicking to craft exactly five batches atomically."
 	grid_column.add_child(craft_selected_button)
-	grid_column.add_child(_button("Clear Grid", _clear_crafting_grid, Vector2(330, 42)))
+	crafting_clear_button = _button("Clear Grid", _clear_crafting_grid, Vector2(330, 42))
+	grid_column.add_child(crafting_clear_button)
 	crafting_message = Label.new()
 	crafting_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	crafting_message.add_theme_color_override("font_color", Color("ffd488"))
@@ -1070,6 +1114,8 @@ func _show_crafting(station_id: String = "", station_type: String = "hand") -> v
 func _close_inventory() -> void:
 	if state != AppState.INVENTORY:
 		return
+	if not _return_cursor_before_close(inventory_message):
+		return
 	inventory_panel.hide()
 	hud_layer.show()
 	get_tree().paused = false
@@ -1080,6 +1126,8 @@ func _close_inventory() -> void:
 
 func _close_crafting() -> void:
 	if state != AppState.CRAFTING:
+		return
+	if not _return_cursor_before_close(crafting_message):
 		return
 	crafting_panel.hide()
 	hud_layer.show()
@@ -1117,6 +1165,11 @@ func _refresh_gameplay_hotbar(snapshot: Dictionary = {}) -> void:
 func _select_inventory_slot(index: int) -> void:
 	if session == null:
 		return
+	if not str(session.inventory.cursor_stack.get("item_id", "")).is_empty():
+		var deposited := session.inventory.cursor_deposit_slot(index, false)
+		inventory_message.text = "Placed the held stack." if deposited.get("ok", false) else _stack_reason_text(str(deposited.get("reason", "MOVE_FAILED")))
+		_refresh_inventory_panel()
+		return
 	var slot: Dictionary = session.inventory.slots[index]
 	if _inventory_move_source < 0:
 		if index < F0Inventory.HOTBAR_COUNT:
@@ -1139,6 +1192,9 @@ func _select_inventory_slot(index: int) -> void:
 func _on_inventory_item_dropped(source_index: int, target_index: int) -> void:
 	if session == null:
 		return
+	if not str(session.inventory.cursor_stack.get("item_id", "")).is_empty():
+		inventory_message.text = "Place the held stack before dragging another item."
+		return
 	_inventory_move_source = -1
 	var result := session.inventory.swap_slots(source_index, target_index)
 	if result.get("ok", false):
@@ -1146,6 +1202,84 @@ func _on_inventory_item_dropped(source_index: int, target_index: int) -> void:
 	else:
 		inventory_message.text = "Move failed: %s" % result.get("reason", "UNKNOWN")
 	_refresh_inventory_panel()
+
+
+func _on_inventory_stack_gesture(_source_kind: String, source_index: int, mouse_button: int, double_click: bool, dragging: bool) -> void:
+	if session == null or state != AppState.INVENTORY:
+		return
+	_handle_inventory_cursor_gesture(source_index, mouse_button, double_click, dragging, inventory_message)
+
+
+func _handle_inventory_cursor_gesture(source_index: int, mouse_button: int, double_click: bool, dragging: bool, message_label: Label) -> void:
+	if source_index < 0 or source_index >= session.inventory.slots.size():
+		return
+	var cursor_has_item := not str(session.inventory.cursor_stack.get("item_id", "")).is_empty()
+	if dragging:
+		if not cursor_has_item or _right_drag_visited.has(source_index):
+			return
+		_right_drag_visited[source_index] = true
+		var spread := session.inventory.cursor_deposit_slot(source_index, true)
+		if spread.get("ok", false):
+			message_label.text = "Placed one item in slot %d." % (source_index + 1)
+		return
+	var result: Dictionary
+	if cursor_has_item:
+		result = session.inventory.cursor_deposit_slot(source_index, mouse_button == MOUSE_BUTTON_RIGHT)
+		message_label.text = "Placed %s." % ("one item" if mouse_button == MOUSE_BUTTON_RIGHT else "the held stack") if result.get("ok", false) else _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
+	else:
+		result = session.inventory.cursor_pick_slot(source_index, mouse_button == MOUSE_BUTTON_RIGHT and not double_click)
+		if result.get("ok", false):
+			message_label.text = "Holding %s ×%d — left-click deposits all; right-click deposits one; right-drag spreads one per slot." % [session.registry.display_name(str(result.get("item_id", ""))), int(result.get("count", 0))]
+		else:
+			message_label.text = _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
+	_right_drag_visited.clear()
+	_refresh_inventory_panel()
+
+
+func _return_cursor_before_close(message_label: Label) -> bool:
+	if session == null or str(session.inventory.cursor_stack.get("item_id", "")).is_empty():
+		return true
+	var returned := session.inventory.return_cursor_to_inventory()
+	if returned.get("ok", false):
+		return true
+	message_label.text = "Place the held stack before closing; inventory has no room to return it."
+	return false
+
+
+func _update_cursor_stack_visual() -> void:
+	if cursor_stack_panel == null or session == null or state not in [AppState.INVENTORY, AppState.CRAFTING]:
+		if cursor_stack_panel != null:
+			cursor_stack_panel.hide()
+		return
+	var stack: Dictionary = session.inventory.cursor_stack
+	var item_id := str(stack.get("item_id", ""))
+	if item_id.is_empty() or int(stack.get("count", 0)) <= 0:
+		cursor_stack_panel.hide()
+		return
+	cursor_stack_icon.texture = ItemIconCatalog.texture_for(item_id)
+	cursor_stack_count.text = "×%d" % int(stack.get("count", 0))
+	cursor_stack_panel.position = get_viewport().get_mouse_position() + Vector2(18, 18)
+	cursor_stack_panel.show()
+
+
+func _stack_reason_text(reason: String) -> String:
+	match reason:
+		"CURSOR_EMPTY", "EMPTY_SLOT":
+			return "That slot is empty."
+		"CURSOR_OCCUPIED":
+			return "Place the held stack first."
+		"STACK_FULL":
+			return "That stack is full."
+		"SLOT_OCCUPIED":
+			return "That slot contains a different item."
+		"INVENTORY_FULL":
+			return "Inventory has no room."
+		"INVALID_FURNACE_INPUT":
+			return "That item does not belong in this Furnace slot."
+		"OUTPUT_TAKE_ONLY":
+			return "The Output slot only releases finished items."
+		_:
+			return reason.replace("_", " ").capitalize()
 
 
 func _set_inventory_filter(filter_id: String) -> void:
@@ -1159,6 +1293,9 @@ func _set_inventory_filter(filter_id: String) -> void:
 
 func _sort_carried_inventory() -> void:
 	if session == null:
+		return
+	if not str(session.inventory.cursor_stack.get("item_id", "")).is_empty():
+		inventory_message.text = "Place the held stack before sorting."
 		return
 	_inventory_move_source = -1
 	var result := session.inventory.sort_carried_by_type()
@@ -1181,6 +1318,7 @@ func _refresh_inventory_panel() -> void:
 		inventory_slot_buttons[index].tooltip_text = ("Hotbar key %d" % (index + 1) if index < F0Inventory.HOTBAR_COUNT else "Carried slot %d" % (index - F0Inventory.HOTBAR_COUNT + 1)) + " · " + item_text
 		inventory_slot_buttons[index].disabled = false
 		inventory_slot_buttons[index].configure(index, item_id)
+		inventory_slot_buttons[index].set_cursor_active(not str(session.inventory.cursor_stack.get("item_id", "")).is_empty())
 		inventory_slot_buttons[index].set_presentation(slot_label, display_name, int(slot.get("count", 0)), marker)
 		if index >= F0Inventory.HOTBAR_COUNT:
 			inventory_slot_buttons[index].visible = _inventory_filter == "all" or (not item_id.is_empty() and session.registry.item_category(item_id) == _inventory_filter)
@@ -1208,17 +1346,19 @@ func _refresh_crafting_panel() -> void:
 	var grid_size := 2
 	var grid_capacity := 4
 	crafting_title_label.text = "FIELD BUILD"
-	crafting_context_label.text = "2 × 2 HAND CRAFTING  ·  DRAG OR SEARCH  ·  B CLOSES"
+	crafting_context_label.text = "2 × 2 HAND CRAFTING  ·  MANUAL PATTERNS OR RECIPE BOOK  ·  B CLOSES"
+	crafting_grid_help.text = "Staged pattern — manual recipe discovery works without selecting the recipe book"
 	if _crafting_station_type == "workbench":
 		grid_size = 3
 		grid_capacity = 9
 		crafting_title_label.text = "WORKBENCH"
 		crafting_context_label.text = "3 × 3 CRAFTING  ·  BASIC + ADVANCED RECIPES  ·  RIGHT-CLICK ACCESS ONLY"
 	elif _crafting_station_type == "furnace":
-		grid_size = 2
-		grid_capacity = 2
+		grid_size = 3
+		grid_capacity = 3
 		crafting_title_label.text = "FURNACE"
-		crafting_context_label.text = "ORE + FUEL PROCESSING  ·  DRAG OR SEARCH  ·  RIGHT-CLICK ACCESS ONLY"
+		crafting_context_label.text = "INPUT + FUEL → RETAINED OUTPUT  ·  DOUBLE-CLICK MOVES A STACK  ·  RIGHT-CLICK SPLITS"
+		crafting_grid_help.text = "Real Furnace storage — input, fuel and finished output persist with this placed Furnace"
 	_ensure_crafting_grid_capacity(grid_capacity)
 	crafting_grid.columns = grid_size
 	for child in crafting_grid.get_children():
@@ -1256,34 +1396,61 @@ func _refresh_crafting_panel() -> void:
 		cell.add_theme_stylebox_override("normal", FoundationTheme.panel(Color("0a141b"), Color("365363"), 5, 7))
 		cell.add_theme_stylebox_override("hover", FoundationTheme.panel(Color("132733"), Color("78cbe0"), 5, 7))
 		var item_id := _craft_grid_items[index]
+		var item_count := 0
 		var empty_label := "Empty"
 		if _crafting_station_type == "furnace":
-			empty_label = "Ore" if index == 0 else "Fuel"
-		cell.tooltip_text = "Drop an inventory item here" if item_id.is_empty() else "Drag to another cell or click to clear"
-		cell.configure_source("grid", index, item_id)
-		cell.set_presentation(empty_label if item_id.is_empty() else session.registry.display_name(item_id), 0)
-		cell.configure_target("grid", index)
+			var slot_name: String = ["input", "fuel", "output"][index]
+			var furnace_stack: Dictionary = session.workstations.furnace_slots(_crafting_station_id).get(slot_name, {"item_id": "", "count": 0})
+			item_id = str(furnace_stack.get("item_id", ""))
+			item_count = int(furnace_stack.get("count", 0))
+			empty_label = ["Raw Input", "Fuel", "Output"][index]
+			cell.tooltip_text = "%s · double-click transfers all; right-click picks half or deposits one" % empty_label
+			cell.configure_source("furnace", index, item_id)
+			cell.configure_target("furnace", index)
+		else:
+			cell.tooltip_text = "Drop an inventory item here" if item_id.is_empty() else "Drag to another cell or click to clear"
+			cell.configure_source("grid", index, item_id)
+			cell.configure_target("grid", index)
+		cell.set_presentation(empty_label if item_id.is_empty() else session.registry.display_name(item_id), item_count)
+		cell.set_cursor_active(not str(session.inventory.cursor_stack.get("item_id", "")).is_empty())
 		cell.item_dropped.connect(_on_crafting_item_dropped)
+		cell.stack_gesture.connect(_on_crafting_stack_gesture)
 		cell.pressed.connect(_on_crafting_grid_slot_pressed.bind(index))
 		crafting_grid_slots.append(cell)
 		crafting_grid.add_child(cell)
 	craft_selected_button.text = "Start Processing" if _crafting_station_type == "furnace" else "Craft ×1  ·  Shift+Click ×5"
+	crafting_clear_button.text = "Return Input + Fuel" if _crafting_station_type == "furnace" else "Clear Grid"
 	var selected_recipe := session.registry.recipe(_selected_recipe_id)
+	if _crafting_station_type == "furnace" and selected_recipe.is_empty():
+		_recognize_furnace_recipe()
+		selected_recipe = session.registry.recipe(_selected_recipe_id)
 	if selected_recipe.is_empty() or not _grid_matches_recipe(selected_recipe):
-		crafting_output_label.text = "No matching recipe\nDrag ingredients or choose from the recipe book"
+		if _crafting_station_type == "furnace":
+			var furnace_slots: Dictionary = session.workstations.furnace_slots(_crafting_station_id)
+			var output_stack: Dictionary = furnace_slots.get("output", {"item_id": "", "count": 0})
+			var output_text := "Empty" if str(output_stack.get("item_id", "")).is_empty() else "%s ×%d — double-click to collect" % [session.registry.display_name(str(output_stack.item_id)), int(output_stack.count)]
+			var job: Dictionary = session.workstations.jobs.get(_crafting_station_id, {})
+			crafting_output_label.text = "OUTPUT: %s\n%s" % [output_text, "Processing… %.1fs remaining" % float(job.get("remaining_seconds", 0.0)) if not job.is_empty() else "Load ore and fuel manually, or choose a recipe"]
+		else:
+			crafting_output_label.text = "No matching recipe\nArrange the pattern manually or choose from the recipe book"
 		craft_selected_button.disabled = true
 		return
-	var selected_status := _recipe_status(selected_recipe)
+	var selected_status := session.workstations.check_furnace_recipe(_crafting_station_id, _selected_recipe_id) if _crafting_station_type == "furnace" else _recipe_status(selected_recipe)
 	var outputs: PackedStringArray = PackedStringArray()
 	for item_id: String in selected_recipe.outputs:
 		outputs.append("%d %s" % [int(selected_recipe.outputs[item_id]), session.registry.display_name(item_id)])
-	crafting_output_label.text = "OUTPUT  →  %s\n%s" % [" + ".join(outputs), "READY" if selected_status.get("ok", false) else _craft_reason_text(str(selected_status.get("reason", "UNAVAILABLE")), str(selected_status.get("item_id", "")))]
+	crafting_output_label.text = "OUTPUT  →  %s\n%s%s" % [" + ".join(outputs), "READY" if selected_status.get("ok", false) else _craft_reason_text(str(selected_status.get("reason", "UNAVAILABLE")), str(selected_status.get("item_id", ""))), " · remains in Furnace until collected" if _crafting_station_type == "furnace" else ""]
 	craft_selected_button.disabled = not selected_status.get("ok", false)
 
 
 func _select_crafting_recipe(recipe_id: String) -> void:
 	_selected_recipe_id = recipe_id
 	var recipe := session.registry.recipe(recipe_id)
+	if _crafting_station_type == "furnace":
+		var loaded := session.load_furnace_recipe(_crafting_station_id, recipe_id)
+		crafting_message.text = "%s loaded into the Furnace input and fuel slots." % session.registry.display_name(recipe_id) if loaded.get("ok", false) else _craft_reason_text(str(loaded.get("reason", "INSUFFICIENT_INPUT")), str(loaded.get("item_id", "")))
+		_refresh_crafting_panel()
+		return
 	if _fill_grid_from_recipe(recipe):
 		crafting_message.text = "%s loaded from available inventory." % session.registry.display_name(recipe_id)
 	else:
@@ -1310,8 +1477,13 @@ func _craft_selected_recipe_batches(batches: int) -> void:
 	var recipe_station := str(recipe.get("station", ""))
 	var station_id := "" if recipe_station == "hand" else _crafting_station_id
 	var result := session.try_craft(_selected_recipe_id, recipe_station, station_id, batches)
-	crafting_message.text = "%s crafted%s." % [session.registry.display_name(_selected_recipe_id), " × %d batches" % batches if batches > 1 else ""] if result.get("ok", false) else _craft_reason_text(str(result.get("reason", "CRAFT_FAILED")), str(result.get("item_id", "")))
-	if result.get("ok", false) and not _fill_grid_from_recipe(recipe):
+	if result.get("ok", false) and _crafting_station_type == "furnace":
+		crafting_message.text = "%s processing started. The finished stack will remain in Output until collected." % session.registry.display_name(_selected_recipe_id)
+	elif result.get("ok", false):
+		crafting_message.text = "%s crafted%s." % [session.registry.display_name(_selected_recipe_id), " × %d batches" % batches if batches > 1 else ""]
+	else:
+		crafting_message.text = _craft_reason_text(str(result.get("reason", "CRAFT_FAILED")), str(result.get("item_id", "")))
+	if result.get("ok", false) and _crafting_station_type != "furnace" and not _fill_grid_from_recipe(recipe):
 		_clear_crafting_grid(false, false)
 	_refresh_crafting_panel()
 
@@ -1354,13 +1526,19 @@ func _refresh_crafting_inventory() -> void:
 		var item_id := str(slot.get("item_id", ""))
 		var count := int(slot.get("count", 0))
 		var marker := "▶ " if item_id == _crafting_selected_inventory_item and not item_id.is_empty() else ""
-		crafting_inventory_slots[index].disabled = item_id.is_empty()
+		crafting_inventory_slots[index].disabled = false
 		crafting_inventory_slots[index].configure_source("inventory", index, item_id)
+		crafting_inventory_slots[index].set_cursor_active(not str(session.inventory.cursor_stack.get("item_id", "")).is_empty())
 		crafting_inventory_slots[index].set_presentation("%d · %s" % [index + 1, "Empty" if item_id.is_empty() else session.registry.display_name(item_id)], count, marker)
 
 
 func _select_crafting_inventory_slot(index: int) -> void:
 	if index < 0 or index >= session.inventory.slots.size():
+		return
+	if not str(session.inventory.cursor_stack.get("item_id", "")).is_empty():
+		var deposited := session.inventory.cursor_deposit_slot(index, false)
+		crafting_message.text = "Placed the held stack in inventory." if deposited.get("ok", false) else _stack_reason_text(str(deposited.get("reason", "MOVE_FAILED")))
+		_refresh_crafting_panel()
 		return
 	var item_id := str(session.inventory.slots[index].get("item_id", ""))
 	if item_id.is_empty():
@@ -1371,6 +1549,8 @@ func _select_crafting_inventory_slot(index: int) -> void:
 
 
 func _on_crafting_grid_slot_pressed(index: int) -> void:
+	if _crafting_station_type == "furnace":
+		return
 	if not _crafting_selected_inventory_item.is_empty():
 		_stage_item_in_grid(index, _crafting_selected_inventory_item)
 	else:
@@ -1381,6 +1561,16 @@ func _on_crafting_item_dropped(target_kind: String, target_index: int, payload: 
 	var source_kind := str(payload.get("source_kind", ""))
 	var source_index := int(payload.get("source_index", -1))
 	var item_id := str(payload.get("item_id", ""))
+	if _crafting_station_type == "furnace":
+		var furnace_result: Dictionary = {"ok": false, "reason": "INVALID_SLOT"}
+		if source_kind == "inventory" and target_kind == "furnace" and target_index in [0, 1]:
+			furnace_result = session.transfer_inventory_stack_to_furnace(_crafting_station_id, source_index)
+		elif source_kind == "furnace" and target_kind == "inventory":
+			furnace_result = session.collect_furnace_stack(_crafting_station_id, ["input", "fuel", "output"][source_index])
+		crafting_message.text = "Stack transferred." if furnace_result.get("ok", false) else _stack_reason_text(str(furnace_result.get("reason", "MOVE_FAILED")))
+		_recognize_furnace_recipe()
+		_refresh_crafting_panel()
+		return
 	if target_kind == "grid":
 		if source_kind == "grid" and source_index >= 0 and source_index < _craft_grid_items.size():
 			var held := _craft_grid_items[target_index]
@@ -1396,6 +1586,53 @@ func _on_crafting_item_dropped(target_kind: String, target_index: int, payload: 
 			var result := session.inventory.swap_slots(source_index, target_index)
 			crafting_message.text = "Inventory slots rearranged." if result.get("ok", false) else "Inventory move failed."
 			_refresh_crafting_panel()
+
+
+func _on_crafting_stack_gesture(source_kind: String, source_index: int, mouse_button: int, double_click: bool, dragging: bool) -> void:
+	if session == null or state != AppState.CRAFTING:
+		return
+	if _crafting_station_type != "furnace":
+		if source_kind == "inventory":
+			crafting_message.text = "Workbench cells are a one-item pattern. Drag or click ingredients to arrange a recipe manually."
+		return
+	var cursor_has_item := not str(session.inventory.cursor_stack.get("item_id", "")).is_empty()
+	var visit_key := "%s:%d" % [source_kind, source_index]
+	if dragging:
+		if not cursor_has_item or _right_drag_visited.has(visit_key):
+			return
+		_right_drag_visited[visit_key] = true
+		var spread: Dictionary
+		if source_kind == "inventory":
+			spread = session.inventory.cursor_deposit_slot(source_index, true)
+		elif source_kind == "furnace" and source_index in [0, 1]:
+			spread = session.workstations.cursor_deposit_furnace_stack(_crafting_station_id, ["input", "fuel"][source_index], true)
+		else:
+			return
+		if spread.get("ok", false):
+			crafting_message.text = "Distributed one item."
+		_refresh_crafting_panel()
+		return
+	var result: Dictionary
+	if source_kind == "inventory":
+		if double_click and not cursor_has_item:
+			result = session.transfer_inventory_stack_to_furnace(_crafting_station_id, source_index)
+		else:
+			_handle_inventory_cursor_gesture(source_index, mouse_button, double_click, false, crafting_message)
+			return
+	elif source_kind == "furnace" and source_index in [0, 1, 2]:
+		var slot_name: String = ["input", "fuel", "output"][source_index]
+		if double_click and not cursor_has_item:
+			result = session.collect_furnace_stack(_crafting_station_id, slot_name)
+		elif cursor_has_item:
+			result = session.workstations.cursor_deposit_furnace_stack(_crafting_station_id, slot_name, mouse_button == MOUSE_BUTTON_RIGHT)
+		else:
+			result = session.workstations.cursor_pick_furnace_stack(_crafting_station_id, slot_name, mouse_button == MOUSE_BUTTON_RIGHT)
+	else:
+		return
+	crafting_message.text = "Stack transferred." if result.get("ok", false) else _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
+	_right_drag_visited.clear()
+	_recognize_furnace_recipe()
+	_refresh_crafting_panel()
 
 
 func _stage_item_in_grid(index: int, item_id: String) -> void:
@@ -1420,6 +1657,16 @@ func _clear_crafting_grid_slot(index: int) -> void:
 
 
 func _clear_crafting_grid(refresh: bool = true, announce: bool = true) -> void:
+	if _crafting_station_type == "furnace" and session != null:
+		var returned_any := false
+		for slot_name in ["input", "fuel"]:
+			var result := session.collect_furnace_stack(_crafting_station_id, slot_name)
+			returned_any = returned_any or result.get("ok", false)
+		_selected_recipe_id = ""
+		crafting_message.text = "Input and fuel returned to inventory." if returned_any else "No input or fuel could be returned."
+		if refresh:
+			_refresh_crafting_panel()
+		return
 	for index in range(_craft_grid_items.size()):
 		_craft_grid_items[index] = ""
 	_selected_recipe_id = ""
@@ -1440,9 +1687,21 @@ func _after_manual_grid_change() -> void:
 	_refresh_crafting_panel()
 
 
+func _recognize_furnace_recipe() -> void:
+	if _crafting_station_type != "furnace" or session == null:
+		return
+	_selected_recipe_id = ""
+	for recipe in session.recipes_for("furnace"):
+		if session.workstations.check_furnace_recipe(_crafting_station_id, str(recipe.id)).get("ok", false):
+			_selected_recipe_id = str(recipe.id)
+			return
+
+
 func _fill_grid_from_recipe(recipe: Dictionary) -> bool:
 	if recipe.is_empty():
 		return false
+	if str(recipe.get("station", "")) == "furnace":
+		return session.load_furnace_recipe(_crafting_station_id, str(recipe.id)).get("ok", false)
 	for item_id: String in recipe.inputs:
 		if session.inventory.count(item_id) < int(recipe.inputs[item_id]):
 			return false
@@ -1464,6 +1723,8 @@ func _fill_grid_from_recipe(recipe: Dictionary) -> bool:
 func _grid_matches_recipe(recipe: Dictionary) -> bool:
 	if recipe.is_empty():
 		return false
+	if str(recipe.get("station", "")) == "furnace":
+		return session.workstations.check_furnace_recipe(_crafting_station_id, str(recipe.id)).get("ok", false)
 	var staged := _grid_counts(_craft_grid_items)
 	var inputs: Dictionary = recipe.get("inputs", {})
 	if staged.size() != inputs.size():
@@ -1761,6 +2022,8 @@ func _display_mode_help(index: int) -> String:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and not event.pressed:
+		_right_drag_visited.clear()
 	if not capture_action.is_empty() and ((event is InputEventKey and event.pressed and not event.echo) or (event is InputEventMouseButton and event.pressed)):
 		get_viewport().set_input_as_handled()
 		if event is InputEventKey and (event.physical_keycode == KEY_ESCAPE or event.keycode == KEY_ESCAPE):
