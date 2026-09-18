@@ -129,6 +129,23 @@ func _run_gate() -> void:
 		and trimmed_commit.get("ok", false) and int(trimmed_commit.get("changes", {}).get("count", 0)) == 72 \
 		and inventory.count("planks") == 0 and inventory.count("castle_stone") == 20 \
 		and int(app.session.world.query_cell(far + Vector3i(3, 0, 3)).get("voxel_id", 0)) == 3
+	# T117: stamps are remembered, expose sockets, snap the next piece, and
+	# round-trip through the session snapshot.
+	var stamps_after := interaction.stamps_snapshot()
+	var sockets := interaction.stamp_sockets()
+	var top_of_segment := base + top_socket + segment_top
+	var has_segment_top := false
+	for socket in sockets:
+		if str(socket.blueprint_id) == "tower_segment_4" and str(socket.socket_id) == "top" and Vector3i(socket.cell) == top_of_segment:
+			has_segment_top = true
+	var snap := interaction.snap_to_socket(top_of_segment + Vector3i(1, 0, 0), "cap_4")
+	var no_snap := interaction.snap_to_socket(top_of_segment + Vector3i(5, 0, 5), "cap_4")
+	var saved_session := app.session.snapshot()
+	var restored_service := InteractionService.new(app.session.world, app.session.inventory, app.session.player.get_body_aabb, app.session.registry, app.session.workstations)
+	var restore_ok := restored_service.restore_stamps(saved_session.get("blueprints", {}).get("stamps", null))
+	var refused := restored_service.restore_stamps([{"blueprint_id": "not_a_piece", "anchor": [0, 0, 0]}])
+	_record("T117_BLUEPRINT_SOCKET_SNAP", stamps_after.size() >= 4 and has_segment_top and bool(snap.snapped) and Vector3i(snap.cell) == top_of_segment and not bool(no_snap.snapped) and restore_ok and restored_service.stamps_snapshot().size() == stamps_after.size() and not refused, "stamped pieces are remembered with their sockets, a piece aimed within one cell of a socket snaps to it, an aim far away does not, and the stamp list round-trips through the session snapshot while an unknown piece is refused", {"stamps": stamps_after.size(), "sockets": sockets.size(), "snap": snap, "no_snap": no_snap.snapped, "restore_ok": restore_ok, "refused": refused, "has_segment_top": has_segment_top, "restored_count": restored_service.stamps_snapshot().size(), "top_of_segment": top_of_segment})
+
 	_record("T112_BLUEPRINT_TRIM_BLOCK_CANCEL", trimmed_ok and cancel_ok, "a blueprint short on one block type trims only that type's cells, skips an occupied cell, cancels with nothing built, and otherwise stamps every affordable cell", {"blocked": blocked, "unaffordable": unaffordable, "costs": trimmed_costs, "commit": trimmed_commit.get("reason"), "cancel": cancelled.get("reason")})
 
 

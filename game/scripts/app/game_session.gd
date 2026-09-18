@@ -162,6 +162,7 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	siege_defense.feedback.connect(_on_interaction_feedback)
 	siege_defense.state_changed.connect(_on_defense_state_changed)
 	interaction = InteractionService.new(world, inventory, player.get_body_aabb, registry, workstations, _raycast_station, _defense_interact)
+	interaction.restore_stamps(open_data.get("snapshot", {}).get("blueprints", {}).get("stamps", []))
 	player.interaction = interaction
 	player.primary_action = _player_primary_action
 	world.spawn_area_ready.connect(_on_spawn_area_ready)
@@ -394,6 +395,7 @@ func snapshot() -> Dictionary:
 		"workstations": workstations.snapshot(),
 		"defense": defense.snapshot(),
 		"core_defense": core_defense.snapshot(),
+		"blueprints": {"stamps": interaction.stamps_snapshot()} if interaction != null else {"stamps": []},
 		"clock": clock.snapshot(),
 		"player": player.snapshot(),
 		"session_id": open_data.get("session_id", ""),

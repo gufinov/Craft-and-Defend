@@ -196,7 +196,9 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 		# A blueprint follows the aimed placement cell instead of stretching.
 		var aimed := world.raycast(origin, direction, 12.0)
 		if aimed != null:
-			move_blueprint(aimed.previous_position)
+			var snapped := snap_to_socket(aimed.previous_position, str(_drag.blueprint_id))
+			move_blueprint(snapped.cell)
+			_drag.snapped = bool(snapped.snapped)
 		return drag_state()
 	if vertical:
 		var vertical_end := _drag_plane_end(origin, direction)
@@ -257,7 +259,7 @@ func drag_state() -> Dictionary:
 		if str(entry.state) == "ok":
 			var entry_item := str(entry.get("item_id", _drag.get("item_id", "")))
 			costs[entry_item] = int(costs.get(entry_item, 0)) + 1
-	return {"active": true, "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single")}
+	return {"active": true, "snapped": bool(_drag.get("snapped", false)), "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single")}
 
 
 func cancel_drag_place() -> Dictionary:
@@ -291,6 +293,8 @@ func commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 		var entry_item := str(entry.get("item_id", default_item))
 		removals[entry_item] = int(removals.get(entry_item, 0)) + 1
 	var blueprint_id := str(_drag.get("blueprint_id", ""))
+	var stamp_anchor: Vector3i = _drag.anchor
+	var stamp_rotation := int(_drag.get("rotation", 0))
 	_drag = {}
 	if cells.is_empty():
 		return _finish(false, "DRAG_EMPTY")
@@ -312,7 +316,9 @@ func commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 	var items: Dictionary = {}
 	for spent_item: String in removals:
 		items[spent_item] = -int(removals[spent_item])
-	return _finish(true, "BLUEPRINT_STAMPED" if mode == "blueprint" else "DRAG_PLACED", {"cells": cells, "count": cells.size(), "voxel_after": default_voxel, "items": items, "blueprint_id": blueprint_id})
+	if mode == "blueprint":
+		_stamps.append({"blueprint_id": blueprint_id, "anchor": [stamp_anchor.x, stamp_anchor.y, stamp_anchor.z], "rotation": stamp_rotation})
+	return _finish(true, "BLUEPRINT_STAMPED" if mode == "blueprint" else "DRAG_PLACED", {"cells": cells, "count": cells.size(), "voxel_after": default_voxel, "items": items, "blueprint_id": blueprint_id, "stamps": _stamps.size()})
 
 
 ## Cells between anchor and end in support-first order: outward along the
@@ -430,6 +436,79 @@ func move_blueprint(anchor: Vector3i, quarters: int = -1) -> Dictionary:
 		_drag.rotation = rotation
 		_replan_blueprint()
 	return drag_state()
+
+
+## Stamped pieces are remembered so later pieces can snap to their sockets and
+## saves can restore that knowledge. Stamping records `{blueprint_id, anchor,
+## rotation}`; the blocks themselves are ordinary voxels and need no record.
+var _stamps: Array[Dictionary] = []
+
+
+func stamps_snapshot() -> Array[Dictionary]:
+	return _stamps.duplicate(true)
+
+
+## Replaces the stamp list only when every entry validates; a refused snapshot
+## leaves the current list untouched.
+func restore_stamps(values: Variant) -> bool:
+	if values == null:
+		_stamps.clear()
+		return true
+	if not values is Array:
+		return false
+	var accepted: Array[Dictionary] = []
+	for value in values:
+		if not value is Dictionary or not blueprint(str(value.get("blueprint_id", ""))).has("id"):
+			return false
+		var anchor_values: Array = value.get("anchor", [])
+		if anchor_values.size() != 3:
+			return false
+		accepted.append({"blueprint_id": str(value.blueprint_id), "anchor": [int(anchor_values[0]), int(anchor_values[1]), int(anchor_values[2])], "rotation": posmod(int(value.get("rotation", 0)), 4)})
+	_stamps = accepted
+	return true
+
+
+## World-space sockets of every stamped piece: {cell, type, blueprint_id, socket_id}.
+## `cell` is where a piece attaching to that socket anchors.
+func stamp_sockets() -> Array[Dictionary]:
+	var sockets: Array[Dictionary] = []
+	for stamp in _stamps:
+		var definition := blueprint(str(stamp.blueprint_id))
+		var anchor_values: Array = stamp.anchor
+		var anchor := Vector3i(int(anchor_values[0]), int(anchor_values[1]), int(anchor_values[2]))
+		var size_values: Array = definition.get("size", [1, 1, 1])
+		var size := Vector3i(int(size_values[0]), int(size_values[1]), int(size_values[2]))
+		var rotation := int(stamp.rotation)
+		for socket in definition.get("sockets", []):
+			var offset_values: Array = socket.get("offset", [0, 0, 0])
+			var offset := Vector3i(int(offset_values[0]), int(offset_values[1]), int(offset_values[2]))
+			sockets.append({"cell": anchor + rotate_blueprint_offset(offset, size, rotation), "type": str(socket.get("type", "")), "blueprint_id": str(stamp.blueprint_id), "socket_id": str(socket.get("id", ""))})
+	return sockets
+
+
+## If `aimed` lies within `radius` cells of a stamped socket of a type the
+## active blueprint can attach to, returns that socket's anchor cell; else `aimed`.
+func snap_to_socket(aimed: Vector3i, blueprint_id: String, radius: int = 1) -> Dictionary:
+	var definition := blueprint(blueprint_id)
+	if definition.is_empty():
+		return {"cell": aimed, "snapped": false}
+	var wants_top := false
+	for block in definition.get("blocks", []):
+		var offset_values: Array = block.get("offset", [0, 0, 0])
+		if int(offset_values[1]) == 0:
+			wants_top = true
+			break
+	var best: Dictionary = {}
+	var best_distance := radius + 1
+	for socket in stamp_sockets():
+		var socket_cell: Vector3i = socket.cell
+		var distance := maxi(absi(socket_cell.x - aimed.x), maxi(absi(socket_cell.y - aimed.y), absi(socket_cell.z - aimed.z)))
+		if distance <= radius and distance < best_distance and (wants_top or str(socket.type) == "side"):
+			best = socket
+			best_distance = distance
+	if best.is_empty():
+		return {"cell": aimed, "snapped": false}
+	return {"cell": best.cell, "snapped": true, "socket": best}
 
 
 func _replan_blueprint() -> void:
