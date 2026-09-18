@@ -16,8 +16,14 @@ Treat the item art as a square. Its bottom-left corner is the hand. Tools are dr
 - The placed Furnace visual is Castle Stone masonry with a stepped dark arch and an emissive ember bed; Tower Platform parts use the Castle Stone texture. Occupancy, support, mount sockets and collision are unchanged.
 - `ContentRegistry.balance_*` accessors declare their intermediate as `Variant` so the pinned editor's warnings-as-errors setting no longer blocks headless editor runs; behaviour is unchanged.
 
+## Owner correction round 2 (2026-09-18, ultrawide playtest)
+
+- The hand sat about one block too far right on the 3440×1440 display. `HINGE_RIGHT_FRACTION`/`MIN`/`MAX` moved from 0.58/0.50/0.95 to 0.48/0.45/0.78, which places the hand roughly one hotbar slot further inward at both 16:9 and 21:9.
+- The Tab inventory did not conform to the Field Build / Workbench inventory tiles: its slots were stretched into wide strips with a separate slot-label row that starved the icon. `InventoryItemSlot` now shares `CraftingItemSlot`'s anatomy (large centred icon, count in the corner, one `slot · name` caption; the active hotbar marker colours the caption) and `app.gd` lays the 18 carried and 9 hotbar tiles out at a fixed `INVENTORY_TILE_SIZE` with no horizontal stretch, left-aligned under the filter row.
+
 ## Acceptance
 
+- T47/T48/T49 (castle-kit inventory) cover the Tab inventory layout, drag/drop and the 21:9 render.
 - T80 covers the shared hand column with tools hinged at the base and placeables above the hotbar.
 - T91 covers measured, non-overlapping regions for all 26 items, isolated Ballista Bolt/Stone Shot, hinge model, normalised Sword and Stone Shot sizes and the swing arc.
 - T92/T103/T104/T105/T106 remain the rendered evidence for held items, recipe-card alignment, swing travel and castle skins.

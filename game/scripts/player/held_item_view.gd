@@ -17,9 +17,11 @@ const LOW_HEIGHT := 0.46
 const HELD_DEPTH := 0.90
 ## Hinge placement as fractions of the visible half-extents at HELD_DEPTH.
 ## X is clamped so the swing still reaches the crosshair on ultrawide displays.
-const HINGE_RIGHT_FRACTION := 0.58
-const HINGE_RIGHT_MIN := 0.50
-const HINGE_RIGHT_MAX := 0.95
+## Owner ultrawide playtest 2026-09-18: the first values (0.58 / 0.50 / 0.95)
+## put the hand about one block too far right; these sit it one block inward.
+const HINGE_RIGHT_FRACTION := 0.48
+const HINGE_RIGHT_MIN := 0.45
+const HINGE_RIGHT_MAX := 0.78
 ## Tools seat their handle at the screen base (owner sketch); low-held items
 ## stay above the hotbar as accepted in P3H.2.
 const TOOL_HINGE_DOWN_FRACTION := 0.92

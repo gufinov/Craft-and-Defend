@@ -7,6 +7,9 @@ const DISPLAY_CONFIRM_SECONDS := 10.0
 const PRINT_SCREEN_FOCUS_WINDOW_MSEC := 2000
 const SCREENSHOT_CLICK_GUARD_SECONDS := 0.20
 const RECIPE_PAGE_SIZE := 12
+## Tab-inventory tiles share the crafting inventory's square anatomy.
+const INVENTORY_TILE_SIZE := Vector2(96, 92)
+const INVENTORY_TILE_GAP := 8
 const INVENTORY_FILTERS: Array[Dictionary] = [
 	{"id": "all", "label": "All"},
 	{"id": "resource", "label": "Resources"},
@@ -699,8 +702,10 @@ func _build_inventory(canvas: CanvasLayer) -> void:
 	filter_row.add_child(sort_button)
 	inventory_carried_grid = GridContainer.new()
 	inventory_carried_grid.columns = 6
-	inventory_carried_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	inventory_carried_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inventory_carried_grid.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	inventory_carried_grid.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	inventory_carried_grid.add_theme_constant_override("h_separation", INVENTORY_TILE_GAP)
+	inventory_carried_grid.add_theme_constant_override("v_separation", INVENTORY_TILE_GAP)
 	carried_column.add_child(inventory_carried_grid)
 	inventory_filter_empty_label = Label.new()
 	inventory_filter_empty_label.text = "No carried items match this filter. Choose All to show every slot."
@@ -721,17 +726,20 @@ func _build_inventory(canvas: CanvasLayer) -> void:
 	hotbar_column.add_child(hotbar_heading)
 	inventory_hotbar_grid = GridContainer.new()
 	inventory_hotbar_grid.columns = F0Inventory.HOTBAR_COUNT
-	inventory_hotbar_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inventory_hotbar_grid.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	inventory_hotbar_grid.add_theme_constant_override("h_separation", INVENTORY_TILE_GAP)
 	hotbar_column.add_child(inventory_hotbar_grid)
 
 	for index in range(F0Inventory.SLOT_COUNT):
 		var slot_button := InventoryItemSlot.new()
-		slot_button.custom_minimum_size = Vector2(58, 58)
+		# Square tiles matching the crafting inventory; no horizontal stretch so a
+		# wide card cannot flatten them into strips.
+		slot_button.custom_minimum_size = INVENTORY_TILE_SIZE
 		slot_button.pressed.connect(_select_inventory_slot.bind(index))
 		slot_button.item_dropped.connect(_on_inventory_item_dropped)
 		slot_button.stack_gesture.connect(_on_inventory_stack_gesture)
 		slot_button.alignment = HORIZONTAL_ALIGNMENT_CENTER
-		slot_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		slot_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		slot_button.add_theme_font_size_override("font_size", 13)
 		slot_button.clip_text = true
 		slot_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS

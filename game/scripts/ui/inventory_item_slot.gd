@@ -9,7 +9,6 @@ var item_id := ""
 var cursor_active := false
 var _drag_label := "Empty"
 var _icon: TextureRect
-var _slot_label: Label
 var _count_label: Label
 var _name_label: Label
 var _presentation_slot := ""
@@ -24,13 +23,10 @@ func _ready() -> void:
 	stack.add_theme_constant_override("separation", 0)
 	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(stack)
-	_slot_label = Label.new()
-	_slot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_slot_label.add_theme_font_size_override("font_size", 11)
-	_slot_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	stack.add_child(_slot_label)
+	# P3H.5: same tile anatomy as CraftingItemSlot — a large centred icon with
+	# the count in its corner and one "slot · name" caption beneath.
 	var icon_holder := Control.new()
-	icon_holder.custom_minimum_size = Vector2(42, 38)
+	icon_holder.custom_minimum_size = Vector2(38, 36)
 	icon_holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	icon_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stack.add_child(icon_holder)
@@ -44,7 +40,7 @@ func _ready() -> void:
 	_count_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_count_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	_count_label.add_theme_font_size_override("font_size", 14)
+	_count_label.add_theme_font_size_override("font_size", 13)
 	_count_label.add_theme_constant_override("outline_size", 3)
 	_count_label.add_theme_color_override("font_outline_color", Color("071016"))
 	_count_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -80,12 +76,11 @@ func set_presentation(slot_label: String, display_name: String, count: int, mark
 
 
 func _apply_presentation() -> void:
-	_slot_label.text = "%s%s" % [_presentation_marker, _presentation_slot]
-	_slot_label.add_theme_color_override("font_color", Color("ffe08a") if _presentation_marker.contains("▶") else Color("b8cad1"))
 	_icon.texture = ItemIconCatalog.texture_for(item_id)
 	_icon.visible = not item_id.is_empty() and _icon.texture != null
 	_count_label.text = "×%d" % _presentation_count if not item_id.is_empty() else ""
-	_name_label.text = _presentation_name if not item_id.is_empty() else "Empty"
+	_name_label.text = "%s%s · %s" % [_presentation_marker, _presentation_slot, _presentation_name if not item_id.is_empty() else "Empty"]
+	_name_label.add_theme_color_override("font_color", Color("ffe08a") if _presentation_marker.contains("▶") else Color("d5e2e8"))
 
 
 func _get_drag_data(_at_position: Vector2) -> Variant:

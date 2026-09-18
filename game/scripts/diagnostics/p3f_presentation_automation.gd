@@ -128,7 +128,7 @@ func _run_gate() -> void:
 	# normalised to LOW_HEIGHT (so the 887 px atlas no longer renders 3.5x too large),
 	# and a swing arc broad enough to reach toward the crosshair.
 	var framing_ok := bool(presentation.hinge_model) and bool(presentation.raised) \
-		and hinge.x >= HeldItemView.HINGE_RIGHT_MIN and hinge.y < 0.0 \
+		and hinge.x >= HeldItemView.HINGE_RIGHT_MIN - 0.001 and hinge.y < 0.0 \
 		and is_equal_approx(sword_size.y, HeldItemView.TOOL_HEIGHT) \
 		and is_equal_approx(shot_size.y, HeldItemView.LOW_HEIGHT) \
 		and shot_size.x < 0.6 \
