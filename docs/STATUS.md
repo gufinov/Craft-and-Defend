@@ -1,4 +1,22 @@
-# Current checkpoint — 2026-09-18
+# Current checkpoint — 2026-09-18 (P3H.4)
+
+**STATUS:** **P3H.4 HINGE HELD TOOLS / MEASURED ICONS / MASONRY SKINS — CANDIDATE PASS; OWNER PLAYTEST PENDING.** Tony's playtest of the P3H.3 build reported wrong tool hinge and sweep, oversized ammunition with a bolt fragment beside the Stone Shot, off-centre card icons and unskinned Furnace/Tower Platform. All positioning defects traced to fixed cell geometry; they are now driven by measured art regions and a hand hinge. Four follow-up cards (P3I Furnace auto-processing, P3J drag building, P4 siege rework, plus the P3H.4 record) are in the backlog. Claude is the implementing agent from this checkpoint; no merge, push to `main` or release is authorized or performed.
+
+**DONE:** `tools/measure_item_atlas.py` → `game/data/item_atlas_regions.json` (26 tight regions, guarded by `tests/test_item_atlas_regions.py`). `ItemIconCatalog` resolves measured regions and centres card icons in a padded square. `HeldItemView` hinges each item's bottom-left corner at a lower-right hand: tools rest north-east with the handle at the screen base and strike counter-clockwise about the hinge toward the crosshair; low items sit above the hotbar; sprite height is normalised per class so ammunition matches item scale. Furnace visual rebuilt in Castle Stone masonry with an ember arch; Tower Platform textured. `ContentRegistry` accessors typed so headless editor diagnostics run again. T80/T91 strengthened. See [the P3H.4 evidence](evidence/P3H4_HINGE_HELD_TOOLS_AND_MEASURED_ICONS.md).
+
+**EXPECT:** Holding Sword, Picks or Axe shows the handle at the lower-right base pointing up-right; using it swings the head left through the crosshair region and back. Stone Shot and Ballista Bolt are item-sized with nothing else visible. Every icon is centred in its card. A placed Furnace is brick masonry with a glowing arch on its front; Tower Platform is Castle Stone.
+
+**TEST:** Static PASS (118 links; 44/44). Editor headless P3F gate/visual and P3D phase1 PASS on the working tree. Exported provenance-matched `TEST_P3F_PRESENTATION.cmd` (T90–T92, T103–T106), `TEST_P3D_USABILITY.cmd` (T79–T83) and `TEST_P3G_FURNACE_USABILITY.cmd` (T93–T98) PASS. P3C, P3E and P3H suites not re-run. Owner playtest pending.
+
+**LIMITATIONS/FAILURES:** Furnace front arch and Tower Platform skin are not rendered close-up by automation. Hinge constants were tuned at 1280×720; ultrawide may need a nudge. Held items remain raster billboards. A nested pwsh→cmd invocation of a `TEST_*.cmd` failed to find the rebuild script once; direct and double-click launches rebuild correctly and the launcher was not changed.
+
+**NEXT:** Tony playtests the items above. Then P3I → P3J → P4 in backlog order.
+
+**GIT/REPRODUCIBILITY:** Worktree `D:\CODEX\Craft_and_Defend\worktrees\p3d-tools-world-feedback`, branch `feature/p3d-tools-world-feedback`, implementation `1ff190d` plus this documentation commit, tracking `origin/feature/p3d-tools-world-feedback`. Canonical `main` unchanged at `c085c013…`. Engine `4.6.stable.custom_build.89cea1439`; EXE SHA-256 `4ac128729e86108904e6d038d161322404d42d71892b1cc0dca751039aa7e4b2`; PCK SHA-256 `31547340d943dc7c3195d0a2a85637cab8f14b8aaa572ad53ea7010997ba1681`. Evidence roots `artifacts/manual-p3f-presentation-268251316`, `artifacts/manual-p3d-usability-2685121767`, `artifacts/manual-p3g-furnace-2694916539`.
+
+---
+
+## Previous checkpoint — 2026-09-18 (recovery)
 
 **STATUS:** **P3H.3 WORK-IN-PROGRESS CHECKPOINTED; LAUNCHER AND RUNTIME GATE RECOVERED; OWNER PLAYTEST PENDING.** The previous Codex session ran out of tokens mid-P3H.3 and left the `game/` tree dirty, which made `START_GAME.cmd` and every `TEST_*.cmd` fail at the clean-tree provenance guard. A third-party audit by Claude committed that work as-is, restored one-click launch, pushed the branch to GitHub for the first time, and recorded findings in [the audit](AUDIT_2026-09-18.md). No merge to `main` and no release occurred.
 

@@ -55,6 +55,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P3G Furnace usability and placed siege identity evidence](evidence/P3G_FURNACE_USABILITY_AND_SIEGE_VISUAL.md)
 - [P3H balance, fuel and controls evidence](evidence/P3H_BALANCE_FUEL_AND_CONTROLS.md)
 - [P3H.2 held scale, strike travel and unified alpha evidence](evidence/P3H2_HELD_SCALE_AND_ALPHA.md)
+- [P3H.4 hinge held tools, measured icons and masonry skins evidence](evidence/P3H4_HINGE_HELD_TOOLS_AND_MEASURED_ICONS.md)
 - [Tool usage](../tools/README.md)
 - [Third-party audit and recovery, 2026-09-18](AUDIT_2026-09-18.md)
 - [Current status](STATUS.md)
