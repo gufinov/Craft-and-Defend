@@ -150,8 +150,8 @@ func _run_visual() -> void:
 	app.session.player.look_at(Vector3(4.5, 0.5, 39.5), Vector3.UP)
 	app.session.inventory.select_hotbar(dirt_slot)
 	app.session._placement_preview_key = ""
-	await _settle_frames(30)
-	var ghost_visible := app.session._placement_preview != null and app.session._held_item_view.current_item_id == "dirt"
+	var ghost_visible: bool = await _wait_for_ghost("PlacementPreview") and app.session._held_item_view.current_item_id == "dirt"
+	await _settle_frames(4)
 	var block_path := app.data_root.path_join("p3d-held-block-placement-ghost.png")
 	var block_image_ok := await _save_viewport(block_path)
 	_record("T83_PRESENTATION", axe_image_ok and block_image_ok and ghost_visible, "rendered evidence shows the held axe beside the real iron marker and a low held block with its world placement ghost", {"axe_path": axe_path, "block_path": block_path, "size": get_viewport().get_visible_rect().size, "ghost_visible": ghost_visible})
@@ -162,9 +162,10 @@ func _run_visual() -> void:
 	app.session.player.look_at(Vector3(2.5, -4.0, 39.5), Vector3.UP)
 	app.session.interaction.begin_drag_at(Vector3i(8, 0, 38))
 	app.session._placement_preview_key = ""
-	await _settle_frames(30)
+	var drag_ghost_seen: bool = await _wait_for_ghost("DragPreview", 2)
+	await _settle_frames(4)
 	var drag := app.session.interaction.drag_state()
-	var drag_ghost_visible: bool = app.session._placement_preview != null and app.session._placement_preview.name == "DragPreview" 		and drag.get("active", false) and drag.get("cells", []).size() >= 2
+	var drag_ghost_visible: bool = drag_ghost_seen and drag.get("active", false) and drag.get("cells", []).size() >= 2
 	var drag_path := app.data_root.path_join("p3j-drag-build-ghost.png")
 	var drag_image_ok := await _save_viewport(drag_path)
 	app.session.interaction.cancel_drag_place()
@@ -207,6 +208,19 @@ func _wait_ready() -> bool:
 			return false
 		await get_tree().process_frame
 	return true
+
+
+## Waits (up to ~10 s) for the placement ghost to exist; the exported build
+## runs more frames per second than the editor, so a fixed frame count is not
+## a reliable wait for terrain streaming and the aim raycast.
+func _wait_for_ghost(ghost_name: String, minimum_cells: int = 1) -> bool:
+	var deadline := Time.get_ticks_msec() + 10000
+	while Time.get_ticks_msec() < deadline:
+		var ghost := app.session._placement_preview
+		if ghost != null and str(ghost.name) == ghost_name and ghost.get_child_count() >= minimum_cells:
+			return true
+		await get_tree().process_frame
+	return false
 
 
 func _wait_cells(cells: Array[Vector3i]) -> bool:
