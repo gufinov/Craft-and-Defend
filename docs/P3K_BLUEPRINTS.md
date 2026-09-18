@@ -34,3 +34,13 @@ In a fresh worktree run `godot --headless --path game --import` once; until the 
 ## Boundary and next
 
 No UI entry point yet (next slice: B-menu "Blueprints" page or build wheel; needs the furnace panel work to land first to avoid conflicts in `app.gd`), no parapet auto-connect block, no player templates, no Tower Platform retirement yet, stairs are full-block steps (jumpable) rather than stone-stair entities.
+
+## Slice 2 contract — player entry point and socket ghosting (planned)
+
+**Entry point.** The Field Build menu (B) gains a **BLUEPRINTS** column beside the recipe book listing every catalogue piece as a card (name, footprint, summed block cost coloured by what the player carries). Clicking a card closes the menu and puts the player in *blueprint placement*: the aimed placement cell anchors the piece (`begin_blueprint_at` → `update_drag_place` following the aim), **W/R** rotate it (`move_blueprint(anchor, quarters)` through the existing `rotate_placement` hooks), the ghost shows every cell in its own block colour with amber/red for unaffordable/blocked, **right-click stamps** (`commit_drag_place`), **Escape or left-click cancels** (`cancel_drag_place`). The HUD line shows the piece name, rotation and cost while placing. Blueprint placement is a mode of the existing plan machinery, so no second preview or transaction path exists.
+
+**Socket ghosting.** While placing a piece, if the aim ray hits a cell that belongs to a previously stamped piece's socket footprint (stamps record `{blueprint_id, anchor, rotation}` in a session-local `stamps` list persisted in the save's `blueprints` envelope), the anchor snaps to that socket's offset instead of the raw aimed cell: look up from inside a tower segment and the next segment ghosts on its `top` socket; look at a wall end and the next wall aligns on its `side` socket. Snapping is presentation-side sugar over the same commit; the player can always override by aiming elsewhere.
+
+**Acceptance (planned).** T116 menu card → placement mode → rotate → stamp through app handlers; T117 socket snap from a stamped segment's top; T118 rendered card column and a snapped ghost. Save/restore of the stamps list round-trips.
+
+**Boundary.** No build wheel yet (the B column is the entry point until the wheel exists), no player templates, no parapet block, no Tower Platform retirement (slice 3).
