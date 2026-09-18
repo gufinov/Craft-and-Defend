@@ -123,6 +123,7 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T111 | P3K | Foundation, tower segment and cap stamp on top of each other through top sockets, each as one world edit plus one inventory transaction across castle stone, stone and planks |
 | T112 | P3K | A blueprint short on one block type trims only that type's cells, skips an occupied cell, cancels with nothing built, and otherwise stamps every affordable cell |
 | T113 | P3K | Rendered evidence shows a stamped foundation, segment and cap tower of ordinary blocks and a multi-block blueprint ghost |
+| T117 | P3K | Stamped pieces are remembered with their sockets, a piece aimed within one cell of a socket snaps to it, an aim far away does not, and the stamp list round-trips through the session snapshot while an unknown piece is refused |
 | T114 | P3I | Furnace select-then-add without the recipe book: clicking an ore or Coal tile highlights it and the message names its slot; Raw Input / Fuel handler presses add +1 and the Shift gesture adds +5; a wrong-slot press is refused with a message; the recipe is inferred from the staged ore so the Load ×1 button and slider are enabled and Load adds one input plus the Coal owed to the staged input (never returns items) |
 | T115 | P3I | Visual: real viewport mouse presses on the ore tile then on Raw Input add one ore and a Shift+click adds up to five more through `CraftingItemSlot` input handling (nothing swallows the plain click) |
 

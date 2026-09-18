@@ -1,4 +1,22 @@
-# Current checkpoint — 2026-09-18 (furnace round 3 + P3K slice 1)
+# Current checkpoint — 2026-09-18 (playtest round 4)
+
+**STATUS:** **ROUND-4 PLAYTEST CORRECTIONS — CANDIDATE PASS ON THE EXPORT; OWNER RE-PLAYTEST PENDING.** Axe mirrored toward the crosshair (per-item mirror, no art regeneration); held blocks smaller and above the hotbar; Shift-held drag builds upward; square hotbar tiles with a bottom margin; item captions without slot numbers; windowed frame fitted inside the usable screen (the real cause of the clipped hotbar); P3K stamp registry, save envelope and socket snapping. Work split between the integrator and a subagent (hotbar/captions), reviewed and export-verified. No merge to `main`, no release.
+
+**DONE:** `d520f0e` axe mirror, low-held position, Shift vertical drag (T108, T91); `e654a53` P3K stamps/sockets (T117); `4458500` (subagent) square 80 px hotbar tiles anchored 14 px above the bottom, captions name-only, Tab hotbar key labels top-left (T83, T83_HOTBAR_ULTRAWIDE); `ffc2722` windowed client size clamped to the screen's usable rectangle; `18b1001` P3K slice-2 contract. See [P3J](P3J_DRAG_BUILDING.md), [P3H.4](P3H4_HINGE_HELD_TOOLS_AND_MEASURED_ICONS.md), [P3K](P3K_BLUEPRINTS.md).
+
+**EXPECT:** Axe blade faces the crosshair. Blocks held lower-right, fully visible above the hotbar. Drag sideways, hold Shift, raise the aim → wall rises even with the aim on the ground. Nine square hotbar tiles with a gap below them at any aspect. Tiles show names and ×n only. A windowed game never extends under the taskbar. Blueprints (service-level) snap to stamped sockets and survive save/load.
+
+**TEST:** Static PASS (49/49). Exported on PCK `f0840c9f…`: `TEST_P3D` (T79–T83, T83_HOTBAR_ULTRAWIDE, T108, T109), `TEST_P3F` (T90–T92, T103–T106), `TEST_P3G` (T93–T98, T107, T114, T115), `TEST_P3K` (T110–T113, T117), `TEST_P3C` (T72–T78) PASS. Editor rendered: F1 visual T18 suite PASS after the window-fit change. Owner playtest pending.
+
+**LIMITATIONS/FAILURES:** The window-fit change is verified by the F1 display suite and by reasoning, not on the owner's 3440×1440 desktop; if the hotbar still clips there, re-check `settings_store._apply_display`. Blueprint entry point still absent (slice 2 next).
+
+**NEXT:** P3K slice 2 — Blueprints column in the B menu, W/R rotation, right-click stamp, socket-snapped ghost — then parapet block and Tower Platform retirement.
+
+**GIT/REPRODUCIBILITY:** Worktree `D:\CODEX\Craft_and_Defend\worktrees\p3d-tools-world-feedback`, branch `feature/p3d-tools-world-feedback`, HEAD after this commit, clean, pushed. Canonical `main` unchanged at `c085c013…`. Engine `4.6.stable.custom_build.89cea1439`; EXE SHA-256 `4ac128729e86108904e6d038d161322404d42d71892b1cc0dca751039aa7e4b2`; PCK SHA-256 `f0840c9f76504916904316dc6797c822349e7629a64e827adf41e7d0286dc08d`. Evidence roots `artifacts/manual-p3d-usability-1830826926`, `artifacts/manual-p3f-presentation-183313860`, `artifacts/manual-p3g-furnace-1835724312`, `artifacts/manual-p3k-blueprints-1837623266`, `artifacts/manual-p3c-player-defense-1839622221`.
+
+---
+
+## Previous checkpoint — 2026-09-18 (furnace round 3 + P3K slice 1)
 
 **STATUS:** **FURNACE ROUND 3 AND P3K BLUEPRINTS SLICE 1 — CANDIDATE PASS ON THE MERGED EXPORT; OWNER PLAYTEST PENDING.** Furnace: the lit Coal stays until the last job it funds completes; the panel fits 720; select-then-add works without the recipe book (delegated to a subagent, reviewed and verified by the integrator). P3K: blueprint catalogue and stamp engine for castle pieces made of ordinary blocks, with sockets and diagnostics; no player entry point yet. No merge to `main`, no release.
 
