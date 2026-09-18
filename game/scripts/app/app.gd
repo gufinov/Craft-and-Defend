@@ -28,6 +28,8 @@ const BINDING_GROUPS: Array[Dictionary] = [
 ]
 
 var state := AppState.MAIN_MENU
+## True when any --*-automation= argument selected a diagnostic run.
+var automation_active := false
 var data_root := ""
 var settings: SettingsStore
 var saves: SaveCoordinator
@@ -287,6 +289,10 @@ func _resolve_data_root() -> String:
 
 
 func _argument_value(prefix: String) -> String:
+	if prefix.ends_with("-automation="):
+		for argument in OS.get_cmdline_user_args():
+			if argument.begins_with(prefix):
+				automation_active = true
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with(prefix):
 			return argument.trim_prefix(prefix)
@@ -2545,6 +2551,10 @@ func _notification(what: int) -> void:
 
 
 func _handle_focus_lost() -> void:
+	# Diagnostics drive the window themselves; a focus change from the host
+	# (another window opening beside the render) must not pause them.
+	if automation_active:
+		return
 	if state == AppState.PLAYING:
 		if Time.get_ticks_msec() - _print_screen_pressed_msec <= PRINT_SCREEN_FOCUS_WINDOW_MSEC:
 			_print_screen_pressed_msec = -PRINT_SCREEN_FOCUS_WINDOW_MSEC
