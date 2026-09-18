@@ -71,7 +71,7 @@ func _run_gate() -> void:
 
 	app.state = app.AppState.PLAYING
 	app._show_crafting(furnace_id, "furnace")
-	var modal_ok := app.crafting_grid.columns == 3 and app.crafting_grid.get_child_count() == 3 and app.crafting_context_label.text.contains("RETAINED OUTPUT") and app.crafting_grid_help.text.contains("persist")
+	var modal_ok := app.crafting_grid.columns == 3 and app.crafting_grid.get_child_count() == 3 and app.crafting_context_label.text.contains("RETAINED OUTPUT") and app.crafting_grid_help.text.contains("Raw Input") and app.crafting_grid_help.tooltip_text.contains("persist")
 	app.crafting_recipe_search.grab_focus()
 	await get_tree().process_frame
 	var escape := InputEventKey.new()

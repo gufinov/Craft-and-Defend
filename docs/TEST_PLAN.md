@@ -96,7 +96,7 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T84 | P3E | Whole compatible inventory stacks transfer into distinct persistent Furnace Raw Input and Fuel slots without duplication |
 | T85 | P3E | Right-click takes the larger half; right-click deposit and right-drag distribute one per compatible slot with exact counts |
 | T86 | P3E | Furnace consumes one input and one counted fuel operation, retains exactly one Output across clean restore and moves it only on explicit collection |
-| T87 | P3E/P3H.3 | Furnace modal has three real slots, closes with one Escape while recipe search owns focus, and retains revised station/tool identity |
+| T87 | P3E/P3H.3 | Furnace modal has three real slots (help label names the select-then-add gesture; the persistence note lives in its tooltip), closes with one Escape while recipe search owns focus, and retains revised station/tool identity |
 | T88 | P3E | Manual hand/workbench patterns are recognized without recipe-book selection or search |
 | T89 | P3E | Rendered 1280×720 evidence visibly shows the three-slot Furnace and revised world/held identity |
 | T90 | P3F | Workbench recipes use an exact stable progression order from hand fundamentals through tools, castle construction, iron equipment and siege recipes |
@@ -104,10 +104,10 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T92 | P3F | Rendered contact sheet shows representative raised/low held items plus textured placed Castle Stone without opaque inventory-card backgrounds |
 | T93 | P3G | Shift+Click moves the maximum compatible amount from inventory to Furnace and back without loss or duplication |
 | T94 | P3G | Auto-load target independently fills scarce/available input and fuel, lowers transactionally and conserves exact totals |
-| T95 | P3G | Per-item progress reaches a measurable midpoint, deposits one retained output and resets when the next loaded batch begins |
+| T95 | P3G/P3I | Per-item progress reaches a measurable midpoint, deposits one retained output, resets when the next loaded batch begins, and the Coal that funded it stays in Fuel marked burning with one operation left |
 | T96 | P3G | Furnace progress advances while its modal is open while world, enemy and player simulation remain paused |
 | T97 | P3G | Placed Catapult renders a distinct four-wheel chassis, axle, frame, throwing arm, basket and projectile without changing footprint/combat identity |
-| T98 | P3G | Rendered evidence shows the auto-load/progress panel and revised placed Catapult |
+| T98 | P3G/P3I | Rendered evidence shows the auto-load/progress panel, the highlighted selected ore tile with its selection message, and the revised placed Catapult; the crafting modal (furnace and workbench) ends inside the 1280×720 canvas (clear button and message bottoms ≤ 720) |
 | T99 | P3H | Named catalogue values drive the active Furnace, harvesting and defense services |
 | T100 | P3H | One Coal funds exactly three outputs; residual work survives restore and no fourth output is free |
 | T101 | P3H | W rotates clockwise, R counterclockwise and Left Shift remains Interact |
@@ -116,9 +116,11 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T104 | P3H.2 | Exported three-panel evidence shows the enlarged ready Sword, broad active strike travel and doubled/higher low-held Furnace frame; the active 1536×1024 atlas is RGBA with alpha-zero background |
 | T105 | P3H.3 | Placed Gate Frame and Wall Walk Slab mesh parts resolve the Castle Stone texture instead of a flat material |
 | T106 | P3H.3 | Exported evidence visibly shows the Castle Stone skin on the placed Gate Frame and Wall Walk Slab |
-| T107 | P3I | A Furnace holding input and fuel starts without a manual press on the next unpaused tick, never while paused, processes every input one at a time into retained Output, returns to idle when the input is spent, keeps the burning Coal in the slot until its last operation and accepts counted +N transfers |
+| T107 | P3I | A Furnace holding input and fuel starts without a manual press on the next unpaused tick, never while paused, processes every input one at a time into retained Output, returns to idle when the input is spent, keeps the Coal in Fuel while the last job it funds is still running (0 operations left, burning) and removes it only when that job completes, round-trips the lit Coal through snapshot/restore (records without `furnace_fuel_burning` restore sensibly), and counted +N transfers move min(N, carried) |
 | T108 | P3J | A right-drag plans a row, column or wall of the held block with support-first ordering, extends into open sky along the row's vertical plane, skips blocked cells, trims to the carried count, commits as one world edit plus one inventory transaction, and cancels with nothing built |
 | T109 | P3J | Rendered evidence shows a multi-cell drag-build ghost stretched from the anchor toward the aimed cell |
+| T110 | P3I | Furnace select-then-add without the recipe book: clicking an ore or Coal tile highlights it and the message names its slot; Raw Input / Fuel handler presses add +1 and the Shift gesture adds +5; a wrong-slot press is refused with a message; the recipe is inferred from the staged ore so the Load ×1 button and slider are enabled and Load adds one input plus the Coal owed to the staged input (never returns items) |
+| T111 | P3I | Visual: real viewport mouse presses on the ore tile then on Raw Input add one ore and a Shift+click adds up to five more through `CraftingItemSlot` input handling (nothing swallows the plain click) |
 
 ## Performance evidence, not invented guarantees
 

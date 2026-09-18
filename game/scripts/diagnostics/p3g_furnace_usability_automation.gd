@@ -64,7 +64,7 @@ func _run_gate() -> void:
 	var after_one := timed_service.furnace_slots(timed_id)
 	var next_job := timed_service.furnace_job_status(timed_id)
 	var fuel_after_one := timed_service.furnace_fuel_status(timed_id)
-	_record("T95_ITEM_PROGRESS_SEQUENCE", started.get("ok", false) and absf(float(halfway.progress) - 0.5) < 0.01 and int(after_one.output.count) == 1 and bool(next_job.active) and float(next_job.progress) < 0.01 and int(after_one.input.count) == 1 and str(after_one.fuel.item_id) == "coal" and int(after_one.fuel.count) == 1 and int(fuel_after_one.get("details", {}).get("stored_operations", -1)) == 1, "each item exposes measurable progress, deposits one retained output, resets for the next loaded item, spends only one stored fuel operation and keeps the burning Coal in the Fuel slot", {"halfway": halfway, "after_one": after_one, "next_job": next_job, "fuel": fuel_after_one})
+	_record("T95_ITEM_PROGRESS_SEQUENCE", started.get("ok", false) and absf(float(halfway.progress) - 0.5) < 0.01 and int(after_one.output.count) == 1 and bool(next_job.active) and float(next_job.progress) < 0.01 and int(after_one.input.count) == 1 and str(after_one.fuel.item_id) == "coal" and int(after_one.fuel.count) == 1 and int(fuel_after_one.get("details", {}).get("stored_operations", -1)) == 1 and bool(fuel_after_one.get("details", {}).get("burning", false)), "each item exposes measurable progress, deposits one retained output, resets for the next loaded item, spends only one stored fuel operation and keeps the burning Coal in the Fuel slot", {"halfway": halfway, "after_one": after_one, "next_job": next_job, "fuel": fuel_after_one})
 
 	app.session.inventory.try_transaction({}, {"furnace": 1, "iron_ore": 2, "coal": 2})
 	var placed := app.session.workstations.try_place("furnace", Vector3i(3, 0, 38), app.session.world.query_cell, app.session.player.get_body_aabb())
@@ -134,18 +134,109 @@ func _run_gate() -> void:
 	var counted_move := burn_service.try_transfer_inventory_item_to_furnace(burn_id, "iron_ore", 5)
 	burn_service.try_transfer_inventory_stack_to_furnace(burn_id, _slot_for(burn_inventory, "coal"))
 	burn_service.advance(0.01, false)
-	burn_service.advance(duration * 3.0 + 0.5, false)
-	burn_service.advance(duration + 0.1, false)
+	# Round 3 fuel timing: after two full items the THIRD job is running on the
+	# Coal's last operation; the Coal must still sit in the Fuel slot (0 left,
+	# burning) and leave only when that third job completes.
+	burn_service.advance(duration * 2.0 + 0.5, false)
+	var third_running_slots := burn_service.furnace_slots(burn_id)
+	var third_running_job := burn_service.furnace_job_status(burn_id)
+	var third_running_fuel: Dictionary = burn_service.furnace_fuel_status(burn_id).get("details", {})
+	var coal_present_during_last_job: bool = bool(third_running_job.get("active", false)) and int(third_running_slots.get("output", {}).get("count", 0)) == 2 \
+		and str(third_running_slots.get("fuel", {}).get("item_id", "")) == "coal" and int(third_running_slots.get("fuel", {}).get("count", 0)) == 1 \
+		and int(third_running_fuel.get("stored_operations", -1)) == 0 and bool(third_running_fuel.get("burning", false)) and int(third_running_fuel.get("available_operations", -1)) == 0
+	var third_completed := burn_service.advance(duration, false)
 	var burnt_slots := burn_service.furnace_slots(burn_id)
-	var coal_burnt_out := int(counted_move.get("details", {}).get("moved", 0)) == 3 and int(burnt_slots.get("output", {}).get("count", 0)) == 3 		and str(burnt_slots.get("fuel", {}).get("item_id", "")).is_empty() 		and int(burn_service.furnace_fuel_status(burn_id).get("details", {}).get("stored_operations", -1)) == 0
-	_record("T107_FURNACE_AUTO_PROCESSING", ore_moved.get("ok", false) and coal_moved.get("ok", false) and idle_before and self_started and paused_no_start and two_ingots and input_spent and stops_idle and burning_coal_kept and coal_burnt_out, "a Furnace holding input and fuel starts without a manual press on the next unpaused tick, never while paused, processes every input one at a time into retained Output, returns to idle when the input is spent, keeps the burning Coal in the slot until its last operation and accepts counted +N transfers", {"idle_before": idle_before, "self_started": self_started, "paused_no_start": paused_no_start, "slots": finished_slots, "job": finished_job, "burning_coal_kept": burning_coal_kept, "burnt_slots": burnt_slots, "counted_move": counted_move.get("details", {})})
+	var completion_fuel: Dictionary = third_completed[0].get("details", {}).get("fuel", {}) if third_completed.size() == 1 else {}
+	var coal_burnt_out: bool = int(counted_move.get("details", {}).get("moved", 0)) == 3 and int(burnt_slots.get("output", {}).get("count", 0)) == 3 \
+		and str(burnt_slots.get("fuel", {}).get("item_id", "")).is_empty() and not bool(burn_service.furnace_job_status(burn_id).get("active", false)) \
+		and int(burn_service.furnace_fuel_status(burn_id).get("details", {}).get("stored_operations", -1)) == 0 \
+		and not bool(burn_service.furnace_fuel_status(burn_id).get("details", {}).get("burning", true)) \
+		and third_completed.size() == 1 and str(third_completed[0].get("details", {}).get("furnace_slots", {}).get("fuel", {}).get("item_id", "x")).is_empty() and not bool(completion_fuel.get("burning", true))
+	# Snapshot/restore round-trips the lit-but-exhausted Coal (round 3 field).
+	var trip_fixture := _fixture(3, 1)
+	var trip_service: WorkstationService = trip_fixture.service
+	var trip_inventory: F0Inventory = trip_fixture.inventory
+	var trip_id := str(trip_fixture.furnace_id)
+	trip_service.try_transfer_inventory_stack_to_furnace(trip_id, _slot_for(trip_inventory, "iron_ore"))
+	trip_service.try_transfer_inventory_stack_to_furnace(trip_id, _slot_for(trip_inventory, "coal"))
+	trip_service.advance(duration * 2.0 + 0.5, false)
+	var trip_saved := trip_service.snapshot()
+	var trip_restored := WorkstationService.new(app.session.registry, F0Inventory.new(app.session.registry))
+	var trip_restore := trip_restored.restore(trip_saved, _fixture_world_query)
+	var trip_fuel_after_restore: Dictionary = trip_restored.furnace_fuel_status(trip_id).get("details", {})
+	var trip_slots_after_restore := trip_restored.furnace_slots(trip_id)
+	trip_restored.advance(duration, false)
+	var trip_final := trip_restored.furnace_slots(trip_id)
+	var legacy_saved: Dictionary = trip_saved.duplicate(true)
+	for legacy_station: Dictionary in legacy_saved.get("stations", []):
+		legacy_station.erase("furnace_fuel_burning")
+	var legacy_restored := WorkstationService.new(app.session.registry, F0Inventory.new(app.session.registry))
+	var legacy_restore := legacy_restored.restore(legacy_saved, _fixture_world_query)
+	legacy_restored.advance(duration, false)
+	var legacy_final := legacy_restored.furnace_slots(trip_id)
+	var round_trip_ok: bool = trip_restore.get("ok", false) and bool(trip_fuel_after_restore.get("burning", false)) and int(trip_fuel_after_restore.get("stored_operations", -1)) == 0 \
+		and str(trip_slots_after_restore.get("fuel", {}).get("item_id", "")) == "coal" and int(trip_final.get("output", {}).get("count", 0)) == 3 and str(trip_final.get("fuel", {}).get("item_id", "")).is_empty() \
+		and legacy_restore.get("ok", false) and int(legacy_final.get("output", {}).get("count", 0)) == 3
+	_record("T107_FURNACE_AUTO_PROCESSING", ore_moved.get("ok", false) and coal_moved.get("ok", false) and idle_before and self_started and paused_no_start and two_ingots and input_spent and stops_idle and burning_coal_kept and coal_present_during_last_job and coal_burnt_out and round_trip_ok, "a Furnace holding input and fuel starts without a manual press on the next unpaused tick, never while paused, processes every input one at a time into retained Output, returns to idle when the input is spent, keeps the Coal in the slot while its last job runs and removes it only when that job completes, round-trips the lit Coal through snapshot/restore (legacy records included) and accepts counted +N transfers", {"idle_before": idle_before, "self_started": self_started, "paused_no_start": paused_no_start, "slots": finished_slots, "job": finished_job, "burning_coal_kept": burning_coal_kept, "third_running_slots": third_running_slots, "third_running_fuel": third_running_fuel, "coal_present_during_last_job": coal_present_during_last_job, "burnt_slots": burnt_slots, "completion_fuel": completion_fuel, "round_trip_ok": round_trip_ok, "trip_fuel_after_restore": trip_fuel_after_restore, "legacy_final": legacy_final, "counted_move": counted_move.get("details", {})})
 
+	# Round 3 gesture: select an ore or Coal tile, then click Raw Input / Fuel
+	# (+1, Shift +5); the Load button works without the recipe book.
+	app.session.inventory.try_transaction({}, {"furnace": 1, "iron_ore": 9, "coal": 3})
+	var gesture_placed := app.session.workstations.try_place("furnace", Vector3i(11, 0, 38), app.session.world.query_cell, app.session.player.get_body_aabb())
+	var gesture_id := str(gesture_placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	app.state = app.AppState.PLAYING
+	app._show_crafting(gesture_id, "furnace")
+	var ore_slot := _slot_for(app.session.inventory, "iron_ore")
+	var coal_slot := _slot_for(app.session.inventory, "coal")
+	app._select_crafting_inventory_slot(ore_slot)
+	var ore_selection_message := str(app.crafting_message.text)
+	var ore_tile_highlighted: bool = app.crafting_inventory_slots[ore_slot].is_selected() and not app.crafting_inventory_slots[coal_slot].is_selected()
+	var recipe_after_select := str(app._selected_recipe_id)
+	var load_enabled_after_select: bool = not app.craft_selected_button.disabled
+	app._on_crafting_grid_slot_pressed(0)
+	var input_after_one := int(app.session.workstations.furnace_slots(gesture_id).get("input", {}).get("count", 0))
+	var selection_kept_after_click: bool = app._crafting_selected_inventory_item == "iron_ore" and app.crafting_inventory_slots[ore_slot].is_selected()
+	app._on_crafting_stack_gesture("furnace", 0, MOUSE_BUTTON_LEFT, false, false, true)
+	var input_after_shift := int(app.session.workstations.furnace_slots(gesture_id).get("input", {}).get("count", 0))
+	app._select_crafting_inventory_slot(coal_slot)
+	var coal_selection_message := str(app.crafting_message.text)
+	var coal_tile_highlighted: bool = app.crafting_inventory_slots[coal_slot].is_selected() and not app.crafting_inventory_slots[ore_slot].is_selected()
+	app._on_crafting_grid_slot_pressed(1)
+	var gesture_fuel_after_one := int(app.session.workstations.furnace_slots(gesture_id).get("fuel", {}).get("count", 0))
+	app._on_crafting_grid_slot_pressed(0)
+	var wrong_slot_message := str(app.crafting_message.text)
+	var input_after_wrong := int(app.session.workstations.furnace_slots(gesture_id).get("input", {}).get("count", 0))
+	# Load button with no recipe chosen in the book: one more batch is staged.
+	app._crafting_selected_inventory_item = ""
+	app._selected_recipe_id = ""
+	app._refresh_crafting_panel()
+	var recipe_inferred_from_input := str(app._selected_recipe_id)
+	var load_enabled_without_book: bool = not app.craft_selected_button.disabled
+	var before_load: Dictionary = app.session.workstations.furnace_slots(gesture_id)
+	app._craft_selected_recipe()
+	var after_load: Dictionary = app.session.workstations.furnace_slots(gesture_id)
+	# Additive Load x1: 6 -> 7 ore, and the Coal owed to 7 staged ore (7 ops
+	# against 3 available) tops Fuel up from 1 to 3; nothing is returned.
+	var loaded_one_batch: bool = int(after_load.get("input", {}).get("count", 0)) == int(before_load.get("input", {}).get("count", 0)) + 1 and int(after_load.get("fuel", {}).get("count", 0)) == 3 and int(before_load.get("fuel", {}).get("count", 0)) == 1
+	var slider_editable: bool = app.furnace_auto_load_slider.editable and app.furnace_auto_load_slider.max_value >= 8.0
+	var layout_limit := get_viewport().get_visible_rect().size.y
+	await _settle_frames(2)
+	var headless_bottom := app.crafting_clear_button.get_global_rect().end.y
+	var headless_message_bottom := app.crafting_message.get_global_rect().end.y
+	app._close_crafting()
+	var gesture_ok: bool = gesture_placed.get("ok", false) and ore_selection_message == "Iron Ore selected — click Raw Input to add 1, Shift+Click adds 5" and ore_tile_highlighted \
+		and recipe_after_select == "iron_ingot" and load_enabled_after_select and input_after_one == 1 and selection_kept_after_click and input_after_shift == 6 \
+		and coal_selection_message == "Coal selected — click Fuel to add 1, Shift+Click adds 5" and coal_tile_highlighted and gesture_fuel_after_one == 1 \
+		and wrong_slot_message == "Coal belongs in the Fuel slot." and input_after_wrong == 6 \
+		and recipe_inferred_from_input == "iron_ingot" and load_enabled_without_book and loaded_one_batch and slider_editable \
+		and headless_bottom <= layout_limit and headless_message_bottom <= layout_limit
+	_record("T110_FURNACE_SELECT_THEN_ADD", gesture_ok, "clicking an ore or Coal tile highlights it and names its slot; Raw Input / Fuel clicks add +1 (Shift +5); the Load button and slider work with the recipe inferred from the ore, no recipe-book choice needed; the modal's buttons stay inside the viewport", {"ore_selection_message": ore_selection_message, "ore_tile_highlighted": ore_tile_highlighted, "recipe_after_select": recipe_after_select, "load_enabled_after_select": load_enabled_after_select, "input_after_one": input_after_one, "input_after_shift": input_after_shift, "coal_selection_message": coal_selection_message, "fuel_after_one": gesture_fuel_after_one, "wrong_slot_message": wrong_slot_message, "recipe_inferred_from_input": recipe_inferred_from_input, "load_enabled_without_book": load_enabled_without_book, "before_load": before_load, "after_load": after_load, "slider_max": app.furnace_auto_load_slider.max_value, "clear_button_bottom": headless_bottom, "message_bottom": headless_message_bottom, "viewport_height": layout_limit})
 
 func _run_visual() -> void:
 	app._on_start_pressed()
 	if not await _wait_ready():
 		return
-	app.session.inventory.try_transaction({}, {"furnace": 1, "iron_ore": 8, "coal": 5, "catapult": 1})
+	app.session.inventory.try_transaction({}, {"furnace": 1, "iron_ore": 12, "coal": 5, "catapult": 1})
 	var furnace := app.session.workstations.try_place("furnace", Vector3i(3, 0, 38), app.session.world.query_cell, app.session.player.get_body_aabb())
 	var furnace_id := str(furnace.get("details", {}).get("station", {}).get("instance_id", ""))
 	app.session.workstations.try_set_furnace_autoload_target(furnace_id, "iron_ingot", 8)
@@ -153,10 +244,50 @@ func _run_visual() -> void:
 	app.state = app.AppState.PLAYING
 	app._show_crafting(furnace_id, "furnace")
 	app._process(2.5)
+	app._select_crafting_inventory_slot(_slot_for(app.session.inventory, "iron_ore"))
 	await _settle_frames(4)
 	var modal_path := app.data_root.path_join("p3g-furnace-autoload-progress.png")
 	var modal_ok := await _save_viewport(modal_path)
+	# Round 3: the whole modal, including the bottom button and the message,
+	# must sit inside the 1280x720 canvas in furnace and workbench modes.
+	var viewport_height := get_viewport().get_visible_rect().size.y
+	var furnace_button_bottom := app.crafting_clear_button.get_global_rect().end.y
+	var furnace_message_bottom := app.crafting_message.get_global_rect().end.y
+	var furnace_fits := furnace_button_bottom <= viewport_height and furnace_message_bottom <= viewport_height
 	app._close_crafting()
+	app.session.inventory.try_transaction({}, {"workbench": 1})
+	var workbench := app.session.workstations.try_place("workbench", Vector3i(5, 0, 38), app.session.world.query_cell, app.session.player.get_body_aabb())
+	app._show_crafting(str(workbench.get("details", {}).get("station", {}).get("instance_id", "")), "workbench")
+	app._select_crafting_inventory_slot(_slot_for(app.session.inventory, "iron_ore"))
+	await _settle_frames(4)
+	var workbench_path := app.data_root.path_join("p3g-workbench-modal-fit.png")
+	var workbench_ok := await _save_viewport(workbench_path)
+	var workbench_button_bottom := app.crafting_clear_button.get_global_rect().end.y
+	var workbench_message_bottom := app.crafting_message.get_global_rect().end.y
+	var workbench_fits: bool = workbench.get("ok", false) and workbench_button_bottom <= viewport_height and workbench_message_bottom <= viewport_height
+	app._close_crafting()
+	# Round 3: drive the real click path (viewport input, not handler calls):
+	# press/release on the ore tile, then on Raw Input, then Shift+click on
+	# Raw Input. CraftingItemSlot._gui_input must not swallow the plain click.
+	app.session.inventory.try_transaction({}, {"furnace": 1})
+	var click_furnace := app.session.workstations.try_place("furnace", Vector3i(9, 0, 38), app.session.world.query_cell, app.session.player.get_body_aabb())
+	var click_id := str(click_furnace.get("details", {}).get("station", {}).get("instance_id", ""))
+	app._show_crafting(click_id, "furnace")
+	await _settle_frames(2)
+	var ore_tile: CraftingItemSlot = app.crafting_inventory_slots[_slot_for(app.session.inventory, "iron_ore")]
+	await _click_at(ore_tile.get_global_rect().get_center(), false)
+	var clicked_selected := str(app._crafting_selected_inventory_item)
+	var clicked_highlight: bool = ore_tile.is_selected()
+	var raw_input_cell: Control = app.crafting_grid_slots[0]
+	await _click_at(raw_input_cell.get_global_rect().get_center(), false)
+	var clicked_input := int(app.session.workstations.furnace_slots(click_id).get("input", {}).get("count", 0))
+	raw_input_cell = app.crafting_grid_slots[0]
+	await _click_at(raw_input_cell.get_global_rect().get_center(), true)
+	var shift_clicked_input := int(app.session.workstations.furnace_slots(click_id).get("input", {}).get("count", 0))
+	var click_path_path := app.data_root.path_join("p3g-furnace-select-then-add.png")
+	var click_path_ok := await _save_viewport(click_path_path)
+	app._close_crafting()
+	_record("T111_FURNACE_CLICK_PATH", click_furnace.get("ok", false) and clicked_selected == "iron_ore" and clicked_highlight and clicked_input == 1 and shift_clicked_input == 4 and click_path_ok, "real mouse presses on the ore tile then Raw Input add one ore (Shift+click adds the rest, up to five) through the slot's own input handling", {"selected": clicked_selected, "highlighted": clicked_highlight, "input_after_click": clicked_input, "input_after_shift_click": shift_clicked_input, "path": click_path_path})
 	var catapult := app.session.workstations.try_place("catapult", Vector3i(7, 0, 38), app.session.world.query_cell, app.session.player.get_body_aabb())
 	app.session.apply_world_settings("1200", false)
 	app.session.player.global_position = Vector3(11.2, 1.35, 34.2)
@@ -164,7 +295,20 @@ func _run_visual() -> void:
 	await _settle_frames(12)
 	var catapult_path := app.data_root.path_join("p3g-catapult-world-model.png")
 	var catapult_ok := await _save_viewport(catapult_path)
-	_record("T98_FURNACE_AND_CATAPULT_PRESENTATION", modal_ok and catapult.get("ok", false) and catapult_ok, "rendered evidence shows the auto-load/progress controls and the revised placed Catapult", {"modal_path": modal_path, "catapult_path": catapult_path, "size": get_viewport().get_visible_rect().size})
+	_record("T98_FURNACE_AND_CATAPULT_PRESENTATION", modal_ok and catapult.get("ok", false) and catapult_ok and furnace_fits and workbench_ok and workbench_fits, "rendered evidence shows the auto-load/progress controls and the revised placed Catapult, and the crafting modal (furnace and workbench, with a selection message showing) ends inside the 720-unit canvas", {"modal_path": modal_path, "workbench_path": workbench_path, "catapult_path": catapult_path, "size": get_viewport().get_visible_rect().size, "furnace_button_bottom": furnace_button_bottom, "furnace_message_bottom": furnace_message_bottom, "workbench_button_bottom": workbench_button_bottom, "workbench_message_bottom": workbench_message_bottom})
+
+
+func _click_at(global_position: Vector2, shift: bool) -> void:
+	for pressed in [true, false]:
+		var event := InputEventMouseButton.new()
+		event.button_index = MOUSE_BUTTON_LEFT
+		event.pressed = pressed
+		event.shift_pressed = shift
+		event.position = global_position
+		event.global_position = global_position
+		get_viewport().push_input(event)
+		await get_tree().process_frame
+	await _settle_frames(2)
 
 
 func _fixture(ore: int, coal: int) -> Dictionary:

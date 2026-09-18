@@ -17,6 +17,7 @@ var _name_label: Label
 var _presentation_name := "Empty"
 var _presentation_count := 0
 var _presentation_marker := ""
+var _selected := false
 
 
 func _ready() -> void:
@@ -84,6 +85,26 @@ func configure_target(kind: String, index: int) -> void:
 
 func set_cursor_active(active: bool) -> void:
 	cursor_active = active
+
+
+## Round 3: a selected inventory tile is highlighted like the selected recipe
+## card (gold border) so "select, then click Raw Input / Fuel" reads clearly.
+func set_selected(selected: bool) -> void:
+	if selected == _selected:
+		return
+	_selected = selected
+	if selected:
+		add_theme_stylebox_override("normal", FoundationTheme.panel(Color("18303c"), Color("ffe08a"), 5, 4))
+		add_theme_stylebox_override("hover", FoundationTheme.panel(Color("1c3845"), Color("ffe08a"), 5, 4))
+		add_theme_stylebox_override("pressed", FoundationTheme.panel(Color("203f4d"), Color("ffe08a"), 5, 4))
+	else:
+		remove_theme_stylebox_override("normal")
+		remove_theme_stylebox_override("hover")
+		remove_theme_stylebox_override("pressed")
+
+
+func is_selected() -> bool:
+	return _selected
 
 
 func _get_drag_data(_at_position: Vector2) -> Variant:
