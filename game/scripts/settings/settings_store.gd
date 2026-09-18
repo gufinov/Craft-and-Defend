@@ -409,6 +409,14 @@ func _apply_display(mode: String, target_resolution: Vector2i) -> void:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 		DisplayServer.window_set_current_screen(target_screen)
 		DisplayServer.window_set_size(target_resolution)
+		# Owner playtest 2026-09-18: a windowed size equal to the monitor put the
+		# decorated frame under the taskbar and hid the hotbar. Shrink the client
+		# area so the whole decorated window fits the screen's usable rectangle.
+		var usable_rect := DisplayServer.screen_get_usable_rect(target_screen)
+		var decoration := DisplayServer.window_get_size_with_decorations() - DisplayServer.window_get_size()
+		var fitted := Vector2i(mini(target_resolution.x, usable_rect.size.x - decoration.x), mini(target_resolution.y, usable_rect.size.y - decoration.y))
+		if fitted != target_resolution and fitted.x > 0 and fitted.y > 0:
+			DisplayServer.window_set_size(fitted)
 		_center_window_on_screen(target_screen)
 
 
