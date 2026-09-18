@@ -27,6 +27,10 @@ Owner decision 2026-09-18: castle pieces are blueprints that stamp ordinary bloc
 - T113 rendered stamped tower and blueprint ghost.
 - `python -m unittest discover -s tests` includes the catalogue guard.
 
+## Tooling note
+
+In a fresh worktree run `godot --headless --path game --import` once; until the `.godot` class cache exists, `--check-only` cannot resolve project classes and headless gates fail at parse.
+
 ## Boundary and next
 
 No UI entry point yet (next slice: B-menu "Blueprints" page or build wheel; needs the furnace panel work to land first to avoid conflicts in `app.gd`), no parapet auto-connect block, no player templates, no Tower Platform retirement yet, stairs are full-block steps (jumpable) rather than stone-stair entities.

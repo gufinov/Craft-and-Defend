@@ -62,6 +62,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P3H.4 hinge held tools, measured icons and masonry skins evidence](evidence/P3H4_HINGE_HELD_TOOLS_AND_MEASURED_ICONS.md)
 - [P3I Furnace auto-processing evidence](evidence/P3I_FURNACE_AUTO_PROCESSING.md)
 - [P3J drag building evidence](evidence/P3J_DRAG_BUILDING.md)
+- [P3K blueprints slice 1 evidence](evidence/P3K_BLUEPRINTS.md)
 - [Tool usage](../tools/README.md)
 - [Third-party audit and recovery, 2026-09-18](AUDIT_2026-09-18.md)
 - [Current status](STATUS.md)
