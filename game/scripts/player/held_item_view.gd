@@ -19,13 +19,13 @@ const HELD_DEPTH := 0.90
 ## X is clamped so the swing still reaches the crosshair on ultrawide displays.
 ## Owner ultrawide playtest 2026-09-18: the first values (0.58 / 0.50 / 0.95)
 ## put the hand about one block too far right; these sit it one block inward.
-const HINGE_RIGHT_FRACTION := 0.48
-const HINGE_RIGHT_MIN := 0.45
-const HINGE_RIGHT_MAX := 0.78
+const HINGE_RIGHT_FRACTION := 0.40
+const HINGE_RIGHT_MIN := 0.40
+const HINGE_RIGHT_MAX := 0.62
 ## Tools seat their handle at the screen base (owner sketch); low-held items
 ## stay above the hotbar as accepted in P3H.2.
-const TOOL_HINGE_DOWN_FRACTION := 0.92
-const LOW_HINGE_DOWN_FRACTION := 0.52
+const TOOL_HINGE_DOWN_FRACTION := 1.0
+const LOW_HINGE_DOWN_FRACTION := 0.66
 ## Rest tilt of raised tools (radians, counter-clockwise). Art already points NE.
 const TOOL_REST_ROTATION := 0.0
 const LOW_REST_ROTATION := 0.0
@@ -46,7 +46,7 @@ const PLACE_NUDGE_TRAVEL := Vector3(-0.03, 0.05, -0.10)
 ## Tools whose atlas art has the cutting edge on the outer (right) side. They
 ## are mirrored so the edge faces the crosshair; the hinge moves to the handle
 ## end on the mirrored side (owner playtest 2026-09-18, image 1).
-const MIRRORED_ITEMS: Array[String] = ["wood_axe"]
+const MIRRORED_ITEMS: Array[String] = []
 
 var registry: ContentRegistry
 ## The hinge. Its origin is the hand; the sprite hangs from it.

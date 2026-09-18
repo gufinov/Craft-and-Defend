@@ -137,7 +137,8 @@ func _run_gate() -> void:
 		and is_equal_approx(shot_size.y, HeldItemView.LOW_HEIGHT) \
 		and shot_size.x < 0.6 \
 		and not bool(shot_presentation.raised) \
-		and float(presentation.tool_swing_arc_radians) >= 1.2 		and axe_mirrored and not sword_mirrored
+		and float(presentation.tool_swing_arc_radians) >= 1.2 \
+		and not axe_mirrored and not sword_mirrored
 	_record("T91_HELD_AND_BLOCK_IDENTITY", missing.is_empty() and held_failures.is_empty() and block_failures.is_empty() and region_failures.is_empty() and regions_isolated and alpha_atlas_ok and ammunition_alpha_ok and framing_ok, "all inventory and held items resolve filter-clipped true-alpha art; every item resolves a measured art region isolated from its neighbours; the held view hinges at the lower-right hand with tools and ammunition normalised to one scale and a broad swing arc; voxel cubes retain complete face textures", {"items": item_ids.size(), "missing": missing, "held_failures": held_failures, "block_failures": block_failures, "region_failures": region_failures, "unmeasured": unmeasured, "overlapping": overlapping, "workbench_region": workbench_region, "gate_region": gate_region, "bolt_region": bolt_region, "shot_region": shot_region, "alpha_atlas_ok": alpha_atlas_ok, "ammunition_alpha_ok": ammunition_alpha_ok, "presentation": presentation, "shot_presentation": shot_presentation})
 
 	app.session.inventory.try_transaction({}, {"gate_frame": 1, "wall_walk_slab": 1})

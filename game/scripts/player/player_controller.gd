@@ -10,6 +10,10 @@ const CROUCH_SPEED := 2.5
 const JUMP_VELOCITY := 5.0
 const GRAVITY := 14.0
 const MAX_STEP_HEIGHT := 0.55
+## Holding the primary button repeats the strike at this interval (owner
+## request 2026-09-18: hold to harvest). Melee keeps its own cooldown.
+const PRIMARY_REPEAT_SECONDS := 0.28
+var _primary_repeat_timer := 0.0
 const STEP_FLOOR_PROBE := 0.08
 
 var camera: Camera3D
@@ -65,6 +69,13 @@ func configure_input(sensitivity: float, inverted: bool) -> void:
 func _physics_process(delta: float) -> void:
 	if not active:
 		return
+	if Input.is_action_pressed("primary") and interaction != null and not interaction.drag_active():
+		_primary_repeat_timer -= delta
+		if _primary_repeat_timer <= 0.0:
+			_primary_repeat_timer = PRIMARY_REPEAT_SECONDS
+			_perform_primary()
+	else:
+		_primary_repeat_timer = 0.0
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
 	elif Input.is_action_just_pressed("jump"):
@@ -117,12 +128,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		# P3J: a left-press while a right-drag is held cancels it; nothing is built.
 		_report(interaction.cancel_drag_place())
 	elif event.is_action_pressed("primary") and interaction != null:
-		if primary_action.is_valid():
-			var primary_result: Dictionary = primary_action.call(camera.global_position, -camera.global_basis.z)
-			if primary_result.get("handled", false):
-				_report(primary_result)
-				return
-		_report(interaction.break_from_view(camera.global_position, -camera.global_basis.z))
+		_primary_repeat_timer = PRIMARY_REPEAT_SECONDS
+		_perform_primary()
 	elif event.is_action_pressed("secondary") and interaction != null:
 		var pressed := interaction.secondary_press_from_view(camera.global_position, -camera.global_basis.z)
 		if str(pressed.get("reason", "")) != "DRAG_STARTED":
@@ -133,6 +140,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		pass  # Shift while dragging switches the plan to vertical; no interact.
 	elif event.is_action_pressed("interact") and interaction != null:
 		_report(interaction.interact_from_view(camera.global_position, -camera.global_basis.z))
+
+
+func _perform_primary() -> void:
+	if primary_action.is_valid():
+		var primary_result: Dictionary = primary_action.call(camera.global_position, -camera.global_basis.z)
+		if primary_result.get("handled", false):
+			_report(primary_result)
+			return
+	_report(interaction.break_from_view(camera.global_position, -camera.global_basis.z))
 
 
 func get_body_aabb() -> AABB:

@@ -801,10 +801,10 @@ func _build_inventory(canvas: CanvasLayer) -> void:
 	inventory_contents_label = Label.new()
 	inventory_contents_label.visible = false
 	root.add_child(inventory_contents_label)
-	inventory_message = Label.new()
-	inventory_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# Owner playtest 2026-09-18: the message used to sit below the panels and
+	# fell off the bottom of the window. It now replaces the header hint line.
+	inventory_message = context
 	inventory_message.add_theme_color_override("font_color", Color("ffd488"))
-	root.add_child(inventory_message)
 
 
 func _build_crafting(canvas: CanvasLayer) -> void:
