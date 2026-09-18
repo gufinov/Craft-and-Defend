@@ -133,6 +133,184 @@ func preview_place_item(cell: Vector3i, item_id: String, rotation_quarters: int 
 	return {"ok": true, "reason": "OK", "kind": "block", "voxel_id": int(item.places_block), "rotation_quarters": rotation}
 
 
+# ---------------------------------------------------------------------------
+# P3J drag building. A right-press on a block item anchors a drag; while held,
+# the aimed cell stretches the plan into a row (dominant horizontal axis), a
+# column (vertical) or a wall (both). Every planned cell is validated on its
+# own, with earlier planned cells counting as support so columns and walls can
+# rise from one anchor. Blocked cells are skipped; cells beyond what the player
+# can afford are trimmed. Release commits one world edit plus one inventory
+# transaction; a left-press while dragging cancels with nothing built.
+# ---------------------------------------------------------------------------
+
+## Longest run of cells along either axis of one drag.
+const DRAG_MAX_SPAN := 16
+
+var _drag: Dictionary = {}
+
+
+func drag_active() -> bool:
+	return not _drag.is_empty()
+
+
+func begin_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
+	var item_id := inventory.active_item_id()
+	var item := registry.item(item_id)
+	if item.is_empty() or not item.has("places_block"):
+		return _finish(false, "NOT_PLACEABLE")
+	var hit := world.raycast(origin, direction)
+	if hit == null:
+		return _finish(false, "NO_TARGET")
+	return begin_drag_at(hit.previous_position)
+
+
+## Anchors a drag for the active block item at a known cell (also used by
+## diagnostics that do not aim a camera).
+func begin_drag_at(anchor: Vector3i) -> Dictionary:
+	var item_id := inventory.active_item_id()
+	var item := registry.item(item_id)
+	if item.is_empty() or not item.has("places_block"):
+		return _finish(false, "NOT_PLACEABLE")
+	_drag = {"item_id": item_id, "voxel_id": int(item.places_block), "anchor": anchor, "end": anchor, "cells": [], "shape": "single"}
+	_replan_drag()
+	return {"ok": true, "reason": "DRAG_STARTED", "anchor": anchor}
+
+
+## Stretches the active drag to `end` (also used by diagnostics).
+func set_drag_end(end: Vector3i) -> Dictionary:
+	if _drag.is_empty():
+		return {"ok": false, "reason": "NO_DRAG"}
+	if end != _drag.end:
+		_drag.end = end
+		_replan_drag()
+	return drag_state()
+
+
+func update_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
+	if _drag.is_empty():
+		return {"ok": false, "reason": "NO_DRAG"}
+	var hit := world.raycast(origin, direction, 12.0)
+	if hit != null:
+		return set_drag_end(hit.previous_position)
+	return drag_state()
+
+
+## Planned cells with their state: "ok", "blocked" (invalid, skipped) or
+## "unaffordable" (valid but beyond the carried count, trimmed on commit).
+func drag_state() -> Dictionary:
+	if _drag.is_empty():
+		return {"active": false}
+	var affordable := 0
+	for entry in _drag.cells:
+		if str(entry.state) == "ok":
+			affordable += 1
+	return {"active": true, "item_id": _drag.item_id, "voxel_id": _drag.voxel_id, "anchor": _drag.anchor, "end": _drag.end, "cells": _drag.cells.duplicate(true), "affordable": affordable, "shape": _drag.get("shape", "single")}
+
+
+func cancel_drag_place() -> Dictionary:
+	if _drag.is_empty():
+		return {"ok": false, "reason": "NO_DRAG"}
+	_drag = {}
+	return _finish(false, "DRAG_CANCELLED")
+
+
+func commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
+	if _drag.is_empty():
+		return _finish(false, "NO_DRAG")
+	if expected_world_revision >= 0 and expected_world_revision != world.revision:
+		_drag = {}
+		return _finish(false, "STALE_REVISION")
+	var item_id: String = _drag.item_id
+	var voxel_id: int = _drag.voxel_id
+	_replan_drag()
+	var cells: Array[Vector3i] = []
+	for entry in _drag.cells:
+		if str(entry.state) == "ok":
+			cells.append(entry.cell)
+	_drag = {}
+	if cells.is_empty():
+		return _finish(false, "DRAG_EMPTY")
+	if inventory.count(item_id) < cells.size():
+		return _finish(false, "INSUFFICIENT_BLOCKS", {"needed": cells.size(), "have": inventory.count(item_id)})
+	var written: Array[Vector3i] = []
+	for cell in cells:
+		if not world.set_cell(cell, voxel_id):
+			for undo in written:
+				world.set_cell(undo, AIR)
+			return _finish(false, "WORLD_WRITE_FAILED")
+		written.append(cell)
+	var committed := inventory.try_transaction({item_id: cells.size()}, {})
+	if not committed.get("ok", false):
+		for undo in written:
+			world.set_cell(undo, AIR)
+		return _finish(false, "INVENTORY_COMMIT_FAILED")
+	return _finish(true, "DRAG_PLACED", {"cells": cells, "count": cells.size(), "voxel_after": voxel_id, "items": {item_id: -cells.size()}})
+
+
+## Cells between anchor and end in support-first order: outward along the
+## horizontal axis, upward along y, so each cell can rest on the one before it.
+func drag_plan_cells(anchor: Vector3i, end: Vector3i) -> Dictionary:
+	var delta := end - anchor
+	var horizontal_axis := 0 if absi(delta.x) >= absi(delta.z) else 2
+	var horizontal_span := clampi(delta[horizontal_axis], -(DRAG_MAX_SPAN - 1), DRAG_MAX_SPAN - 1)
+	var vertical_span := clampi(delta.y, -(DRAG_MAX_SPAN - 1), DRAG_MAX_SPAN - 1)
+	var horizontal_step := signi(horizontal_span)
+	var vertical_step := signi(vertical_span)
+	var cells: Array[Vector3i] = []
+	var shape := "single"
+	if horizontal_span != 0 and vertical_span != 0:
+		shape = "wall"
+	elif horizontal_span != 0:
+		shape = "row"
+	elif vertical_span != 0:
+		shape = "column"
+	for v in range(0, absi(vertical_span) + 1):
+		for h in range(0, absi(horizontal_span) + 1):
+			var cell := anchor
+			cell[horizontal_axis] += h * horizontal_step
+			cell.y += v * vertical_step
+			cells.append(cell)
+	return {"cells": cells, "shape": shape}
+
+
+func _replan_drag() -> void:
+	var plan := drag_plan_cells(_drag.anchor, _drag.end)
+	_drag.shape = plan.shape
+	var planned: Dictionary = {}
+	var budget: int = inventory.count(str(_drag.item_id))
+	var entries: Array[Dictionary] = []
+	for cell in plan.cells:
+		var reason := _drag_cell_reason(cell, planned)
+		var state := "ok"
+		if reason != "OK":
+			state = "blocked"
+		elif budget <= 0:
+			state = "unaffordable"
+		else:
+			budget -= 1
+		if state == "ok":
+			planned[cell] = true
+		entries.append({"cell": cell, "state": state, "reason": reason})
+	_drag.cells = entries
+
+
+## Same rules as preview_place_item for a block, except that cells already
+## planned in this drag count as support for later cells.
+func _drag_cell_reason(cell: Vector3i, planned: Dictionary) -> String:
+	var query := world.query_cell(cell)
+	if query.get("state") != "LOADED":
+		return str(query.get("state", "UNLOADED"))
+	if int(query.get("voxel_id", AIR)) != AIR or (workstations != null and not workstations.station_at_cell(cell).is_empty()):
+		return "OCCUPIED"
+	if player_body_aabb.is_valid() and player_body_aabb.call().intersects(AABB(Vector3(cell), Vector3.ONE)):
+		return "PLAYER_OVERLAP"
+	for offset: Vector3i in BLOCK_SUPPORT_OFFSETS:
+		if planned.has(cell + offset):
+			return "OK"
+	var support := _block_support_result(cell)
+	return "OK" if support.get("ok", false) else str(support.get("reason", "UNSUPPORTED"))
+
+
 func try_place_dirt(cell: Vector3i, expected_world_revision: int = -1) -> Dictionary:
 	return try_place_item(cell, "dirt", expected_world_revision)
 
@@ -233,6 +411,27 @@ func secondary_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
 	if not station_id.is_empty() and not workstations.station_type(station_id).is_empty():
 		return _finish(true, "OPEN_STATION", {"instance_id": station_id, "station": workstations.station(station_id)})
 	return place_from_view(origin, direction)
+
+
+## Right-press: open a station, start a block drag, or place an entity at once.
+func secondary_press_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
+	if drag_active():
+		return {"ok": false, "reason": "DRAG_ACTIVE"}
+	var station_id := _station_from_view(origin, direction)
+	if not station_id.is_empty() and not workstations.station_type(station_id).is_empty():
+		return _finish(true, "OPEN_STATION", {"instance_id": station_id, "station": workstations.station(station_id)})
+	var item := registry.item(inventory.active_item_id())
+	if item.has("places_block"):
+		return begin_drag_place(origin, direction)
+	return place_from_view(origin, direction)
+
+
+## Right-release: commit the drag, if one is active.
+func secondary_release_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
+	if not drag_active():
+		return {"ok": false, "reason": "NO_DRAG"}
+	update_drag_place(origin, direction)
+	return commit_drag_place()
 
 
 func interact_from_view(origin: Vector3, direction: Vector3) -> Dictionary:

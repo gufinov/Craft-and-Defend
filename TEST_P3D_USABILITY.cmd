@@ -28,6 +28,7 @@ if errorlevel 1 goto :visual_failed
 
 if not exist "%VISUAL_ROOT%\p3d-held-axe-iron-marker.png" goto :image_missing
 if not exist "%VISUAL_ROOT%\p3d-held-block-placement-ghost.png" goto :image_missing
+if not exist "%VISUAL_ROOT%\p3j-drag-build-ghost.png" goto :image_missing
 if /i "%P3D_DIAGNOSTIC_NO_OPEN%"=="1" (
   echo P3D USABILITY TEST: PASS
   echo Evidence folder: %TEST_ROOT%
@@ -35,9 +36,10 @@ if /i "%P3D_DIAGNOSTIC_NO_OPEN%"=="1" (
 )
 start "" "%VISUAL_ROOT%\p3d-held-axe-iron-marker.png"
 start "" "%VISUAL_ROOT%\p3d-held-block-placement-ghost.png"
+start "" "%VISUAL_ROOT%\p3j-drag-build-ghost.png"
 echo.
 echo P3D USABILITY TEST: PASS
-echo The two rendered evidence images are opening now.
+echo The three rendered evidence images are opening now.
 echo Evidence folder: %TEST_ROOT%
 pause
 exit /b 0

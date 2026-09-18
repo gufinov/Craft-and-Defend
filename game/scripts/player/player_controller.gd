@@ -113,6 +113,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		apply_mouse_look(event.relative)
+	elif event.is_action_pressed("primary") and interaction != null and interaction.drag_active():
+		# P3J: a left-press while a right-drag is held cancels it; nothing is built.
+		_report(interaction.cancel_drag_place())
 	elif event.is_action_pressed("primary") and interaction != null:
 		if primary_action.is_valid():
 			var primary_result: Dictionary = primary_action.call(camera.global_position, -camera.global_basis.z)
@@ -121,7 +124,11 @@ func _unhandled_input(event: InputEvent) -> void:
 				return
 		_report(interaction.break_from_view(camera.global_position, -camera.global_basis.z))
 	elif event.is_action_pressed("secondary") and interaction != null:
-		_report(interaction.secondary_from_view(camera.global_position, -camera.global_basis.z))
+		var pressed := interaction.secondary_press_from_view(camera.global_position, -camera.global_basis.z)
+		if str(pressed.get("reason", "")) != "DRAG_STARTED":
+			_report(pressed)
+	elif event.is_action_released("secondary") and interaction != null and interaction.drag_active():
+		_report(interaction.secondary_release_from_view(camera.global_position, -camera.global_basis.z))
 	elif event.is_action_pressed("interact") and interaction != null:
 		_report(interaction.interact_from_view(camera.global_position, -camera.global_basis.z))
 

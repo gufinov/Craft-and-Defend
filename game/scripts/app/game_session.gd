@@ -24,6 +24,10 @@ const REASON_TEXT := {
 	"STALE_REVISION": "The world changed before that edit; try again.",
 	"PROTECTED": "The bottom bedrock layer is protected.",
 	"NO_TARGET": "No editable block is targeted.",
+	"DRAG_PLACED": "Blocks placed.",
+	"DRAG_CANCELLED": "Build cancelled; nothing was placed.",
+	"DRAG_EMPTY": "No valid cells to build; nothing was placed.",
+	"INSUFFICIENT_BLOCKS": "Not enough blocks carried for that build.",
 	"MISSING_CONTENT": "That content definition is unavailable.",
 	"NOT_PLACEABLE": "The selected hotbar item cannot be placed.",
 	"NO_STATION": "Aim at a workbench or furnace, then interact.",
@@ -720,6 +724,9 @@ func _update_placement_preview() -> void:
 	if not world_ready or simulation_paused or saving or player == null or player.camera == null:
 		_hide_placement_preview()
 		return
+	if interaction.drag_active():
+		_update_drag_preview(interaction.update_drag_place(player.camera.global_position, -player.camera.global_basis.z))
+		return
 	var preview := interaction.placement_preview_from_view(player.camera.global_position, -player.camera.global_basis.z)
 	if not preview.get("visible", false):
 		_hide_placement_preview()
@@ -752,6 +759,59 @@ func _update_placement_preview() -> void:
 			_hide_placement_preview()
 			return
 		_add_visual_parts(_placement_preview, definition.get("visual", {}).get("parts", []), material, false)
+	add_child(_placement_preview)
+	_placement_preview_key = key
+
+
+## P3J: ghost every planned drag cell — green buildable, amber beyond the carried
+## count, red blocked — so the player sees exactly what release will build.
+func _update_drag_preview(drag: Dictionary) -> void:
+	if not drag.get("active", false):
+		_hide_placement_preview()
+		return
+	var key := "drag|%d|%s|%s|%d" % [int(drag.voxel_id), drag.anchor, drag.end, int(drag.affordable)]
+	for entry in drag.cells:
+		key += "|" + str(entry.state)[0]
+	if key == _placement_preview_key:
+		return
+	_hide_placement_preview()
+	_placement_preview = Node3D.new()
+	_placement_preview.name = "DragPreview"
+	var texture_path := ""
+	var voxel_id := int(drag.voxel_id)
+	if voxel_id > 0 and voxel_id < WorldAdapter.BLOCK_NAMES.size():
+		texture_path = "res://assets/blocks/%s.svg" % WorldAdapter.BLOCK_NAMES[voxel_id]
+	var materials := {}
+	for state in ["ok", "unaffordable", "blocked"]:
+		var material := StandardMaterial3D.new()
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.no_depth_test = true
+		match state:
+			"ok":
+				material.albedo_color = Color(0.35, 1.0, 0.6, 0.62)
+			"unaffordable":
+				material.albedo_color = Color(1.0, 0.8, 0.25, 0.55)
+			_:
+				material.albedo_color = Color(1.0, 0.25, 0.25, 0.55)
+		if state == "ok" and not texture_path.is_empty() and ResourceLoader.exists(texture_path):
+			material.albedo_texture = load(texture_path)
+		materials[state] = material
+	# A dark translucent frame around each cell keeps the plan readable against
+	# grass, where a green tint alone disappears.
+	var frame_material := StandardMaterial3D.new()
+	frame_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	frame_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	frame_material.no_depth_test = true
+	frame_material.cull_mode = BaseMaterial3D.CULL_FRONT
+	frame_material.albedo_color = Color(0.05, 0.08, 0.1, 0.55)
+	for entry in drag.cells:
+		var cell: Vector3i = entry.cell
+		var holder := Node3D.new()
+		holder.position = Vector3(cell) + Vector3(0.5, 0.5, 0.5)
+		_placement_preview.add_child(holder)
+		_add_visual_parts(holder, [{"offset": [0.0, 0.0, 0.0], "size": [1.0, 1.0, 1.0]}], frame_material, false)
+		_add_visual_parts(holder, [{"offset": [0.0, 0.0, 0.0], "size": [0.9, 0.9, 0.9]}], materials[str(entry.state)], false)
 	add_child(_placement_preview)
 	_placement_preview_key = key
 

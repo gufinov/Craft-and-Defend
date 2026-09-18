@@ -82,6 +82,53 @@ func _run_phase1() -> void:
 	var feedback_ok: bool = preview.get("ok", false) and preview.get("kind") == "block" and int(preview.get("voxel_id", 0)) == InteractionService.DIRT and marker_label != null and marker_label.text.contains("DIG 2 BLOCKS") and int(iron_cell.get("voxel_id", 0)) == P1TerrainGenerator.IRON_ORE
 	_record("T82_WORLD_FEEDBACK", feedback_ok, "block placement exposes the same non-mutating validation used by placement and the visible marker points to the real guaranteed iron vein", {"preview": preview, "marker": marker_label.text if marker_label != null else "", "iron_cell": iron_cell})
 
+	# P3J drag building. Ground is at y = -1 here; y = 0 is the first air layer.
+	var drag_cells: Array[Vector3i] = [Vector3i(-2, 0, 44), Vector3i(-14, 0, 44), Vector3i(-2, 4, 44), Vector3i(-14, 4, 44)]
+	if not await _wait_cells(drag_cells):
+		return
+	var interaction := app.session.interaction
+	var inventory := app.session.inventory
+	var dirt_before := inventory.count("dirt")
+	if dirt_before > 0:
+		inventory.try_transaction({"dirt": dirt_before}, {})
+	inventory.try_transaction({}, {"dirt": 30})
+	var drag_dirt_slot := _move_to_hotbar("dirt", 2)
+	inventory.select_hotbar(drag_dirt_slot)
+	app.session.player.global_position = Vector3(-8.5, 1.0, 50.0)
+	# Row of 6 along x.
+	var row_begin := interaction.begin_drag_at(Vector3i(-2, 0, 44))
+	var row_plan := interaction.set_drag_end(Vector3i(-7, 0, 44))
+	var row_commit := interaction.commit_drag_place()
+	var row_ok: bool = row_begin.get("ok", false) and str(row_plan.get("shape", "")) == "row" and int(row_plan.get("affordable", 0)) == 6 		and row_commit.get("ok", false) and int(row_commit.get("changes", {}).get("count", 0)) == 6 and inventory.count("dirt") == 24 		and int(app.session.world.query_cell(Vector3i(-7, 0, 44)).get("voxel_id", 0)) == 2
+	# Column of 3 rising from a row cell: upper cells are supported by planned cells.
+	interaction.begin_drag_at(Vector3i(-2, 1, 44))
+	var column_plan := interaction.set_drag_end(Vector3i(-2, 3, 44))
+	var column_commit := interaction.commit_drag_place()
+	var column_ok: bool = str(column_plan.get("shape", "")) == "column" and int(column_plan.get("affordable", 0)) == 3 		and column_commit.get("ok", false) and int(column_commit.get("changes", {}).get("count", 0)) == 3 and inventory.count("dirt") == 21 		and int(app.session.world.query_cell(Vector3i(-2, 3, 44)).get("voxel_id", 0)) == 2
+	# Wall 4 wide x 3 high on top of the row with one pre-blocked cell (skipped) and
+	# only 10 dirt left after trimming: 12 cells - 1 blocked = 11 valid, 10 affordable.
+	inventory.try_transaction({"dirt": 11}, {})
+	app.session.world.set_cell(Vector3i(-5, 2, 44), 3)
+	interaction.begin_drag_at(Vector3i(-3, 1, 44))
+	var wall_plan := interaction.set_drag_end(Vector3i(-6, 3, 44))
+	var blocked := 0
+	var unaffordable := 0
+	for entry in wall_plan.get("cells", []):
+		if str(entry.state) == "blocked":
+			blocked += 1
+		elif str(entry.state) == "unaffordable":
+			unaffordable += 1
+	var wall_commit := interaction.commit_drag_place()
+	var wall_ok: bool = str(wall_plan.get("shape", "")) == "wall" and wall_plan.get("cells", []).size() == 12 and blocked == 1 and unaffordable == 1 		and int(wall_plan.get("affordable", 0)) == 10 and wall_commit.get("ok", false) and int(wall_commit.get("changes", {}).get("count", 0)) == 10 		and inventory.count("dirt") == 0 and int(app.session.world.query_cell(Vector3i(-5, 2, 44)).get("voxel_id", 0)) == 3
+	# Cancel: nothing built, nothing consumed; empty inventory refuses to start a plan with affordable cells.
+	inventory.try_transaction({}, {"dirt": 5})
+	var revision_before: int = app.session.world.revision
+	interaction.begin_drag_at(Vector3i(-2, 0, 46))
+	interaction.set_drag_end(Vector3i(-6, 0, 46))
+	var cancelled := interaction.cancel_drag_place()
+	var cancel_ok: bool = str(cancelled.get("reason", "")) == "DRAG_CANCELLED" and not interaction.drag_active() 		and app.session.world.revision == revision_before and inventory.count("dirt") == 5 		and int(app.session.world.query_cell(Vector3i(-4, 0, 46)).get("voxel_id", 0)) == 0
+	_record("T108_DRAG_BUILD", row_ok and column_ok and wall_ok and cancel_ok, "a right-drag plans a row, column or wall of the held block with support-first ordering, skips blocked cells, trims to the carried count, commits as one world edit plus one inventory transaction, and cancels with nothing built", {"row": row_plan, "row_commit": row_commit.get("reason"), "column": column_commit.get("reason"), "wall_blocked": blocked, "wall_unaffordable": unaffordable, "wall_commit": wall_commit.get("reason"), "cancel": cancelled.get("reason"), "dirt": inventory.count("dirt")})
+
 
 func _run_visual() -> void:
 	app._on_start_pressed()
@@ -108,6 +155,20 @@ func _run_visual() -> void:
 	var block_path := app.data_root.path_join("p3d-held-block-placement-ghost.png")
 	var block_image_ok := await _save_viewport(block_path)
 	_record("T83_PRESENTATION", axe_image_ok and block_image_ok and ghost_visible, "rendered evidence shows the held axe beside the real iron marker and a low held block with its world placement ghost", {"axe_path": axe_path, "block_path": block_path, "size": get_viewport().get_visible_rect().size, "ghost_visible": ghost_visible})
+
+	# P3J: a held right-drag from the aimed anchor shows every planned cell.
+	# The camera ray sets the drag end each frame, so aim at the ground ahead.
+	app.session.player.global_position = Vector3(8.5, 1.0, 33.0)
+	app.session.player.look_at(Vector3(2.5, -4.0, 39.5), Vector3.UP)
+	app.session.interaction.begin_drag_at(Vector3i(8, 0, 38))
+	app.session._placement_preview_key = ""
+	await _settle_frames(30)
+	var drag := app.session.interaction.drag_state()
+	var drag_ghost_visible: bool = app.session._placement_preview != null and app.session._placement_preview.name == "DragPreview" 		and drag.get("active", false) and drag.get("cells", []).size() >= 2
+	var drag_path := app.data_root.path_join("p3j-drag-build-ghost.png")
+	var drag_image_ok := await _save_viewport(drag_path)
+	app.session.interaction.cancel_drag_place()
+	_record("T109_DRAG_BUILD_PRESENTATION", drag_image_ok and drag_ghost_visible, "rendered evidence shows a multi-cell drag-build ghost stretched from the anchor toward the aimed cell", {"path": drag_path, "shape": drag.get("shape", ""), "cells": drag.get("cells", []).size(), "affordable": drag.get("affordable", 0), "ghost_visible": drag_ghost_visible})
 
 
 func _move_to_hotbar(item_id: String, target: int) -> int:
