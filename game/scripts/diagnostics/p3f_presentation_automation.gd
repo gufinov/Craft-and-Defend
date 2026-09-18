@@ -178,23 +178,28 @@ func _run_visual() -> void:
 	var error := contact.save_png(path)
 	_record("T92_PRESENTATION", placed_castle_stone and captured == VISUAL_ITEMS.size() and error == OK, "one rendered contact sheet shows complete Pick, Sword and Axe silhouettes plus representative low-held building and siege items without opaque inventory-card backgrounds", {"path": path, "items": VISUAL_ITEMS, "placed_castle_stone": placed_castle_stone, "captured": captured, "size": contact.get_size(), "error": error})
 
-	var motion_contact := Image.create_empty(1920, 360, false, Image.FORMAT_RGBA8)
+	# Four panels: ready, strike toward the crosshair (~0.035 s), whip down-left
+	# out of sight (~0.09 s), and the low-held Furnace frame.
+	var motion_contact := Image.create_empty(2560, 360, false, Image.FORMAT_RGBA8)
 	app.session.inventory.select_hotbar(1)
 	app.session._held_item_view.present("iron_sword")
 	await _settle_frames(4)
 	var ready_ok := _blit_viewport_panel(motion_contact, Vector2i(0, 0))
 	app.session._held_item_view.play_use()
-	await get_tree().create_timer(0.09).timeout
+	await get_tree().create_timer(0.035).timeout
 	await _settle_frames(1)
-	var swing_ok := _blit_viewport_panel(motion_contact, Vector2i(640, 0))
+	var strike_ok := _blit_viewport_panel(motion_contact, Vector2i(640, 0))
+	await get_tree().create_timer(0.04).timeout
+	await _settle_frames(1)
+	var swing_ok := _blit_viewport_panel(motion_contact, Vector2i(1280, 0))
 	await get_tree().create_timer(0.30).timeout
 	app.session.inventory.select_hotbar(8)
 	app.session._held_item_view.present("furnace")
 	await _settle_frames(4)
-	var block_ok := _blit_viewport_panel(motion_contact, Vector2i(1280, 0))
+	var block_ok := _blit_viewport_panel(motion_contact, Vector2i(1920, 0))
 	var motion_path := app.data_root.path_join("p3h2-held-scale-and-swing.png")
 	var motion_error := motion_contact.save_png(motion_path)
-	_record("T104_HELD_SCALE_AND_SWING", ready_ok and swing_ok and block_ok and motion_error == OK, "a rendered three-panel comparison shows the enlarged ready sword, its broad active strike travel and an at-least-double-scale, higher Furnace presentation", {"path": motion_path, "ready": ready_ok, "swing": swing_ok, "block": block_ok, "size": motion_contact.get_size(), "error": motion_error})
+	_record("T104_HELD_SCALE_AND_SWING", ready_ok and strike_ok and swing_ok and block_ok and motion_error == OK, "a rendered four-panel comparison shows the ready sword, its strike toward the crosshair, the whip down-left out of sight, and the low-held Furnace presentation", {"path": motion_path, "ready": ready_ok, "strike": strike_ok, "swing": swing_ok, "block": block_ok, "size": motion_contact.get_size(), "error": motion_error})
 
 	app.session.inventory.try_transaction({}, {"workbench": 1, "planks": 64, "stone": 64, "stick": 64, "iron_ingot": 16})
 	var placed := app.session.workstations.try_place("workbench", Vector3i(5, 0, 43), app.session.world.query_cell, AABB(), 0)

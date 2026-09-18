@@ -29,10 +29,19 @@ const LOW_HINGE_DOWN_FRACTION := 0.70
 ## Rest tilt of raised tools (radians, counter-clockwise). Art already points NE.
 const TOOL_REST_ROTATION := 0.0
 const LOW_REST_ROTATION := 0.0
-## Strike: rotate about the hinge by this arc, then return.
-const TOOL_SWING_ARC_RADIANS := 1.35
-const TOOL_SWING_OUT_SECONDS := 0.12
-const TOOL_SWING_BACK_SECONDS := 0.18
+## Strike (owner direction, round 3): a keyframed path, not a spin about the
+## hinge. From rest the tool snaps toward the crosshair but stops short so the
+## view stays clear, whips down and left, vanishes behind the hotbar left of
+## centre, then rises back to rest. Offsets are fractions of the visible
+## half-extents at HELD_DEPTH (x right, y up) added to the rest hinge position;
+## rotations are counter-clockwise radians about the hinge.
+const TOOL_SWING_KEYS: Array[Dictionary] = [
+	{"seconds": 0.05, "offset": Vector2(-0.22, 0.42), "rotation": 0.55},
+	{"seconds": 0.09, "offset": Vector2(-0.95, -1.05), "rotation": 2.2},
+	{"seconds": 0.16, "offset": Vector2(0.0, 0.0), "rotation": 0.0},
+]
+## Largest rotation reached during the strike; reported for diagnostics.
+const TOOL_SWING_ARC_RADIANS := 2.2
 const PLACE_NUDGE_TRAVEL := Vector3(-0.03, 0.05, -0.10)
 
 var registry: ContentRegistry
@@ -94,10 +103,15 @@ func play_use() -> void:
 	model_root.rotation = Vector3(0.0, 0.0, _rest_rotation)
 	_use_tween = create_tween()
 	if _raised:
-		_use_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		_use_tween.tween_property(model_root, "rotation:z", _rest_rotation + TOOL_SWING_ARC_RADIANS, TOOL_SWING_OUT_SECONDS)
-		_use_tween.set_ease(Tween.EASE_IN_OUT)
-		_use_tween.tween_property(model_root, "rotation:z", _rest_rotation, TOOL_SWING_BACK_SECONDS)
+		var extents := _view_half_extents()
+		for index in range(TOOL_SWING_KEYS.size()):
+			var key := TOOL_SWING_KEYS[index]
+			var offset: Vector2 = key.offset
+			var target := _hinge_position + Vector3(offset.x * extents.x, offset.y * extents.y, 0.0)
+			var last := index == TOOL_SWING_KEYS.size() - 1
+			_use_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT if last else Tween.EASE_OUT)
+			_use_tween.tween_property(model_root, "position", target, float(key.seconds))
+			_use_tween.parallel().tween_property(model_root, "rotation:z", _rest_rotation + float(key.rotation), float(key.seconds))
 	else:
 		_use_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		_use_tween.tween_property(model_root, "position", _hinge_position + PLACE_NUDGE_TRAVEL, 0.08)
@@ -128,8 +142,8 @@ func _build_reference_item(item_id: String, raised: bool) -> void:
 	_rest_rotation = TOOL_REST_ROTATION if raised else LOW_REST_ROTATION
 
 
-## Places the hinge in the lower-right of the current view at HELD_DEPTH.
-func _update_hinge() -> void:
+## Visible half-width and half-height at HELD_DEPTH for the current camera/viewport.
+func _view_half_extents() -> Vector2:
 	var camera := get_parent() as Camera3D
 	var half_height := 0.5
 	var aspect := 16.0 / 9.0
@@ -138,7 +152,14 @@ func _update_hinge() -> void:
 		var view_size := get_viewport().get_visible_rect().size
 		if view_size.y > 0.0:
 			aspect = view_size.x / view_size.y
-	var half_width := half_height * aspect
+	return Vector2(half_height * aspect, half_height)
+
+
+## Places the hinge in the lower-right of the current view at HELD_DEPTH.
+func _update_hinge() -> void:
+	var extents := _view_half_extents()
+	var half_width := extents.x
+	var half_height := extents.y
 	var right := clampf(half_width * HINGE_RIGHT_FRACTION, HINGE_RIGHT_MIN, HINGE_RIGHT_MAX)
 	var down := TOOL_HINGE_DOWN_FRACTION if _raised else LOW_HINGE_DOWN_FRACTION
 	_hinge_position = Vector3(right, -half_height * down, -HELD_DEPTH)

@@ -22,6 +22,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P3H.3 first-person, castle skin and recipe-input corrections](P3H3_PRESENTATION_AND_INPUT_CORRECTIONS.md)
 - [P3H.4 hinge-based held tools, measured icon regions and masonry skins](P3H4_HINGE_HELD_TOOLS_AND_MEASURED_ICONS.md)
 - [Balance, ecology and siege systems](BALANCE_ECOLOGY_AND_SIEGE_SYSTEMS.md)
+- [Design direction 2026-09-18 — owner vision and proposals](DESIGN_DIRECTION_2026-09-18.md)
 
 ## Technical
 

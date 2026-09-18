@@ -21,6 +21,10 @@ Treat the item art as a square. Its bottom-left corner is the hand. Tools are dr
 - The hand sat about one block too far right on the 3440×1440 display. `HINGE_RIGHT_FRACTION`/`MIN`/`MAX` moved from 0.58/0.50/0.95 to 0.48/0.45/0.78, which places the hand roughly one hotbar slot further inward at both 16:9 and 21:9.
 - The Tab inventory did not conform to the Field Build / Workbench inventory tiles: its slots were stretched into wide strips with a separate slot-label row that starved the icon. `InventoryItemSlot` now shares `CraftingItemSlot`'s anatomy (large centred icon, count in the corner, one `slot · name` caption; the active hotbar marker colours the caption) and `app.gd` lays the 18 carried and 9 hotbar tiles out at a fixed `INVENTORY_TILE_SIZE` with no horizontal stretch, left-aligned under the filter row.
 
+## Owner correction round 3 (2026-09-18): strike is a keyframed path
+
+Rotating the sprite about the hinge cannot read as a strike. The hit is still logged at the crosshair; the animation now follows `TOOL_SWING_KEYS`: snap toward the crosshair but stop short of it (view stays clear), whip down-left and vanish behind the hotbar left of centre, rise back to rest. Keys are fractions of the visible half-extents so the path scales with aspect ratio. T104 renders four panels (ready, strike, whip, Furnace).
+
 ## Acceptance
 
 - T47/T48/T49 (castle-kit inventory) cover the Tab inventory layout, drag/drop and the 21:9 render.
