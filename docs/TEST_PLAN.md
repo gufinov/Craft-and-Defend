@@ -119,6 +119,10 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T107 | P3I | A Furnace holding input and fuel starts without a manual press on the next unpaused tick, never while paused, processes every input one at a time into retained Output, returns to idle when the input is spent, keeps the burning Coal in the slot until its last operation and accepts counted +N transfers |
 | T108 | P3J | A right-drag plans a row, column or wall of the held block with support-first ordering, extends into open sky along the row's vertical plane, skips blocked cells, trims to the carried count, commits as one world edit plus one inventory transaction, and cancels with nothing built |
 | T109 | P3J | Rendered evidence shows a multi-cell drag-build ghost stretched from the anchor toward the aimed cell |
+| T110 | P3K | The runtime blueprint catalogue exposes every generated piece, every block resolves to a placeable item, and a quarter turn rotates a wall from x onto z |
+| T111 | P3K | Foundation, tower segment and cap stamp on top of each other through top sockets, each as one world edit plus one inventory transaction across castle stone, stone and planks |
+| T112 | P3K | A blueprint short on one block type trims only that type's cells, skips an occupied cell, cancels with nothing built, and otherwise stamps every affordable cell |
+| T113 | P3K | Rendered evidence shows a stamped foundation, segment and cap tower of ordinary blocks and a multi-block blueprint ghost |
 
 ## Performance evidence, not invented guarantees
 

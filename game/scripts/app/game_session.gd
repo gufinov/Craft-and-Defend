@@ -25,6 +25,8 @@ const REASON_TEXT := {
 	"PROTECTED": "The bottom bedrock layer is protected.",
 	"NO_TARGET": "No editable block is targeted.",
 	"DRAG_PLACED": "Blocks placed.",
+	"BLUEPRINT_STAMPED": "Blueprint built.",
+	"UNKNOWN_BLUEPRINT": "That blueprint is not in the catalogue.",
 	"DRAG_CANCELLED": "Build cancelled; nothing was placed.",
 	"DRAG_EMPTY": "No valid cells to build; nothing was placed.",
 	"INSUFFICIENT_BLOCKS": "Not enough blocks carried for that build.",
@@ -769,7 +771,7 @@ func _update_drag_preview(drag: Dictionary) -> void:
 	if not drag.get("active", false):
 		_hide_placement_preview()
 		return
-	var key := "drag|%d|%s|%s|%d" % [int(drag.voxel_id), drag.anchor, drag.end, int(drag.affordable)]
+	var key := "drag|%s|%d|%s|%s|%d|%d" % [str(drag.get("blueprint_id", "")), int(drag.voxel_id), drag.anchor, drag.end, int(drag.get("rotation_quarters", 0)), int(drag.affordable)]
 	for entry in drag.cells:
 		key += "|" + str(entry.state)[0]
 	if key == _placement_preview_key:
@@ -777,26 +779,31 @@ func _update_drag_preview(drag: Dictionary) -> void:
 	_hide_placement_preview()
 	_placement_preview = Node3D.new()
 	_placement_preview.name = "DragPreview"
-	var texture_path := ""
-	var voxel_id := int(drag.voxel_id)
-	if voxel_id > 0 and voxel_id < WorldAdapter.BLOCK_NAMES.size():
-		texture_path = "res://assets/blocks/%s.svg" % WorldAdapter.BLOCK_NAMES[voxel_id]
+	# P3K: plans may mix block types (blueprints), so "ok" materials are keyed
+	# by the cell's own voxel so each ghost shows the block it will become.
 	var materials := {}
-	for state in ["ok", "unaffordable", "blocked"]:
+	for state in ["unaffordable", "blocked"]:
 		var material := StandardMaterial3D.new()
 		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		material.no_depth_test = true
-		match state:
-			"ok":
-				material.albedo_color = Color(0.35, 1.0, 0.6, 0.62)
-			"unaffordable":
-				material.albedo_color = Color(1.0, 0.8, 0.25, 0.55)
-			_:
-				material.albedo_color = Color(1.0, 0.25, 0.25, 0.55)
-		if state == "ok" and not texture_path.is_empty() and ResourceLoader.exists(texture_path):
-			material.albedo_texture = load(texture_path)
+		material.albedo_color = Color(1.0, 0.8, 0.25, 0.55) if state == "unaffordable" else Color(1.0, 0.25, 0.25, 0.55)
 		materials[state] = material
+	for entry in drag.cells:
+		var entry_voxel := int(entry.get("voxel_id", drag.voxel_id))
+		var ok_key := "ok:%d" % entry_voxel
+		if materials.has(ok_key):
+			continue
+		var ok_material := StandardMaterial3D.new()
+		ok_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		ok_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		ok_material.no_depth_test = true
+		ok_material.albedo_color = Color(0.35, 1.0, 0.6, 0.62)
+		if entry_voxel > 0 and entry_voxel < WorldAdapter.BLOCK_NAMES.size():
+			var texture_path := "res://assets/blocks/%s.svg" % WorldAdapter.BLOCK_NAMES[entry_voxel]
+			if ResourceLoader.exists(texture_path):
+				ok_material.albedo_texture = load(texture_path)
+		materials[ok_key] = ok_material
 	# A dark translucent frame around each cell keeps the plan readable against
 	# grass, where a green tint alone disappears.
 	var frame_material := StandardMaterial3D.new()
@@ -811,7 +818,10 @@ func _update_drag_preview(drag: Dictionary) -> void:
 		holder.position = Vector3(cell) + Vector3(0.5, 0.5, 0.5)
 		_placement_preview.add_child(holder)
 		_add_visual_parts(holder, [{"offset": [0.0, 0.0, 0.0], "size": [1.0, 1.0, 1.0]}], frame_material, false)
-		_add_visual_parts(holder, [{"offset": [0.0, 0.0, 0.0], "size": [0.9, 0.9, 0.9]}], materials[str(entry.state)], false)
+		var state_key := str(entry.state)
+		if state_key == "ok":
+			state_key = "ok:%d" % int(entry.get("voxel_id", drag.voxel_id))
+		_add_visual_parts(holder, [{"offset": [0.0, 0.0, 0.0], "size": [0.9, 0.9, 0.9]}], materials[state_key], false)
 	add_child(_placement_preview)
 	_placement_preview_key = key
 
