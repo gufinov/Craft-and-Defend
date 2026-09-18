@@ -58,13 +58,27 @@ Missing pieces, in order: (a) breaking voxel blocks, not only placed entities (t
 
 Eating is a struggle. *Proposal:* hunger meter that drains with time and sprinting; sources in escalating effort — foraged berries, hunted animals (cooked at the Furnace), then farmed crops behind the walls, so defending food becomes part of defending the castle. Starvation slows and then damages the player; it never blocks building, to keep the loop fair.
 
+## 9. Owner follow-up (2026-09-18, accepted)
+
+**One game, three tiers.** The survival-castle loop is the game; the empire (outposts, biomes with indigenous species, supply wagons between townships, a distant growing evil whose bastion must be destroyed, co-op) is what the same systems become at scale. Each tier reuses the same army director, blueprints, economy and threat model with more entities and a bigger map. Co-op is a Tier 3 horizon: not built now, not foreclosed — every action is already a command against plain state.
+
+**Loss is a pillar.** The Market can fall and the game continues: the player keeps their pack, the ruins remain to reclaim. Difficulty scales wave size and night lethality, which sets how often the player hides instead of fights.
+
+**Decisions locked.**
+1. *Blueprints stamp ordinary blocks.* Castle pieces (foundation, tower segment, cap, wall, stairs, gatehouse) are lists of blocks relative to an anchor; once stamped they are just blocks — removable, replaceable, understood by pathfinding and breaching. **Player templates** are the same list captured from a world selection and saved with the player's block choices and adornments. The Tower Platform entity retires. **Exception:** machines and mechanics such as Ballista and Catapult remain entities — they are visual upgrades that do not fit the voxel style, with their own footprints, troughs and animations.
+2. *Market as core.* The player starts with a Market charter; nothing else works until it is placed. Market HP is the objective; Market levels gate stock, hires (archers on wall posts, swordsmen escorting siege) and Foundry commissions. Valuables tier: gold (currency), gems (unlocks/upgrades), biome trade goods.
+3. *Vast, growing province with a neglect leash.* Finite but large, sector-generated, multiple biomes; enemy camps spawn at increasing distance and clearing them pushes the frontier out. Leaving the province warns, never blocks. Distance is not the leash — **neglect** is: waves keep striking the Market while the player is away (resolved abstractly out of range, physically when near); a weak home pulls the player back. Disrepair over time is a later horizon. Mini-map and compass (pointing home) are required HUD.
+
+**Building up (Rust-style).** Blueprints expose typed sockets (`top`, `side`). Looking at a socket with the materials for a compatible piece shows its ghost; click stamps it. Foundation → segment → stand inside and build up until the spiral stair must be climbed → cap from inside → walk down. Wall-walks attach to `side` sockets; **parapets auto-connect** like fences, opening the merlons where a walkway meets them. Caps offer 4×4, 6×6 and 8×8 floors plus the parapet ring; 8×8 mounts a catapult and a ballista.
+
 ## 8. Suggested sequencing
 
 1. **P3I** Furnace auto-processing (small; also needed so refining gold is hands-off).
 2. **P3J** drag building (walls are the primary defence in this vision).
-3. **P4a** siege rework + tower caps 4×4/8×8 (footprints, troughs, animations, 3 s reload).
-4. **P4b** economy: gold ore/ingot, rope, Foundry commissions, Market purchases.
-5. **P4c** encounter consolidation + wave director + voxel breaching + creature capability table.
-6. **P4d** build wheel; **P4e** food.
+3. **P3K** parapet auto-connect + first blueprints with sockets (foundation, segment, cap, wall, stairs); Tower Platform retires.
+4. **P4a** siege rework as entities on stamped caps (footprints, troughs, animations, 3 s reload).
+5. **P4b** Market-as-core, gold/gems, Foundry commissions, Market purchases, hires.
+6. **P4c** encounter consolidation → army director (waves, neglect resolution, camps, hires, offense) + voxel breaching + creature capability table.
+7. **P4d** build wheel and player templates; **P4e** HUD mini-map/compass; **P4f** food; then biomes and the Tier 2/3 horizon.
 
 Each becomes its own backlog card with a design contract, tests and evidence before implementation; this document is the source of intent for those cards.
