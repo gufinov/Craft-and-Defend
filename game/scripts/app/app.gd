@@ -185,6 +185,11 @@ func _ready() -> void:
 		var p1_automation := P1Automation.new()
 		add_child(p1_automation)
 		p1_automation.call_deferred("run", self, p1_mode)
+	var p3k_mode := _argument_value("--p3k-blueprint-automation=")
+	if not p3k_mode.is_empty():
+		var p3k_automation := P3KBlueprintAutomation.new()
+		add_child(p3k_automation)
+		p3k_automation.call_deferred("run", self, p3k_mode)
 	var castle_mode := _argument_value("--castle-kit-automation=")
 	if not castle_mode.is_empty():
 		var castle_automation := CastleKitAutomation.new()

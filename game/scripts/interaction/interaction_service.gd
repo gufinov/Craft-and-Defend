@@ -171,14 +171,14 @@ func begin_drag_at(anchor: Vector3i) -> Dictionary:
 	var item := registry.item(item_id)
 	if item.is_empty() or not item.has("places_block"):
 		return _finish(false, "NOT_PLACEABLE")
-	_drag = {"item_id": item_id, "voxel_id": int(item.places_block), "anchor": anchor, "end": anchor, "cells": [], "shape": "single"}
+	_drag = {"mode": "drag", "item_id": item_id, "voxel_id": int(item.places_block), "anchor": anchor, "end": anchor, "cells": [], "shape": "single"}
 	_replan_drag()
 	return {"ok": true, "reason": "DRAG_STARTED", "anchor": anchor}
 
 
 ## Stretches the active drag to `end` (also used by diagnostics).
 func set_drag_end(end: Vector3i) -> Dictionary:
-	if _drag.is_empty():
+	if _drag.is_empty() or str(_drag.get("mode", "drag")) != "drag":
 		return {"ok": false, "reason": "NO_DRAG"}
 	if end != _drag.end:
 		_drag.end = end
@@ -189,6 +189,12 @@ func set_drag_end(end: Vector3i) -> Dictionary:
 func update_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
 	if _drag.is_empty():
 		return {"ok": false, "reason": "NO_DRAG"}
+	if str(_drag.get("mode", "drag")) == "blueprint":
+		# A blueprint follows the aimed placement cell instead of stretching.
+		var aimed := world.raycast(origin, direction, 12.0)
+		if aimed != null:
+			move_blueprint(aimed.previous_position)
+		return drag_state()
 	var hit := world.raycast(origin, direction, 12.0)
 	if hit != null:
 		return set_drag_end(hit.previous_position)
@@ -236,7 +242,12 @@ func drag_state() -> Dictionary:
 	for entry in _drag.cells:
 		if str(entry.state) == "ok":
 			affordable += 1
-	return {"active": true, "item_id": _drag.item_id, "voxel_id": _drag.voxel_id, "anchor": _drag.anchor, "end": _drag.end, "cells": _drag.cells.duplicate(true), "affordable": affordable, "shape": _drag.get("shape", "single")}
+	var costs: Dictionary = {}
+	for entry in _drag.cells:
+		if str(entry.state) == "ok":
+			var entry_item := str(entry.get("item_id", _drag.get("item_id", "")))
+			costs[entry_item] = int(costs.get(entry_item, 0)) + 1
+	return {"active": true, "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single")}
 
 
 func cancel_drag_place() -> Dictionary:
@@ -252,31 +263,46 @@ func commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 	if expected_world_revision >= 0 and expected_world_revision != world.revision:
 		_drag = {}
 		return _finish(false, "STALE_REVISION")
-	var item_id: String = _drag.item_id
-	var voxel_id: int = _drag.voxel_id
-	_replan_drag()
+	var mode := str(_drag.get("mode", "drag"))
+	var default_item := str(_drag.get("item_id", ""))
+	var default_voxel := int(_drag.get("voxel_id", AIR))
+	if mode == "blueprint":
+		_replan_blueprint()
+	else:
+		_replan_drag()
 	var cells: Array[Vector3i] = []
+	var voxels: Array[int] = []
+	var removals: Dictionary = {}
 	for entry in _drag.cells:
-		if str(entry.state) == "ok":
-			cells.append(entry.cell)
+		if str(entry.state) != "ok":
+			continue
+		cells.append(entry.cell)
+		voxels.append(int(entry.get("voxel_id", default_voxel)))
+		var entry_item := str(entry.get("item_id", default_item))
+		removals[entry_item] = int(removals.get(entry_item, 0)) + 1
+	var blueprint_id := str(_drag.get("blueprint_id", ""))
 	_drag = {}
 	if cells.is_empty():
 		return _finish(false, "DRAG_EMPTY")
-	if inventory.count(item_id) < cells.size():
-		return _finish(false, "INSUFFICIENT_BLOCKS", {"needed": cells.size(), "have": inventory.count(item_id)})
+	for needed_item: String in removals:
+		if inventory.count(needed_item) < int(removals[needed_item]):
+			return _finish(false, "INSUFFICIENT_BLOCKS", {"item_id": needed_item, "needed": int(removals[needed_item]), "have": inventory.count(needed_item)})
 	var written: Array[Vector3i] = []
-	for cell in cells:
-		if not world.set_cell(cell, voxel_id):
+	for index in range(cells.size()):
+		if not world.set_cell(cells[index], voxels[index]):
 			for undo in written:
 				world.set_cell(undo, AIR)
 			return _finish(false, "WORLD_WRITE_FAILED")
-		written.append(cell)
-	var committed := inventory.try_transaction({item_id: cells.size()}, {})
+		written.append(cells[index])
+	var committed := inventory.try_transaction(removals, {})
 	if not committed.get("ok", false):
 		for undo in written:
 			world.set_cell(undo, AIR)
 		return _finish(false, "INVENTORY_COMMIT_FAILED")
-	return _finish(true, "DRAG_PLACED", {"cells": cells, "count": cells.size(), "voxel_after": voxel_id, "items": {item_id: -cells.size()}})
+	var items: Dictionary = {}
+	for spent_item: String in removals:
+		items[spent_item] = -int(removals[spent_item])
+	return _finish(true, "BLUEPRINT_STAMPED" if mode == "blueprint" else "DRAG_PLACED", {"cells": cells, "count": cells.size(), "voxel_after": default_voxel, "items": items, "blueprint_id": blueprint_id})
 
 
 ## Cells between anchor and end in support-first order: outward along the
@@ -305,6 +331,143 @@ func drag_plan_cells(anchor: Vector3i, end: Vector3i) -> Dictionary:
 	return {"cells": cells, "shape": shape}
 
 
+# ---------------------------------------------------------------------------
+# P3K blueprints. A blueprint is a list of block cells relative to an anchor
+# (see data/blueprints.json, generated by tools/generate_blueprints.py). It is
+# planned like a drag: every cell validated on its own with earlier planned
+# cells as support, blocked cells skipped, cells beyond the carried stock of
+# their block trimmed, and committed as one world edit plus one inventory
+# transaction. Once stamped the world holds ordinary voxels.
+# ---------------------------------------------------------------------------
+
+const BLUEPRINTS_PATH := "res://data/blueprints.json"
+
+static var _blueprints: Dictionary = {}
+static var _blueprints_loaded := false
+
+
+static func blueprints() -> Dictionary:
+	if not _blueprints_loaded:
+		_blueprints_loaded = true
+		if FileAccess.file_exists(BLUEPRINTS_PATH):
+			var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(BLUEPRINTS_PATH))
+			if parsed is Dictionary and int(parsed.get("schema_version", 0)) == 1:
+				for entry in parsed.get("blueprints", []):
+					if entry is Dictionary and entry.has("id"):
+						_blueprints[str(entry.id)] = entry
+	return _blueprints
+
+
+static func blueprint(blueprint_id: String) -> Dictionary:
+	return blueprints().get(blueprint_id, {})
+
+
+## Rotates a blueprint offset by quarter turns about +y within its footprint.
+static func rotate_blueprint_offset(offset: Vector3i, size: Vector3i, quarters: int) -> Vector3i:
+	var result := offset
+	for _turn in range(posmod(quarters, 4)):
+		var rotated_size := Vector3i(size.z, size.y, size.x) if _turn % 2 == 1 else size
+		result = Vector3i(rotated_size.z - 1 - result.z, result.y, result.x)
+	return result
+
+
+## The block cells of a blueprint at `anchor` with `quarters` rotation, as
+## {cell, block, voxel_id, item_id}, ordered bottom course first.
+func blueprint_cells(blueprint_id: String, anchor: Vector3i, quarters: int) -> Array[Dictionary]:
+	var definition := blueprint(blueprint_id)
+	var cells: Array[Dictionary] = []
+	if definition.is_empty():
+		return cells
+	var size_values: Array = definition.get("size", [1, 1, 1])
+	var size := Vector3i(int(size_values[0]), int(size_values[1]), int(size_values[2]))
+	for entry in definition.get("blocks", []):
+		var offset_values: Array = entry.get("offset", [0, 0, 0])
+		var offset := Vector3i(int(offset_values[0]), int(offset_values[1]), int(offset_values[2]))
+		var block_name := str(entry.get("block", ""))
+		var voxel_id := WorldAdapter.BLOCK_NAMES.find(block_name)
+		var item_id := _item_placing_voxel(voxel_id)
+		if voxel_id <= 0 or item_id.is_empty():
+			continue
+		cells.append({"cell": anchor + rotate_blueprint_offset(offset, size, quarters), "block": block_name, "voxel_id": voxel_id, "item_id": item_id})
+	cells.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var ca: Vector3i = a.cell
+		var cb: Vector3i = b.cell
+		if ca.y != cb.y:
+			return ca.y < cb.y
+		if ca.x != cb.x:
+			return ca.x < cb.x
+		return ca.z < cb.z)
+	return cells
+
+
+## Anchors a blueprint plan; the plan then follows `move_blueprint` / aim.
+func begin_blueprint_at(blueprint_id: String, anchor: Vector3i, quarters: int = -1) -> Dictionary:
+	if blueprint(blueprint_id).is_empty():
+		return _finish(false, "UNKNOWN_BLUEPRINT")
+	var rotation := placement_rotation_quarters if quarters < 0 else posmod(quarters, 4)
+	_drag = {"mode": "blueprint", "blueprint_id": blueprint_id, "anchor": anchor, "end": anchor, "rotation": rotation, "cells": [], "shape": "blueprint", "item_id": "", "voxel_id": AIR}
+	_replan_blueprint()
+	return {"ok": true, "reason": "BLUEPRINT_STARTED", "anchor": anchor, "rotation_quarters": rotation}
+
+
+func move_blueprint(anchor: Vector3i, quarters: int = -1) -> Dictionary:
+	if _drag.is_empty() or str(_drag.get("mode", "")) != "blueprint":
+		return {"ok": false, "reason": "NO_DRAG"}
+	var rotation := int(_drag.rotation) if quarters < 0 else posmod(quarters, 4)
+	if anchor != _drag.anchor or rotation != int(_drag.rotation):
+		_drag.anchor = anchor
+		_drag.end = anchor
+		_drag.rotation = rotation
+		_replan_blueprint()
+	return drag_state()
+
+
+func _replan_blueprint() -> void:
+	# Support-first as a fixpoint: cells that lack support are retried after
+	# the rest of the pass, so a step beside a wall waits for that wall cell
+	# regardless of catalogue order. Whatever never gains support is blocked.
+	var planned: Dictionary = {}
+	var budgets: Dictionary = {}
+	var entries: Array[Dictionary] = []
+	var pending: Array[Dictionary] = blueprint_cells(str(_drag.blueprint_id), _drag.anchor, int(_drag.rotation))
+	var progress := true
+	while not pending.is_empty() and progress:
+		progress = false
+		var deferred: Array[Dictionary] = []
+		for planned_cell in pending:
+			var cell: Vector3i = planned_cell.cell
+			var reason := _drag_cell_reason(cell, planned)
+			if reason == "UNSUPPORTED":
+				deferred.append(planned_cell)
+				continue
+			progress = true
+			var item_id := str(planned_cell.item_id)
+			if not budgets.has(item_id):
+				budgets[item_id] = inventory.count(item_id)
+			var state := "ok"
+			if reason != "OK":
+				state = "blocked"
+			elif int(budgets[item_id]) <= 0:
+				state = "unaffordable"
+			else:
+				budgets[item_id] = int(budgets[item_id]) - 1
+			if state == "ok":
+				planned[cell] = true
+			entries.append({"cell": cell, "state": state, "reason": reason, "voxel_id": int(planned_cell.voxel_id), "item_id": item_id, "block": str(planned_cell.block)})
+		pending = deferred
+	for planned_cell in pending:
+		entries.append({"cell": planned_cell.cell, "state": "blocked", "reason": "UNSUPPORTED", "voxel_id": int(planned_cell.voxel_id), "item_id": str(planned_cell.item_id), "block": str(planned_cell.block)})
+	_drag.cells = entries
+
+
+func _item_placing_voxel(voxel_id: int) -> String:
+	for item_id in registry.items.keys():
+		var item: Dictionary = registry.items[item_id]
+		if int(item.get("places_block", -1)) == voxel_id:
+			return str(item_id)
+	return ""
+
+
 func _replan_drag() -> void:
 	var plan := drag_plan_cells(_drag.anchor, _drag.end)
 	_drag.shape = plan.shape
@@ -322,7 +485,7 @@ func _replan_drag() -> void:
 			budget -= 1
 		if state == "ok":
 			planned[cell] = true
-		entries.append({"cell": cell, "state": state, "reason": reason})
+		entries.append({"cell": cell, "state": state, "reason": reason, "voxel_id": int(_drag.voxel_id), "item_id": str(_drag.item_id)})
 	_drag.cells = entries
 
 

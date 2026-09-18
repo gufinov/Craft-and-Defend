@@ -23,6 +23,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P3H.4 hinge-based held tools, measured icon regions and masonry skins](P3H4_HINGE_HELD_TOOLS_AND_MEASURED_ICONS.md)
 - [P3I Furnace auto-processing](P3I_FURNACE_AUTO_PROCESSING.md)
 - [P3J drag building](P3J_DRAG_BUILDING.md)
+- [P3K blueprints](P3K_BLUEPRINTS.md)
 - [Balance, ecology and siege systems](BALANCE_ECOLOGY_AND_SIEGE_SYSTEMS.md)
 - [Design direction 2026-09-18 — owner vision and proposals](DESIGN_DIRECTION_2026-09-18.md)
 
@@ -61,6 +62,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P3H.4 hinge held tools, measured icons and masonry skins evidence](evidence/P3H4_HINGE_HELD_TOOLS_AND_MEASURED_ICONS.md)
 - [P3I Furnace auto-processing evidence](evidence/P3I_FURNACE_AUTO_PROCESSING.md)
 - [P3J drag building evidence](evidence/P3J_DRAG_BUILDING.md)
+- [P3K blueprints slice 1 evidence](evidence/P3K_BLUEPRINTS.md)
 - [Tool usage](../tools/README.md)
 - [Third-party audit and recovery, 2026-09-18](AUDIT_2026-09-18.md)
 - [Current status](STATUS.md)
