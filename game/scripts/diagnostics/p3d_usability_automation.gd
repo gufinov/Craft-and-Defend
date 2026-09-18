@@ -54,14 +54,14 @@ func _run_phase1() -> void:
 	await get_tree().process_frame
 	var held := app.session._held_item_view
 	var axe_parts := held.model_root.get_child_count()
-	var axe_height := held._base_position.y
+	var axe_hinge: Vector3 = held.debug_presentation().hinge_position
 	var dirt_slot := _move_to_hotbar("dirt", 1)
 	app.session.inventory.select_hotbar(dirt_slot)
 	await get_tree().process_frame
 	var dirt_parts := held.model_root.get_child_count()
-	var block_height := held._base_position.y
-	var held_ok := held.current_item_id == "dirt" and axe_parts >= 1 and held.model_root.get_child_count() == 1 and dirt_parts == 1 and is_equal_approx(block_height, axe_height) and ItemIconCatalog.world_reference_texture_for("wood_axe") != null
-	_record("T80_HELD_ITEMS", held_ok, "the active hotbar item owns one persistent lower-right first-person frame shared by tools and placeables", {"axe_parts": axe_parts, "axe_height": axe_height, "block_parts": dirt_parts, "block_height": block_height, "current": held.current_item_id})
+	var block_hinge: Vector3 = held.debug_presentation().hinge_position
+	var held_ok := held.current_item_id == "dirt" and axe_parts >= 1 and held.model_root.get_child_count() == 1 and dirt_parts == 1 and is_equal_approx(block_hinge.x, axe_hinge.x) and block_hinge.y > axe_hinge.y and ItemIconCatalog.world_reference_texture_for("wood_axe") != null
+	_record("T80_HELD_ITEMS", held_ok, "the active hotbar item owns one persistent lower-right first-person hand column; tools hinge at the screen base and placeables sit above the hotbar", {"axe_parts": axe_parts, "axe_hinge": axe_hinge, "block_parts": dirt_parts, "block_hinge": block_hinge, "current": held.current_item_id})
 
 	app.session.inventory.select_hotbar(axe_slot)
 	var tree_cells: Array[Vector3i] = [Vector3i(4, 0, 40), Vector3i(4, 1, 40), Vector3i(4, 2, 40), Vector3i(4, 3, 40)]

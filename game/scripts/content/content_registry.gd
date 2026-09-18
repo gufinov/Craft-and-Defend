@@ -124,15 +124,15 @@ func balance_value(path: String, fallback: Variant = null) -> Variant:
 
 
 func balance_number(path: String, fallback: float) -> float:
-	var value := balance_value(path, fallback)
+	var value: Variant = balance_value(path, fallback)
 	return float(value) if value is int or value is float else fallback
 
 
 func balance_integer(path: String, fallback: int) -> int:
-	var value := balance_value(path, fallback)
+	var value: Variant = balance_value(path, fallback)
 	return int(value) if value is int or value is float else fallback
 
 
 func balance_string(path: String, fallback: String) -> String:
-	var value := balance_value(path, fallback)
+	var value: Variant = balance_value(path, fallback)
 	return str(value) if value is String else fallback

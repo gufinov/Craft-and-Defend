@@ -89,7 +89,7 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T77 | P3C | Carried sword plus placed siege identity, ammunition and cooldown survive atomic save and separate-process Continue |
 | T78 | P3C | Rendered 1280×720 Workbench shows 12 populated icon cards, paging and three distinct crafting panels |
 | T79 | P3D | Shift+Click on an immediate recipe crafts exactly five batches in one revision; insufficient input changes nothing; timed jobs remain single |
-| T80 | P3D/P3H.3 | Active sword, picks, axe and placeables share the lower-right screen-base region; raised tools face inward; hotbar identity remains authoritative |
+| T80 | P3D/P3H.4 | Active sword, picks, axe and placeables share one lower-right hand column; tools hinge at the screen base and placeables sit above the hotbar; hotbar identity remains authoritative |
 | T81 | P3D/P3H.3 | Wood Axe recipe is reachable; one use removes/gathers only the targeted Log while the upper trunk remains |
 | T82 | P3D | Placeable blocks expose the same non-mutating validation in their green/red world ghost; the starter marker points to actual guaranteed iron ore |
 | T83 | P3D | Rendered 1280×720 evidence visibly shows the held axe/iron marker and the low held block/world placement ghost; owner ultrawide test decides scale/readability |
@@ -100,7 +100,7 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T88 | P3E | Manual hand/workbench patterns are recognized without recipe-book selection or search |
 | T89 | P3E | Rendered 1280×720 evidence visibly shows the three-slot Furnace and revised world/held identity |
 | T90 | P3F | Workbench recipes use an exact stable progression order from hand fundamentals through tools, castle construction, iron equipment and siege recipes |
-| T91 | P3F/P3H.3 | All 26 registered items resolve filter-clipped true-alpha held references; ammunition uses dedicated identities; raised tools share an inward-facing lower-right frame; all ten non-air voxel cubes declare complete 1×1 texture geometry |
+| T91 | P3F/P3H.4 | All 26 registered items resolve filter-clipped true-alpha references from measured art regions that do not overlap; Ballista Bolt and Stone Shot are isolated from each other; the held view hinges at the lower-right hand with the Sword normalised to `TOOL_HEIGHT`, ammunition to `LOW_HEIGHT` and a swing arc of at least 1.2 rad; all ten non-air voxel cubes keep complete face textures |
 | T92 | P3F | Rendered contact sheet shows representative raised/low held items plus textured placed Castle Stone without opaque inventory-card backgrounds |
 | T93 | P3G | Shift+Click moves the maximum compatible amount from inventory to Furnace and back without loss or duplication |
 | T94 | P3G | Auto-load target independently fills scarce/available input and fuel, lowers transactionally and conserves exact totals |

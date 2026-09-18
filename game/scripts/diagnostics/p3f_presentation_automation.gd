@@ -77,10 +77,28 @@ func _run_gate() -> void:
 		var held_texture := ItemIconCatalog.world_reference_texture_for(item_id) as AtlasTexture
 		if card_texture == null or held_texture == null or not card_texture.filter_clip or not held_texture.filter_clip:
 			region_failures.append(item_id)
-	var workbench_region := ItemIconCatalog.region_for_index(12)
-	var gate_region := ItemIconCatalog.region_for_index(18)
-	var regions_isolated := workbench_region == Rect2(0.0, 512.0, 256.0, 224.0) \
-		and gate_region == Rect2(0.0, 736.0, 256.0, 288.0)
+	# P3H.4: regions are measured from the art, not the nominal grid. Every item
+	# must be measured, and each measured object must sit inside its nominal cell
+	# (or, for ammunition, its half) without overlapping any other measured object.
+	var unmeasured: Array[String] = []
+	var overlapping: Array[String] = []
+	var measured_rects: Dictionary = {}
+	for value in item_ids:
+		var item_id := str(value)
+		if not ItemIconCatalog.is_measured(item_id):
+			unmeasured.append(item_id)
+			continue
+		measured_rects[item_id] = ItemIconCatalog.region_for(item_id)
+	for a in measured_rects.keys():
+		for b in measured_rects.keys():
+			if a < b and ItemIconCatalog.atlas_key_for(a) == ItemIconCatalog.atlas_key_for(b) \
+				and measured_rects[a].intersects(measured_rects[b]):
+				overlapping.append("%s/%s" % [a, b])
+	var workbench_region := ItemIconCatalog.region_for("workbench")
+	var gate_region := ItemIconCatalog.region_for("gate_frame")
+	var regions_isolated := unmeasured.is_empty() and overlapping.is_empty() \
+		and ItemIconCatalog.region_for_index(12).encloses(workbench_region) \
+		and ItemIconCatalog.region_for_index(18).encloses(gate_region)
 	var atlas_texture := load(ItemIconCatalog.ATLAS_PATH) as Texture2D
 	var atlas_image := atlas_texture.get_image() if atlas_texture != null else null
 	var alpha_atlas_ok := atlas_image != null and not atlas_image.is_empty() \
@@ -89,24 +107,34 @@ func _run_gate() -> void:
 		and atlas_image.get_pixel(0, 0).a <= 0.01
 	var ammunition_texture := load(ItemIconCatalog.AMMUNITION_ATLAS_PATH) as Texture2D
 	var ammunition_image := ammunition_texture.get_image() if ammunition_texture != null else null
+	var bolt_region := ItemIconCatalog.region_for("ballista_bolt")
+	var shot_region := ItemIconCatalog.region_for("stone_shot")
 	var ammunition_alpha_ok := ammunition_image != null and not ammunition_image.is_empty() \
 		and ammunition_image.get_format() == Image.FORMAT_RGBA8 \
 		and ammunition_image.get_size() == Vector2i(1774, 887) \
 		and ammunition_image.get_pixel(0, 0).a <= 0.01 \
-		and ItemIconCatalog.AMMUNITION_REGIONS.ballista_bolt != ItemIconCatalog.region_for_index(5) \
-		and ItemIconCatalog.AMMUNITION_REGIONS.stone_shot != ItemIconCatalog.region_for_index(1)
+		and ItemIconCatalog.atlas_key_for("ballista_bolt") == "ammunition" \
+		and ItemIconCatalog.atlas_key_for("stone_shot") == "ammunition" \
+		and not bolt_region.intersects(shot_region) \
+		and shot_region.position.x > 887.0
 	app.session._held_item_view.present("iron_sword")
 	var presentation := app.session._held_item_view.debug_presentation()
-	var framing_ok := float(presentation.tool_pixel_size) >= 0.0034 \
-		and float(presentation.low_pixel_size) >= 0.0034 \
-		and float(presentation.low_pixel_size) >= 0.00170 * 2.0 \
-		and float(presentation.tool_position.x) >= 0.75 \
-		and float(presentation.low_position.x) >= 0.75 \
-		and float(presentation.tool_position.y) <= -0.45 \
-		and float(presentation.low_position.y) <= -0.45 \
-		and bool(presentation.raised_flip_h) \
-		and float(presentation.tool_swing_arc_radians) >= 1.4
-	_record("T91_HELD_AND_BLOCK_IDENTITY", missing.is_empty() and held_failures.is_empty() and block_failures.is_empty() and region_failures.is_empty() and regions_isolated and alpha_atlas_ok and ammunition_alpha_ok and framing_ok, "all inventory and held items resolve filter-clipped true-alpha art; ammunition has dedicated identities; every held item shares the lower-right base frame; raised tools face inward and retain a broad swing arc; voxel cubes retain complete face textures", {"items": item_ids.size(), "missing": missing, "held_failures": held_failures, "block_failures": block_failures, "region_failures": region_failures, "workbench_region": workbench_region, "gate_region": gate_region, "alpha_atlas_ok": alpha_atlas_ok, "ammunition_alpha_ok": ammunition_alpha_ok, "presentation": presentation})
+	var sword_size: Vector2 = presentation.sprite_size
+	app.session._held_item_view.present("stone_shot")
+	var shot_presentation := app.session._held_item_view.debug_presentation()
+	var shot_size: Vector2 = shot_presentation.sprite_size
+	var hinge: Vector3 = presentation.hinge_position
+	# Hinge model: hand in the lower-right, sword normalised to TOOL_HEIGHT, ammunition
+	# normalised to LOW_HEIGHT (so the 887 px atlas no longer renders 3.5x too large),
+	# and a swing arc broad enough to reach toward the crosshair.
+	var framing_ok := bool(presentation.hinge_model) and bool(presentation.raised) \
+		and hinge.x >= HeldItemView.HINGE_RIGHT_MIN and hinge.y < 0.0 \
+		and is_equal_approx(sword_size.y, HeldItemView.TOOL_HEIGHT) \
+		and is_equal_approx(shot_size.y, HeldItemView.LOW_HEIGHT) \
+		and shot_size.x < 0.6 \
+		and not bool(shot_presentation.raised) \
+		and float(presentation.tool_swing_arc_radians) >= 1.2
+	_record("T91_HELD_AND_BLOCK_IDENTITY", missing.is_empty() and held_failures.is_empty() and block_failures.is_empty() and region_failures.is_empty() and regions_isolated and alpha_atlas_ok and ammunition_alpha_ok and framing_ok, "all inventory and held items resolve filter-clipped true-alpha art; every item resolves a measured art region isolated from its neighbours; the held view hinges at the lower-right hand with tools and ammunition normalised to one scale and a broad swing arc; voxel cubes retain complete face textures", {"items": item_ids.size(), "missing": missing, "held_failures": held_failures, "block_failures": block_failures, "region_failures": region_failures, "unmeasured": unmeasured, "overlapping": overlapping, "workbench_region": workbench_region, "gate_region": gate_region, "bolt_region": bolt_region, "shot_region": shot_region, "alpha_atlas_ok": alpha_atlas_ok, "ammunition_alpha_ok": ammunition_alpha_ok, "presentation": presentation, "shot_presentation": shot_presentation})
 
 	app.session.inventory.try_transaction({}, {"gate_frame": 1, "wall_walk_slab": 1})
 	var gate_placed := app.session.workstations.try_place("gate_frame", Vector3i(8, 0, 40), app.session.world.query_cell, AABB(), 0)

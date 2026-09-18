@@ -346,7 +346,7 @@
       "occupied_offsets": [[0, 0, 0], [1, 0, 0], [0, 0, 1], [1, 0, 1]],
       "support_offsets": [[0, -1, 0], [1, -1, 0], [0, -1, 1], [1, -1, 1]],
       "mount_sockets": [{"id": "center_mount", "type": "light_siege", "offset": [0.5, 0.0, 0.5]}],
-      "visual": {"color": "747c86", "parts": [
+      "visual": {"color": "e2e6e9", "texture": "res://assets/blocks/castle_stone.svg", "parts": [
         {"offset": [0.5, -0.3, 0.5], "size": [2.0, 0.4, 2.0]},
         {"offset": [0.5, -0.05, 0.5], "size": [0.55, 0.15, 0.55]}
       ]},

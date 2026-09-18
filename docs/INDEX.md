@@ -19,6 +19,8 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P3G Furnace usability and placed siege identity](P3G_FURNACE_USABILITY_AND_SIEGE_VISUAL.md)
 - [P3H balance, fuel and directional controls](P3H_BALANCE_FUEL_AND_CONTROLS.md)
 - [P3H.2 held scale, strike travel and unified alpha art](P3H2_HELD_SCALE_AND_ALPHA.md)
+- [P3H.3 first-person, castle skin and recipe-input corrections](P3H3_PRESENTATION_AND_INPUT_CORRECTIONS.md)
+- [P3H.4 hinge-based held tools, measured icon regions and masonry skins](P3H4_HINGE_HELD_TOOLS_AND_MEASURED_ICONS.md)
 - [Balance, ecology and siege systems](BALANCE_ECOLOGY_AND_SIEGE_SYSTEMS.md)
 
 ## Technical

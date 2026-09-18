@@ -597,14 +597,22 @@ func _build_workbench_visual(parent: Node3D) -> void:
 
 
 func _build_furnace_visual(parent: Node3D) -> void:
+	# P3H.4: masonry skin matching the catalog icon — castle-stone bricks, a
+	# stepped dark arch on the front face and an emissive ember bed inside it.
 	_add_collision_box(parent, Vector3(0.90, 0.90, 0.90), Vector3.ZERO)
-	var stone := _visual_material(Color("9ca6ad"), "res://assets/blocks/stone.svg")
-	var dark := _visual_material(Color("171c20"))
-	var ember := _visual_material(Color("ff8a2b"), "", Color("ff5b18"))
-	_add_mesh_box(parent, Vector3(0.90, 0.90, 0.90), Vector3.ZERO, stone)
-	_add_mesh_box(parent, Vector3(0.56, 0.38, 0.035), Vector3(0.0, -0.10, 0.468), dark)
-	_add_mesh_box(parent, Vector3(0.34, 0.18, 0.040), Vector3(0.0, -0.13, 0.490), ember)
-	_add_mesh_box(parent, Vector3(0.94, 0.08, 0.94), Vector3(0.0, 0.34, 0.0), stone)
+	var masonry := _visual_material(Color("d9dde0"), "res://assets/blocks/castle_stone.svg")
+	var mortar := _visual_material(Color("6b7178"), "res://assets/blocks/stone.svg")
+	var dark := _visual_material(Color("14181c"))
+	var ember := _visual_material(Color("ff7a1f"), "", Color("ff4a0c"))
+	var flame := _visual_material(Color("ffd25a"), "", Color("ffb020"))
+	_add_mesh_box(parent, Vector3(0.90, 0.90, 0.90), Vector3.ZERO, masonry)
+	_add_mesh_box(parent, Vector3(0.96, 0.10, 0.96), Vector3(0.0, 0.40, 0.0), mortar)
+	_add_mesh_box(parent, Vector3(0.96, 0.06, 0.96), Vector3(0.0, -0.42, 0.0), mortar)
+	# Stepped arch: wide lower opening plus a narrower crown block.
+	_add_mesh_box(parent, Vector3(0.50, 0.36, 0.05), Vector3(0.0, -0.14, 0.455), dark)
+	_add_mesh_box(parent, Vector3(0.30, 0.12, 0.05), Vector3(0.0, 0.10, 0.455), dark)
+	_add_mesh_box(parent, Vector3(0.40, 0.14, 0.06), Vector3(0.0, -0.22, 0.462), ember)
+	_add_mesh_box(parent, Vector3(0.18, 0.10, 0.07), Vector3(0.0, -0.10, 0.466), flame)
 
 
 func _build_ballista_visual(parent: Node3D) -> void:
