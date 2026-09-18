@@ -179,7 +179,31 @@ func _run_visual() -> void:
 	await _settle_frames(4)
 	var block_path := app.data_root.path_join("p3d-held-block-placement-ghost.png")
 	var block_image_ok := await _save_viewport(block_path)
-	_record("T83_PRESENTATION", axe_image_ok and block_image_ok and ghost_visible, "rendered evidence shows the held axe beside the real iron marker and a low held block with its world placement ghost", {"axe_path": axe_path, "block_path": block_path, "size": get_viewport().get_visible_rect().size, "ghost_visible": ghost_visible})
+	# Owner playtest 2026-09-18: the hotbar must end above the window edge with
+	# square, fully contained tiles.
+	var hotbar_16_9 := _hotbar_containment()
+	var captions_ok := app.gameplay_hotbar_slots[axe_slot]._name_label.text == "Wood Axe" and app.gameplay_hotbar_slots[dirt_slot]._name_label.text == "Dirt" and app.gameplay_hotbar_slots[dirt_slot]._count_label.text == "×16"
+	_record("T83_PRESENTATION", axe_image_ok and block_image_ok and ghost_visible and bool(hotbar_16_9.ok) and captions_ok, "rendered evidence shows the held axe beside the real iron marker and a low held block with its world placement ghost; the hotbar ends at least 8 px above the viewport bottom with square tiles whose contents stay inside and whose captions are the item name only", {"axe_path": axe_path, "block_path": block_path, "size": get_viewport().get_visible_rect().size, "ghost_visible": ghost_visible, "hotbar": hotbar_16_9, "captions_ok": captions_ok})
+
+	# 21:9 frame: the same containment must hold when the canvas widens
+	# (canvas_items / expand keeps the height at 720 and widens the width).
+	var ultrawide_size := Vector2i(1720, 720)
+	get_window().content_scale_size = ultrawide_size
+	get_window().size = ultrawide_size
+	for _resize_frame in range(3):
+		await get_tree().process_frame
+	await _settle_frames(4)
+	var ultrawide_path := app.data_root.path_join("p3d-hotbar-ultrawide.png")
+	var ultrawide_image_ok := await _save_viewport_sized(ultrawide_path, ultrawide_size)
+	var hotbar_21_9 := _hotbar_containment()
+	var ultrawide_centred: bool = absf(app.gameplay_hotbar.get_global_rect().get_center().x - ultrawide_size.x / 2.0) <= 1.0
+	get_window().content_scale_size = Vector2i(1280, 720)
+	get_window().size = Vector2i(1280, 720)
+	for _restore_frame in range(3):
+		await get_tree().process_frame
+	await _settle_frames(2)
+	var restored_ok := get_viewport().get_visible_rect().size == Vector2(1280, 720)
+	_record("T83_HOTBAR_ULTRAWIDE", ultrawide_image_ok and bool(hotbar_21_9.ok) and ultrawide_centred and restored_ok, "at a 21:9 canvas the hotbar stays centred, square and fully inside the viewport with its bottom margin, and the viewport restores to 1280×720", {"path": ultrawide_path, "hotbar": hotbar_21_9, "centred": ultrawide_centred, "restored": restored_ok})
 
 	# P3J: a held right-drag from the aimed anchor shows every planned cell.
 	# The camera ray sets the drag end each frame, so aim at the ground ahead.
@@ -271,9 +295,47 @@ func _settle_frames(count: int) -> void:
 
 
 func _save_viewport(path: String) -> bool:
+	return await _save_viewport_sized(path, Vector2i(1280, 720))
+
+
+func _save_viewport_sized(path: String, expected_size: Vector2i) -> bool:
 	var texture := get_viewport().get_texture()
 	var image := texture.get_image() if texture != null else null
-	return image != null and image.get_size() == Vector2i(1280, 720) and image.save_png(path) == OK
+	return image != null and image.get_size() == expected_size and image.save_png(path) == OK
+
+
+## Measures the in-game hotbar against the visible canvas: bottom margin of at
+## least 8 px, every slot square, inside the viewport, and every visible
+## control inside its slot rect (half-pixel tolerance).
+func _hotbar_containment() -> Dictionary:
+	var viewport_size := get_viewport().get_visible_rect().size
+	var hotbar_rect := app.gameplay_hotbar.get_global_rect()
+	var bottom_ok := hotbar_rect.end.y <= viewport_size.y - 8.0
+	var square_ok := true
+	var inside_ok := true
+	var children_ok := true
+	var slot_sizes: Array = []
+	for slot in app.gameplay_hotbar_slots:
+		var rect := slot.get_global_rect()
+		slot_sizes.append(rect.size)
+		if not is_equal_approx(rect.size.x, rect.size.y):
+			square_ok = false
+		if rect.position.x < 0.0 or rect.position.y < 0.0 or rect.end.x > viewport_size.x or rect.end.y > viewport_size.y:
+			inside_ok = false
+		if not _controls_inside(slot, rect):
+			children_ok = false
+	return {"ok": bottom_ok and square_ok and inside_ok and children_ok, "bottom": hotbar_rect.end.y, "viewport": viewport_size, "hotbar_rect": hotbar_rect, "bottom_ok": bottom_ok, "square_ok": square_ok, "inside_ok": inside_ok, "children_ok": children_ok, "slot_sizes": slot_sizes}
+
+
+func _controls_inside(root: Node, bounds: Rect2) -> bool:
+	for child in root.get_children():
+		if child is Control and child.visible:
+			var rect: Rect2 = child.get_global_rect()
+			if rect.position.x < bounds.position.x - 0.5 or rect.position.y < bounds.position.y - 0.5 or rect.end.x > bounds.end.x + 0.5 or rect.end.y > bounds.end.y + 0.5:
+				return false
+		if not _controls_inside(child, bounds):
+			return false
+	return true
 
 
 func _record(test_id: String, ok: bool, expected: String, evidence: Variant) -> void:

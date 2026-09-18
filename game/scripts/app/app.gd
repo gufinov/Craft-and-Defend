@@ -10,6 +10,9 @@ const RECIPE_PAGE_SIZE := 12
 ## Tab-inventory tiles share the crafting inventory's square anatomy.
 const INVENTORY_TILE_SIZE := Vector2(96, 92)
 const INVENTORY_TILE_GAP := 8
+## Gap between in-game hotbar tiles and the canvas-pixel margin kept below them.
+const GAMEPLAY_HOTBAR_GAP := 5
+const GAMEPLAY_HOTBAR_BOTTOM_MARGIN := 14
 const INVENTORY_FILTERS: Array[Dictionary] = [
 	{"id": "all", "label": "All"},
 	{"id": "resource", "label": "Resources"},
@@ -1022,13 +1025,22 @@ func _build_hud(canvas: CanvasLayer) -> void:
 	crosshair.set_anchors_preset(Control.PRESET_CENTER)
 	crosshair.position = Vector2(-7, -16)
 	hud_layer.add_child(crosshair)
+	# Owner playtest 2026-09-18 (ultrawide): the hotbar must stay fully visible
+	# with a small gap below it on every aspect ratio. It is anchored to the
+	# bottom-centre with GAMEPLAY_HOTBAR_BOTTOM_MARGIN below the square tiles
+	# and is exactly as wide as its nine tiles, so it never grows downward.
 	gameplay_hotbar = HBoxContainer.new()
 	gameplay_hotbar.name = "HeldHotbar"
+	var hotbar_width := GameplayHotbarSlot.TILE_SIZE.x * F0Inventory.HOTBAR_COUNT + GAMEPLAY_HOTBAR_GAP * (F0Inventory.HOTBAR_COUNT - 1)
 	gameplay_hotbar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	gameplay_hotbar.position = Vector2(-420, -94)
-	gameplay_hotbar.size = Vector2(840, 80)
+	gameplay_hotbar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	gameplay_hotbar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	gameplay_hotbar.offset_left = -hotbar_width / 2.0
+	gameplay_hotbar.offset_right = hotbar_width / 2.0
+	gameplay_hotbar.offset_top = -(GameplayHotbarSlot.TILE_SIZE.y + GAMEPLAY_HOTBAR_BOTTOM_MARGIN)
+	gameplay_hotbar.offset_bottom = -GAMEPLAY_HOTBAR_BOTTOM_MARGIN
 	gameplay_hotbar.alignment = BoxContainer.ALIGNMENT_CENTER
-	gameplay_hotbar.add_theme_constant_override("separation", 5)
+	gameplay_hotbar.add_theme_constant_override("separation", GAMEPLAY_HOTBAR_GAP)
 	gameplay_hotbar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud_layer.add_child(gameplay_hotbar)
 	for index in range(F0Inventory.HOTBAR_COUNT):
@@ -1416,7 +1428,10 @@ func _refresh_inventory_panel() -> void:
 	for index in range(inventory_slot_buttons.size()):
 		var slot: Dictionary = slots[index] if index < slots.size() else {"item_id": "", "count": 0}
 		var item_id := str(slot.get("item_id", ""))
-		var slot_label := "%d" % (index + 1) if index < F0Inventory.HOTBAR_COUNT else "C%d" % (index - F0Inventory.HOTBAR_COUNT + 1)
+		# Captions carry only the item name; hotbar tiles show their key in the
+		# top-left corner and carried tiles show no index (slot numbers live in
+		# the tooltip only).
+		var slot_label := "%d" % (index + 1) if index < F0Inventory.HOTBAR_COUNT else ""
 		var marker := "↔" if index == _inventory_move_source else ("▶" if index == int(snapshot.get("selected_hotbar", 0)) and index < F0Inventory.HOTBAR_COUNT else "")
 		var display_name := "Empty" if item_id.is_empty() else session.registry.display_name(item_id)
 		var item_text := "Empty" if item_id.is_empty() else "%s ×%d" % [display_name, int(slot.get("count", 0))]
@@ -1725,7 +1740,8 @@ func _refresh_crafting_inventory() -> void:
 		crafting_inventory_slots[index].disabled = false
 		crafting_inventory_slots[index].configure_source("inventory", index, item_id)
 		crafting_inventory_slots[index].set_cursor_active(not str(session.inventory.cursor_stack.get("item_id", "")).is_empty())
-		crafting_inventory_slots[index].set_presentation("%d · %s" % [index + 1, "Empty" if item_id.is_empty() else session.registry.display_name(item_id)], count, marker)
+		crafting_inventory_slots[index].tooltip_text = "Slot %d · Drag to the crafting grid, or select and then choose a grid cell" % (index + 1)
+		crafting_inventory_slots[index].set_presentation("Empty" if item_id.is_empty() else session.registry.display_name(item_id), count, marker)
 
 
 func _select_crafting_inventory_slot(index: int) -> void:

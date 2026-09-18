@@ -9,6 +9,7 @@ var item_id := ""
 var cursor_active := false
 var _drag_label := "Empty"
 var _icon: TextureRect
+var _key_label: Label
 var _count_label: Label
 var _name_label: Label
 var _presentation_slot := ""
@@ -24,7 +25,9 @@ func _ready() -> void:
 	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(stack)
 	# P3H.5: same tile anatomy as CraftingItemSlot — a large centred icon with
-	# the count in its corner and one "slot · name" caption beneath.
+	# the count in its corner and one item-name caption beneath. Hotbar tiles
+	# additionally show their key (1–9) in the top-left corner; no slot index
+	# appears in any caption (owner correction 2026-09-18).
 	var icon_holder := Control.new()
 	icon_holder.custom_minimum_size = Vector2(38, 36)
 	icon_holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -45,6 +48,16 @@ func _ready() -> void:
 	_count_label.add_theme_color_override("font_outline_color", Color("071016"))
 	_count_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	icon_holder.add_child(_count_label)
+	_key_label = Label.new()
+	_key_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_key_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_key_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	_key_label.add_theme_font_size_override("font_size", 11)
+	_key_label.add_theme_color_override("font_color", Color("9fd8e8"))
+	_key_label.add_theme_constant_override("outline_size", 3)
+	_key_label.add_theme_color_override("font_outline_color", Color("071016"))
+	_key_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon_holder.add_child(_key_label)
 	_name_label = Label.new()
 	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -64,12 +77,15 @@ func set_cursor_active(active: bool) -> void:
 	cursor_active = active
 
 
-func set_presentation(slot_label: String, display_name: String, count: int, marker: String = "") -> void:
-	_presentation_slot = slot_label
+## `key_label` is the hotbar key shown in the tile corner ("1".."9"); pass ""
+## for carried slots. The caption is the item name only.
+func set_presentation(key_label: String, display_name: String, count: int, marker: String = "") -> void:
+	_presentation_slot = key_label
 	_presentation_name = display_name
 	_presentation_count = count
 	_presentation_marker = marker
-	_drag_label = "%s %s ×%d" % [slot_label, display_name, count] if not item_id.is_empty() else "%s Empty" % slot_label
+	var key_prefix := "Key %s · " % key_label if not key_label.is_empty() else ""
+	_drag_label = "%s%s ×%d" % [key_prefix, display_name, count] if not item_id.is_empty() else "%sEmpty" % key_prefix
 	if _icon == null:
 		return
 	_apply_presentation()
@@ -79,7 +95,10 @@ func _apply_presentation() -> void:
 	_icon.texture = ItemIconCatalog.texture_for(item_id)
 	_icon.visible = not item_id.is_empty() and _icon.texture != null
 	_count_label.text = "×%d" % _presentation_count if not item_id.is_empty() else ""
-	_name_label.text = "%s%s · %s" % [_presentation_marker, _presentation_slot, _presentation_name if not item_id.is_empty() else "Empty"]
+	_key_label.text = _presentation_slot
+	_key_label.visible = not _presentation_slot.is_empty()
+	var caption := _presentation_name if not item_id.is_empty() else "Empty"
+	_name_label.text = caption if _presentation_marker.is_empty() else "%s %s" % [_presentation_marker, caption]
 	_name_label.add_theme_color_override("font_color", Color("ffe08a") if _presentation_marker.contains("▶") else Color("d5e2e8"))
 
 
