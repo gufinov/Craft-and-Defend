@@ -1,4 +1,22 @@
-# Current checkpoint — 2026-09-15
+# Current checkpoint — 2026-09-18
+
+**STATUS:** **P3H.3 WORK-IN-PROGRESS CHECKPOINTED; LAUNCHER AND RUNTIME GATE RECOVERED; OWNER PLAYTEST PENDING.** The previous Codex session ran out of tokens mid-P3H.3 and left the `game/` tree dirty, which made `START_GAME.cmd` and every `TEST_*.cmd` fail at the clean-tree provenance guard. A third-party audit by Claude committed that work as-is, restored one-click launch, pushed the branch to GitHub for the first time, and recorded findings in [the audit](AUDIT_2026-09-18.md). No merge to `main` and no release occurred.
+
+**DONE:** Committed the P3H.3 candidate (`3a05452`): shared lower-right held base with inward-facing raised tools, dedicated true-alpha ammunition atlas, Castle Stone skins on Gate Frame and Wall Walk Slab, one Log per Axe use, wheel recipe paging, one-press Furnace Escape and red MISSING recipe cards. Added `safe.directory` for the project so Tony's account can use git in the sandbox-owned worktrees. Pushed `feature/p3d-tools-world-feedback` with upstream tracking. Wrote the audit with measured atlas-alignment data, code-quality findings and combat direction.
+
+**EXPECT:** `START_GAME.cmd` in this worktree reports matching provenance and opens the P3H.3 candidate. Tools sit at the lower-right with the handle at the screen base and the head facing inward; Ballista Bolt and Stone Shot show their own art; placed Gate Frame and Wall Walk Slab use the Castle Stone face; the Axe removes one Log per swing; the mouse wheel pages the recipe book; Escape closes a Furnace in one press even with the search focused; recipes lacking materials show red cards.
+
+**TEST:** Foundation validation PASS (11 blocks, 26 items, 21 recipes, 113 links). Python tests PASS 40/40. `start_game.ps1 -PrepareOnly` PASS after one rebuild with manifest `game_tree` = `HEAD:game`. Exported `TEST_P3F_PRESENTATION.cmd` PASS: T90, T91, T92, T103, T104, T105, T106 (`artifacts/manual-p3f-presentation-969719652`). P3C, P3D, P3E, P3G and P3H runtime suites were not re-run at this commit. Owner playtest not yet performed.
+
+**LIMITATIONS/FAILURES:** The P3H.3 commit is a checkpoint of interrupted work, not an owner-accepted milestone; its evidence record has not been written. Canonical `main` documentation still describes F1 because promotion requires review. The ten superseded worktrees remain on disk. Held items remain camera-facing raster billboards anchored at their atlas-cell centre; the audit measures why icon and held positioning drift and proposes anchor metadata rather than further constant tuning. The launcher still refuses a dirty `game/` tree by design; relaxing that is an open proposal.
+
+**NEXT:** Tony launches this worktree's `START_GAME.cmd` and playtests the P3H.3 items above at ultrawide. Then decide the audit proposals in order: launcher dirty-tree behaviour, worktree cleanup, promotion toward `main`, icon/held anchor metadata, defense-service consolidation before any wave/invasion card, `app.gd` split.
+
+**GIT/REPRODUCIBILITY:** Worktree `D:\CODEX\Craft_and_Defend\worktrees\p3d-tools-world-feedback`, branch `feature/p3d-tools-world-feedback`, HEAD `3a05452de91a3ea74c20f8572c674ff226ce6482` plus this documentation commit, clean, tracking `origin/feature/p3d-tools-world-feedback` (pushed). Canonical `main` unchanged at `c085c013d39b2b64321ea6c5a696b96fe2efd45c` local and remote. Game tree `cddb74a2bd16a26c24ffbb4a4cf22745a9e9c8ec`; engine `4.6.stable.custom_build.89cea1439`; Voxel Tools `1.6.0 Module`; EXE SHA-256 `4ac128729e86108904e6d038d161322404d42d71892b1cc0dca751039aa7e4b2`; PCK SHA-256 `763591684d8618d1fe4b177ddca47ce736090af484d3209ac96fb29475da4e26`. Another machine can now clone the branch and rebuild from repository truth. No merge, release or publication performed.
+
+---
+
+## Previous checkpoint — 2026-09-15
 
 **STATUS:** **P3H.2 HELD-SCALE / UNIFIED-ALPHA CANDIDATE PASS — OWNER ULTRAWIDE PLAYTEST PENDING.** The matching Windows export uses one true-alpha atlas for inventory, recipes and first-person references. Tools are enlarged and share one frame; their visual use has a broad strike arc. Low-held items are twice the prior scale and higher. P3G Furnace usability, P3H balance/fuel/controls and P3H.1 alignment remain passing candidates. No merge, push or release is authorized or performed.
 
