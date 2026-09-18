@@ -1496,7 +1496,7 @@ func _refresh_crafting_panel() -> void:
 			item_id = str(furnace_stack.get("item_id", ""))
 			item_count = int(furnace_stack.get("count", 0))
 			empty_label = ["Raw Input", "Fuel", "Output"][index]
-			cell.tooltip_text = "%s · Shift+Click transfers all; right-click picks half or deposits one" % empty_label
+			cell.tooltip_text = "%s · click with a selected item adds one, Shift+Click adds five; double-click collects; right-click picks half or deposits one" % empty_label
 			cell.configure_source("furnace", index, item_id)
 			cell.configure_target("furnace", index)
 		else:
@@ -1510,7 +1510,7 @@ func _refresh_crafting_panel() -> void:
 		cell.pressed.connect(_on_crafting_grid_slot_pressed.bind(index))
 		crafting_grid_slots.append(cell)
 		crafting_grid.add_child(cell)
-	craft_selected_button.text = "Load from Inventory" if _crafting_station_type == "furnace" else "Craft ×1  ·  Shift+Click ×5"
+	craft_selected_button.text = "Load ×1  ·  Shift+Click ×5" if _crafting_station_type == "furnace" else "Craft ×1  ·  Shift+Click ×5"
 	crafting_clear_button.text = "Return Input + Fuel" if _crafting_station_type == "furnace" else "Clear Grid"
 	var selected_recipe := session.registry.recipe(_selected_recipe_id)
 	if _crafting_station_type == "furnace" and selected_recipe.is_empty():
@@ -1575,7 +1575,7 @@ func _refresh_furnace_live_status() -> void:
 		craft_selected_button.disabled = true
 	else:
 		furnace_progress_label.text = "IDLE — RUNS AUTOMATICALLY WHEN INPUT AND FUEL ARE LOADED" if not _selected_recipe_id.is_empty() else "LOAD OR CHOOSE A RECIPE"
-		craft_selected_button.text = "Load from Inventory"
+		craft_selected_button.text = "Load ×1  ·  Shift+Click ×5"
 
 
 func _on_furnace_auto_load_changed(value: float) -> void:
@@ -1619,9 +1619,16 @@ func _craft_selected_recipe_batches(batches: int) -> void:
 		return
 	var recipe_station := str(recipe.get("station", ""))
 	var station_id := "" if recipe_station == "hand" else _crafting_station_id
-	# P3I: the furnace button loads staged input and fuel from the inventory;
-	# the Furnace itself starts processing on the next simulation tick.
-	var result := session.load_furnace_recipe(station_id, _selected_recipe_id) if _crafting_station_type == "furnace" else session.try_craft(_selected_recipe_id, recipe_station, station_id, batches)
+	# P3I: the furnace button loads one more batch of input plus the Coal it
+	# needs (Shift+click: five) through the auto-load target; the Furnace itself
+	# starts processing on the next simulation tick.
+	var result: Dictionary
+	if _crafting_station_type == "furnace":
+		var load_batches := 5 if Input.is_key_pressed(KEY_SHIFT) else 1
+		var current_target := int(session.workstations.furnace_autoload_status(station_id, _selected_recipe_id).get("details", {}).get("current", 0))
+		result = session.workstations.try_set_furnace_autoload_target(station_id, _selected_recipe_id, current_target + load_batches)
+	else:
+		result = session.try_craft(_selected_recipe_id, recipe_station, station_id, batches)
 	if result.get("ok", false) and _crafting_station_type == "furnace":
 		crafting_message.text = "%s loaded. The Furnace processes automatically; finished stacks stay in Output until collected." % session.registry.display_name(_selected_recipe_id)
 	elif result.get("ok", false):
@@ -1695,6 +1702,10 @@ func _select_crafting_inventory_slot(index: int) -> void:
 
 func _on_crafting_grid_slot_pressed(index: int) -> void:
 	if _crafting_station_type == "furnace":
+		# P3I.1: select an ore or Coal in the inventory, then click Raw Input /
+		# Fuel to add one at a time (Shift+click adds five via the gesture path).
+		if index in [0, 1] and not _crafting_selected_inventory_item.is_empty():
+			_add_selected_item_to_furnace(index, 1)
 		return
 	if not _crafting_selected_inventory_item.is_empty():
 		_stage_item_in_grid(index, _crafting_selected_inventory_item)
@@ -1759,14 +1770,21 @@ func _on_crafting_stack_gesture(source_kind: String, source_index: int, mouse_bu
 		return
 	var result: Dictionary
 	if source_kind == "inventory":
-		if (shift_pressed or double_click) and not cursor_has_item:
+		if double_click and not cursor_has_item:
 			result = session.transfer_inventory_stack_to_furnace(_crafting_station_id, source_index)
+		elif shift_pressed and mouse_button == MOUSE_BUTTON_LEFT and not cursor_has_item:
+			var shift_item := str(session.inventory.slots[source_index].get("item_id", ""))
+			_crafting_selected_inventory_item = shift_item
+			result = session.workstations.try_transfer_inventory_item_to_furnace(_crafting_station_id, shift_item, 5)
 		else:
 			_handle_inventory_cursor_gesture(source_index, mouse_button, double_click, false, crafting_message)
 			return
 	elif source_kind == "furnace" and source_index in [0, 1, 2]:
 		var slot_name: String = ["input", "fuel", "output"][source_index]
-		if (shift_pressed or double_click) and not cursor_has_item:
+		if shift_pressed and mouse_button == MOUSE_BUTTON_LEFT and not cursor_has_item and source_index in [0, 1] and not _crafting_selected_inventory_item.is_empty():
+			_add_selected_item_to_furnace(source_index, 5)
+			return
+		elif (shift_pressed or double_click) and not cursor_has_item:
 			result = session.collect_furnace_stack(_crafting_station_id, slot_name)
 		elif cursor_has_item:
 			result = session.workstations.cursor_deposit_furnace_stack(_crafting_station_id, slot_name, mouse_button == MOUSE_BUTTON_RIGHT)
@@ -1776,6 +1794,24 @@ func _on_crafting_stack_gesture(source_kind: String, source_index: int, mouse_bu
 		return
 	crafting_message.text = "Stack transferred." if result.get("ok", false) else _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
 	_right_drag_visited.clear()
+	_recognize_furnace_recipe()
+	_refresh_crafting_panel()
+
+
+## Adds `amount` of the selected inventory item to the clicked Furnace slot when
+## the item belongs there (ore → Raw Input, Coal → Fuel).
+func _add_selected_item_to_furnace(slot_index: int, amount: int) -> void:
+	var item_id := _crafting_selected_inventory_item
+	var slot_name: String = ["input", "fuel"][slot_index]
+	var role := session.workstations._furnace_role_for_item(item_id)
+	if role != slot_name:
+		crafting_message.text = "%s belongs in the %s slot." % [session.registry.display_name(item_id), "Raw Input" if role == "input" else "Fuel"] if not role.is_empty() else "%s cannot go into a Furnace." % session.registry.display_name(item_id)
+		return
+	var result := session.workstations.try_transfer_inventory_item_to_furnace(_crafting_station_id, item_id, amount)
+	if result.get("ok", false):
+		crafting_message.text = "Added %d %s. Click again for more; Shift+Click adds five." % [int(result.get("details", {}).get("moved", amount)), session.registry.display_name(item_id)]
+	else:
+		crafting_message.text = _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
 	_recognize_furnace_recipe()
 	_refresh_crafting_panel()
 

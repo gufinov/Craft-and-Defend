@@ -116,8 +116,8 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T104 | P3H.2 | Exported three-panel evidence shows the enlarged ready Sword, broad active strike travel and doubled/higher low-held Furnace frame; the active 1536×1024 atlas is RGBA with alpha-zero background |
 | T105 | P3H.3 | Placed Gate Frame and Wall Walk Slab mesh parts resolve the Castle Stone texture instead of a flat material |
 | T106 | P3H.3 | Exported evidence visibly shows the Castle Stone skin on the placed Gate Frame and Wall Walk Slab |
-| T107 | P3I | A Furnace holding input and fuel starts without a manual press on the next unpaused tick, never while paused, processes every input one at a time into retained Output and returns to idle when the input is spent |
-| T108 | P3J | A right-drag plans a row, column or wall of the held block with support-first ordering, skips blocked cells, trims to the carried count, commits as one world edit plus one inventory transaction, and cancels with nothing built |
+| T107 | P3I | A Furnace holding input and fuel starts without a manual press on the next unpaused tick, never while paused, processes every input one at a time into retained Output, returns to idle when the input is spent, keeps the burning Coal in the slot until its last operation and accepts counted +N transfers |
+| T108 | P3J | A right-drag plans a row, column or wall of the held block with support-first ordering, extends into open sky along the row's vertical plane, skips blocked cells, trims to the carried count, commits as one world edit plus one inventory transaction, and cancels with nothing built |
 | T109 | P3J | Rendered evidence shows a multi-cell drag-build ghost stretched from the anchor toward the aimed cell |
 
 ## Performance evidence, not invented guarantees

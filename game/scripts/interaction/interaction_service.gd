@@ -192,7 +192,39 @@ func update_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
 	var hit := world.raycast(origin, direction, 12.0)
 	if hit != null:
 		return set_drag_end(hit.previous_position)
+	# Aim left the terrain (open sky): stretch along the vertical plane of the
+	# current row so moving the mouse up builds up (owner playtest 2026-09-18).
+	var plane_end := _drag_plane_end(origin, direction)
+	if plane_end.has("cell"):
+		return set_drag_end(plane_end.cell)
 	return drag_state()
+
+
+## Intersects the aim ray with the vertical plane through the anchor that
+## contains the current row axis. With no row yet, the plane faces the camera.
+func _drag_plane_end(origin: Vector3, direction: Vector3) -> Dictionary:
+	var anchor: Vector3i = _drag.anchor
+	var delta: Vector3i = _drag.end - anchor
+	var row_axis := 0
+	if delta.x == 0 and delta.z == 0:
+		row_axis = 0 if absf(direction.z) >= absf(direction.x) else 2
+	else:
+		row_axis = 0 if absi(delta.x) >= absi(delta.z) else 2
+	var normal := Vector3(0.0, 0.0, 1.0) if row_axis == 0 else Vector3(1.0, 0.0, 0.0)
+	var plane_point := Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
+	var denominator := direction.dot(normal)
+	if absf(denominator) < 0.05:
+		return {}
+	var distance := (plane_point - origin).dot(normal) / denominator
+	if distance <= 0.0 or distance > 24.0:
+		return {}
+	var point := origin + direction * distance
+	var cell := Vector3i(floori(point.x), floori(point.y), floori(point.z))
+	if row_axis == 0:
+		cell.z = anchor.z
+	else:
+		cell.x = anchor.x
+	return {"cell": cell}
 
 
 ## Planned cells with their state: "ok", "blocked" (invalid, skipped) or

@@ -64,7 +64,7 @@ func _run_gate() -> void:
 	var after_one := timed_service.furnace_slots(timed_id)
 	var next_job := timed_service.furnace_job_status(timed_id)
 	var fuel_after_one := timed_service.furnace_fuel_status(timed_id)
-	_record("T95_ITEM_PROGRESS_SEQUENCE", started.get("ok", false) and absf(float(halfway.progress) - 0.5) < 0.01 and int(after_one.output.count) == 1 and bool(next_job.active) and float(next_job.progress) < 0.01 and int(after_one.input.count) == 1 and str(after_one.fuel.item_id).is_empty() and int(fuel_after_one.get("details", {}).get("stored_operations", -1)) == 1, "each item exposes measurable progress, deposits one retained output, resets for the next loaded item and spends only one stored fuel operation", {"halfway": halfway, "after_one": after_one, "next_job": next_job, "fuel": fuel_after_one})
+	_record("T95_ITEM_PROGRESS_SEQUENCE", started.get("ok", false) and absf(float(halfway.progress) - 0.5) < 0.01 and int(after_one.output.count) == 1 and bool(next_job.active) and float(next_job.progress) < 0.01 and int(after_one.input.count) == 1 and str(after_one.fuel.item_id) == "coal" and int(after_one.fuel.count) == 1 and int(fuel_after_one.get("details", {}).get("stored_operations", -1)) == 1, "each item exposes measurable progress, deposits one retained output, resets for the next loaded item, spends only one stored fuel operation and keeps the burning Coal in the Fuel slot", {"halfway": halfway, "after_one": after_one, "next_job": next_job, "fuel": fuel_after_one})
 
 	app.session.inventory.try_transaction({}, {"furnace": 1, "iron_ore": 2, "coal": 2})
 	var placed := app.session.workstations.try_place("furnace", Vector3i(3, 0, 38), app.session.world.query_cell, app.session.player.get_body_aabb())
@@ -124,7 +124,21 @@ func _run_gate() -> void:
 	var two_ingots := str(finished_slots.get("output", {}).get("item_id", "")) == "iron_ingot" and int(finished_slots.get("output", {}).get("count", 0)) == 2
 	var input_spent := int(finished_slots.get("input", {}).get("count", 0)) == 0
 	var stops_idle := not bool(finished_job.get("active", false))
-	_record("T107_FURNACE_AUTO_PROCESSING", ore_moved.get("ok", false) and coal_moved.get("ok", false) and idle_before and self_started and paused_no_start and two_ingots and input_spent and stops_idle, "a Furnace holding input and fuel starts without a manual press on the next unpaused tick, never while paused, processes every input one at a time into retained Output and returns to idle when the input is spent", {"idle_before": idle_before, "self_started": self_started, "paused_no_start": paused_no_start, "slots": finished_slots, "job": finished_job})
+	# Fuel model 2: two operations used of the Coal's three, so the Coal is still
+	# in the slot with one operation left; it leaves only when burnt out.
+	var burning_coal_kept := str(finished_slots.get("fuel", {}).get("item_id", "")) == "coal" and int(finished_slots.get("fuel", {}).get("count", 0)) == 1 		and int(auto_run_service.furnace_fuel_status(auto_run_id).get("details", {}).get("stored_operations", -1)) == 1
+	var burn_out := _fixture(3, 1)
+	var burn_service: WorkstationService = burn_out.service
+	var burn_inventory: F0Inventory = burn_out.inventory
+	var burn_id := str(burn_out.furnace_id)
+	var counted_move := burn_service.try_transfer_inventory_item_to_furnace(burn_id, "iron_ore", 5)
+	burn_service.try_transfer_inventory_stack_to_furnace(burn_id, _slot_for(burn_inventory, "coal"))
+	burn_service.advance(0.01, false)
+	burn_service.advance(duration * 3.0 + 0.5, false)
+	burn_service.advance(duration + 0.1, false)
+	var burnt_slots := burn_service.furnace_slots(burn_id)
+	var coal_burnt_out := int(counted_move.get("details", {}).get("moved", 0)) == 3 and int(burnt_slots.get("output", {}).get("count", 0)) == 3 		and str(burnt_slots.get("fuel", {}).get("item_id", "")).is_empty() 		and int(burn_service.furnace_fuel_status(burn_id).get("details", {}).get("stored_operations", -1)) == 0
+	_record("T107_FURNACE_AUTO_PROCESSING", ore_moved.get("ok", false) and coal_moved.get("ok", false) and idle_before and self_started and paused_no_start and two_ingots and input_spent and stops_idle and burning_coal_kept and coal_burnt_out, "a Furnace holding input and fuel starts without a manual press on the next unpaused tick, never while paused, processes every input one at a time into retained Output, returns to idle when the input is spent, keeps the burning Coal in the slot until its last operation and accepts counted +N transfers", {"idle_before": idle_before, "self_started": self_started, "paused_no_start": paused_no_start, "slots": finished_slots, "job": finished_job, "burning_coal_kept": burning_coal_kept, "burnt_slots": burnt_slots, "counted_move": counted_move.get("details", {})})
 
 
 func _run_visual() -> void:

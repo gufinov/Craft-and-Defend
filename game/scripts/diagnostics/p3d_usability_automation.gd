@@ -120,6 +120,19 @@ func _run_phase1() -> void:
 			unaffordable += 1
 	var wall_commit := interaction.commit_drag_place()
 	var wall_ok: bool = str(wall_plan.get("shape", "")) == "wall" and wall_plan.get("cells", []).size() == 12 and blocked == 1 and unaffordable == 1 		and int(wall_plan.get("affordable", 0)) == 10 and wall_commit.get("ok", false) and int(wall_commit.get("changes", {}).get("count", 0)) == 10 		and inventory.count("dirt") == 0 and int(app.session.world.query_cell(Vector3i(-5, 2, 44)).get("voxel_id", 0)) == 3
+	# Sky drag: with the aim off the terrain, the plan stretches along the row's
+	# vertical plane so moving the mouse up builds up (owner playtest 2026-09-18).
+	inventory.try_transaction({}, {"dirt": 40})
+	interaction.begin_drag_at(Vector3i(-2, 0, 48))
+	interaction.set_drag_end(Vector3i(-6, 0, 48))
+	var sky_origin := Vector3(-4.5, 1.6, 54.0)
+	var sky_direction := (Vector3(-6.5, 3.5, 48.5) - sky_origin).normalized()
+	var sky_plan := interaction.update_drag_place(sky_origin, sky_direction)
+	var sky_commit := interaction.commit_drag_place()
+	var sky_end: Vector3i = sky_plan.get("end", Vector3i.ZERO)
+	var sky_cells := (absi(sky_end.x + 2) + 1) * (absi(sky_end.y) + 1)
+	var sky_ok: bool = str(sky_plan.get("shape", "")) == "wall" and sky_end.y == 3 and sky_end.z == 48 and sky_end.x <= -6 		and sky_plan.get("cells", []).size() == sky_cells and sky_commit.get("ok", false) and int(sky_commit.get("changes", {}).get("count", 0)) == sky_cells 		and int(app.session.world.query_cell(Vector3i(-6, 3, 48)).get("voxel_id", 0)) == 2
+	inventory.try_transaction({"dirt": inventory.count("dirt")}, {})
 	# Cancel: nothing built, nothing consumed; empty inventory refuses to start a plan with affordable cells.
 	inventory.try_transaction({}, {"dirt": 5})
 	var revision_before: int = app.session.world.revision
@@ -127,7 +140,7 @@ func _run_phase1() -> void:
 	interaction.set_drag_end(Vector3i(-6, 0, 46))
 	var cancelled := interaction.cancel_drag_place()
 	var cancel_ok: bool = str(cancelled.get("reason", "")) == "DRAG_CANCELLED" and not interaction.drag_active() 		and app.session.world.revision == revision_before and inventory.count("dirt") == 5 		and int(app.session.world.query_cell(Vector3i(-4, 0, 46)).get("voxel_id", 0)) == 0
-	_record("T108_DRAG_BUILD", row_ok and column_ok and wall_ok and cancel_ok, "a right-drag plans a row, column or wall of the held block with support-first ordering, skips blocked cells, trims to the carried count, commits as one world edit plus one inventory transaction, and cancels with nothing built", {"row": row_plan, "row_commit": row_commit.get("reason"), "column": column_commit.get("reason"), "wall_blocked": blocked, "wall_unaffordable": unaffordable, "wall_commit": wall_commit.get("reason"), "cancel": cancelled.get("reason"), "dirt": inventory.count("dirt")})
+	_record("T108_DRAG_BUILD", row_ok and column_ok and wall_ok and sky_ok and cancel_ok, "a right-drag plans a row, column or wall of the held block with support-first ordering, skips blocked cells, trims to the carried count, commits as one world edit plus one inventory transaction, and cancels with nothing built", {"row": row_plan, "row_commit": row_commit.get("reason"), "column": column_commit.get("reason"), "wall_blocked": blocked, "wall_unaffordable": unaffordable, "wall_commit": wall_commit.get("reason"), "sky": sky_plan.get("shape", ""), "sky_end": sky_plan.get("end", Vector3i.ZERO), "sky_commit": sky_commit.get("reason"), "cancel": cancelled.get("reason"), "dirt": inventory.count("dirt")})
 
 
 func _run_visual() -> void:

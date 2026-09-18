@@ -15,9 +15,13 @@ Walls are built by holding right-click and dragging (owner direction 2026-09-18)
 - **Presentation** (`GameSession._update_drag_preview`): one ghost per planned cell — green (with the block texture) for `ok`, amber for `unaffordable`, red for `blocked` — each inside a dark translucent frame so the plan reads against grass.
 - Diagnostics and other services keep the direct `try_place_item` / `secondary_from_view` API.
 
+## Owner playtest correction (2026-09-18): building into open sky
+
+The end cell came only from a terrain raycast, so aiming above the ground changed nothing and columns needed an obstruction behind them. `update_drag_place` now falls back to `_drag_plane_end`: when the ray hits no terrain within 12 cells, it is intersected with the vertical plane through the anchor that contains the current row axis (or the plane facing the camera when no row exists yet), out to 24 cells. Moving the mouse up after dragging sideways therefore raises a wall; aiming at the ground still extends along it.
+
 ## Acceptance
 
-- T108 (P3D gate): row of 6, column of 3 rising from planned support, 4×3 wall with one pre-blocked cell skipped and one trimmed by stock, exact inventory accounting, cancel leaves world revision and inventory unchanged.
+- T108 (P3D gate): row of 6, column of 3 rising from planned support, 4×3 wall with one pre-blocked cell skipped and one trimmed by stock, a sky-aimed drag that raises a row into a wall via the plane fallback, exact inventory accounting, cancel leaves world revision and inventory unchanged.
 - T109 (P3D visual): rendered multi-cell ghost.
 - T42–T45/T50 castle kit, T72–T77 P3C, T79–T83 P3D, T90/T91/T105 P3F unchanged and passing.
 

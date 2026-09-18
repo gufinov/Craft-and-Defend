@@ -50,6 +50,7 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 	if entity_id == "furnace":
 		record["furnace_slots"] = _empty_furnace_slots()
 		record["furnace_fuel_operations"] = 0
+		record["fuel_model"] = 2
 	var defense_definition: Dictionary = definition.get("defense", {})
 	if not defense_definition.is_empty():
 		record["integrity"] = maxi(1, int(defense_definition.get("max_integrity", 1)))
@@ -253,8 +254,8 @@ func furnace_autoload_status(instance_id: String, recipe_id: String) -> Dictiona
 		if role == "fuel":
 			var stored_operations := int(stations[instance_id].get("furnace_fuel_operations", 0))
 			var available_fuel_count := mini(stack_count + inventory.count(item_id), registry.max_stack(item_id))
-			available_batches = floori(float(stored_operations + available_fuel_count * _furnace_operations_per_fuel()) / float(required))
-			staged_batches = floori(float(stored_operations + stack_count * _furnace_operations_per_fuel()) / float(required))
+			available_batches = floori(float(_fuel_operations_for(available_fuel_count, stored_operations)) / float(required))
+			staged_batches = floori(float(_fuel_operations_for(stack_count, stored_operations)) / float(required))
 		else:
 			var available := stack_count + inventory.count(item_id)
 			available_batches = floori(float(mini(available, registry.max_stack(item_id))) / float(required))
@@ -289,8 +290,7 @@ func try_set_furnace_autoload_target(instance_id: String, recipe_id: String, req
 		var desired_operations := maxi(0, requested - active_batches) * maxi(1, int(recipe.inputs[item_id]))
 		var desired := 0
 		if role == "fuel":
-			desired_operations = maxi(0, desired_operations - int(stations[instance_id].get("furnace_fuel_operations", 0)))
-			desired = ceili(float(desired_operations) / float(_furnace_operations_per_fuel()))
+			desired = _fuel_count_for_operations(desired_operations, int(stations[instance_id].get("furnace_fuel_operations", 0)))
 		else:
 			desired = desired_operations
 		desired = mini(desired, mini(total, registry.max_stack(item_id)))
@@ -311,6 +311,31 @@ func try_set_furnace_autoload_target(instance_id: String, recipe_id: String, req
 	details["requested"] = requested
 	details["furnace_slots"] = slots.duplicate(true)
 	var result := _result(true, "AUTOLOAD_UPDATED", details)
+	station_changed.emit(result)
+	return result
+
+
+## Moves up to `amount` of `item_id` from the inventory into its Furnace role
+## slot (input for ore, fuel for Coal). Used by click (+1) and Shift+click (+5).
+func try_transfer_inventory_item_to_furnace(instance_id: String, item_id: String, amount: int) -> Dictionary:
+	var role := _furnace_role_for_item(item_id)
+	if role.is_empty():
+		return _result(false, "INVALID_FURNACE_INPUT")
+	var moved := mini(amount, inventory.count(item_id))
+	if moved <= 0:
+		return _result(false, "NO_RESOURCE")
+	var target: Dictionary = furnace_slots(instance_id).get(role, _empty_stack())
+	moved = mini(moved, registry.max_stack(item_id) - int(target.get("count", 0)))
+	if moved <= 0:
+		return _result(false, "STACK_FULL")
+	var allowed := _can_add_to_furnace(instance_id, role, item_id, moved)
+	if not allowed.get("ok", false):
+		return allowed
+	var removed := inventory.try_transaction({item_id: moved}, {})
+	if not removed.get("ok", false):
+		return removed
+	_add_to_furnace_unchecked(instance_id, role, item_id, moved)
+	var result := _result(true, "STACK_TRANSFERRED", {"instance_id": instance_id, "item_id": item_id, "moved": moved, "furnace_slots": furnace_slots(instance_id)})
 	station_changed.emit(result)
 	return result
 
@@ -417,28 +442,39 @@ func advance(delta: float, paused: bool = false) -> Array[Dictionary]:
 		return completed
 	_auto_start_idle_furnaces()
 	for instance_id: String in jobs.keys():
-		var job: Dictionary = jobs[instance_id]
-		job.remaining_seconds = maxf(0.0, float(job.remaining_seconds) - delta)
-		jobs[instance_id] = job
-		if float(job.remaining_seconds) > 0.0:
-			continue
-		var recipe := registry.recipe(str(job.recipe_id))
-		var outputs: Dictionary = recipe.get("outputs", {}).duplicate(true)
-		if inventory.reservations.has(str(job.job_id)):
-			var legacy := inventory.claim_reservation(str(job.job_id))
-			if not legacy.get("ok", false):
-				continue
-			outputs = legacy.outputs
-		var stored := _store_furnace_outputs(instance_id, outputs)
-		if not stored.get("ok", false):
-			continue
-		jobs.erase(instance_id)
-		var result := _result(true, "JOB_COMPLETED", {"instance_id": instance_id, "job_id": job.job_id, "recipe_id": job.recipe_id, "outputs": outputs.duplicate(true), "furnace_slots": furnace_slots(instance_id)})
-		completed.append(result)
-		job_completed.emit(result)
-		# A loaded appliance continues one item at a time. Each new job resets the
-		# progress bar; it stops naturally on missing input/fuel or blocked output.
-		try_start_furnace(instance_id, str(job.recipe_id))
+		# Time left over when a job completes carries into the job it chains, so
+		# a large step (a long absence, a diagnostic) finishes as many items as the
+		# elapsed time funds instead of one per call. Bounded for safety.
+		var budget := delta
+		var chained := 0
+		while jobs.has(instance_id) and budget > 0.0 and chained < 256:
+			var job: Dictionary = jobs[instance_id]
+			var remaining := float(job.remaining_seconds) - budget
+			if remaining > 0.0:
+				job.remaining_seconds = remaining
+				jobs[instance_id] = job
+				break
+			budget = -remaining
+			job.remaining_seconds = 0.0
+			jobs[instance_id] = job
+			var recipe := registry.recipe(str(job.recipe_id))
+			var outputs: Dictionary = recipe.get("outputs", {}).duplicate(true)
+			if inventory.reservations.has(str(job.job_id)):
+				var legacy := inventory.claim_reservation(str(job.job_id))
+				if not legacy.get("ok", false):
+					break
+				outputs = legacy.outputs
+			var stored := _store_furnace_outputs(instance_id, outputs)
+			if not stored.get("ok", false):
+				break
+			jobs.erase(instance_id)
+			var result := _result(true, "JOB_COMPLETED", {"instance_id": instance_id, "job_id": job.job_id, "recipe_id": job.recipe_id, "outputs": outputs.duplicate(true), "furnace_slots": furnace_slots(instance_id)})
+			completed.append(result)
+			job_completed.emit(result)
+			# A loaded appliance continues one item at a time. Each new job resets the
+			# progress bar; it stops naturally on missing input/fuel or blocked output.
+			try_start_furnace(instance_id, str(job.recipe_id))
+			chained += 1
 	return completed
 
 
@@ -712,6 +748,17 @@ func restore(data: Dictionary, world_query: Callable) -> Dictionary:
 			if stored_operations < 0 or stored_operations >= operations_per_fuel:
 				return _result(false, "INVALID_STATION_SNAPSHOT")
 			record["furnace_fuel_operations"] = stored_operations
+			# Fuel model 1 removed the burning Coal from the slot; model 2 keeps it.
+			# Put the burning Coal back for legacy records so no operations are lost.
+			if int(record.get("fuel_model", 1)) < 2 and stored_operations > 0:
+				var legacy_fuel: Dictionary = clean_slots.get("fuel", _empty_stack())
+				var fuel_item := _furnace_fuel_item()
+				if str(legacy_fuel.get("item_id", "")).is_empty():
+					clean_slots["fuel"] = {"item_id": fuel_item, "count": 1}
+				elif str(legacy_fuel.get("item_id", "")) == fuel_item and int(legacy_fuel.get("count", 0)) < registry.max_stack(fuel_item):
+					clean_slots["fuel"] = {"item_id": fuel_item, "count": int(legacy_fuel.get("count", 0)) + 1}
+				record["furnace_slots"] = clean_slots
+			record["fuel_model"] = 2
 		var reserved := footprints.try_reserve(str(record.instance_id), record.anchor, _vector_list(definition.occupied_offsets), int(record.get("rotation_quarters", 0)), world_query, AABB(), _vector_list(definition.support_offsets))
 		if not reserved.get("ok", false):
 			return _result(false, "INVALID_STATION_SNAPSHOT", reserved)
@@ -786,25 +833,52 @@ func _furnace_operations_per_fuel() -> int:
 	return maxi(1, registry.balance_integer("furnace.operations_per_fuel", 1))
 
 
+## Fuel model 2 (owner direction 2026-09-18): the burning Coal stays in the Fuel
+## slot until its last operation is spent. `furnace_fuel_operations` counts the
+## operations left on the Coal at the top of the stack (0 = none burning); the
+## stack count includes that Coal.
+func _fuel_operations_for(stack_count: int, stored_operations: int) -> int:
+	if stack_count <= 0:
+		return 0
+	if stored_operations > 0:
+		return stored_operations + (stack_count - 1) * _furnace_operations_per_fuel()
+	return stack_count * _furnace_operations_per_fuel()
+
+
+## Coal count needed so that `operations` are funded, given the burning Coal.
+func _fuel_count_for_operations(operations: int, stored_operations: int) -> int:
+	if operations <= 0:
+		return 1 if stored_operations > 0 else 0
+	if stored_operations > 0:
+		return 1 + ceili(float(maxi(0, operations - stored_operations)) / float(_furnace_operations_per_fuel()))
+	return ceili(float(operations) / float(_furnace_operations_per_fuel()))
+
+
 func _furnace_available_operations(instance_id: String) -> int:
 	var record: Dictionary = stations.get(instance_id, {})
 	var slots: Dictionary = record.get("furnace_slots", _empty_furnace_slots())
 	var fuel: Dictionary = slots.get("fuel", _empty_stack())
 	var fuel_count := int(fuel.get("count", 0)) if str(fuel.get("item_id", "")) == _furnace_fuel_item() else 0
-	return maxi(0, int(record.get("furnace_fuel_operations", 0))) + fuel_count * _furnace_operations_per_fuel()
+	return _fuel_operations_for(fuel_count, maxi(0, int(record.get("furnace_fuel_operations", 0))))
 
 
 func _consume_furnace_operation(instance_id: String) -> void:
+	var slots := furnace_slots(instance_id)
+	var fuel: Dictionary = slots.get("fuel", _empty_stack())
+	if str(fuel.get("item_id", "")) != _furnace_fuel_item() or int(fuel.get("count", 0)) <= 0:
+		stations[instance_id]["furnace_fuel_operations"] = 0
+		return
 	var remaining := maxi(0, int(stations[instance_id].get("furnace_fuel_operations", 0)))
 	if remaining <= 0:
-		var slots := furnace_slots(instance_id)
-		var taken := _take_from_stack(slots.get("fuel", _empty_stack()), 1)
-		if not taken.get("ok", false):
-			return
-		slots["fuel"] = taken.stack
-		stations[instance_id]["furnace_slots"] = slots
 		remaining = _furnace_operations_per_fuel()
-	stations[instance_id]["furnace_fuel_operations"] = remaining - 1
+	remaining -= 1
+	if remaining <= 0:
+		# Burnt out: only now does the Coal leave the slot.
+		var taken := _take_from_stack(fuel, 1)
+		if taken.get("ok", false):
+			slots["fuel"] = taken.stack
+			stations[instance_id]["furnace_slots"] = slots
+	stations[instance_id]["furnace_fuel_operations"] = remaining
 
 
 func _can_add_to_furnace(instance_id: String, slot_name: String, item_id: String, amount: int) -> Dictionary:
