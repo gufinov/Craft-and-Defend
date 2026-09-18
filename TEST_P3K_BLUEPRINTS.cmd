@@ -1,6 +1,6 @@
 @echo off
 setlocal
-title Craft and Defend - P3D Tools and World Feedback Test
+title Craft and Defend - P3K Blueprint Test
 cd /d "%~dp0"
 
 echo Preparing the current exported game...
