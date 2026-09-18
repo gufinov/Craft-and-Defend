@@ -1,6 +1,6 @@
 # Evidence — P3K blueprints slice 1 — 2026-09-18
 
-STATUS: PASS (candidate, editor headless) — exported provenance-matched run pending merge with the furnace round-3 work on `feature/p3d-tools-world-feedback`.
+STATUS: PASS (candidate) — merged into `feature/p3d-tools-world-feedback` at `c323630`; exported provenance-matched `TEST_P3K_BLUEPRINTS.cmd` T110–T113 PASS on PCK SHA-256 `957aebc87391fa49c7cbdf51432ff1cce508df8dba4fb8b432179e1ccba18e76` (`artifacts/manual-p3k-blueprints-1198625691`), with P3D, P3G and P3F exported suites also passing on the merged build.
 
 DONE: Implemented [the P3K contract](../P3K_BLUEPRINTS.md) slice 1 on branch `feature/p3k-blueprints` (worktree `D:\CODEX\Craft_and_Defend\worktrees\p3k-blueprints`): generated catalogue, stamp engine in `InteractionService` (generalised from P3J with per-cell block types, fixpoint support ordering, per-type budgets, one inventory transaction), per-cell ghost textures, `P3KBlueprintAutomation` (T110–T113), `TEST_P3K_BLUEPRINTS.cmd`, `tests/test_blueprints.py`.
 

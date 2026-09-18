@@ -26,3 +26,5 @@ LIMITATIONS/FAILURES: Auto-start attempts once per tick per idle Furnace; with o
 NEXT: Owner playtest; P3J drag building.
 
 GIT/REPRODUCIBILITY: worktree `D:\CODEX\Craft_and_Defend\worktrees\p3d-tools-world-feedback`, branch `feature/p3d-tools-world-feedback`, commits `00826eb` + `34c7328`; engine `4.6.stable.custom_build.89cea1439`; EXE SHA-256 `4ac128729e86108904e6d038d161322404d42d71892b1cc0dca751039aa7e4b2`; PCK SHA-256 `0f02a11192f473ee2a8854990d668cc54a69d4f99408b9204108b9f29856e670`. Editor-closed export tested: yes.
+
+EXPORTED ROUND 3 (integrator): commits `ca2ac0b`+`5cba9e2` (agent) + `1f7502a` (renumber to T114/T115); PCK SHA-256 `4eac9a46c9980f2c842350321982929e338469046f8b72c381681f895565f6e1`: `TEST_P3G` T93–T98, T107, T114, T115 PASS (`artifacts/manual-p3g-furnace-117117561`; `p3g-furnace-select-then-add.png` reviewed: modal fits 720, Load ×1 enabled without the recipe book, +1 and Shift+click adds applied); `TEST_P3E` T84–T89 PASS; `TEST_P3H` T99–T102 PASS. Re-run on the merged build `957aebc8…`: `TEST_P3G` PASS again.

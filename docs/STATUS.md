@@ -1,4 +1,22 @@
-# Current checkpoint — 2026-09-18 (P3I + P3J)
+# Current checkpoint — 2026-09-18 (furnace round 3 + P3K slice 1)
+
+**STATUS:** **FURNACE ROUND 3 AND P3K BLUEPRINTS SLICE 1 — CANDIDATE PASS ON THE MERGED EXPORT; OWNER PLAYTEST PENDING.** Furnace: the lit Coal stays until the last job it funds completes; the panel fits 720; select-then-add works without the recipe book (delegated to a subagent, reviewed and verified by the integrator). P3K: blueprint catalogue and stamp engine for castle pieces made of ordinary blocks, with sockets and diagnostics; no player entry point yet. No merge to `main`, no release.
+
+**DONE:** Furnace round 3 (`ca2ac0b`, `5cba9e2`, `1f7502a`): `furnace_fuel_burning` flag, Coal released on `JOB_COMPLETED`, additive Load ×1/×5, gold-highlight selection, inferred recipe, T114/T115. P3K slice 1 (`feature/p3k-blueprints`, merged `c323630`): `tools/generate_blueprints.py` → `contracts/blueprints.json` + runtime mirror (foundation_4, tower_segment_4, cap_4/6/8, wall_4 with top/side sockets); `InteractionService` blueprint planning/commit generalised from P3J with fixpoint support ordering and per-type budgets; per-cell ghost textures; `P3KBlueprintAutomation` T110–T113; `TEST_P3K_BLUEPRINTS.cmd`; `tests/test_blueprints.py`. See [P3I evidence](evidence/P3I_FURNACE_AUTO_PROCESSING.md) and [P3K evidence](evidence/P3K_BLUEPRINTS.md).
+
+**EXPECT:** Furnace: click ore → gold highlight; click Raw Input +1 (Shift +5); Load ×1 works with no recipe chosen; the Coal stays in its slot until the third bar completes. Drag building extends into open sky. Blueprints are service-level only (diagnostics stamp a tower); the player cannot select one yet.
+
+**TEST:** Static PASS (140 links; 45/45). Exported on the merged build (PCK `957aebc8…`): `TEST_P3K` T110–T113, `TEST_P3D` T79–T83/T108/T109, `TEST_P3G` T93–T98/T107/T114/T115, `TEST_P3F` T90–T92/T103–T106 PASS; `TEST_P3E` and `TEST_P3H` PASS on the pre-merge furnace build `4eac9a46…`. Owner playtest pending.
+
+**LIMITATIONS/FAILURES:** No blueprint entry point yet (slice 2). Spiral steps are jumpable full blocks, not stair entities. No parapet auto-connect block. Load ×1 is additive (never returns items) — deliberate change from the target-based slider semantics. The furnace click gestures are covered by a real-click diagnostic (T115) at 1280×720; ultrawide is owner-verified.
+
+**NEXT:** Tony playtests furnace gestures and drag-to-sky. Then P3K slice 2: Blueprints page in the B menu with W/R rotation and right-click stamp, socket ghosting on look; then parapet block and Tower Platform retirement; then P4a siege on stamped caps.
+
+**GIT/REPRODUCIBILITY:** Integration worktree `D:\CODEX\Craft_and_Defend\worktrees\p3d-tools-world-feedback`, branch `feature/p3d-tools-world-feedback`, HEAD after this commit, clean, pushed. Side branch `feature/p3k-blueprints` (worktree `worktrees\p3k-blueprints`) merged and pushed. Canonical `main` unchanged at `c085c013…`. Engine `4.6.stable.custom_build.89cea1439`; EXE SHA-256 `4ac128729e86108904e6d038d161322404d42d71892b1cc0dca751039aa7e4b2`; PCK SHA-256 `957aebc87391fa49c7cbdf51432ff1cce508df8dba4fb8b432179e1ccba18e76`. Evidence roots `artifacts/manual-p3k-blueprints-1198625691`, `artifacts/manual-p3d-usability-1200524645`, `artifacts/manual-p3g-furnace-120281580`, `artifacts/manual-p3f-presentation-12048535`, `artifacts/manual-p3e-furnace-117316515`, `artifacts/manual-p3h-balance-1175416218`.
+
+---
+
+## Previous checkpoint — 2026-09-18 (P3I + P3J)
 
 **STATUS:** **P3I FURNACE AUTO-PROCESSING AND P3J DRAG BUILDING — CANDIDATE PASS (ROUND 2 AFTER OWNER PLAYTEST); OWNER RE-PLAYTEST PENDING.** Round 2: the burning Coal now stays in the Fuel slot until burnt out; furnace +1/+5 click gestures and Load ×1/×5; drag building extends into open sky along the row's vertical plane; chained furnace jobs carry leftover time. Both owner-directed slices are implemented on the exported, provenance-matched build with new gate and render tests. The 2026-09-18 design decisions (one game in three tiers, loss as a pillar, blueprints stamp blocks with machines as entity exceptions, Market as core, growing province with a neglect leash) are locked in [the design direction](DESIGN_DIRECTION_2026-09-18.md). Claude is the implementing agent. No merge to `main`, no release.
 
