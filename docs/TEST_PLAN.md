@@ -108,6 +108,7 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T96 | P3G | Furnace progress advances while its modal is open while world, enemy and player simulation remain paused |
 | T97 | P3G | Placed Catapult renders a distinct four-wheel chassis, axle, frame, throwing arm, basket and projectile without changing footprint/combat identity |
 | T98 | P3G | Rendered evidence shows the auto-load/progress panel and revised placed Catapult |
+| T99 | P3I | A Furnace holding input and fuel starts without a manual press on the next unpaused tick, never while paused, processes every input one at a time into retained Output and returns to idle when the input is spent |
 | T99 | P3H | Named catalogue values drive the active Furnace, harvesting and defense services |
 | T100 | P3H | One Coal funds exactly three outputs; residual work survives restore and no fourth output is free |
 | T101 | P3H | W rotates clockwise, R counterclockwise and Left Shift remains Interact |

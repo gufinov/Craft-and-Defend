@@ -200,7 +200,7 @@ func _test_keybind_ui() -> void:
 	for action in app.binding_rows:
 		if app.binding_rows[action].visible:
 			visible_actions.append(str(action))
-	var rebound := app.settings.rebind_key("move_forward", KEY_R)
+	var rebound := app.settings.rebind_key("move_forward", KEY_Y)
 	app._refresh_binding_labels()
 	var reset_enabled: bool = not app.binding_reset_buttons["move_forward"].disabled
 	app._reset_binding("move_forward")

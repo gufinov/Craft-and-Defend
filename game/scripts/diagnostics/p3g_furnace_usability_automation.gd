@@ -96,6 +96,36 @@ func _run_gate() -> void:
 				wheel_count += 1
 	_record("T97_CATAPULT_WORLD_IDENTITY", catapult.get("ok", false) and catapult_body != null and wheel_count == 4 and catapult_body.get_child_count() >= 14, "the placed Catapult has a recognizable wheeled chassis, axle, throwing arm, basket and projectile rather than generic boxes", {"parts": catapult_body.get_child_count() if catapult_body != null else 0, "wheels": wheel_count})
 
+	# P3I: a Furnace with input and fuel deposited, never started by hand, runs
+	# on its own and keeps running one item at a time until the input is spent.
+	var auto_run := _fixture(2, 1)
+	var auto_run_service: WorkstationService = auto_run.service
+	var auto_run_inventory: F0Inventory = auto_run.inventory
+	var auto_run_id := str(auto_run.furnace_id)
+	var ore_moved := auto_run_service.try_transfer_inventory_stack_to_furnace(auto_run_id, _slot_for(auto_run_inventory, "iron_ore"))
+	var coal_moved := auto_run_service.try_transfer_inventory_stack_to_furnace(auto_run_id, _slot_for(auto_run_inventory, "coal"))
+	var idle_before := not bool(auto_run_service.furnace_job_status(auto_run_id).get("active", false))
+	auto_run_service.advance(0.01, false)
+	var self_started := bool(auto_run_service.furnace_job_status(auto_run_id).get("active", false))
+	var paused_no_start := true
+	var paused_fixture := _fixture(1, 1)
+	var paused_service: WorkstationService = paused_fixture.service
+	var paused_inventory: F0Inventory = paused_fixture.inventory
+	var paused_id := str(paused_fixture.furnace_id)
+	paused_service.try_transfer_inventory_stack_to_furnace(paused_id, _slot_for(paused_inventory, "iron_ore"))
+	paused_service.try_transfer_inventory_stack_to_furnace(paused_id, _slot_for(paused_inventory, "coal"))
+	paused_service.advance(0.5, true)
+	paused_no_start = not bool(paused_service.furnace_job_status(paused_id).get("active", false))
+	var duration := float(app.session.registry.recipe("iron_ingot").get("duration_seconds", 0.0))
+	auto_run_service.advance(duration * 2.0 + 0.1, false)
+	auto_run_service.advance(duration + 0.1, false)
+	var finished_slots := auto_run_service.furnace_slots(auto_run_id)
+	var finished_job := auto_run_service.furnace_job_status(auto_run_id)
+	var two_ingots := str(finished_slots.get("output", {}).get("item_id", "")) == "iron_ingot" and int(finished_slots.get("output", {}).get("count", 0)) == 2
+	var input_spent := int(finished_slots.get("input", {}).get("count", 0)) == 0
+	var stops_idle := not bool(finished_job.get("active", false))
+	_record("T99_FURNACE_AUTO_PROCESSING", ore_moved.get("ok", false) and coal_moved.get("ok", false) and idle_before and self_started and paused_no_start and two_ingots and input_spent and stops_idle, "a Furnace holding input and fuel starts without a manual press on the next unpaused tick, never while paused, processes every input one at a time into retained Output and returns to idle when the input is spent", {"idle_before": idle_before, "self_started": self_started, "paused_no_start": paused_no_start, "slots": finished_slots, "job": finished_job})
+
 
 func _run_visual() -> void:
 	app._on_start_pressed()

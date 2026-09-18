@@ -415,6 +415,7 @@ func advance(delta: float, paused: bool = false) -> Array[Dictionary]:
 	var completed: Array[Dictionary] = []
 	if paused or delta <= 0.0:
 		return completed
+	_auto_start_idle_furnaces()
 	for instance_id: String in jobs.keys():
 		var job: Dictionary = jobs[instance_id]
 		job.remaining_seconds = maxf(0.0, float(job.remaining_seconds) - delta)
@@ -439,6 +440,33 @@ func advance(delta: float, paused: bool = false) -> Array[Dictionary]:
 		# progress bar; it stops naturally on missing input/fuel or blocked output.
 		try_start_furnace(instance_id, str(job.recipe_id))
 	return completed
+
+
+## P3I: a Furnace processes without a manual start. Any idle Furnace whose Raw
+## Input matches a furnace recipe, with a stored fuel operation or fuel stack
+## and room in Output, starts that recipe. Nothing else changes: the same
+## try_start_furnace transaction runs, so input, fuel and output rules hold.
+func _auto_start_idle_furnaces() -> void:
+	for instance_id: String in stations.keys():
+		if jobs.has(instance_id) or str(stations[instance_id].get("entity_id", "")) != "furnace":
+			continue
+		var raw: Dictionary = stations[instance_id].get("furnace_slots", _empty_furnace_slots()).get("input", _empty_stack())
+		var raw_id := str(raw.get("item_id", ""))
+		if raw_id.is_empty() or int(raw.get("count", 0)) <= 0:
+			continue
+		var recipe_id := furnace_recipe_for_input(raw_id)
+		if recipe_id.is_empty():
+			continue
+		try_start_furnace(instance_id, recipe_id)
+
+
+## The furnace recipe whose non-fuel input is `item_id`, or "" when none.
+func furnace_recipe_for_input(item_id: String) -> String:
+	for recipe in registry.recipes_for("furnace"):
+		for input_id: String in recipe.get("inputs", {}):
+			if input_id == item_id and _furnace_role_for_item(input_id) != "fuel":
+				return str(recipe.get("id", ""))
+	return ""
 
 
 func station_at_cell(cell: Vector3i) -> String:

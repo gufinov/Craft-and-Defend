@@ -1510,7 +1510,7 @@ func _refresh_crafting_panel() -> void:
 		cell.pressed.connect(_on_crafting_grid_slot_pressed.bind(index))
 		crafting_grid_slots.append(cell)
 		crafting_grid.add_child(cell)
-	craft_selected_button.text = "Start Processing" if _crafting_station_type == "furnace" else "Craft ×1  ·  Shift+Click ×5"
+	craft_selected_button.text = "Load from Inventory" if _crafting_station_type == "furnace" else "Craft ×1  ·  Shift+Click ×5"
 	crafting_clear_button.text = "Return Input + Fuel" if _crafting_station_type == "furnace" else "Clear Grid"
 	var selected_recipe := session.registry.recipe(_selected_recipe_id)
 	if _crafting_station_type == "furnace" and selected_recipe.is_empty():
@@ -1574,8 +1574,8 @@ func _refresh_furnace_live_status() -> void:
 		craft_selected_button.text = "Processing…"
 		craft_selected_button.disabled = true
 	else:
-		furnace_progress_label.text = "READY FOR THE NEXT ITEM" if not _selected_recipe_id.is_empty() else "LOAD OR CHOOSE A RECIPE"
-		craft_selected_button.text = "Start Processing"
+		furnace_progress_label.text = "IDLE — RUNS AUTOMATICALLY WHEN INPUT AND FUEL ARE LOADED" if not _selected_recipe_id.is_empty() else "LOAD OR CHOOSE A RECIPE"
+		craft_selected_button.text = "Load from Inventory"
 
 
 func _on_furnace_auto_load_changed(value: float) -> void:
@@ -1619,9 +1619,11 @@ func _craft_selected_recipe_batches(batches: int) -> void:
 		return
 	var recipe_station := str(recipe.get("station", ""))
 	var station_id := "" if recipe_station == "hand" else _crafting_station_id
-	var result := session.try_craft(_selected_recipe_id, recipe_station, station_id, batches)
+	# P3I: the furnace button loads staged input and fuel from the inventory;
+	# the Furnace itself starts processing on the next simulation tick.
+	var result := session.load_furnace_recipe(station_id, _selected_recipe_id) if _crafting_station_type == "furnace" else session.try_craft(_selected_recipe_id, recipe_station, station_id, batches)
 	if result.get("ok", false) and _crafting_station_type == "furnace":
-		crafting_message.text = "%s processing started. The finished stack will remain in Output until collected." % session.registry.display_name(_selected_recipe_id)
+		crafting_message.text = "%s loaded. The Furnace processes automatically; finished stacks stay in Output until collected." % session.registry.display_name(_selected_recipe_id)
 	elif result.get("ok", false):
 		crafting_message.text = "%s crafted%s." % [session.registry.display_name(_selected_recipe_id), " × %d batches" % batches if batches > 1 else ""]
 	else:
