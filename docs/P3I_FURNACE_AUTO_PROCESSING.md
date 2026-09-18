@@ -27,7 +27,7 @@ A Furnace works without a manual start (owner direction 2026-09-18). Deposit Raw
 
 - T107 (P3G gate): input + fuel deposited, never started by hand → idle before the tick, active after one unpaused tick, not started under `paused = true`, two inputs become two retained ingots, one stored fuel operation per item, returns to idle when the input is spent; the burning Coal stays in the slot with one operation left; a 3-ore/1-Coal furnace still holds the Coal (0 left, burning, 0 available) while the third job runs and loses it only when that job completes; the lit Coal round-trips snapshot/restore (with and without the round-3 field); counted `+N` transfers move `min(N, carried)`.
 - T95 expects the burning Coal to remain in the slot, marked burning, after the first item.
-- T110 (P3G gate): select-then-add through the app handlers, recipe inferred without the book, additive Load ×1. T111 (P3G visual): the same gesture through real viewport mouse events. T98 (P3G visual) asserts the modal fits the canvas.
+- T114 (P3G gate): select-then-add through the app handlers, recipe inferred without the book, additive Load ×1. T115 (P3G visual): the same gesture through real viewport mouse events. T98 (P3G visual) asserts the modal fits the canvas.
 - T22, T84–T88, T93–T97, T100 unchanged and passing (T87 checks the persistence note in the help tooltip).
 
 ## Boundary
