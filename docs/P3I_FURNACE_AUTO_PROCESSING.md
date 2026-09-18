@@ -13,7 +13,7 @@ A Furnace works without a manual start (owner direction 2026-09-18). Deposit Raw
 
 ## Acceptance
 
-- T99 (P3G gate): input + fuel deposited, never started by hand → idle before the tick, active after one unpaused tick, not started under `paused = true`, two inputs become two retained ingots, one stored fuel operation per item, returns to idle when the input is spent.
+- T107 (P3G gate): input + fuel deposited, never started by hand → idle before the tick, active after one unpaused tick, not started under `paused = true`, two inputs become two retained ingots, one stored fuel operation per item, returns to idle when the input is spent.
 - T22, T84–T88, T93–T98 unchanged and passing.
 
 ## Boundary

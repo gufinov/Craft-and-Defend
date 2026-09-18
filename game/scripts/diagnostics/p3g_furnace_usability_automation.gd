@@ -124,7 +124,7 @@ func _run_gate() -> void:
 	var two_ingots := str(finished_slots.get("output", {}).get("item_id", "")) == "iron_ingot" and int(finished_slots.get("output", {}).get("count", 0)) == 2
 	var input_spent := int(finished_slots.get("input", {}).get("count", 0)) == 0
 	var stops_idle := not bool(finished_job.get("active", false))
-	_record("T99_FURNACE_AUTO_PROCESSING", ore_moved.get("ok", false) and coal_moved.get("ok", false) and idle_before and self_started and paused_no_start and two_ingots and input_spent and stops_idle, "a Furnace holding input and fuel starts without a manual press on the next unpaused tick, never while paused, processes every input one at a time into retained Output and returns to idle when the input is spent", {"idle_before": idle_before, "self_started": self_started, "paused_no_start": paused_no_start, "slots": finished_slots, "job": finished_job})
+	_record("T107_FURNACE_AUTO_PROCESSING", ore_moved.get("ok", false) and coal_moved.get("ok", false) and idle_before and self_started and paused_no_start and two_ingots and input_spent and stops_idle, "a Furnace holding input and fuel starts without a manual press on the next unpaused tick, never while paused, processes every input one at a time into retained Output and returns to idle when the input is spent", {"idle_before": idle_before, "self_started": self_started, "paused_no_start": paused_no_start, "slots": finished_slots, "job": finished_job})
 
 
 func _run_visual() -> void:
