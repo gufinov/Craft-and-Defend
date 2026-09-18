@@ -71,6 +71,12 @@ Eating is a struggle. *Proposal:* hunger meter that drains with time and sprinti
 
 **Building up (Rust-style).** Blueprints expose typed sockets (`top`, `side`). Looking at a socket with the materials for a compatible piece shows its ghost; click stamps it. Foundation → segment → stand inside and build up until the spiral stair must be climbed → cap from inside → walk down. Wall-walks attach to `side` sockets; **parapets auto-connect** like fences, opening the merlons where a walkway meets them. Caps offer 4×4, 6×6 and 8×8 floors plus the parapet ring; 8×8 mounts a catapult and a ballista.
 
+## 10. Held items should be 3D (proposal, 2026-09-18 round 5)
+
+*Fact:* placed machines and stations (catapult, ballista, furnace, workbench, castle kit) are true 3D box-mesh assemblies driven by data-owned part lists. Held items are flat camera-facing billboards cut from the 2D icon atlas. Every held-item orientation/position defect this day came from that mismatch: a 2D icon has no pivot, no facing and one fixed silhouette.
+
+*Proposal:* give held items their own 3D presentation built from the same box-part system the catapult uses: tools and weapons as small part assemblies (handle, head, edge) with a real pivot at the grip and a facing that can be rotated toward the crosshair; held blocks as a textured cube; ammunition and stations as scaled copies of their placed models. Icons stay 2D atlas art for the UI. Owner-authored art then targets one thing each: icons for menus, part lists (or later meshes) for the hand. The hinge/strike path already exists in 3D space, so only the sprite is replaced.
+
 ## 8. Suggested sequencing
 
 1. **P3I** Furnace auto-processing (small; also needed so refining gold is hands-off).
