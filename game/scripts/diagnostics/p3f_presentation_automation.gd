@@ -87,15 +87,34 @@ func _run_gate() -> void:
 		and atlas_image.get_format() == Image.FORMAT_RGBA8 \
 		and atlas_image.get_size() == Vector2i(1536, 1024) \
 		and atlas_image.get_pixel(0, 0).a <= 0.01
+	var ammunition_texture := load(ItemIconCatalog.AMMUNITION_ATLAS_PATH) as Texture2D
+	var ammunition_image := ammunition_texture.get_image() if ammunition_texture != null else null
+	var ammunition_alpha_ok := ammunition_image != null and not ammunition_image.is_empty() \
+		and ammunition_image.get_format() == Image.FORMAT_RGBA8 \
+		and ammunition_image.get_size() == Vector2i(1774, 887) \
+		and ammunition_image.get_pixel(0, 0).a <= 0.01 \
+		and ItemIconCatalog.AMMUNITION_REGIONS.ballista_bolt != ItemIconCatalog.region_for_index(5) \
+		and ItemIconCatalog.AMMUNITION_REGIONS.stone_shot != ItemIconCatalog.region_for_index(1)
 	app.session._held_item_view.present("iron_sword")
 	var presentation := app.session._held_item_view.debug_presentation()
 	var framing_ok := float(presentation.tool_pixel_size) >= 0.0034 \
 		and float(presentation.low_pixel_size) >= 0.0034 \
 		and float(presentation.low_pixel_size) >= 0.00170 * 2.0 \
-		and float(presentation.tool_position.y) >= -0.31 \
-		and float(presentation.low_position.y) >= -0.40 \
+		and float(presentation.tool_position.x) >= 0.75 \
+		and float(presentation.low_position.x) >= 0.75 \
+		and float(presentation.tool_position.y) <= -0.45 \
+		and float(presentation.low_position.y) <= -0.45 \
+		and bool(presentation.raised_flip_h) \
 		and float(presentation.tool_swing_arc_radians) >= 1.4
-	_record("T91_HELD_AND_BLOCK_IDENTITY", missing.is_empty() and held_failures.is_empty() and block_failures.is_empty() and region_failures.is_empty() and regions_isolated and alpha_atlas_ok and framing_ok, "all inventory and held items share one true-alpha, exact-cell atlas; tools use a common enlarged frame and broad swing arc; low-held blocks and stations are at least twice their prior scale; and voxel cubes retain complete face textures", {"items": item_ids.size(), "missing": missing, "held_failures": held_failures, "block_failures": block_failures, "region_failures": region_failures, "workbench_region": workbench_region, "gate_region": gate_region, "alpha_atlas_ok": alpha_atlas_ok, "presentation": presentation})
+	_record("T91_HELD_AND_BLOCK_IDENTITY", missing.is_empty() and held_failures.is_empty() and block_failures.is_empty() and region_failures.is_empty() and regions_isolated and alpha_atlas_ok and ammunition_alpha_ok and framing_ok, "all inventory and held items resolve filter-clipped true-alpha art; ammunition has dedicated identities; every held item shares the lower-right base frame; raised tools face inward and retain a broad swing arc; voxel cubes retain complete face textures", {"items": item_ids.size(), "missing": missing, "held_failures": held_failures, "block_failures": block_failures, "region_failures": region_failures, "workbench_region": workbench_region, "gate_region": gate_region, "alpha_atlas_ok": alpha_atlas_ok, "ammunition_alpha_ok": ammunition_alpha_ok, "presentation": presentation})
+
+	app.session.inventory.try_transaction({}, {"gate_frame": 1, "wall_walk_slab": 1})
+	var gate_placed := app.session.workstations.try_place("gate_frame", Vector3i(8, 0, 40), app.session.world.query_cell, AABB(), 0)
+	var slab_placed := app.session.workstations.try_place("wall_walk_slab", Vector3i(12, 0, 40), app.session.world.query_cell, AABB(), 0)
+	var gate_body: Node3D = app.session._station_visuals.get(str(gate_placed.get("details", {}).get("station", {}).get("instance_id", "")))
+	var slab_body: Node3D = app.session._station_visuals.get(str(slab_placed.get("details", {}).get("station", {}).get("instance_id", "")))
+	var placed_skin_ok := _body_has_albedo_texture(gate_body) and _body_has_albedo_texture(slab_body)
+	_record("T105_CASTLE_ENTITY_SKINS", gate_placed.get("ok", false) and slab_placed.get("ok", false) and placed_skin_ok, "placed Gate Frame and Wall Walk Slab mesh parts use the Castle Stone skin instead of flat gray material", {"gate": gate_placed, "slab": slab_placed, "gate_parts": gate_body.get_child_count() if gate_body != null else 0, "slab_parts": slab_body.get_child_count() if slab_body != null else 0, "textured": placed_skin_ok})
 
 
 func _run_visual() -> void:
@@ -163,6 +182,17 @@ func _run_visual() -> void:
 	var page_two_ok := await _save_viewport(page_two_path)
 	_record("T103_ATLAS_CARD_ALIGNMENT", placed.get("ok", false) and page_one_ok and page_two_ok and app.crafting_recipe_page_label.text == "Page 2 / 2", "both rendered Workbench pages keep each icon entirely inside its own recipe card with complete bottom-row tools and no neighboring fragments", {"page_one_path": page_one_path, "page_two_path": page_two_path, "page": app.crafting_recipe_page_label.text, "size": get_viewport().get_visible_rect().size})
 
+	app._close_crafting()
+	app.session.inventory.try_transaction({}, {"gate_frame": 1, "wall_walk_slab": 1})
+	var gate := app.session.workstations.try_place("gate_frame", Vector3i(8, 0, 40), app.session.world.query_cell, AABB(), 0)
+	var slab := app.session.workstations.try_place("wall_walk_slab", Vector3i(12, 0, 40), app.session.world.query_cell, AABB(), 0)
+	app.session.player.global_position = Vector3(10.5, 2.0, 34.0)
+	app.session.player.look_at(Vector3(10.5, 1.2, 40.5), Vector3.UP)
+	await _settle_frames(12)
+	var castle_path := app.data_root.path_join("p3h3-placed-castle-skins.png")
+	var castle_ok := await _save_viewport(castle_path)
+	_record("T106_CASTLE_SKIN_PRESENTATION", gate.get("ok", false) and slab.get("ok", false) and castle_ok, "rendered evidence shows the Castle Stone skin on the placed Gate Frame and Wall Walk Slab", {"path": castle_path, "gate": gate.get("ok", false), "slab": slab.get("ok", false), "size": get_viewport().get_visible_rect().size})
+
 
 func _move_to_hotbar(item_id: String, target: int) -> void:
 	for index in range(F0Inventory.SLOT_COUNT):
@@ -203,6 +233,17 @@ func _blit_viewport_panel(target: Image, destination: Vector2i) -> bool:
 	frame.resize(640, 360, Image.INTERPOLATE_LANCZOS)
 	target.blit_rect(frame, Rect2i(Vector2i.ZERO, frame.get_size()), destination)
 	return true
+
+
+func _body_has_albedo_texture(body: Node3D) -> bool:
+	if body == null:
+		return false
+	for child in body.get_children():
+		if child is MeshInstance3D:
+			var material := child.material_override as StandardMaterial3D
+			if material != null and material.albedo_texture != null:
+				return true
+	return false
 
 
 func _record(test_id: String, ok: bool, expected: String, evidence: Variant) -> void:

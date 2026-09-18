@@ -82,25 +82,25 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T70 | P3B | Save during an active core attack and fully restart; Continue restores exact core health, raider health/position, active target and every surviving player-built defense integrity once |
 | T71 | P3B | Rendered 1280×720 evidence clearly shows the strategic core, field-side raider, an open entrance and player-built barricade health/target feedback; owner ultrawide playtest decides readability |
 | T72 | P3C | Every registered item resolves a stable icon; inventory, hotbar and crafting expose graphical identity and counts |
-| T73 | P3C | Workbench recipe book shows at most 12 fixed cards per page with bounded Previous/Next and deterministic search |
+| T73 | P3C/P3H.3 | Workbench recipe book shows at most 12 fixed cards per page with bounded buttons, wheel page-turning and deterministic search; insufficient-resource cards are red |
 | T74 | P3C | Equipped sword performs one clear bounded raider hit; miss/cooldown do not mutate terrain or enemy state; lethal strike wins |
 | T75 | P3C | Ballista accepts supported ground/typed tower socket, holds fire through obstruction and consumes one bolt only on a clear shot |
 | T76 | P3C | Catapult rejects below-minimum/beyond-maximum/blocked arcs and consumes one shot only for a valid clear ballistic arc |
 | T77 | P3C | Carried sword plus placed siege identity, ammunition and cooldown survive atomic save and separate-process Continue |
 | T78 | P3C | Rendered 1280×720 Workbench shows 12 populated icon cards, paging and three distinct crafting panels |
 | T79 | P3D | Shift+Click on an immediate recipe crafts exactly five batches in one revision; insufficient input changes nothing; timed jobs remain single |
-| T80 | P3D | Active sword, picks and axe render raised in first person; placeable blocks render lower; hotbar identity remains authoritative |
-| T81 | P3D | Wood Axe recipe is reachable; selected axe removes/gathers one bounded vertical connected trunk atomically without recursive branch destruction |
+| T80 | P3D/P3H.3 | Active sword, picks, axe and placeables share the lower-right screen-base region; raised tools face inward; hotbar identity remains authoritative |
+| T81 | P3D/P3H.3 | Wood Axe recipe is reachable; one use removes/gathers only the targeted Log while the upper trunk remains |
 | T82 | P3D | Placeable blocks expose the same non-mutating validation in their green/red world ghost; the starter marker points to actual guaranteed iron ore |
 | T83 | P3D | Rendered 1280×720 evidence visibly shows the held axe/iron marker and the low held block/world placement ghost; owner ultrawide test decides scale/readability |
 | T84 | P3E | Whole compatible inventory stacks transfer into distinct persistent Furnace Raw Input and Fuel slots without duplication |
 | T85 | P3E | Right-click takes the larger half; right-click deposit and right-drag distribute one per compatible slot with exact counts |
 | T86 | P3E | Furnace consumes one input and one counted fuel operation, retains exactly one Output across clean restore and moves it only on explicit collection |
-| T87 | P3E | Furnace modal has three real slots; placed stations and selected key tools use the revised visual identity |
+| T87 | P3E/P3H.3 | Furnace modal has three real slots, closes with one Escape while recipe search owns focus, and retains revised station/tool identity |
 | T88 | P3E | Manual hand/workbench patterns are recognized without recipe-book selection or search |
 | T89 | P3E | Rendered 1280×720 evidence visibly shows the three-slot Furnace and revised world/held identity |
 | T90 | P3F | Workbench recipes use an exact stable progression order from hand fundamentals through tools, castle construction, iron equipment and siege recipes |
-| T91 | P3F | All 26 registered items resolve transparent held references; all ten non-air voxel cubes declare complete 1×1 texture geometry |
+| T91 | P3F/P3H.3 | All 26 registered items resolve filter-clipped true-alpha held references; ammunition uses dedicated identities; raised tools share an inward-facing lower-right frame; all ten non-air voxel cubes declare complete 1×1 texture geometry |
 | T92 | P3F | Rendered contact sheet shows representative raised/low held items plus textured placed Castle Stone without opaque inventory-card backgrounds |
 | T93 | P3G | Shift+Click moves the maximum compatible amount from inventory to Furnace and back without loss or duplication |
 | T94 | P3G | Auto-load target independently fills scarce/available input and fuel, lowers transactionally and conserves exact totals |
@@ -114,6 +114,8 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T102 | P3H | Rendered evidence shows the counted fuel ratio/stored work and separate W/R Keybind rows |
 | T103 | P3H.1 | Both rendered Workbench pages keep every complete item silhouette inside its own recipe card without neighboring fragments |
 | T104 | P3H.2 | Exported three-panel evidence shows the enlarged ready Sword, broad active strike travel and doubled/higher low-held Furnace frame; the active 1536×1024 atlas is RGBA with alpha-zero background |
+| T105 | P3H.3 | Placed Gate Frame and Wall Walk Slab mesh parts resolve the Castle Stone texture instead of a flat material |
+| T106 | P3H.3 | Exported evidence visibly shows the Castle Stone skin on the placed Gate Frame and Wall Walk Slab |
 
 ## Performance evidence, not invented guarantees
 

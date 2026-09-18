@@ -30,6 +30,7 @@ if not exist "%VISUAL_ROOT%\p3f-held-item-contact-sheet.png" goto :image_missing
 if not exist "%VISUAL_ROOT%\p3f-workbench-page-1.png" goto :image_missing
 if not exist "%VISUAL_ROOT%\p3f-workbench-page-2.png" goto :image_missing
 if not exist "%VISUAL_ROOT%\p3h2-held-scale-and-swing.png" goto :image_missing
+if not exist "%VISUAL_ROOT%\p3h3-placed-castle-skins.png" goto :image_missing
 if /i "%P3F_DIAGNOSTIC_NO_OPEN%"=="1" (
   echo P3F PRESENTATION TEST: PASS
   echo Evidence folder: %TEST_ROOT%
@@ -39,9 +40,10 @@ start "" "%VISUAL_ROOT%\p3f-held-item-contact-sheet.png"
 start "" "%VISUAL_ROOT%\p3f-workbench-page-1.png"
 start "" "%VISUAL_ROOT%\p3f-workbench-page-2.png"
 start "" "%VISUAL_ROOT%\p3h2-held-scale-and-swing.png"
+start "" "%VISUAL_ROOT%\p3h3-placed-castle-skins.png"
 echo.
 echo P3F PRESENTATION TEST: PASS
-echo The held-item contact sheet, scale/swing comparison and both Workbench pages are opening now.
+echo The held-item sheet, scale/swing comparison, castle skins and both Workbench pages are opening now.
 echo Evidence folder: %TEST_ROOT%
 pause
 exit /b 0
@@ -66,7 +68,7 @@ exit /b 1
 
 :image_missing
 echo.
-echo The visual test passed without producing all three expected screenshots.
+echo The visual test passed without producing every expected screenshot.
 echo Expected folder: %VISUAL_ROOT%
 pause
 exit /b 1

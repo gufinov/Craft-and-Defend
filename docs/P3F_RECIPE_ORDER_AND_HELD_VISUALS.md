@@ -16,7 +16,7 @@ Keep basic and inexpensive recipes at the front of the recipe book, make the ord
 
 ## Held and block visual contract
 
-- All 26 registered item identities resolve through one transparent 6×4 held-item atlas that preserves the inventory atlas cell mapping.
+- All 26 registered item identities resolve through filter-clipped transparent atlas regions. Twenty-four use the stable 6×4 item atlas; Ballista Bolt and Stone Shot use the dedicated two-region P3H.3 ammunition atlas instead of aliasing unrelated cells.
 - Tools and the sword render raised; blocks, materials, stations and siege pieces render lower for placement/carrying.
 - No held item uses an opaque inventory-card background or the old emergency box-built pick, axe, sword or block representation.
 - Voxel cube models retain their existing stable block IDs and authored SVG face textures. Each declares its actual 1×1 atlas geometry so Voxel Tools maps the full texture rather than a nearly uniform corner.
@@ -32,4 +32,4 @@ Keep basic and inexpensive recipes at the front of the recipe book, make the ord
 
 ## Boundaries
 
-No recipe unlock/discovery rules, final 3D equipment models, hand/arm rig, attack animation set, dedicated ammunition icons, block normal maps, material PBR overhaul or save schema change is claimed here.
+No recipe unlock/discovery rules, final 3D equipment models, hand/arm rig, attack animation set, block normal maps, material PBR overhaul or save schema change is claimed here. Dedicated ammunition icons were added by the later P3H.3 correction.

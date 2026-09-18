@@ -234,6 +234,24 @@ func _ready() -> void:
 		p3h_automation.call_deferred("run", self, p3h_mode)
 
 
+func _input(event: InputEvent) -> void:
+	# GUI controls such as the Furnace recipe search can consume Escape before
+	# _unhandled_input sees it. Recovery is intentionally handled at the earliest
+	# input stage so one physical press always closes the top overlay.
+	if not _is_escape_press(event):
+		return
+	if capture_action.is_empty() and state == AppState.MAIN_MENU \
+		and not keybind_panel.visible and not settings_panel.visible and not display_confirm_panel.visible:
+		return
+	get_viewport().set_input_as_handled()
+	if not capture_action.is_empty():
+		capture_action = ""
+		capture_forward = false
+		keybind_message.text = "Key capture cancelled; no binding changed."
+		return
+	_handle_escape_recovery()
+
+
 func _process(delta: float) -> void:
 	_update_cursor_stack_visual()
 	if state == AppState.CRAFTING and _crafting_station_type == "furnace" and session != null and session.workstations != null:
@@ -908,6 +926,7 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	var recipe_card := PanelContainer.new()
 	recipe_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	recipe_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 14))
+	recipe_card.gui_input.connect(_on_crafting_recipe_book_gui_input.bind(recipe_card))
 	columns.add_child(recipe_card)
 	var recipe_column := VBoxContainer.new()
 	recipe_card.add_child(recipe_column)
@@ -1883,6 +1902,22 @@ func _change_recipe_page(direction: int) -> void:
 	_refresh_crafting_panel()
 
 
+func _on_crafting_recipe_book_gui_input(event: InputEvent, source: Control) -> void:
+	if state != AppState.CRAFTING or not event is InputEventMouseButton or not event.pressed:
+		return
+	if not _turn_recipe_page_from_wheel(event.button_index):
+		return
+	source.accept_event()
+
+
+func _turn_recipe_page_from_wheel(button_index: int) -> bool:
+	var direction := 1 if button_index == MOUSE_BUTTON_WHEEL_DOWN else -1 if button_index == MOUSE_BUTTON_WHEEL_UP else 0
+	if direction == 0:
+		return false
+	_change_recipe_page(direction)
+	return true
+
+
 func _on_crafting_recipe_search_submitted(_query: String) -> void:
 	var query := crafting_recipe_search.text.strip_edges().to_lower()
 	for recipe in _available_crafting_recipes():
@@ -1895,7 +1930,8 @@ func _on_crafting_recipe_search_submitted(_query: String) -> void:
 func _add_recipe_card(recipe: Dictionary, status: Dictionary, selected: bool) -> void:
 	var card := RecipeCatalogCard.new()
 	card.pressed.connect(_select_crafting_recipe.bind(str(recipe.id)))
-	card.configure(recipe, session.registry.display_name(str(recipe.id)), bool(status.get("ok", false)), selected, _recipe_button_text(recipe, status) + "\nClick to stage this recipe")
+	card.gui_input.connect(_on_crafting_recipe_book_gui_input.bind(card))
+	card.configure(recipe, session.registry.display_name(str(recipe.id)), bool(status.get("ok", false)), selected, _recipe_button_text(recipe, status) + "\nClick to stage this recipe", str(status.get("reason", "")))
 	crafting_recipe_list.add_child(card)
 
 

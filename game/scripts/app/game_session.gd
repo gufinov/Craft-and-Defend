@@ -47,7 +47,6 @@ const REASON_TEXT := {
 	"SWORD_MISS": "The sword swing did not reach a raider.",
 	"RAIDER_DAMAGED": "Sword strike landed.",
 	"RAIDER_DEFEATED": "Raider defeated — the core is safe.",
-	"TREE_FELLED": "Axe felled the connected trunk and gathered its logs.",
 }
 
 const STARTER_IRON_MARKER := Vector3(-6.5, 0.0, 36.5)
@@ -527,6 +526,10 @@ func _spawn_station_visual(record: Dictionary) -> void:
 	var visual: Dictionary = definition.get("visual", {})
 	material.albedo_color = Color(str(visual.get("color", "8b929d")))
 	material.roughness = 0.9
+	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
+	var texture_path := str(visual.get("texture", ""))
+	if not texture_path.is_empty() and ResourceLoader.exists(texture_path):
+		material.albedo_texture = load(texture_path)
 	if not definition.get("defense", {}).is_empty():
 		body.set_meta("defense_structure_id", instance_id)
 	var entity_id := str(record.get("entity_id", ""))

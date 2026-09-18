@@ -12,7 +12,7 @@
       "operations_per_fuel": 3
     },
     "harvesting": {
-      "maximum_connected_trunk_blocks": 6
+      "maximum_connected_trunk_blocks": 1
     },
     "practice_defense": {
       "wall_integrity": 24,
@@ -331,7 +331,7 @@
       "id": "wall_walk_slab",
       "occupied_offsets": [[0, 0, 0]],
       "support_offsets": [[0, -1, 0]],
-      "visual": {"color": "8b929d", "parts": [{"offset": [0.0, -0.25, 0.0], "size": [1.0, 0.5, 1.0]}]},
+      "visual": {"color": "ffffff", "texture": "res://assets/blocks/castle_stone.svg", "parts": [{"offset": [0.0, -0.25, 0.0], "size": [1.0, 0.5, 1.0]}]},
       "dismantle_policy": "inventory_capacity_required"
     },
     {
@@ -356,10 +356,14 @@
       "id": "gate_frame",
       "occupied_offsets": [[0, 0, 0], [2, 0, 0], [0, 1, 0], [2, 1, 0], [0, 2, 0], [1, 2, 0], [2, 2, 0]],
       "support_offsets": [[0, -1, 0], [2, -1, 0]],
-      "visual": {"color": "69717b", "parts": [
-        {"offset": [0.0, 1.0, 0.0], "size": [1.0, 3.0, 1.0]},
-        {"offset": [2.0, 1.0, 0.0], "size": [1.0, 3.0, 1.0]},
-        {"offset": [1.0, 2.0, 0.0], "size": [1.0, 1.0, 1.0]}
+      "visual": {"color": "ffffff", "texture": "res://assets/blocks/castle_stone.svg", "parts": [
+        {"offset": [0.0, 0.0, 0.0], "size": [1.0, 1.0, 1.0]},
+        {"offset": [2.0, 0.0, 0.0], "size": [1.0, 1.0, 1.0]},
+        {"offset": [0.0, 1.0, 0.0], "size": [1.0, 1.0, 1.0]},
+        {"offset": [2.0, 1.0, 0.0], "size": [1.0, 1.0, 1.0]},
+        {"offset": [0.0, 2.0, 0.0], "size": [1.0, 1.0, 1.0]},
+        {"offset": [1.0, 2.0, 0.0], "size": [1.0, 1.0, 1.0]},
+        {"offset": [2.0, 2.0, 0.0], "size": [1.0, 1.0, 1.0]}
       ]},
       "navigation": {"material_tags": ["stone", "fortification"], "integrity": 180},
       "dismantle_policy": "inventory_capacity_required"

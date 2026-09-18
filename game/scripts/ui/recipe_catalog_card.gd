@@ -10,6 +10,7 @@ var _display_name := ""
 var _available := false
 var _selected := false
 var _detail := ""
+var _status_reason := ""
 
 
 func _ready() -> void:
@@ -42,13 +43,14 @@ func _ready() -> void:
 	_apply_configuration()
 
 
-func configure(recipe: Dictionary, display_name: String, available: bool, selected: bool, detail: String) -> void:
+func configure(recipe: Dictionary, display_name: String, available: bool, selected: bool, detail: String, status_reason: String = "") -> void:
 	recipe_id = str(recipe.get("id", ""))
 	_recipe = recipe.duplicate(true)
 	_display_name = display_name
 	_available = available
 	_selected = selected
 	_detail = detail
+	_status_reason = status_reason
 	_apply_configuration()
 
 
@@ -56,15 +58,22 @@ func is_populated() -> bool:
 	return _icon != null and _icon.texture != null and _name_label != null and not _name_label.text.is_empty()
 
 
+func is_missing_materials() -> bool:
+	return not _available and _status_reason == "INSUFFICIENT_INPUT"
+
+
 func _apply_configuration() -> void:
 	if _icon == null:
 		return
 	_icon.texture = ItemIconCatalog.recipe_texture(_recipe)
 	_name_label.text = _display_name
-	_status_label.text = "● READY" if _available else "○ LOCKED"
-	_status_label.add_theme_color_override("font_color", Color("75e2a1") if _available else Color("94a5ad"))
+	var missing_materials := not _available and _status_reason == "INSUFFICIENT_INPUT"
+	_status_label.text = "● READY" if _available else ("● MISSING" if missing_materials else "○ LOCKED")
+	_status_label.add_theme_color_override("font_color", Color("75e2a1") if _available else (Color("ff776d") if missing_materials else Color("94a5ad")))
 	var background := Color("18303c") if _selected else Color("101a23")
-	var border := Color("ffe08a") if _selected else (Color("5fa8bd") if _available else Color("344c5a"))
+	if missing_materials and not _selected:
+		background = Color("2d1519")
+	var border := Color("ffe08a") if _selected else (Color("5fa8bd") if _available else (Color("c94f52") if missing_materials else Color("344c5a")))
 	add_theme_stylebox_override("normal", FoundationTheme.panel(background, border, 7, 7))
 	add_theme_stylebox_override("hover", FoundationTheme.panel(Color("1c3845"), Color("78cbe0"), 7, 7))
 	add_theme_stylebox_override("pressed", FoundationTheme.panel(Color("203f4d"), Color("ffe08a"), 7, 7))

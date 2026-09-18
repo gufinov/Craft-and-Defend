@@ -1,11 +1,11 @@
 class_name HeldItemView
 extends Node3D
 
-const TOOL_BASE_POSITION := Vector3(0.46, -0.30, -0.82)
-const TOOL_BASE_ROTATION := Vector3(0.05, 0.0, -0.16)
+const TOOL_BASE_POSITION := Vector3(0.78, -0.48, -0.82)
+const TOOL_BASE_ROTATION := Vector3(0.03, 0.0, -0.24)
 const TOOL_PIXEL_SIZE := 0.00340
-const LOW_BASE_POSITION := Vector3(0.46, -0.39, -0.90)
-const LOW_BASE_ROTATION := Vector3(-0.08, 0.0, 0.02)
+const LOW_BASE_POSITION := Vector3(0.78, -0.48, -0.90)
+const LOW_BASE_ROTATION := Vector3(-0.05, 0.0, 0.02)
 const LOW_PIXEL_SIZE := 0.00340
 const TOOL_SWING_ARC_RADIANS := 1.45
 const TOOL_SWING_TRAVEL := Vector3(-0.18, 0.11, -0.14)
@@ -88,6 +88,10 @@ func _build_reference_item(item_id: String, raised: bool) -> void:
 	sprite.pixel_size = TOOL_PIXEL_SIZE if raised else LOW_PIXEL_SIZE
 	sprite.no_depth_test = true
 	sprite.shaded = false
+	# Source tools point toward the outer-right edge. Mirroring every raised item
+	# gives the shared first-person frame an inward-facing blade/head while keeping
+	# the handle seated at the lower-right screen edge.
+	sprite.flip_h = raised
 	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
 	model_root.add_child(sprite)
 
@@ -100,4 +104,5 @@ func debug_presentation() -> Dictionary:
 		"low_position": LOW_BASE_POSITION,
 		"low_pixel_size": LOW_PIXEL_SIZE,
 		"tool_swing_arc_radians": TOOL_SWING_ARC_RADIANS,
+		"raised_flip_h": true,
 	}

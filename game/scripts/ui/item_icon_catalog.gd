@@ -3,6 +3,7 @@ extends RefCounted
 
 const ATLAS_PATH := "res://assets/ui/item_atlas_p3h2.png"
 const WORLD_REFERENCE_PATH := ATLAS_PATH
+const AMMUNITION_ATLAS_PATH := "res://assets/ui/ammunition_atlas_p3h3.png"
 const CELL_SIZE := Vector2(256, 256)
 const SAFE_THIRD_ROW_HEIGHT := 224.0
 const SAFE_BOTTOM_ROW_START := 736.0
@@ -32,21 +33,28 @@ const ITEM_CELLS := {
 	"wood_axe": 21,
 	"ballista": 22,
 	"catapult": 23,
-	"ballista_bolt": 5,
-	"stone_shot": 1,
+}
+const AMMUNITION_REGIONS := {
+	"ballista_bolt": Rect2(0.0, 0.0, 887.0, 887.0),
+	"stone_shot": Rect2(887.0, 0.0, 887.0, 887.0),
 }
 
 static var _atlas: Texture2D
 static var _textures: Dictionary = {}
 static var _world_reference: Texture2D
 static var _world_reference_textures: Dictionary = {}
+static var _ammunition_atlas: Texture2D
 
 
 static func texture_for(item_id: String) -> Texture2D:
-	if item_id.is_empty() or not ITEM_CELLS.has(item_id):
+	if item_id.is_empty() or (not ITEM_CELLS.has(item_id) and not AMMUNITION_REGIONS.has(item_id)):
 		return null
 	if _textures.has(item_id):
 		return _textures[item_id]
+	if AMMUNITION_REGIONS.has(item_id):
+		var ammunition_texture := _ammunition_texture(item_id)
+		_textures[item_id] = ammunition_texture
+		return ammunition_texture
 	if _atlas == null:
 		_atlas = load(ATLAS_PATH) as Texture2D
 	if _atlas == null:
@@ -68,10 +76,14 @@ static func recipe_texture(recipe: Dictionary) -> Texture2D:
 
 
 static func world_reference_texture_for(item_id: String) -> Texture2D:
-	if item_id.is_empty() or not ITEM_CELLS.has(item_id):
+	if item_id.is_empty() or (not ITEM_CELLS.has(item_id) and not AMMUNITION_REGIONS.has(item_id)):
 		return null
 	if _world_reference_textures.has(item_id):
 		return _world_reference_textures[item_id]
+	if AMMUNITION_REGIONS.has(item_id):
+		var ammunition_texture := _ammunition_texture(item_id)
+		_world_reference_textures[item_id] = ammunition_texture
+		return ammunition_texture
 	if _world_reference == null:
 		_world_reference = load(WORLD_REFERENCE_PATH) as Texture2D
 	if _world_reference == null:
@@ -82,6 +94,18 @@ static func world_reference_texture_for(item_id: String) -> Texture2D:
 	texture.region = region_for_index(index)
 	texture.filter_clip = true
 	_world_reference_textures[item_id] = texture
+	return texture
+
+
+static func _ammunition_texture(item_id: String) -> Texture2D:
+	if _ammunition_atlas == null:
+		_ammunition_atlas = load(AMMUNITION_ATLAS_PATH) as Texture2D
+	if _ammunition_atlas == null:
+		return null
+	var texture := AtlasTexture.new()
+	texture.atlas = _ammunition_atlas
+	texture.region = AMMUNITION_REGIONS[item_id]
+	texture.filter_clip = true
 	return texture
 
 

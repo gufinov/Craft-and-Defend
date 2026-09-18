@@ -72,14 +72,20 @@ func _run_gate() -> void:
 	app.state = app.AppState.PLAYING
 	app._show_crafting(furnace_id, "furnace")
 	var modal_ok := app.crafting_grid.columns == 3 and app.crafting_grid.get_child_count() == 3 and app.crafting_context_label.text.contains("RETAINED OUTPUT") and app.crafting_grid_help.text.contains("persist")
-	app._close_crafting()
+	app.crafting_recipe_search.grab_focus()
+	await get_tree().process_frame
+	var escape := InputEventKey.new()
+	escape.pressed = true
+	escape.physical_keycode = KEY_ESCAPE
+	app._input(escape)
+	var single_escape_ok := app.state == app.AppState.PLAYING and not app.crafting_panel.visible
 	var furnace_body: Node3D = app.session._station_visuals.get(furnace_id)
 	var bench_id := str(bench_placed.get("details", {}).get("station", {}).get("instance_id", ""))
 	var bench_body: Node3D = app.session._station_visuals.get(bench_id)
 	inventory.select_hotbar(_slot_for("stone_pick"))
 	await get_tree().process_frame
 	var held_texture_ok := app.session._held_item_view.model_root.get_child_count() == 1 and ItemIconCatalog.world_reference_texture_for("stone_pick") != null
-	_record("T87_VISUAL_IDENTITY", modal_ok and furnace_body != null and furnace_body.get_child_count() >= 5 and bench_body != null and bench_body.get_child_count() >= 9 and held_texture_ok, "the Furnace exposes three real slots; detailed station forms and transparent held-tool references replace unrelated plain primitives", {"modal": modal_ok, "furnace_parts": furnace_body.get_child_count() if furnace_body != null else 0, "workbench_parts": bench_body.get_child_count() if bench_body != null else 0, "held": held_texture_ok})
+	_record("T87_VISUAL_IDENTITY", modal_ok and single_escape_ok and furnace_body != null and furnace_body.get_child_count() >= 5 and bench_body != null and bench_body.get_child_count() >= 9 and held_texture_ok, "the Furnace exposes three real slots, closes with one Escape even when search owns focus, and detailed station/held identities remain intact", {"modal": modal_ok, "single_escape": single_escape_ok, "furnace_parts": furnace_body.get_child_count() if furnace_body != null else 0, "workbench_parts": bench_body.get_child_count() if bench_body != null else 0, "held": held_texture_ok})
 
 	var manual_recipe := app.session.registry.recipe("planks")
 	app.state = app.AppState.PLAYING

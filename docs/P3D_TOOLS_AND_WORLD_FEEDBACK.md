@@ -17,8 +17,8 @@ Make frequent crafting, gathering and block placement readable and efficient in 
 ## Tool and resource contract
 
 - `wood_axe` is a one-stack Workbench tool made from 3 Planks and 2 Sticks.
-- Using the selected axe on a log gathers the connected vertical log column, bounded to six blocks. Capacity is checked before mutation, all world edits are rolled back on failure, and the drops commit in one inventory revision.
-- Ordinary hands and non-axe tools retain one-block gathering. The slice does not recursively fell branches or arbitrary connected player buildings.
+- Using the selected axe on a Log gathers only that targeted block. Capacity is checked before mutation and its one drop commits in one inventory revision.
+- Ordinary hands and non-axe tools also retain one-block gathering. The slice does not recursively fell trunks, branches or arbitrary connected player buildings.
 - The fixed `terrain_p1_1` iron vein remains at its existing authored cells. A visible marker above it says to dig two blocks; no terrain regeneration, save migration, free ore or global detector is introduced.
 - Iron ore still requires Stone Pick tier 2 and Furnace processing with coal.
 
@@ -32,7 +32,7 @@ The P3D 1536×1024 atlas is a non-destructive successor to the P3C original atla
 |---|---|
 | T79 — Shift craft | Exact five-batch success is one revision; insufficient input leaves the snapshot unchanged. |
 | T80 — held presentation | Tool models exist above the lower block model and track active hotbar identity. |
-| T81 — axe | Four-log starter trunk is gathered once through the bounded atomic axe path. |
+| T81 — axe | One targeted starter-trunk Log is gathered; the three upper Logs remain in place. |
 | T82 — world feedback | Block preview returns shared validity; marker text exists above a real guaranteed iron cell. |
 | T83 — rendered presentation | Two 1280×720 images visibly show the held axe/marker and held block/placement ghost. |
 

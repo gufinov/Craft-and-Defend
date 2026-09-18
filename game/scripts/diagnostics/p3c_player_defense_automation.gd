@@ -48,9 +48,18 @@ func _run_phase1() -> void:
 	var first_page_count := app.crafting_recipe_list.get_child_count()
 	var page_one := app.crafting_recipe_page_label.text
 	var next_available := not app.crafting_recipe_next.disabled
-	app._change_recipe_page(1)
+	var missing_highlight := false
+	for child in app.crafting_recipe_list.get_children():
+		if child is RecipeCatalogCard and child.is_missing_materials():
+			missing_highlight = true
+			break
+	var wheel_next := app._turn_recipe_page_from_wheel(MOUSE_BUTTON_WHEEL_DOWN)
 	await get_tree().process_frame
 	var page_two := app.crafting_recipe_page_label.text
+	var wheel_previous := app._turn_recipe_page_from_wheel(MOUSE_BUTTON_WHEEL_UP)
+	await get_tree().process_frame
+	var wheel_returned := app.crafting_recipe_page_label.text == "Page 1 / 2"
+	app._change_recipe_page(1)
 	app.crafting_recipe_search.text = "catapult"
 	app._on_crafting_recipe_search_changed("catapult")
 	await get_tree().process_frame
@@ -58,7 +67,7 @@ func _run_phase1() -> void:
 	var selected_id := ""
 	if search_count == 1 and app.crafting_recipe_list.get_child(0) is RecipeCatalogCard:
 		selected_id = app.crafting_recipe_list.get_child(0).recipe_id
-	_record("T73_PAGED_RECIPE_BOOK", bool(workbench.get("ok", false)) and first_page_count == app.RECIPE_PAGE_SIZE and page_one == "Page 1 / 2" and next_available and page_two == "Page 2 / 2" and search_count == 1 and selected_id == "catapult", "the Workbench uses a bounded 12-tile page with deterministic paging and search instead of vertical scrolling", {"first_page_count": first_page_count, "page_one": page_one, "page_two": page_two, "search_count": search_count, "selected": selected_id})
+	_record("T73_PAGED_RECIPE_BOOK", bool(workbench.get("ok", false)) and first_page_count == app.RECIPE_PAGE_SIZE and page_one == "Page 1 / 2" and next_available and wheel_next and page_two == "Page 2 / 2" and wheel_previous and wheel_returned and missing_highlight and search_count == 1 and selected_id == "catapult", "the Workbench uses a bounded 12-tile page with wheel/button paging and search; recipes missing resources are red-highlighted", {"first_page_count": first_page_count, "page_one": page_one, "page_two": page_two, "wheel_previous": wheel_previous, "wheel_returned": wheel_returned, "missing_highlight": missing_highlight, "search_count": search_count, "selected": selected_id})
 	app.crafting_recipe_search.clear()
 	app._close_crafting()
 	app.session.simulation_paused = true

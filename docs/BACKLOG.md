@@ -151,6 +151,12 @@ Use Tony's marked-up sword and Furnace screenshots as the presentation contract.
 
 **Candidate result:** strengthened T91/T92/T103 and T104 pass from the provenance-matched Windows export; the two Workbench pages, eight-item held sheet and Sword/swing/Furnace comparison were inspected. Exported P3D T79–T83, static validation and 40 Python tests pass. Owner ultrawide playtest remains required.
 
+## P3H.3 — first-person, castle skin and recipe-input corrections
+
+Move every held item to the lower-right screen-base region, turn raised tools inward and steepen the Sword. Add dedicated true-alpha Ballista Bolt/Stone Shot art. Skin placed Gate Frame and Wall Walk Slab with Castle Stone, return the Wood Axe to one targeted Log per use, turn recipe pages with the wheel, close a focused Furnace with one Escape and red-highlight insufficient recipes. Run strengthened T73/T80/T81/T87/T91 plus T103–T106.
+
+**Boundary:** no hand rig, combat timing change, durability, leaf decay, gate-door behavior, archer system, chest runtime, save migration or final production art. See [the P3H.3 contract](P3H3_PRESENTATION_AND_INPUT_CORRECTIONS.md).
+
 ## P3I–P3M — staged storage, siege, durability and ecology
 
 Proceed in bounded order: small/large persistent storage chests with lossless container gestures; siege Interact/loading/upgrades and dismantle/move; articulated Catapult facing/arm/release/projectile behavior; persistent tool durability plus data-owned harvesting balance; then species-aware gradual leaf decay/drops. Chest capacities, footprints and recipes require their own bounded UI/placement playtest rather than an implicit clone of another voxel game's double-chest rule. Each later stage must extend the canonical balance catalogue only with values consumed by its implemented runtime and must preserve save migration/recovery. P4 army/wave simulation remains separate.

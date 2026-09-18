@@ -60,8 +60,8 @@ func _run_phase1() -> void:
 	await get_tree().process_frame
 	var dirt_parts := held.model_root.get_child_count()
 	var block_height := held._base_position.y
-	var held_ok := held.current_item_id == "dirt" and axe_parts >= 1 and held.model_root.get_child_count() == 1 and dirt_parts == 1 and block_height < axe_height and ItemIconCatalog.world_reference_texture_for("wood_axe") != null
-	_record("T80_HELD_ITEMS", held_ok, "the active hotbar item owns a persistent first-person model; the axe uses the matched transparent item reference while placeable blocks remain lower", {"axe_parts": axe_parts, "axe_height": axe_height, "block_parts": dirt_parts, "block_height": block_height, "current": held.current_item_id})
+	var held_ok := held.current_item_id == "dirt" and axe_parts >= 1 and held.model_root.get_child_count() == 1 and dirt_parts == 1 and is_equal_approx(block_height, axe_height) and ItemIconCatalog.world_reference_texture_for("wood_axe") != null
+	_record("T80_HELD_ITEMS", held_ok, "the active hotbar item owns one persistent lower-right first-person frame shared by tools and placeables", {"axe_parts": axe_parts, "axe_height": axe_height, "block_parts": dirt_parts, "block_height": block_height, "current": held.current_item_id})
 
 	app.session.inventory.select_hotbar(axe_slot)
 	var tree_cells: Array[Vector3i] = [Vector3i(4, 0, 40), Vector3i(4, 1, 40), Vector3i(4, 2, 40), Vector3i(4, 3, 40)]
@@ -69,11 +69,12 @@ func _run_phase1() -> void:
 		return
 	var logs_before := app.session.inventory.count("log")
 	var felled := app.session.interaction.try_break_cell(tree_cells[0])
-	var removed := true
-	for cell in tree_cells:
-		removed = removed and int(app.session.world.query_cell(cell).get("voxel_id", -1)) == InteractionService.AIR
-	var axe_ok: bool = felled.get("ok", false) and felled.get("reason") == "TREE_FELLED" and felled.get("changes", {}).get("cells", []).size() == 4 and app.session.inventory.count("log") == logs_before + 4 and removed
-	_record("T81_WOOD_AXE", axe_ok, "a selected wood axe atomically fells the bounded connected starter trunk and gathers every removed log", {"result": felled, "logs_before": logs_before, "logs_after": app.session.inventory.count("log"), "removed": removed})
+	var targeted_removed := int(app.session.world.query_cell(tree_cells[0]).get("voxel_id", -1)) == InteractionService.AIR
+	var upper_trunk_retained := true
+	for cell in tree_cells.slice(1):
+		upper_trunk_retained = upper_trunk_retained and int(app.session.world.query_cell(cell).get("voxel_id", -1)) == 4
+	var axe_ok: bool = felled.get("ok", false) and felled.get("reason") == "OK" and felled.get("changes", {}).get("cells", []).size() == 1 and app.session.inventory.count("log") == logs_before + 1 and targeted_removed and upper_trunk_retained
+	_record("T81_WOOD_AXE", axe_ok, "one Wood Axe swing removes and gathers only the targeted log block; the remaining trunk stays in place", {"result": felled, "logs_before": logs_before, "logs_after": app.session.inventory.count("log"), "targeted_removed": targeted_removed, "upper_trunk_retained": upper_trunk_retained})
 
 	var preview := app.session.interaction.preview_place_item(Vector3i(5, 0, 40), "dirt", 0)
 	var marker_label := _find_label(app.session._resource_markers)
