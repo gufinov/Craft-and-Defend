@@ -86,6 +86,7 @@ func _run_gate() -> void:
 	_record("T96_MODAL_LIVE_PROCESSING", placed.get("ok", false) and modal_ok and absf(float(modal_half.progress) - 0.5) < 0.01, "the Furnace clock and progress bar advance while its modal is open even though world simulation remains paused", {"halfway": modal_half, "progress_bar": progress_value, "slots": modal_slots, "next_job": modal_next})
 
 	app.session.inventory.try_transaction({}, {"catapult": 1})
+	_level_catapult_ground(Vector3i(7, 0, 38))
 	var catapult := app.session.workstations.try_place("catapult", Vector3i(7, 0, 38), app.session.world.query_cell, app.session.player.get_body_aabb())
 	var catapult_id := str(catapult.get("details", {}).get("station", {}).get("instance_id", ""))
 	var catapult_body: Node3D = app.session._station_visuals.get(catapult_id)
@@ -288,10 +289,11 @@ func _run_visual() -> void:
 	var click_path_ok := await _save_viewport(click_path_path)
 	app._close_crafting()
 	_record("T115_FURNACE_CLICK_PATH", click_furnace.get("ok", false) and clicked_selected == "iron_ore" and clicked_highlight and clicked_input == 1 and shift_clicked_input == 4 and click_path_ok, "real mouse presses on the ore tile then Raw Input add one ore (Shift+click adds the rest, up to five) through the slot's own input handling", {"selected": clicked_selected, "highlighted": clicked_highlight, "input_after_click": clicked_input, "input_after_shift_click": shift_clicked_input, "path": click_path_path})
+	_level_catapult_ground(Vector3i(7, 0, 38))
 	var catapult := app.session.workstations.try_place("catapult", Vector3i(7, 0, 38), app.session.world.query_cell, app.session.player.get_body_aabb())
 	app.session.apply_world_settings("1200", false)
-	app.session.player.global_position = Vector3(11.2, 1.35, 34.2)
-	app.session.player.look_at(Vector3(7.6, 0.65, 38.6), Vector3.UP)
+	app.session.player.global_position = Vector3(11.4, 0.9, 43.6)
+	app.session.player.look_at(Vector3(8.0, 0.4, 39.8), Vector3.UP)
 	await _settle_frames(12)
 	var catapult_path := app.data_root.path_join("p3g-catapult-world-model.png")
 	var catapult_ok := await _save_viewport(catapult_path)
@@ -309,6 +311,16 @@ func _click_at(global_position: Vector2, shift: bool) -> void:
 		get_viewport().push_input(event)
 		await get_tree().process_frame
 	await _settle_frames(2)
+
+
+## The Catapult occupies 2 x 4 cells (P4 footprint); give it flat ground and
+## clear air so the placement depends on the definition, not the seeded hills.
+func _level_catapult_ground(anchor: Vector3i) -> void:
+	for x in range(2):
+		for z in range(4):
+			app.session.world.set_cell(anchor + Vector3i(x, -1, z), 3)
+			for y in range(3):
+				app.session.world.set_cell(anchor + Vector3i(x, y, z), 0)
 
 
 func _fixture(ore: int, coal: int) -> Dictionary:

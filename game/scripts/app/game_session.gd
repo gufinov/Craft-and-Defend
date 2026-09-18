@@ -644,27 +644,138 @@ func _build_ballista_visual(parent: Node3D) -> void:
 
 
 func _build_catapult_visual(parent: Node3D) -> void:
-	_add_collision_box(parent, Vector3(1.90, 1.55, 1.90), Vector3(0.5, 0.22, 0.5))
-	var wood := _visual_material(Color("9b5f30"), "res://assets/blocks/planks.svg")
-	var dark_wood := _visual_material(Color("56301d"), "res://assets/blocks/log.svg")
-	var iron := _visual_material(Color("737d84"))
-	var stone := _visual_material(Color("8f969d"), "res://assets/blocks/stone.svg")
-	_add_mesh_box(parent, Vector3(1.74, 0.20, 1.26), Vector3(0.5, -0.28, 0.52), dark_wood)
-	_add_mesh_box(parent, Vector3(1.56, 0.12, 0.18), Vector3(0.5, -0.05, 0.12), wood)
-	_add_mesh_box(parent, Vector3(1.56, 0.12, 0.18), Vector3(0.5, -0.05, 0.92), wood)
+	# Modelled from the owner's reference (2026-09-19): iron-banded oak chassis
+	# with gold studs, four spoked wheels with iron rims and gold hub spikes,
+	# an A-frame with blue banners, an axle-hinged throwing arm wrapped in rope
+	# and an iron bucket. Footprint 2 wide (x 0..1) by 4 long (z 0..3): wheels and
+	# chassis on the front rows, armature and bucket over the rear rows. Local
+	# origin is the anchor cell centre; forward (throw) is -z, rear is +z.
+	_add_collision_box(parent, Vector3(1.96, 0.80, 3.90), Vector3(0.5, -0.10, 1.50))
+	_add_collision_box(parent, Vector3(1.60, 1.30, 1.10), Vector3(0.5, 0.75, 0.95))
+	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
+	var dark_oak := _visual_material(Color("6b3d1f"), "res://assets/blocks/log.svg")
+	var iron := _visual_material(Color("6f7880"))
+	var dark_iron := _visual_material(Color("474e55"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	var rope := _visual_material(Color("c9b17a"))
+	var banner := _visual_material(Color("1f4fb3"))
+	var bucket_iron := _visual_material(Color("5c656d"))
+
+	# Chassis: two long side rails, a front bumper and three cross beams.
+	for x in [-0.32, 1.32]:
+		_add_mesh_box(parent, Vector3(0.24, 0.24, 3.60), Vector3(x, -0.20, 1.40), oak)
+		for z in [-0.20, 1.10, 2.30, 3.00]:
+			_add_mesh_box(parent, Vector3(0.28, 0.28, 0.14), Vector3(x, -0.20, z), dark_iron)
+			_add_stud(parent, Vector3(x + (0.15 if x > 0.5 else -0.15), -0.20, z), gold, Vector3(0.0, 0.0, PI / 2.0))
+	_add_mesh_box(parent, Vector3(1.64, 0.22, 0.22), Vector3(0.5, -0.20, -0.30), oak)
+	_add_mesh_box(parent, Vector3(1.64, 0.22, 0.22), Vector3(0.5, -0.20, 1.60), oak)
+	_add_mesh_box(parent, Vector3(1.64, 0.22, 0.22), Vector3(0.5, -0.20, 3.05), oak)
+	_add_mesh_box(parent, Vector3(0.60, 0.16, 0.60), Vector3(0.5, -0.22, 0.55), dark_oak)
+
+	# Wheels: oak disc, iron rim (torus), gold hub spike, three iron studs.
 	var wheel_index := 0
-	for x in [-0.18, 1.18]:
-		for z in [0.08, 0.96]:
-			_add_mesh_cylinder(parent, 0.25, 0.16, Vector3(x, -0.30, z), Vector3(0.0, 0.0, PI / 2.0), dark_wood, "CatapultWheel_%d" % wheel_index)
+	for x in [-0.36, 1.36]:
+		for z in [0.10, 1.35]:
+			var wheel := _add_mesh_cylinder(parent, 0.44, 0.16, Vector3(x, -0.06, z), Vector3(0.0, 0.0, PI / 2.0), oak, "CatapultWheel_%d" % wheel_index)
+			_add_mesh_torus(wheel, 0.38, 0.48, Vector3.ZERO, Vector3.ZERO, iron)
+			var hub_direction := 1.0 if x > 0.5 else -1.0
+			_add_mesh_cone(parent, 0.10, 0.22, Vector3(x + hub_direction * 0.16, -0.06, z), Vector3(0.0, 0.0, -hub_direction * PI / 2.0), gold)
+			for angle in [0.0, 2.094, 4.189]:
+				var stud_offset := Vector3(0.0, cos(angle) * 0.30, sin(angle) * 0.30)
+				_add_mesh_box(wheel, Vector3(0.08, 0.08, 0.20), Vector3(0.0, stud_offset.y, stud_offset.z), dark_iron).rotation.x = angle
 			wheel_index += 1
-	for x in [0.05, 0.95]:
-		var upright := _add_mesh_box(parent, Vector3(0.16, 1.10, 0.16), Vector3(x, 0.25, 0.52), wood)
-		upright.rotation.z = -0.20 if x < 0.5 else 0.20
-	_add_mesh_cylinder(parent, 0.10, 1.24, Vector3(0.5, 0.46, 0.52), Vector3(0.0, 0.0, PI / 2.0), iron, "CatapultAxle")
-	var arm := _add_mesh_box(parent, Vector3(0.18, 0.18, 1.86), Vector3(0.5, 0.78, 0.34), wood)
-	arm.rotation.x = -0.52
-	_add_mesh_box(parent, Vector3(0.58, 0.16, 0.52), Vector3(0.5, 1.25, 1.05), dark_wood)
-	_add_mesh_cylinder(parent, 0.20, 0.34, Vector3(0.5, 1.38, 1.05), Vector3.ZERO, stone, "CatapultStone")
+
+	# A-frame: two leaning uprights per side meeting at the axle, banners on the
+	# front faces, gold diamond studs on iron caps.
+	var apex := Vector3(0.5, 1.05, 0.95)
+	for x in [0.06, 0.94]:
+		var lean := -0.34 if x < 0.5 else 0.34
+		var front_leg := _add_mesh_box(parent, Vector3(0.18, 1.60, 0.18), Vector3(x, 0.42, 0.45), oak)
+		front_leg.rotation = Vector3(0.36, 0.0, lean)
+		var rear_leg := _add_mesh_box(parent, Vector3(0.18, 1.60, 0.18), Vector3(x, 0.42, 1.45), oak)
+		rear_leg.rotation = Vector3(-0.36, 0.0, lean)
+		var flag := _add_mesh_box(parent, Vector3(0.05, 0.62, 0.30), Vector3(x + (-0.16 if x < 0.5 else 0.16), 0.30, 0.55), banner)
+		flag.rotation = Vector3(0.36, 0.0, lean)
+		_add_mesh_box(flag, Vector3(0.02, 0.18, 0.14), Vector3(-0.03 if x < 0.5 else 0.03, 0.08, 0.0), gold)
+		var cap := _add_mesh_box(parent, Vector3(0.26, 0.24, 0.26), Vector3(x - (0.10 if x < 0.5 else -0.10), 1.10, 0.95), dark_iron)
+		_add_stud(parent, Vector3(cap.position.x + (-0.14 if x < 0.5 else 0.14), 1.10, 0.95), gold, Vector3(0.0, 0.0, PI / 2.0))
+	_add_mesh_cylinder(parent, 0.09, 1.50, apex, Vector3(0.0, 0.0, PI / 2.0), iron, "CatapultAxle")
+	_add_mesh_cylinder(parent, 0.16, 0.24, Vector3(1.30, apex.y, apex.z), Vector3(0.0, 0.0, PI / 2.0), dark_iron, "CatapultAxleNut")
+
+	# Rear armature: two braces from the rails to a cross bar the arm rests on.
+	for x in [-0.20, 1.20]:
+		var brace := _add_mesh_box(parent, Vector3(0.16, 1.10, 0.16), Vector3(x, 0.25, 2.55), oak)
+		brace.rotation.x = 0.28
+	_add_mesh_box(parent, Vector3(1.70, 0.16, 0.16), Vector3(0.5, 0.74, 2.70), oak)
+	_add_mesh_box(parent, Vector3(0.20, 0.22, 0.20), Vector3(-0.20, 0.74, 2.70), dark_iron)
+	_add_mesh_box(parent, Vector3(0.20, 0.22, 0.20), Vector3(1.20, 0.74, 2.70), dark_iron)
+
+	# Throwing arm on a hinge at the axle (rotates about x for P4 animation):
+	# rope-wrapped beam rising to the rear, iron bucket at the tip, counter-stub
+	# forward of the axle.
+	var arm := Node3D.new()
+	arm.name = "CatapultArm"
+	arm.position = apex
+	arm.rotation.x = -0.40
+	parent.add_child(arm)
+	_add_mesh_box(arm, Vector3(0.20, 0.20, 2.30), Vector3(0.0, 0.0, 0.85), oak)
+	_add_mesh_box(arm, Vector3(0.26, 0.26, 0.40), Vector3(0.0, 0.0, -0.35), dark_oak)
+	for z in [0.05, 0.20, 0.35]:
+		_add_mesh_cylinder(arm, 0.17, 0.10, Vector3(0.0, 0.0, z), Vector3(PI / 2.0, 0.0, 0.0), rope, "CatapultRope")
+	for z in [1.55, 1.68]:
+		_add_mesh_cylinder(arm, 0.16, 0.09, Vector3(0.0, 0.0, z), Vector3(PI / 2.0, 0.0, 0.0), rope, "CatapultRope")
+	for z in [0.70, 1.15]:
+		_add_mesh_box(arm, Vector3(0.24, 0.24, 0.12), Vector3(0.0, 0.0, z), dark_iron)
+		_add_stud(arm, Vector3(0.0, 0.14, z), gold, Vector3.ZERO)
+	var bucket := Node3D.new()
+	bucket.name = "CatapultBucket"
+	bucket.position = Vector3(0.0, 0.16, 2.02)
+	arm.add_child(bucket)
+	_add_mesh_cylinder(bucket, 0.36, 0.30, Vector3.ZERO, Vector3.ZERO, bucket_iron, "CatapultBucketWall")
+	_add_mesh_cylinder(bucket, 0.30, 0.34, Vector3(0.0, 0.03, 0.0), Vector3.ZERO, dark_iron, "CatapultBucketBowl")
+	_add_mesh_torus(bucket, 0.30, 0.40, Vector3(0.0, 0.15, 0.0), Vector3.ZERO, iron)
+	for angle in [0.0, 1.571, 3.142, 4.712]:
+		_add_stud(bucket, Vector3(cos(angle) * 0.37, 0.05, sin(angle) * 0.37), gold, Vector3(0.0, -angle, 0.0))
+	_add_mesh_cylinder(bucket, 0.18, 0.20, Vector3(0.0, 0.10, 0.0), Vector3.ZERO, _visual_material(Color("8f969d"), "res://assets/blocks/stone.svg"), "CatapultStone")
+
+
+## A small gold diamond: a cube rotated 45 degrees about the given axis.
+func _add_stud(parent: Node3D, offset: Vector3, material: Material, axis_rotation: Vector3) -> MeshInstance3D:
+	var stud := _add_mesh_box(parent, Vector3(0.10, 0.10, 0.10), offset, material)
+	stud.rotation = axis_rotation + Vector3(0.0, 0.785, 0.0)
+	return stud
+
+
+func _add_mesh_torus(parent: Node3D, inner_radius: float, outer_radius: float, offset: Vector3, rotation: Vector3, material: Material) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var mesh := TorusMesh.new()
+	mesh.inner_radius = inner_radius
+	mesh.outer_radius = outer_radius
+	mesh.rings = 24
+	mesh.ring_segments = 8
+	mesh_instance.mesh = mesh
+	mesh_instance.position = offset
+	mesh_instance.rotation = rotation
+	mesh_instance.material_override = material
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	parent.add_child(mesh_instance)
+	return mesh_instance
+
+
+func _add_mesh_cone(parent: Node3D, radius: float, height: float, offset: Vector3, rotation: Vector3, material: Material) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 0.0
+	mesh.bottom_radius = radius
+	mesh.height = height
+	mesh.radial_segments = 8
+	mesh_instance.mesh = mesh
+	mesh_instance.position = offset
+	mesh_instance.rotation = rotation
+	mesh_instance.material_override = material
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	parent.add_child(mesh_instance)
+	return mesh_instance
 
 
 func _add_collision_box(parent: Node3D, size: Vector3, offset: Vector3) -> void:
