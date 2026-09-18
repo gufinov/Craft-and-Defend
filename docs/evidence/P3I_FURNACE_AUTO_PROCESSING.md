@@ -17,6 +17,8 @@ TEST:
 | F2 gate, F3 phase1 | editor headless | F2_KEYBIND_UI (repaired), T19–T22, F2_CHECKPOINT, T24 | PASS | `artifacts/dev-p3i-f2-automation`, `artifacts/dev-p3i-f3-automation` |
 | Owner playtest | load and walk away | pending | NOT RUN | — |
 
+ROUND 2 (owner playtest, same day): fuel model 2 (burning Coal stays until burnt out, legacy restore migration), chained-time carry in `advance()`, +1/+5 click gestures, Load ×1/×5 button. Exported at commit `620b368`, PCK SHA-256 `f0c296b2832f8b4c719037152a6d93c5ff717691f03126180895fd5f6cd81ab7`: `TEST_P3G` T93–T98 + T107 PASS (`artifacts/manual-p3g-furnace-2406315692`); `TEST_P3H` T99–T102 PASS incl. T100 counted fuel through save/restore (`artifacts/manual-p3h-balance-2408214646`); `TEST_P3E` T84–T89 PASS (`artifacts/manual-p3e-furnace-2412212555`). Editor headless: F2 gate, F3 phase1 PASS. The +1/+5 click gestures are exercised at the service level (counted transfer in T107); the panel click routing is not driven by automation and is owner-verified.
+
 LIMITATIONS/FAILURES: Auto-start attempts once per tick per idle Furnace; with one furnace recipe this is negligible, but if the recipe list grows a per-station dirty flag would be cheaper. `GameSession.try_craft` still allows a direct furnace start for diagnostics.
 
 NEXT: Owner playtest; P3J drag building.

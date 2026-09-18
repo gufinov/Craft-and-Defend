@@ -18,6 +18,8 @@ TEST:
 | T42–T45/T50, T90/T91/T105 | castle kit, P3F, editor headless | unchanged | PASS | `artifacts/dev-p3j-gate-*` |
 | Owner playtest | drag feel, wall building, cancel | pending | NOT RUN | — |
 
+ROUND 2 (owner playtest, same day): vertical-plane fallback so a drag extends into open sky. Exported at commit `620b368`, PCK SHA-256 `f0c296b2832f8b4c719037152a6d93c5ff717691f03126180895fd5f6cd81ab7`: `TEST_P3D` T79–T83, T108 (with the sky-drag case), T109 PASS (`artifacts/manual-p3d-usability-2410213601`).
+
 LIMITATIONS/FAILURES: Before the wait fix, T83/T109 failed intermittently on the export (1 of 3, then 2 of 3 runs) purely from sampling before terrain streaming finished; after the fix three consecutive exported runs pass. A plain click now places on release rather than press. No drag for entities or for breaking. The ghost's green fill is dim in shadowed grass; the dark frame carries legibility.
 
 NEXT: Owner playtest; P3K parapet auto-connect and first blueprints.
