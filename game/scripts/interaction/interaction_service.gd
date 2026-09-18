@@ -186,7 +186,10 @@ func set_drag_end(end: Vector3i) -> Dictionary:
 	return drag_state()
 
 
-func update_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
+## `vertical` (Shift held, owner direction 2026-09-18): the horizontal extent
+## is frozen and only the height follows the aim, so "drag sideways, hold
+## Shift, drag up" raises a wall without needing an obstruction behind it.
+func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = false) -> Dictionary:
 	if _drag.is_empty():
 		return {"ok": false, "reason": "NO_DRAG"}
 	if str(_drag.get("mode", "drag")) == "blueprint":
@@ -194,6 +197,13 @@ func update_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
 		var aimed := world.raycast(origin, direction, 12.0)
 		if aimed != null:
 			move_blueprint(aimed.previous_position)
+		return drag_state()
+	if vertical:
+		var vertical_end := _drag_plane_end(origin, direction)
+		if vertical_end.has("cell"):
+			var current: Vector3i = _drag.end
+			var lifted: Vector3i = vertical_end.cell
+			return set_drag_end(Vector3i(current.x, lifted.y, current.z))
 		return drag_state()
 	var hit := world.raycast(origin, direction, 12.0)
 	if hit != null:

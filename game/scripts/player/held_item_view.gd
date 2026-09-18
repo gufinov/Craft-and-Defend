@@ -13,7 +13,7 @@ extends Node3D
 ## Height of the tallest raised tool, in camera units at HELD_DEPTH.
 const TOOL_HEIGHT := 0.62
 ## Height of low-held items (blocks, materials, stations, ammunition).
-const LOW_HEIGHT := 0.46
+const LOW_HEIGHT := 0.36
 const HELD_DEPTH := 0.90
 ## Hinge placement as fractions of the visible half-extents at HELD_DEPTH.
 ## X is clamped so the swing still reaches the crosshair on ultrawide displays.
@@ -25,7 +25,7 @@ const HINGE_RIGHT_MAX := 0.78
 ## Tools seat their handle at the screen base (owner sketch); low-held items
 ## stay above the hotbar as accepted in P3H.2.
 const TOOL_HINGE_DOWN_FRACTION := 0.92
-const LOW_HINGE_DOWN_FRACTION := 0.70
+const LOW_HINGE_DOWN_FRACTION := 0.52
 ## Rest tilt of raised tools (radians, counter-clockwise). Art already points NE.
 const TOOL_REST_ROTATION := 0.0
 const LOW_REST_ROTATION := 0.0
@@ -43,6 +43,10 @@ const TOOL_SWING_KEYS: Array[Dictionary] = [
 ## Largest rotation reached during the strike; reported for diagnostics.
 const TOOL_SWING_ARC_RADIANS := 2.2
 const PLACE_NUDGE_TRAVEL := Vector3(-0.03, 0.05, -0.10)
+## Tools whose atlas art has the cutting edge on the outer (right) side. They
+## are mirrored so the edge faces the crosshair; the hinge moves to the handle
+## end on the mirrored side (owner playtest 2026-09-18, image 1).
+const MIRRORED_ITEMS: Array[String] = ["wood_axe"]
 
 var registry: ContentRegistry
 ## The hinge. Its origin is the hand; the sprite hangs from it.
@@ -53,6 +57,7 @@ var _use_tween: Tween
 var _sprite: Sprite3D
 var _hinge_position := Vector3.ZERO
 var _rest_rotation := 0.0
+var _mirrored := false
 
 
 func _init(content_registry: ContentRegistry) -> void:
@@ -134,9 +139,13 @@ func _build_reference_item(item_id: String, raised: bool) -> void:
 	sprite.no_depth_test = true
 	sprite.shaded = false
 	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
-	# Sprite3D centres on its origin; offset it so the art's bottom-left corner
-	# lies on the hinge origin. Rotating the hinge then swings about the hand.
-	sprite.position = Vector3(region_size.x * pixel_size * 0.5, region_size.y * pixel_size * 0.5, 0.0)
+	_mirrored = raised and item_id in MIRRORED_ITEMS
+	sprite.flip_h = _mirrored
+	# Sprite3D centres on its origin; offset it so the art's handle corner
+	# (bottom-left, or bottom-right when mirrored) lies on the hinge origin.
+	# Rotating the hinge then swings about the hand.
+	var half_width := region_size.x * pixel_size * 0.5
+	sprite.position = Vector3(-half_width if _mirrored else half_width, region_size.y * pixel_size * 0.5, 0.0)
 	model_root.add_child(sprite)
 	_sprite = sprite
 	_rest_rotation = TOOL_REST_ROTATION if raised else LOW_REST_ROTATION
@@ -182,4 +191,5 @@ func debug_presentation() -> Dictionary:
 		"low_height": LOW_HEIGHT,
 		"tool_swing_arc_radians": TOOL_SWING_ARC_RADIANS,
 		"measured_region": ItemIconCatalog.is_measured(current_item_id),
+		"mirrored": _mirrored,
 	}

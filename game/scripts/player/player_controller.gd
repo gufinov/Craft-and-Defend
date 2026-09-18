@@ -129,6 +129,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_report(pressed)
 	elif event.is_action_released("secondary") and interaction != null and interaction.drag_active():
 		_report(interaction.secondary_release_from_view(camera.global_position, -camera.global_basis.z))
+	elif event.is_action_pressed("interact") and interaction != null and interaction.drag_active():
+		pass  # Shift while dragging switches the plan to vertical; no interact.
 	elif event.is_action_pressed("interact") and interaction != null:
 		_report(interaction.interact_from_view(camera.global_position, -camera.global_basis.z))
 

@@ -727,7 +727,7 @@ func _update_placement_preview() -> void:
 		_hide_placement_preview()
 		return
 	if interaction.drag_active():
-		_update_drag_preview(interaction.update_drag_place(player.camera.global_position, -player.camera.global_basis.z))
+		_update_drag_preview(interaction.update_drag_place(player.camera.global_position, -player.camera.global_basis.z, Input.is_action_pressed("interact")))
 		return
 	var preview := interaction.placement_preview_from_view(player.camera.global_position, -player.camera.global_basis.z)
 	if not preview.get("visible", false):
