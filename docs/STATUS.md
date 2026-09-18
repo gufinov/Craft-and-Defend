@@ -1,4 +1,22 @@
-# Current checkpoint — 2026-09-18 (P3H.4)
+# Current checkpoint — 2026-09-18 (P3I + P3J)
+
+**STATUS:** **P3I FURNACE AUTO-PROCESSING AND P3J DRAG BUILDING — CANDIDATE PASS; OWNER PLAYTEST PENDING.** Both owner-directed slices are implemented on the exported, provenance-matched build with new gate and render tests. The 2026-09-18 design decisions (one game in three tiers, loss as a pillar, blueprints stamp blocks with machines as entity exceptions, Market as core, growing province with a neglect leash) are locked in [the design direction](DESIGN_DIRECTION_2026-09-18.md). Claude is the implementing agent. No merge to `main`, no release.
+
+**DONE:** P3I — idle Furnaces start themselves from deposited input and fuel (`WorkstationService._auto_start_idle_furnaces`), never while paused; the furnace button became **Load from Inventory**; T107. P3J — right-drag plans rows, columns and walls of the held block with support-first ordering, skips blocked cells, trims to stock, commits one world edit plus one inventory transaction with rollback, cancels on left-press; framed green/amber/red ghosts; T108/T109. Repaired the stale F2_KEYBIND_UI test. P3D visual checks now wait for the ghost. See [P3I evidence](evidence/P3I_FURNACE_AUTO_PROCESSING.md) and [P3J evidence](evidence/P3J_DRAG_BUILDING.md).
+
+**EXPECT:** Drop ore and coal into a Furnace and walk away; ingots accumulate in Output. Hold dirt/stone/castle stone, right-press and drag along the ground for a row, upward for a column, both for a wall; release builds the green cells; left-click while holding right cancels. Held tools strike toward the crosshair and vanish down-left (P3H.4 round 3); Tab inventory tiles match the crafting screens.
+
+**TEST:** Static PASS (131 links; 44/44). Exported: `TEST_P3G` (T93–T98, T107), `TEST_P3E` (T84–T89), `TEST_P3D` ×3 (T79–T83, T108, T109), `TEST_P3C` (T72–T78), `TEST_P3F` (T90–T92, T103–T106) PASS. Editor headless: F2 gate, F3 phase1, castle-kit phase1 PASS. Not re-run: P3H balance suite. Owner playtest of P3H.4/P3I/P3J pending.
+
+**LIMITATIONS/FAILURES:** A plain right-click now places on release, not press. No post-build undo, no entity dragging. Furnace auto-start polls each idle furnace every tick (negligible with one recipe). Placed Furnace/Tower skins still lack a close-up render. The Tower Platform entity is slated to retire under P3K blueprints.
+
+**NEXT:** Tony playtests. Then P3K (parapet auto-connect, blueprint model with sockets, first pieces) → P4a siege on stamped caps → P4b Market/gold → P4c army director.
+
+**GIT/REPRODUCIBILITY:** Worktree `D:\CODEX\Craft_and_Defend\worktrees\p3d-tools-world-feedback`, branch `feature/p3d-tools-world-feedback`, HEAD after this commit, clean, tracking origin (pushed). Canonical `main` unchanged at `c085c013…`. Engine `4.6.stable.custom_build.89cea1439`; EXE SHA-256 `4ac128729e86108904e6d038d161322404d42d71892b1cc0dca751039aa7e4b2`; PCK SHA-256 `954cb607081eaec4dfcc6940abc010a61d8e6679fb289fa6cb7834bd1e1872ea`. Evidence roots: `artifacts/manual-p3g-furnace-568724137`, `artifacts/manual-p3e-furnace-570723092`, `artifacts/manual-p3d-usability-883220165` (+2), `artifacts/manual-p3c-player-defense-851526145`.
+
+---
+
+## Previous checkpoint — 2026-09-18 (P3H.4)
 
 **STATUS:** **P3H.4 HINGE HELD TOOLS / MEASURED ICONS / MASONRY SKINS — CANDIDATE PASS (ROUND 3); OWNER RE-PLAYTEST PENDING.** Round 3: the strike is now a keyframed path (toward the crosshair, whip down-left out of sight, rise back). Tony's wider vision (tower cap sizes, build wheel, gold economy/Foundry/Market, daily waves and breaching, food) is recorded in [the design direction](DESIGN_DIRECTION_2026-09-18.md) with proposals marked not-commissioned. Round 2 after Tony's ultrawide playtest: hand moved one block inward; Tab inventory tiles conformed to the crafting tiles Tony approved. Tony's playtest of the P3H.3 build reported wrong tool hinge and sweep, oversized ammunition with a bolt fragment beside the Stone Shot, off-centre card icons and unskinned Furnace/Tower Platform. All positioning defects traced to fixed cell geometry; they are now driven by measured art regions and a hand hinge. Four follow-up cards (P3I Furnace auto-processing, P3J drag building, P4 siege rework, plus the P3H.4 record) are in the backlog. Claude is the implementing agent from this checkpoint; no merge, push to `main` or release is authorized or performed.
 
