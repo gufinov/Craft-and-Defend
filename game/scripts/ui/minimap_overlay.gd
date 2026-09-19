@@ -59,6 +59,9 @@ func _ready() -> void:
 	_title.add_theme_color_override("font_color", Color("9fd8e8"))
 	_frame.add_child(_title)
 	_layout()
+	# Re-lay when the window is resized or maximised (the ultrawide screenshot
+	# had the map floating where the 1280-wide corner used to be).
+	get_viewport().size_changed.connect(_layout)
 
 
 func configure(terrain_generator: P1TerrainGenerator, player_node: Node3D, station_service: WorkstationService) -> void:
@@ -85,7 +88,8 @@ func _layout() -> void:
 		_title.text = "WORLD MAP · M closes"
 	else:
 		_frame.size = Vector2(MINI_SIZE, MINI_SIZE)
-		_frame.position = Vector2(viewport_size.x - MINI_SIZE - MARGIN, MARGIN + 96.0)
+		# Top-right corner (owner 2026-09-19); the HUD text wraps left of it.
+		_frame.position = Vector2(viewport_size.x - MINI_SIZE - MARGIN, MARGIN)
 		_title.text = "MAP · M for the world map"
 	_texture_rect.position = Vector2(4, 4)
 	_texture_rect.size = _frame.size - Vector2(8, 8)

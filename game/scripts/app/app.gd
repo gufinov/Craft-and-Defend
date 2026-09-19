@@ -58,6 +58,7 @@ var keybind_message: Label
 var settings_message: Label
 var settings_scroll: ScrollContainer
 var status_label: Label
+var hud_text_column: VBoxContainer
 var hud_label: Label
 var feedback_label: Label
 var navigation_label: Label
@@ -1122,6 +1123,29 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	legend_column.add_child(siege_legend_list)
 
 
+## One wrapping HUD text line in the top-left column.
+func _hud_text_label(font_size: int, color: Color) -> Label:
+	var label := Label.new()
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", color)
+	label.add_theme_constant_override("outline_size", 3)
+	label.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.05, 0.9))
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_text_column.add_child(label)
+	return label
+
+
+## The HUD text column is as wide as the space left of the minimap.
+func _layout_hud_text() -> void:
+	if hud_text_column == null:
+		return
+	var width := get_viewport().get_visible_rect().size.x - hud_text_column.position.x - MinimapOverlay.MINI_SIZE - MinimapOverlay.MARGIN * 2.0
+	hud_text_column.custom_minimum_size = Vector2(maxf(320.0, width), 0.0)
+	hud_text_column.size = Vector2(maxf(320.0, width), 0.0)
+
+
 func _build_hud(canvas: CanvasLayer) -> void:
 	hud_layer = Control.new()
 	hud_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1131,34 +1155,20 @@ func _build_hud(canvas: CanvasLayer) -> void:
 	minimap.name = "Minimap"
 	minimap.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud_layer.add_child(minimap)
-	hud_label = Label.new()
-	hud_label.position = Vector2(20, 18)
-	hud_label.add_theme_font_size_override("font_size", 18)
-	hud_label.add_theme_constant_override("outline_size", 3)
-	hud_label.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.05, 0.9))
-	hud_layer.add_child(hud_label)
-	navigation_label = Label.new()
-	navigation_label.position = Vector2(20, 50)
-	navigation_label.add_theme_font_size_override("font_size", 15)
-	navigation_label.add_theme_color_override("font_color", Color("9fd8e8"))
-	navigation_label.add_theme_constant_override("outline_size", 3)
-	navigation_label.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.05, 0.9))
-	hud_layer.add_child(navigation_label)
-	defense_label = Label.new()
-	defense_label.position = Vector2(20, 78)
-	defense_label.custom_minimum_size = Vector2(1100, 26)
-	defense_label.add_theme_font_size_override("font_size", 15)
-	defense_label.add_theme_color_override("font_color", Color("ffd166"))
-	defense_label.add_theme_constant_override("outline_size", 3)
-	defense_label.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.05, 0.9))
-	hud_layer.add_child(defense_label)
-	feedback_label = Label.new()
-	feedback_label.position = Vector2(20, 106)
-	feedback_label.custom_minimum_size = Vector2(760, 30)
-	feedback_label.add_theme_color_override("font_color", Color("ffe08a"))
-	feedback_label.add_theme_constant_override("outline_size", 3)
-	feedback_label.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.05, 0.9))
-	hud_layer.add_child(feedback_label)
+	# Owner 2026-09-19: the text block hugs the top-left and wraps inside the
+	# width left of the minimap (top-right corner), so the two never meet.
+	hud_text_column = VBoxContainer.new()
+	hud_text_column.name = "HudText"
+	hud_text_column.position = Vector2(20, 18)
+	hud_text_column.add_theme_constant_override("separation", 4)
+	hud_text_column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_layer.add_child(hud_text_column)
+	hud_label = _hud_text_label(18, Color.WHITE)
+	navigation_label = _hud_text_label(15, Color("9fd8e8"))
+	defense_label = _hud_text_label(15, Color("ffd166"))
+	feedback_label = _hud_text_label(16, Color("ffe08a"))
+	_layout_hud_text()
+	get_viewport().size_changed.connect(_layout_hud_text)
 	var crosshair := Label.new()
 	crosshair.text = "+"
 	crosshair.add_theme_font_size_override("font_size", 26)
