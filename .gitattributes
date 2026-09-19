@@ -8,3 +8,8 @@
 *.godot text eol=lf
 *.yml text eol=lf
 *.png binary
+*.import text eol=lf
+*.cfg text eol=lf
+*.uid text eol=lf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
