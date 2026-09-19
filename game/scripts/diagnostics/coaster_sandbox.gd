@@ -29,6 +29,16 @@ func run(application: CraftAndDefendApp) -> void:
 	_lay_demo()
 	app.session.navigation_changed.emit("COASTER SANDBOX  ·  infinite stock  ·  loop ahead, slope run to the right")
 	print("COASTER_SANDBOX_READY")
+	if OS.get_cmdline_user_args().has("--coaster-sandbox-shot"):
+		var player := app.session.player
+		player.global_position = Vector3(2.0, 6.0, 46.0)
+		player.look_at(Vector3(-2.0, 2.0, 31.0), Vector3.UP)
+		player.camera.rotation.x = -0.15
+		for _frame in range(150):
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(app.data_root.path_join("sandbox.png"))
+		get_tree().quit(0)
 
 
 func _process(delta: float) -> void:
