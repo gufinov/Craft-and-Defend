@@ -27,6 +27,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P4a-2 weapon and chest panels](P4A2_WEAPON_AND_CHEST_PANELS.md)
 - [P4C siege units (cannon, turret catapult, kettle on rails, ballista remodel) and wave drills](P4C_SIEGE_UNITS_AND_WAVES.md)
 - [P4F enemy units: orc melee and troll ranged](P4F_ENEMY_UNITS.md)
+- [P4E the big world, the enemy base and far attacks](P4E_WORLD_AND_ENEMY_BASE.md)
 - [P4G Core of Power and light sources (asset attribute sheet)](P4G_CORE_AND_LIGHTS.md)
 - [P4b resource distribution and gold](P4B_RESOURCE_DISTRIBUTION.md)
 - [Balance, ecology and siege systems](BALANCE_ECOLOGY_AND_SIEGE_SYSTEMS.md)

@@ -1,4 +1,27 @@
-# Current checkpoint — 2026-09-19 (owner playtest round 1 fixes + owner-art machines + enemy units)
+# Current checkpoint — 2026-09-19 (round 2: big world, enemy base, Core of Power, lights, pathing)
+
+**STATUS:** **ROUND-2 BUILD — CANDIDATE PASS ON THE EXPORT (PCK `c4e4fea6…`, branch `feature/p3d-tools-world-feedback`, pushed); OWNER RE-PLAYTEST PENDING; NOT MERGED TO `main`.**
+
+**DONE (newest first):**
+- **Core of Power wired to the drill** (`9fa59f1`): the drill defends the placed blue core (240 integrity, hits land on the station, destruction = loss); new games start with one in the pack; the red enemy core is placed at the enemy base when you reach it; compass shows the enemy base bearing. T152.
+- **P4G Core of Power + light sources** (merged `2fce93f`, subagent): entities with full attribute sheets (value, role, footprint, mount, cost, integrity, light) — Core of Power, enemy core, torch, wall lantern, post lantern, campfire, blue/red light blocks; icons from the owner's renders; lights never go out (torch/campfire flicker). T148–T150, `TEST_P4_ASSETS.cmd`. See [P4G](P4G_CORE_AND_LIGHTS.md).
+- **Far attacks** (`P4E`, commits `1b25e8c`…): waves march from the enemy base 150–200 cells away over a surface route, ghost-walking unloaded ground, and hand over to the local planner near the core; pause menu **Start Attack from the Enemy Base (far)** and **Start Drill (NEAR)**. T151.
+- **The big world** (`1b25e8c`): 320×48×384, random seed per new game, mountains, lakes (walk-through water), richer ore and ore on the ground, enemy base clearing. See [P4E](P4E_WORLD_AND_ENEMY_BASE.md).
+- **Pathing** (`508f066`): raiders never shove each other (layer 4), re-plan when stuck (1.6 s watchdog), random wave spread.
+
+**EXPECT:** New game → a fresh world each time, lakes and distant mountains, coal/iron visible on the ground, Core of Power in slot 1. Place it on a slab; pause → **Start Attack from the Enemy Base (far)**: the HUD counts the wave marching in ("lead 140 m out"); build while they come. Raiders no longer huddle or freeze; a stuck raider re-routes within two seconds. Torches/lanterns/campfires light the night and never burn out.
+
+**TEST:** Static PASS (190 links; 60/60). Exported PCK `c4e4fea6…` (EXE `4ac12872…`): all twelve runners PASS — `TEST_P4_SIEGE_UNITS` (T130–T136, T141–T143, T147, T151, T152), `TEST_P4_ASSETS` (T148–T150), `TEST_P4_ENEMY_UNITS`, `TEST_P4_WEAPON_PANEL`, `TEST_P4_RESOURCES`, `TEST_P3C`, `TEST_P3G`, `TEST_P3D`, `TEST_P3F`, `TEST_P3K`, `TEST_P3E`, `TEST_P3H`. Editor gates F0, F1, F2, F3, P1, P2, P3, P3B (all modes), castle kit PASS. Owner playtest NOT RUN.
+
+**LIMITATIONS/FAILURES:** Water is walk-through (no swimming). Trolls shoot through walls. The enemy base is just the red core on a clearing (no camp, no patrols); attacking it is not yet a win condition. The march ignores player structures until it is 20 cells from the core. Torch/wall lantern mount on top of blocks only (no side mounting yet). Diagnostic fixtures use the fixed seed 41026 and an empty starting pack.
+
+**NEXT:** Owner re-playtest (checklist in the session report) and tuning; then swimming, line of sight, enemy camp props/patrols, win by destroying the enemy core, side-mounted lights, traps (owner's next asset batch).
+
+**GIT/REPRODUCIBILITY:** Worktree `D:\CODEX\Craft_and_Defend\worktrees\p3d-tools-world-feedback`, branch `feature/p3d-tools-world-feedback`, pushed; `feature/p4-core-and-lights` (`e8ffeb5`) merged. Engine `4.6.stable.custom_build.89cea1439`; EXE SHA-256 `4ac128729e86108904e6d038d161322404d42d71892b1cc0dca751039aa7e4b2`; PCK SHA-256 `c4e4fea677c796b55f49bd9696f98c8ca40e5c80a13e08a91244248c6407382b`. Evidence roots `artifacts/manual-p4-siege-units-2898630241`, `manual-p4-assets-2902528150`, `manual-p4-enemy-units-2904427105`, `manual-p4-weapon-panel-2906115311`, `manual-p4-resources-2907425536`, `manual-p3c-player-defense-2908014265`, `manual-p3g-furnace-2910323968`, `manual-p3d-usability-291161426`, `manual-p3f-presentation-2913322400`, `manual-p3k-blueprints-2915221354`, `manual-p3e-furnace-2916531580`, `manual-p3h-balance-2918219786`.
+
+---
+
+## Previous checkpoint — 2026-09-19 (owner playtest round 1 fixes + owner-art machines + enemy units)
 
 **STATUS:** **PLAYTEST ROUND-1 CORRECTIONS, OWNER-ART MACHINES, ORC/TROLL UNITS — CANDIDATE PASS ON THE EXPORT (PCK `fd2b7b0f…`, branch `feature/p3d-tools-world-feedback`, pushed); OWNER RE-PLAYTEST PENDING; NOT MERGED TO `main`.**
 
