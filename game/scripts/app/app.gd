@@ -276,6 +276,11 @@ func _ready() -> void:
 		var p4_enemy_units_automation := P4EnemyUnitsAutomation.new()
 		add_child(p4_enemy_units_automation)
 		p4_enemy_units_automation.call_deferred("run", self, p4_enemy_units_mode)
+	var p4_assets_mode := _argument_value("--p4-assets-automation=")
+	if not p4_assets_mode.is_empty():
+		var p4_assets_automation := P4AssetsAutomation.new()
+		add_child(p4_assets_automation)
+		p4_assets_automation.call_deferred("run", self, p4_assets_mode)
 	var p4_resources_mode := _argument_value("--p4-resources-automation=")
 	if not p4_resources_mode.is_empty():
 		var p4_resources_automation := P4ResourcesAutomation.new()

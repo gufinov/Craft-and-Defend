@@ -11,6 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 REPORT_SHA = "f238c37f3f9509b2a152e632503b7a4e16ab8fd4377dcc32122717e30c13cebd"
 ITEM_CATEGORIES = {"resource", "building", "tool", "station", "food"}
 NAVIGATION_SCENARIOS = {"corridor_detour", "trench", "two_step_stair", "bridge_removal", "two_cell_tunnel", "capability_blocked_wall"}
+# P4G asset attribute sheet (docs/P4G_CORE_AND_LIGHTS.md): every core and light
+# source carries a value, a role, its light, its mounting rule and its space.
+ATTRIBUTE_ENTITIES = {"core_of_power", "enemy_core", "torch", "wall_lantern", "post_lantern", "campfire", "light_block_blue", "light_block_red"}
+ATTRIBUTE_ROLES = {"core", "light", "decor"}
+ATTRIBUTE_MOUNTS = {"ground", "wall", "ceiling", "any_solid_top", "block"}
 
 
 class ValidationError(ValueError):
@@ -118,6 +123,33 @@ def reachable_items(content, world):
     return available
 
 
+def validate_attributes(entity):
+    """Asset attribute block: value, role, light (or null), mount, space, notes."""
+    attributes = entity.get("attributes")
+    label = entity["id"]
+    require(isinstance(attributes, dict), f"missing attributes: {label}")
+    require(set(attributes) == {"value", "role", "light", "mount", "space", "notes"}, f"attributes must hold exactly value/role/light/mount/space/notes: {label}")
+    require(integer(attributes["value"], 0), f"invalid attribute value: {label}")
+    require(attributes["role"] in ATTRIBUTE_ROLES, f"invalid attribute role: {label}")
+    require(attributes["mount"] in ATTRIBUTE_MOUNTS, f"invalid attribute mount: {label}")
+    require(vector(attributes["space"], positive=True), f"invalid attribute space: {label}")
+    require(isinstance(attributes["notes"], str) and attributes["notes"].strip(), f"attribute notes required: {label}")
+    light = attributes["light"]
+    if light is not None:
+        require(isinstance(light, dict) and set(light) == {"color", "energy", "range", "flicker"}, f"light must hold color/energy/range/flicker: {label}")
+        require(isinstance(light["color"], str) and re.fullmatch(r"[a-fA-F0-9]{6}", light["color"]), f"invalid light color: {label}")
+        require(all(type(light[k]) in (int, float) and not isinstance(light[k], bool) and light[k] > 0 for k in ("energy", "range")), f"invalid light energy/range: {label}")
+        require(type(light["flicker"]) is bool, f"light flicker must be bool: {label}")
+    occupied = entity["occupied_offsets"]
+    extent = [max(v[axis] for v in occupied) - min(v[axis] for v in occupied) + 1 for axis in range(3)]
+    require(attributes["space"] == extent, f"attribute space {attributes['space']} differs from the occupied extent {extent}: {label}")
+    if attributes["role"] == "core":
+        require(attributes["mount"] == "ground" and entity.get("mount", {}).get("allowed") == ["ground"], f"a core mounts on the ground only: {label}")
+    if attributes["role"] in ("core", "light"):
+        require(light is not None, f"cores and lights must carry a light: {label}")
+        require(isinstance(entity.get("defense"), dict) and isinstance(entity.get("navigation"), dict), f"cores and lights need defense and navigation blocks: {label}")
+
+
 def validate_ores(ores, blocks, world):
     """Ore distribution table: see docs/P4B_RESOURCE_DISTRIBUTION.md.
 
@@ -198,6 +230,10 @@ def validate_bundle(bundle):
             require(item["places_entity"] in entities, "unknown placeable entity")
         if "pick_tier" in item:
             require(integer(item["pick_tier"], 1) and item["max_stack"] == 1, "invalid tool")
+        if "hidden" in item:
+            # Hidden items never appear in a recipe book: no recipe may produce them.
+            require(item["hidden"] is True, "hidden must be true when present")
+            require(not any(item["id"] in recipe.get("outputs", {}) for recipe in content["recipes"]), f"hidden item cannot be a recipe output: {item['id']}")
         if "tool_kind" in item:
             require(item["tool_kind"] == "axe" and item["max_stack"] == 1, "invalid specialized tool")
         weapon = item.get("weapon")
@@ -261,6 +297,16 @@ def validate_bundle(bundle):
                         and entity.get("mount", {}).get("allowed") == ["rail_mount"], "invalid rail weapon")
         if entity.get("container_slots") is not None:
             require(integer(entity["container_slots"], 1) and entity.get("station_type") == "chest", "invalid container entity")
+        defense = entity.get("defense")
+        if defense is not None:
+            navigation = entity.get("navigation", {})
+            require(isinstance(defense, dict) and integer(defense.get("max_integrity"), 1)
+                    and defense.get("repair_item") in items and integer(defense.get("repair_amount"), 1)
+                    and isinstance(navigation, dict) and navigation.get("integrity") == defense["max_integrity"]
+                    and isinstance(navigation.get("material_tags"), list) and navigation["material_tags"]
+                    and all(isinstance(tag, str) and tag for tag in navigation["material_tags"]), "invalid defense definition")
+        if entity["id"] in ATTRIBUTE_ENTITIES or "attributes" in entity:
+            validate_attributes(entity)
     for munition_id, munition in content.get("munitions", {}).items():
         require(munition_id in items and munition.get("effect") in ("impact", "fire")
                 and integer(munition.get("damage"), 0)

@@ -29,6 +29,9 @@ COLUMNS = 6
 DERIVED = [
     "flame_shot", "chest", "cannon", "cannonball", "turret_catapult", "hot_oil",
     "kettle", "rail", "turret_catapult_mk2", "wood_axe_flipped",
+    # P4G core and light sources (owner art, 2026-09-19).
+    "core_of_power", "enemy_core", "torch", "wall_lantern", "post_lantern", "campfire",
+    "light_block_blue", "light_block_red",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -39,15 +42,59 @@ OWNER_ICONS = {
     "kettle": "kettle_on_rails.webp",
     "rail": "rail_block.webp",
     "turret_catapult_mk2": "turret_catapult.webp",
+    "core_of_power": "core_of_power_blue.webp",
+    "enemy_core": "enemy_core_red.webp",
+    "torch": "torch.webp",
+    "wall_lantern": "wall_lantern.webp",
+    "post_lantern": "post_lantern.webp",
+    "campfire": "campfire.webp",
+    "light_block_blue": "light_block_blue.webp",
+    "light_block_red": "light_block_red.webp",
 }
+# Renders delivered on an opaque black backdrop: the backdrop is keyed out by a
+# flood fill from the corners (dark iron inside the object is not connected to
+# the corners, so it survives) with a soft edge for glow halos.
+BLACK_KEY_THRESHOLD = 34
+BLACK_KEY_FEATHER = 96
+
+
+def key_black_backdrop(art: Image.Image) -> Image.Image:
+    """Return ``art`` with its connected black backdrop made transparent.
+
+    Only used when the render has no transparency at all. The corner flood
+    fill marks the backdrop; pixels of the backdrop region keep an alpha
+    proportional to their brightness so glow halos fade out instead of
+    ending in a hard black fringe.
+    """
+    alpha = art.split()[3]
+    if alpha.getextrema()[0] < 255:
+        return art
+    marker = art.convert("RGB")
+    key = (255, 0, 255)
+    width, height = marker.size
+    for corner in ((0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)):
+        if marker.getpixel(corner) != key:
+            ImageDraw.floodfill(marker, corner, key, thresh=BLACK_KEY_THRESHOLD)
+    source = art.load()
+    marked = marker.load()
+    keyed = art.copy()
+    target = keyed.load()
+    for y in range(height):
+        for x in range(width):
+            if marked[x, y] != key:
+                continue
+            r, g, b, _a = source[x, y]
+            brightness = max(r, g, b)
+            target[x, y] = (r, g, b, min(255, brightness * 255 // BLACK_KEY_FEATHER))
+    return keyed
 
 
 def owner_icon(item_id: str) -> Image.Image | None:
     path = OWNER_ART / OWNER_ICONS.get(item_id, "")
     if not OWNER_ICONS.get(item_id) or not path.exists():
         return None
-    art = Image.open(path).convert("RGBA")
-    art = art.crop(art.getbbox())
+    art = key_black_backdrop(Image.open(path).convert("RGBA"))
+    art = art.crop(art.split()[3].point(lambda v: 255 if v > 24 else 0).getbbox())
     art = fit(art, 236)
     canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
     canvas.alpha_composite(art, ((CELL - art.width) // 2, (CELL - art.height) // 2))
@@ -177,6 +224,10 @@ BUILDERS = {
     "flame_shot": icon_flame_shot, "chest": icon_chest, "cannon": icon_cannon, "cannonball": icon_cannonball,
     "turret_catapult": icon_turret_catapult, "hot_oil": icon_hot_oil, "kettle": icon_kettle, "rail": icon_rail,
     "turret_catapult_mk2": lambda: owner_icon("turret_catapult_mk2"), "wood_axe_flipped": icon_wood_axe_flipped,
+    "core_of_power": lambda: owner_icon("core_of_power"), "enemy_core": lambda: owner_icon("enemy_core"),
+    "torch": lambda: owner_icon("torch"), "wall_lantern": lambda: owner_icon("wall_lantern"),
+    "post_lantern": lambda: owner_icon("post_lantern"), "campfire": lambda: owner_icon("campfire"),
+    "light_block_blue": lambda: owner_icon("light_block_blue"), "light_block_red": lambda: owner_icon("light_block_red"),
 }
 
 

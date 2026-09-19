@@ -100,14 +100,33 @@ func recipe(recipe_id: String) -> Dictionary:
 	return recipes.get(recipe_id, {}).duplicate(true)
 
 
+## Recipes shown for a station. Recipes whose outputs are hidden items (P4G:
+## the enemy core) never reach a recipe book, whatever their station.
 func recipes_for(station: String) -> Array[Dictionary]:
 	var matches: Array[Dictionary] = []
 	for recipe_id: String in recipes:
 		var definition: Dictionary = recipes[recipe_id]
-		if str(definition.get("station", "")) == station:
+		if str(definition.get("station", "")) != station:
+			continue
+		var outputs: Dictionary = definition.get("outputs", {})
+		var hidden := false
+		for output_id: Variant in outputs.keys():
+			hidden = hidden or is_hidden_item(str(output_id))
+		if not hidden:
 			matches.append(definition.duplicate(true))
 	matches.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return str(a.id) < str(b.id))
 	return matches
+
+
+## Hidden items exist for placement only (the game places them); no menu lists them.
+func is_hidden_item(item_id: String) -> bool:
+	return bool(items.get(item_id, {}).get("hidden", false))
+
+
+## P4G asset attributes ({} when the entity carries none).
+func entity_attributes(entity_id: String) -> Dictionary:
+	var attributes: Variant = entities.get(entity_id, {}).get("attributes", {})
+	return attributes.duplicate(true) if attributes is Dictionary else {}
 
 
 func max_stack(item_id: String) -> int:
