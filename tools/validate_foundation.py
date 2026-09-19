@@ -259,6 +259,7 @@ def validate_bundle(bundle):
                               and numeric_vector(part.get("offset", []))
                               and numeric_vector(part.get("size", []), positive=True)
                               for part in parts), "invalid entity visual")
+        require("linear" not in entity or (entity["linear"] is True and len(entity["occupied_offsets"]) == 1), "linear entities are 1x1")
         station_type = entity.get("station_type")
         require(station_type is None or station_type == entity["id"] or station_type == "siege" and entity.get("siege") is not None, "invalid station type")
         socket_ids = set()

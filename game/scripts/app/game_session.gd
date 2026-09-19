@@ -183,6 +183,7 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	world.spawn_area_ready.connect(_on_spawn_area_ready)
 	if settings_view_distance > 0:
 		world.set_view_distance(settings_view_distance)
+	world.attach_viewer(player.camera)
 	world.status_changed.connect(status_changed.emit)
 	inventory.changed.connect(_on_inventory_changed)
 	interaction.result_reported.connect(_on_interaction_result)

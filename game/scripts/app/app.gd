@@ -122,6 +122,10 @@ var _crafting_station_id := ""
 var _crafting_station_type := "hand"
 var _selected_recipe_id := ""
 var _craft_grid_items: Array[String] = []
+## Red placeholders (owner 2026-09-19): when a recipe is clicked with some
+## ingredients missing, the missing ones sit in the grid as ghosts keyed by
+## cell index so the player sees exactly what to gather.
+var _craft_grid_ghosts: Dictionary = {}
 var _crafting_selected_inventory_item := ""
 var _crafting_recipe_page := 0
 var _inventory_move_source := -1
@@ -1373,6 +1377,7 @@ func _show_crafting(station_id: String = "", station_type: String = "hand") -> v
 	_crafting_station_type = station_type if station_type in CRAFTING_STATION_TYPES else "hand"
 	_selected_recipe_id = ""
 	_craft_grid_items.clear()
+	_craft_grid_ghosts.clear()
 	_crafting_selected_inventory_item = ""
 	_crafting_recipe_page = 0
 	crafting_recipe_search.clear()
@@ -1726,6 +1731,22 @@ func _refresh_crafting_panel() -> void:
 			cell.configure_target("furnace", index)
 		else:
 			cell.tooltip_text = "Drop an inventory item here" if item_id.is_empty() else "Drag to another cell or click to clear"
+			if item_id.is_empty() and _craft_grid_ghosts.has(index):
+				# Red placeholder for a missing ingredient.
+				var ghost_id := str(_craft_grid_ghosts[index])
+				cell.add_theme_stylebox_override("normal", FoundationTheme.panel(Color("2a1014"), Color("c8404a"), 5, 7))
+				cell.modulate = Color(1.0, 0.62, 0.62)
+				cell.tooltip_text = "Missing ingredient — gather %s" % session.registry.display_name(ghost_id)
+				cell.configure_source("grid", index, ghost_id)
+				cell.configure_target("grid", index)
+				cell.set_presentation("MISSING %s" % session.registry.display_name(ghost_id), 0)
+				cell.set_cursor_active(not str(session.inventory.cursor_stack.get("item_id", "")).is_empty())
+				cell.item_dropped.connect(_on_crafting_item_dropped)
+				cell.stack_gesture.connect(_on_crafting_stack_gesture)
+				cell.pressed.connect(_on_crafting_grid_slot_pressed.bind(index))
+				crafting_grid_slots.append(cell)
+				crafting_grid.add_child(cell)
+				continue
 			cell.configure_source("grid", index, item_id)
 			cell.configure_target("grid", index)
 		cell.set_presentation(empty_label if item_id.is_empty() else session.registry.display_name(item_id), item_count)
@@ -2143,11 +2164,15 @@ func _select_crafting_recipe(recipe_id: String) -> void:
 		crafting_message.text = "%s loaded into the Furnace input and fuel slots." % session.registry.display_name(recipe_id) if loaded.get("ok", false) else _craft_reason_text(str(loaded.get("reason", "INSUFFICIENT_INPUT")), str(loaded.get("item_id", "")))
 		_refresh_crafting_panel()
 		return
-	if _fill_grid_from_recipe(recipe):
+	var filled := _fill_grid_from_recipe(recipe)
+	if filled.get("complete", false):
 		crafting_message.text = "%s loaded from available inventory." % session.registry.display_name(recipe_id)
 	else:
-		var status := _recipe_status(recipe)
-		crafting_message.text = _craft_reason_text(str(status.get("reason", "INSUFFICIENT_INPUT")), str(status.get("item_id", "")))
+		var missing: Dictionary = filled.get("missing", {})
+		var parts: PackedStringArray = PackedStringArray()
+		for item_id: String in missing:
+			parts.append("%d %s" % [int(missing[item_id]), session.registry.display_name(item_id)])
+		crafting_message.text = "Missing %s — shown in red in the grid." % ", ".join(parts) if not parts.is_empty() else _craft_reason_text(str(_recipe_status(recipe).get("reason", "INSUFFICIENT_INPUT")))
 	_refresh_crafting_panel()
 
 
@@ -2191,7 +2216,7 @@ func _craft_selected_recipe_batches(batches: int) -> void:
 		crafting_message.text = "%s crafted%s." % [session.registry.display_name(_selected_recipe_id), " × %d batches" % batches if batches > 1 else ""]
 	else:
 		crafting_message.text = _craft_reason_text(str(result.get("reason", "CRAFT_FAILED")), str(result.get("item_id", "")))
-	if result.get("ok", false) and _crafting_station_type != "furnace" and not _fill_grid_from_recipe(recipe):
+	if result.get("ok", false) and _crafting_station_type != "furnace" and not bool(_fill_grid_from_recipe(recipe).get("complete", false)):
 		_clear_crafting_grid(false, false)
 	_refresh_crafting_panel()
 
@@ -2222,6 +2247,7 @@ func _ensure_crafting_grid_capacity(capacity: int) -> void:
 	if _craft_grid_items.size() == capacity:
 		return
 	_craft_grid_items.clear()
+	_craft_grid_ghosts.clear()
 	for _index in range(capacity):
 		_craft_grid_items.append("")
 
@@ -2461,6 +2487,7 @@ func _clear_crafting_grid(refresh: bool = true, announce: bool = true) -> void:
 
 
 func _after_manual_grid_change() -> void:
+	_craft_grid_ghosts.clear()
 	_selected_recipe_id = ""
 	for recipe in _available_crafting_recipes():
 		if _grid_matches_recipe(recipe):
@@ -2495,27 +2522,35 @@ func _recognize_furnace_recipe() -> void:
 	_selected_recipe_id = inferred
 
 
-func _fill_grid_from_recipe(recipe: Dictionary) -> bool:
+## Stages a recipe: carried ingredients go into the grid, the ones the pack
+## lacks become red ghosts. Returns {complete, missing: {item: count}}.
+func _fill_grid_from_recipe(recipe: Dictionary) -> Dictionary:
 	if recipe.is_empty():
-		return false
+		return {"complete": false, "missing": {}}
 	if str(recipe.get("station", "")) == "furnace":
-		return session.load_furnace_recipe(_crafting_station_id, str(recipe.id)).get("ok", false)
-	for item_id: String in recipe.inputs:
-		if session.inventory.count(item_id) < int(recipe.inputs[item_id]):
-			return false
+		return {"complete": bool(session.load_furnace_recipe(_crafting_station_id, str(recipe.id)).get("ok", false)), "missing": {}}
 	var input_cells: Array[String] = []
-	var input_ids: Array = recipe.inputs.keys()
-	if str(recipe.get("station", "")) == "furnace":
-		input_ids.sort_custom(func(a: Variant, b: Variant) -> bool: return str(a) != "coal" and str(b) == "coal")
-	for raw_item_id in input_ids:
+	var ghost_cells: Array[bool] = []
+	var missing: Dictionary = {}
+	for raw_item_id in recipe.inputs.keys():
 		var item_id := str(raw_item_id)
-		for _count in range(int(recipe.inputs[item_id])):
+		var available := session.inventory.count(item_id)
+		for count in range(int(recipe.inputs[item_id])):
 			input_cells.append(item_id)
+			var ghost := count >= available
+			ghost_cells.append(ghost)
+			if ghost:
+				missing[item_id] = int(missing.get(item_id, 0)) + 1
 	if input_cells.size() > _craft_grid_items.size():
-		return false
+		return {"complete": false, "missing": missing}
+	_craft_grid_ghosts.clear()
 	for index in range(_craft_grid_items.size()):
-		_craft_grid_items[index] = input_cells[index] if index < input_cells.size() else ""
-	return true
+		if index < input_cells.size() and ghost_cells[index]:
+			_craft_grid_items[index] = ""
+			_craft_grid_ghosts[index] = input_cells[index]
+		else:
+			_craft_grid_items[index] = input_cells[index] if index < input_cells.size() else ""
+	return {"complete": missing.is_empty(), "missing": missing}
 
 
 func _grid_matches_recipe(recipe: Dictionary) -> bool:
@@ -2590,7 +2625,10 @@ func _add_recipe_card(recipe: Dictionary, status: Dictionary, selected: bool) ->
 	var card := RecipeCatalogCard.new()
 	card.pressed.connect(_select_crafting_recipe.bind(str(recipe.id)))
 	card.gui_input.connect(_on_crafting_recipe_book_gui_input.bind(card))
-	card.configure(recipe, session.registry.display_name(str(recipe.id)), bool(status.get("ok", false)), selected, _recipe_button_text(recipe, status) + "\nClick to stage this recipe", str(status.get("reason", "")))
+	# Owner 2026-09-19: no ingredient hover; a click stages the recipe with red
+	# placeholders for whatever is missing.
+	var hover := "%s · %s" % [session.registry.display_name(str(recipe.id)), "READY" if status.get("ok", false) else _craft_reason_text(str(status.get("reason", "UNAVAILABLE")), str(status.get("item_id", ""))).to_upper()]
+	card.configure(recipe, session.registry.display_name(str(recipe.id)), bool(status.get("ok", false)), selected, hover, str(status.get("reason", "")))
 	crafting_recipe_list.add_child(card)
 
 

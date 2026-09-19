@@ -316,6 +316,13 @@ func _advance_extras(delta: float) -> void:
 		if phase == "attacking_core":
 			_extra_attacks_core(entry)
 		elif phase == "attacking_structure":
+			if is_instance_valid(entry.node):
+				entry.node.play_attack()
+			if str(entry.target_type) == "voxel":
+				var stone_damage: int = int(entry.damage) if str(entry.kind) == BasicRaider.KIND_BRUTE else maxi(1, int(entry.damage) / 3)
+				if _hit_voxel(entry.target_cell, stone_damage):
+					_plan_extra(entry)
+				continue
 			var result := workstations.try_damage(str(entry.target_id), int(entry.damage))
 			if not result.get("ok", false) or result.get("reason") == "DESTROYED":
 				_plan_extra(entry)
@@ -767,7 +774,7 @@ func _begin_attack() -> void:
 		elif trolls_left > 0:
 			kind = BasicRaider.KIND_TROLL
 			trolls_left -= 1
-		var offset := _wave_offset(index)
+		var offset := _wave_offset(index, kind)
 		var column := _start_cell() + Vector3i(int(offset.x), 0, int(offset.z))
 		var surface := _surface_cell(column) if spawn_distance > SPAWN_DISTANCE else column
 		var spawn_cell := surface if surface != Vector3i.MAX else _start_cell()
@@ -801,7 +808,7 @@ func _begin_far_attack() -> void:
 		elif trolls_left > 0:
 			kind = BasicRaider.KIND_TROLL
 			trolls_left -= 1
-		var offset := _wave_offset(index)
+		var offset := _wave_offset(index, kind)
 		var column := Vector2i(base.x + int(offset.x), base.z + int(offset.z))
 		var spawn_cell := Vector3i(column.x, generator.surface_height(column.x, column.y) + 1, column.y)
 		var entry := _spawn_extra_raider(Vector3(spawn_cell) + Vector3(0.5, 0.9, 0.5), kind)
@@ -849,9 +856,15 @@ func _terrain_generator() -> P1TerrainGenerator:
 ## Spread the wave across the spawn line: a seeded random lateral spread of
 ## up to WAVE_SPREAD cells and up to three rows back, so no two drills line
 ## up the same way (owner playtest 2026-09-19: identical huddles every run).
-func _wave_offset(index: int) -> Vector3:
+func _wave_offset(index: int, kind: String = BasicRaider.KIND_RAIDER) -> Vector3:
 	var lateral := _wave_rng.randi_range(-WAVE_SPREAD, WAVE_SPREAD)
-	var back := -_wave_rng.randi_range(0, mini(3, 1 + index / 3))
+	# Loose formation: orcs lead, brutes hold the middle, trolls hang back.
+	var row_base := 0
+	if kind == BasicRaider.KIND_BRUTE:
+		row_base = 2
+	elif kind == BasicRaider.KIND_TROLL:
+		row_base = 4
+	var back := -(row_base + _wave_rng.randi_range(0, 1) + index / 4)
 	return Vector3(float(lateral), 0.0, float(back))
 
 
@@ -925,7 +938,7 @@ func _plan_extra(entry: Dictionary) -> void:
 		return
 	var start := node.feet_cell()
 	var capability := _basic_raider_capability()
-	capability["damage_per_hit"] = {"breachable_wood": int(entry.damage)}
+	capability["damage_per_hit"] = {"breachable_wood": int(entry.damage), "fortification": int(entry.damage) if str(entry.kind) == BasicRaider.KIND_BRUTE else maxi(1, int(entry.damage) / 3)}
 	var planner := LocalGridPathfinder.new()
 	var plan := planner.plan_next(navigation_snapshot, start, _core_approach_cell(start), capability)
 	entry.route_reason = str(plan.get("reason", "NO_ROUTE"))
@@ -939,14 +952,15 @@ func _plan_extra(entry: Dictionary) -> void:
 	if entry.route_reason == "ATTACK_OBSTRUCTION":
 		var action: Dictionary = plan.get("action", {})
 		var instance_id := str(action.get("source_id", ""))
-		if str(action.get("source", "")) != "entity" or not workstations.defense_status(instance_id).get("ok", false):
+		var voxel_breach := str(action.get("source", "")) == "voxel"
+		if not voxel_breach and (str(action.get("source", "")) != "entity" or not workstations.defense_status(instance_id).get("ok", false)):
 			_stall_extra(entry)
 			return
 		var route := planner.find_route(navigation_snapshot, start, action.get("from", start), capability)
 		if not route.get("ok", false):
 			_stall_extra(entry)
 			return
-		entry.target_type = "structure"
+		entry.target_type = "voxel" if voxel_breach else "structure"
 		entry.target_id = instance_id
 		entry.target_cell = action.get("cell", Vector3i.ZERO)
 		node.set_route(route.get("path", []))
@@ -977,6 +991,8 @@ func _on_extra_route_finished(node: BasicRaider) -> void:
 		if str(entry.target_type) == "core":
 			entry.phase = "attacking_core"
 		elif str(entry.target_type) == "structure" and workstations.defense_status(str(entry.target_id)).get("ok", false):
+			entry.phase = "attacking_structure"
+		elif str(entry.target_type) == "voxel":
 			entry.phase = "attacking_structure"
 		else:
 			_plan_extra(entry)
@@ -1019,7 +1035,8 @@ func _plan_from_raider() -> void:
 	if last_route_reason == "ATTACK_OBSTRUCTION":
 		var action: Dictionary = plan.get("action", {})
 		var instance_id := str(action.get("source_id", ""))
-		if str(action.get("source", "")) != "entity" or not workstations.defense_status(instance_id).get("ok", false):
+		var voxel_breach := str(action.get("source", "")) == "voxel"
+		if not voxel_breach and (str(action.get("source", "")) != "entity" or not workstations.defense_status(instance_id).get("ok", false)):
 			_stall("NO_PERMITTED_BREACH")
 			return
 		var approach: Vector3i = action.get("from", start)
@@ -1027,7 +1044,7 @@ func _plan_from_raider() -> void:
 		if not route.get("ok", false):
 			_stall("NO_APPROACH_ROUTE")
 			return
-		active_target_type = "structure"
+		active_target_type = "voxel" if voxel_breach else "structure"
 		active_target_id = instance_id
 		active_target_cell = action.get("cell", Vector3i.ZERO)
 		state = ROUTING
@@ -1077,6 +1094,9 @@ func _on_raider_route_finished() -> void:
 	elif active_target_type == "structure" and workstations.defense_status(active_target_id).get("ok", false):
 		state = ATTACKING_STRUCTURE
 		feedback.emit("No open route remains. Raider is breaching one permitted wooden barricade.")
+	elif active_target_type == "voxel":
+		state = ATTACKING_STRUCTURE
+		feedback.emit("No way through. Raider is breaking down your wall.")
 	else:
 		_queue_replan()
 	_emit_state()
@@ -1085,6 +1105,12 @@ func _on_raider_route_finished() -> void:
 func _attack_structure() -> void:
 	if is_instance_valid(raider):
 		raider.play_attack()
+	if active_target_type == "voxel":
+		if _hit_voxel(active_target_cell, maxi(1, raider_damage / 3)):
+			feedback.emit("Your wall was breached. The raider is replanning toward the core.")
+			_queue_replan()
+		_emit_state()
+		return
 	var result := workstations.try_damage(active_target_id, raider_damage)
 	if not result.get("ok", false):
 		_queue_replan()
@@ -1112,8 +1138,31 @@ func _attack_core() -> void:
 	_emit_state()
 
 
+## Raiders breach wood at full damage and, when no other way exists, chew
+## through player-built stone slowly (owner 2026-09-19: "if no way exists,
+## break it down"). Brutes hit stone at full strength.
 func _basic_raider_capability() -> Dictionary:
-	return {"max_step_up": 1, "max_drop_down": 1, "damage_per_hit": {"breachable_wood": raider_damage}}
+	return {"max_step_up": 1, "max_drop_down": 1, "damage_per_hit": {"breachable_wood": raider_damage, "fortification": maxi(1, raider_damage / 3)}}
+
+
+## Damage taken by a breached voxel accumulates here until it breaks:
+## cell -> damage so far (voxels carry no integrity of their own).
+var _voxel_damage: Dictionary = {}
+
+
+## Hits a voxel obstruction (castle stone etc.): the cell breaks once its
+## navigation integrity is spent. Returns true when it broke.
+func _hit_voxel(cell: Vector3i, damage: int) -> bool:
+	var data := _query_navigation_cell(cell)
+	if not bool(data.get("solid", false)) or bool(data.get("protected", false)) or str(data.get("source", "")) != "voxel":
+		return true
+	var total := int(_voxel_damage.get(cell, 0)) + damage
+	if total >= int(data.get("integrity", 60)):
+		_voxel_damage.erase(cell)
+		world.set_cell(cell, 0)
+		return true
+	_voxel_damage[cell] = total
+	return false
 
 
 func _capture_navigation() -> void:

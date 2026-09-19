@@ -34,6 +34,8 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		return _result(false, "UNKNOWN_ENTITY")
 	if inventory.count(entity_id) < 1:
 		return _result(false, "NO_RESOURCE")
+	if bool(definition.get("linear", false)):
+		rotation_quarters = _aligned_rotation(entity_id, anchor, rotation_quarters)
 	var mount_result := _validate_mount(definition, anchor, rotation_quarters, world_query)
 	if not mount_result.get("ok", false):
 		return mount_result
@@ -1239,6 +1241,20 @@ func _vector_list(values: Array) -> Array:
 		if value is Array and value.size() == 3:
 			vectors.append(Vector3i(int(value[0]), int(value[1]), int(value[2])))
 	return vectors
+
+
+## Linear pieces (rails, walkway slabs, merlons) turn to follow a neighbour
+## of the same kind: a piece beside one along x lies along x, else along z.
+func _aligned_rotation(entity_id: String, anchor: Vector3i, requested: int) -> int:
+	for offset in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0)]:
+		var neighbour := station_at_cell(anchor + offset)
+		if not neighbour.is_empty() and str(stations[neighbour].get("entity_id", "")) == entity_id:
+			return 1
+	for offset in [Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+		var neighbour := station_at_cell(anchor + offset)
+		if not neighbour.is_empty() and str(stations[neighbour].get("entity_id", "")) == entity_id:
+			return 0
+	return requested
 
 
 func _validate_mount(definition: Dictionary, anchor: Vector3i, rotation_quarters: int, world_query: Callable) -> Dictionary:

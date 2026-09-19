@@ -41,10 +41,30 @@ var world_seed := DEFAULT_WORLD_SEED
 var view_distance := 128
 
 
+## Streaming follows a VoxelViewer; without one the terrain only loads around
+## the origin with the engine default (the "invisible horizon" the owner saw).
+var viewer: VoxelViewer
+
+
 func set_view_distance(blocks: int) -> void:
 	view_distance = maxi(32, blocks)
 	if terrain != null:
 		terrain.max_view_distance = view_distance
+	if viewer != null:
+		viewer.view_distance = view_distance
+
+
+## Attaches the streaming viewer to the camera (or any node that moves with
+## the player) so chunks load around the player out to the view distance.
+func attach_viewer(anchor: Node3D) -> void:
+	if viewer != null and is_instance_valid(viewer):
+		viewer.queue_free()
+	viewer = VoxelViewer.new()
+	viewer.name = "VoxelViewer"
+	viewer.view_distance = view_distance
+	viewer.requires_collisions = true
+	viewer.requires_visuals = true
+	anchor.add_child(viewer)
 var _spawn_ready_emitted := false
 var _ready_feet := SPAWN_FEET
 

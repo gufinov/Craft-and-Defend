@@ -156,12 +156,68 @@ func drag_active() -> bool:
 func begin_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
 	var item_id := inventory.active_item_id()
 	var item := registry.item(item_id)
+	if item.has("places_entity") and is_linear_entity_item(item_id):
+		var anchor := placement_anchor_from_view(origin, direction)
+		if anchor == Vector3i.MAX:
+			return _finish(false, "NO_TARGET")
+		return begin_entity_line_at(anchor)
 	if item.is_empty() or not item.has("places_block"):
 		return _finish(false, "NOT_PLACEABLE")
 	var hit := world.raycast(origin, direction)
 	if hit == null:
 		return _finish(false, "NO_TARGET")
 	return begin_drag_at(hit.previous_position)
+
+
+## Rails, walkway slabs and merlons (`linear: true` in content) lay in one
+## straight horizontal line by drag; they never stack (no Shift).
+func is_linear_entity_item(item_id: String) -> bool:
+	var item := registry.item(item_id)
+	if not item.has("places_entity"):
+		return false
+	return bool(registry.entity(str(item.places_entity)).get("linear", false))
+
+
+func begin_entity_line_at(anchor: Vector3i) -> Dictionary:
+	var item_id := inventory.active_item_id()
+	var item := registry.item(item_id)
+	if not is_linear_entity_item(item_id) or workstations == null:
+		return _finish(false, "NOT_PLACEABLE")
+	_drag = {"mode": "entity_line", "item_id": item_id, "entity_id": str(item.places_entity), "voxel_id": 0, "anchor": anchor, "end": anchor, "cells": [], "shape": "single"}
+	_replan_entity_line()
+	return {"ok": true, "reason": "DRAG_STARTED", "anchor": anchor}
+
+
+## Cells from anchor to end along the dominant horizontal axis, at the
+## anchor's height, each validated as an entity placement with the rotation
+## that follows the line (rails auto-align).
+func _replan_entity_line() -> void:
+	var anchor: Vector3i = _drag.anchor
+	var end: Vector3i = _drag.end
+	var delta := end - anchor
+	var axis := 0 if absi(delta.x) >= absi(delta.z) else 2
+	var span := clampi(delta[axis], -(DRAG_MAX_SPAN - 1), DRAG_MAX_SPAN - 1)
+	var step := 1 if span >= 0 else -1
+	var rotation := 1 if axis == 0 else 0
+	_drag.rotation = rotation
+	_drag.shape = "single" if span == 0 else "row"
+	var budget: int = inventory.count(str(_drag.item_id))
+	var entries: Array[Dictionary] = []
+	var count := absi(span) + 1
+	for index in range(count):
+		var cell := anchor
+		cell[axis] += index * step
+		var check := workstations.preview_placement(str(_drag.entity_id), cell, rotation, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB())
+		var reason := str(check.get("reason", "PLACEMENT_FAILED"))
+		var state := "ok"
+		if not check.get("ok", false):
+			state = "blocked"
+		elif budget <= 0:
+			state = "unaffordable"
+		else:
+			budget -= 1
+		entries.append({"cell": cell, "state": state, "reason": reason, "voxel_id": 0, "item_id": str(_drag.item_id), "entity_id": str(_drag.entity_id)})
+	_drag.cells = entries
 
 
 ## Anchors a drag for the active block item at a known cell (also used by
@@ -178,11 +234,16 @@ func begin_drag_at(anchor: Vector3i) -> Dictionary:
 
 ## Stretches the active drag to `end` (also used by diagnostics).
 func set_drag_end(end: Vector3i) -> Dictionary:
-	if _drag.is_empty() or str(_drag.get("mode", "drag")) != "drag":
+	if _drag.is_empty() or str(_drag.get("mode", "drag")) not in ["drag", "entity_line"]:
 		return {"ok": false, "reason": "NO_DRAG"}
+	if str(_drag.get("mode", "drag")) == "entity_line":
+		end.y = _drag.anchor.y
 	if end != _drag.end:
 		_drag.end = end
-		_replan_drag()
+		if str(_drag.get("mode", "drag")) == "entity_line":
+			_replan_entity_line()
+		else:
+			_replan_drag()
 	return drag_state()
 
 
@@ -200,7 +261,18 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 			move_blueprint(snapped.cell)
 			_drag.snapped = bool(snapped.snapped)
 		return drag_state()
+	if str(_drag.get("mode", "drag")) == "entity_line":
+		var line_anchor := placement_anchor_from_view(origin, direction, 12.0)
+		if line_anchor != Vector3i.MAX:
+			return set_drag_end(line_anchor)
+		var line_plane := _drag_plane_end(origin, direction)
+		if line_plane.has("cell"):
+			return set_drag_end(line_plane.cell)
+		return drag_state()
+	# Once Shift raised the drag, it stays vertical until release.
 	if vertical:
+		_drag.vertical_latched = true
+	if vertical or bool(_drag.get("vertical_latched", false)):
 		var vertical_end := _drag_plane_end(origin, direction)
 		if vertical_end.has("cell"):
 			var current: Vector3i = _drag.end
@@ -278,6 +350,8 @@ func commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 	var mode := str(_drag.get("mode", "drag"))
 	var default_item := str(_drag.get("item_id", ""))
 	var default_voxel := int(_drag.get("voxel_id", AIR))
+	if mode == "entity_line":
+		return _commit_entity_line()
 	if mode == "blueprint":
 		_replan_blueprint()
 	else:
@@ -319,6 +393,27 @@ func commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 	if mode == "blueprint":
 		_stamps.append({"blueprint_id": blueprint_id, "anchor": [stamp_anchor.x, stamp_anchor.y, stamp_anchor.z], "rotation": stamp_rotation})
 	return _finish(true, "BLUEPRINT_STAMPED" if mode == "blueprint" else "DRAG_PLACED", {"cells": cells, "count": cells.size(), "voxel_after": default_voxel, "items": items, "blueprint_id": blueprint_id, "stamps": _stamps.size()})
+
+
+func _commit_entity_line() -> Dictionary:
+	var entity_id := str(_drag.get("entity_id", ""))
+	var rotation := int(_drag.get("rotation", 0))
+	var cells: Array[Vector3i] = []
+	for entry in _drag.cells:
+		if str(entry.state) == "ok":
+			cells.append(entry.cell)
+	var item_id := str(_drag.get("item_id", ""))
+	_drag = {}
+	if cells.is_empty():
+		return _finish(false, "DRAG_EMPTY")
+	var placed := 0
+	for cell in cells:
+		var result := workstations.try_place(entity_id, cell, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB(), rotation)
+		if result.get("ok", false):
+			placed += 1
+	if placed == 0:
+		return _finish(false, "PLACEMENT_FAILED")
+	return _finish(true, "LINE_PLACED", {"cells": cells, "count": placed, "entity_id": entity_id, "items": {item_id: -placed}})
 
 
 ## Cells between anchor and end in support-first order: outward along the
@@ -732,7 +827,7 @@ func secondary_press_from_view(origin: Vector3, direction: Vector3) -> Dictionar
 	if not station_id.is_empty() and not workstations.station_type(station_id).is_empty():
 		return _finish(true, "OPEN_STATION", {"instance_id": station_id, "station": workstations.station(station_id)})
 	var item := registry.item(inventory.active_item_id())
-	if item.has("places_block"):
+	if item.has("places_block") or is_linear_entity_item(inventory.active_item_id()):
 		return begin_drag_place(origin, direction)
 	return place_from_view(origin, direction)
 
@@ -741,7 +836,9 @@ func secondary_press_from_view(origin: Vector3, direction: Vector3) -> Dictionar
 func secondary_release_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
 	if not drag_active():
 		return {"ok": false, "reason": "NO_DRAG"}
-	update_drag_place(origin, direction)
+	# Commit exactly what the ghost showed: no re-plan on release (Shift is
+	# often lifted a frame before the mouse, which used to flatten a column
+	# into a long row — owner playtest 2026-09-19).
 	return commit_drag_place()
 
 

@@ -97,7 +97,9 @@ func _run_phase1() -> void:
 	var planner := LocalGridPathfinder.new()
 	var basic_damage := planner._damage_for(gate_nav.get("tags", []), core._basic_raider_capability().get("damage_per_hit", {}))
 	var siege_damage := planner._damage_for(gate_nav.get("tags", []), {"stone": 8, "fortification": 8})
-	_record("T69_RAIDER_CASTLE_BOUNDARY", gate.get("ok", false) and basic_damage == 0.0 and siege_damage == 8.0, "the basic raider cannot damage a castle entity while the documented siege candidate can identify the same stone obstruction", {"gate": gate, "navigation": gate_nav, "basic_damage": basic_damage, "siege_damage": siege_damage})
+	# P4E (owner 2026-09-19, "if no way exists, break it down"): a basic raider
+	# chews fortification at a third of its damage; the siege candidate at full.
+	_record("T69_RAIDER_CASTLE_BOUNDARY", gate.get("ok", false) and basic_damage == float(CoreDefenseService.RAIDER_DAMAGE / 3) and siege_damage == 8.0, "a basic raider breaches a castle entity slowly (a third of its damage per hit) while the documented siege candidate identifies the same stone obstruction at full strength", {"gate": gate, "navigation": gate_nav, "basic_damage": basic_damage, "siege_damage": siege_damage})
 
 
 func _run_save_checkpoint() -> void:

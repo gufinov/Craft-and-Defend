@@ -272,7 +272,21 @@ func _run_gate() -> void:
 	core.warning_remaining = 0.0
 	core._begin_attack()
 	var probing := core.last_route_reason
+	var breaks_wall := core.active_target_type == "voxel"
 	var still_routing := core.state == CoreDefenseService.ROUTING
+	# Let it chew: 2 damage per hit against castle stone (90) breaks the cell
+	# after 45 hits; then the wall has a hole.
+	var wall_cell := core.active_target_cell
+	core.raider.active = false
+	core._on_raider_route_finished()
+	var hits := 0
+	while int(world.query_cell(wall_cell).get("voxel_id", 0)) != 0 and hits < 60:
+		core._attack_structure()
+		hits += 1
+	var wall_broken := int(world.query_cell(wall_cell).get("voxel_id", -1)) == 0 and hits == 45
+	# Rebuild that cell so the chest gap below is the only way through.
+	world.set_cell(wall_cell, 8)
+	await get_tree().process_frame
 	# Open a 2-wide gap at x 0..1, plug it with a chest and cap the gap so the
 	# chest cannot be climbed over.
 	for x in range(2):
@@ -282,7 +296,7 @@ func _run_gate() -> void:
 	var plug := ws.try_place("chest", Vector3i(center.x, 0, wall_z), world.query_cell, AABB(), 0)
 	var plug_id := str(plug.get("details", {}).get("station", {}).get("instance_id", ""))
 	var waited_stall := 0
-	while core.last_route_reason != "ATTACK_OBSTRUCTION" and waited_stall < 240:
+	while core.active_target_id != plug_id and waited_stall < 240:
 		await get_tree().process_frame
 		waited_stall += 1
 	var breach_reason := core.last_route_reason
@@ -298,7 +312,7 @@ func _run_gate() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	var route_after := core.last_route_reason
-	_record("T143_ENEMY_NEVER_GIVES_UP", walled.get("ok", false) and probing == "NO_PERMITTED_ROUTE" and still_routing and plug.get("ok", false) and breach_reason == "ATTACK_OBSTRUCTION" and breach_target == plug_id and attacking and chest_gone and route_after == "OK", "a walled-in raider keeps probing instead of failing the drill, re-plans on its own once a gap opens, attacks the chest plugging the gap as a breachable obstruction, destroys it and routes on to the core", {"walled": walled.get("reason"), "probing": probing, "still_routing": still_routing, "plug": plug.get("reason"), "breach_reason": breach_reason, "breach_target": breach_target, "attacking": attacking, "chest_gone": chest_gone, "route_after": route_after, "waited": waited_stall})
+	_record("T143_ENEMY_NEVER_GIVES_UP", walled.get("ok", false) and probing == "ATTACK_OBSTRUCTION" and breaks_wall and wall_broken and still_routing and plug.get("ok", false) and breach_reason == "ATTACK_OBSTRUCTION" and breach_target == plug_id and attacking and chest_gone and route_after == "OK", "a walled-in raider sets out to break the wall itself (voxel breach) instead of failing the drill, switches to the chest plugging a newly opened gap as the cheaper breach, destroys it and routes on to the core", {"walled": walled.get("reason"), "probing": probing, "breaks_wall": breaks_wall, "wall_broken": wall_broken, "wall_hits": hits, "still_routing": still_routing, "plug": plug.get("reason"), "breach_reason": breach_reason, "breach_target": breach_target, "attacking": attacking, "chest_gone": chest_gone, "route_after": route_after, "waited": waited_stall})
 
 	# T147 hybrid rule: a brute passing a player-built structure turns on it
 	# and smashes it; plain raiders keep rushing the core.

@@ -503,6 +503,30 @@ func _ride_rails(instance_id: String, details: Dictionary, target: Vector3, delt
 	_rail_riders[instance_id] = rider
 	if body != null:
 		body.set_meta("rail_cell", current)
+		# The clickable/blocking shapes ride along so the panel opens where
+		# the kettle actually is.
+		for child in body.get_children():
+			if child is CollisionShape3D:
+				if not child.has_meta("rest_position"):
+					child.set_meta("rest_position", child.position)
+				child.position = child.get_meta("rest_position") + turret.position
+	# Idle kettles face across the rail (perpendicular to the chain), not along it.
+	if not target.is_finite():
+		var along := _chain_direction(chain, current)
+		if along != Vector3i.ZERO:
+			var across := Vector3(float(-along.z), 0.0, float(along.x))
+			var desired := atan2(-across.x, -across.z)
+			var body_yaw := body.global_rotation.y if body != null else 0.0
+			turret.rotation.y = rotate_toward(turret.rotation.y, wrapf(desired - body_yaw, -PI, PI), TURN_RATE * delta)
+
+
+## The rail direction at `cell`: the axis along which it has chain neighbours.
+func _chain_direction(chain: Dictionary, cell: Vector3i) -> Vector3i:
+	if chain.has(cell + Vector3i(1, 0, 0)) or chain.has(cell - Vector3i(1, 0, 0)):
+		return Vector3i(1, 0, 0)
+	if chain.has(cell + Vector3i(0, 0, 1)) or chain.has(cell - Vector3i(0, 0, 1)):
+		return Vector3i(0, 0, 1)
+	return Vector3i.ZERO
 
 
 ## The chain cell farthest (by chain distance) from `from`: the patrol turn point.

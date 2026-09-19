@@ -57,11 +57,17 @@ var _walk_blend := 0.0
 var _swing_count := 0
 
 
+const SEPARATION_RADIUS := 0.85
+const SEPARATION_PUSH := 2.6
+
+
 func _ready() -> void:
 	# Raiders live on layer 4 and collide only with the world (layer 1): they
-	# never shove each other off their routes. The player's mask includes 4.
+	# never shove each other off their routes (the player's mask includes 4);
+	# a soft separation keeps them from standing inside one another.
 	collision_layer = 4
 	collision_mask = 1
+	add_to_group("raiders")
 	match kind:
 		KIND_BRUTE:
 			name = "BruteRaider"
@@ -244,8 +250,9 @@ func _physics_process(delta: float) -> void:
 		_walk_distance += step
 		_animate_walk(delta, true)
 		return
-	velocity.x = direction.x * move_speed
-	velocity.z = direction.z * move_speed
+	var push := _separation()
+	velocity.x = direction.x * move_speed + push.x
+	velocity.z = direction.z * move_speed + push.z
 	if is_on_floor():
 		velocity.y = clampf(offset.y * 6.0, -2.0, 5.0)
 	else:
@@ -253,6 +260,24 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	_walk_distance += Vector2(velocity.x, velocity.z).length() * delta
 	_animate_walk(delta, true)
+
+
+## Push away from other living raiders closer than SEPARATION_RADIUS.
+func _separation() -> Vector3:
+	var push := Vector3.ZERO
+	for other_node in get_tree().get_nodes_in_group("raiders"):
+		if other_node == self or not other_node is BasicRaider:
+			continue
+		var other: BasicRaider = other_node
+		if other.dead:
+			continue
+		var away: Vector3 = global_position - other.global_position
+		away.y = 0.0
+		var distance: float = away.length()
+		if distance < 0.01 or distance >= SEPARATION_RADIUS:
+			continue
+		push += away.normalized() * (SEPARATION_RADIUS - distance) * SEPARATION_PUSH
+	return push
 
 
 ## Walk cycle from the distance travelled: legs scissor, orc arms counter-swing

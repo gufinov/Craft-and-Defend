@@ -48,6 +48,15 @@ Owner direction (2026-09-19): "randomize the world generation and ensure ore is 
 - **Patrol** stance (rail weapons only; panel button appears for them): while idle the kettle rides its connected rail chain end to end (`_chain_end_farthest`) and still fires at will; with a target it rides to the nearest rail cell as before.
 - **Mountains**: no mountain lift within 30–55 cells of home and along an 8–20 cell corridor between home and the enemy base, so raiders (one step up/down) always have a way in and the player is never ringed by peaks.
 
+## Round-4 owner notes: view distance, rails, breaching, crafting
+
+- **View distance really applies**: streaming follows a `VoxelViewer` on the camera (there was none, so the engine streamed around the origin at its default radius no matter the setting). `WorldAdapter.attach_viewer`; the setting drives both the viewer and the terrain limit.
+- **Rails auto-align and lay by drag**: entities flagged `linear: true` (rail, wall_walk_slab, parapet_merlon) turn to follow a same-kind neighbour on placement (`WorkstationService._aligned_rotation`) and lay in one straight line by right-drag (`InteractionService` mode `entity_line`, no Shift-up); the kettle's clickable shapes ride along with it, it faces across the rail when idle, its speed is `kettle.siege.rail_speed` (2.0 cells/s) in content.
+- **Vertical drag latch**: once Shift raised a drag it stays vertical until release, and release commits exactly the shown ghost (no re-plan), fixing the "column turns into a long row" glitch.
+- **Breaching**: raiders with no other way chew through player-built stone (`fortification` tag) at a third of their damage — brutes at full — through `CoreDefenseService._hit_voxel` (damage accumulates per cell until the navigation integrity, 90 for castle stone, is spent and the cell breaks). Wood barricades and machines remain the cheaper breach when available.
+- **Soft separation**: raiders push apart within 0.85 m (`BasicRaider._separation`) so they no longer share a cell; waves form loosely — orcs lead, brutes hold the middle rows, trolls hang back (`_wave_offset(index, kind)`).
+- **Recipe staging**: clicking a recipe fills the grid with what you carry and puts **red placeholders** for the missing ingredients (`_craft_grid_ghosts`); the message lists them; the card hover shows only name and status.
+
 ## Acceptance
 
 T151 (far attack from the enemy base), T152 (placed core defended) in `--p4-siege-units-automation=gate`; world tests T137/T138 follow the new bands; F0 T03/T06 follow the bounds; the P1 visual shows a lake beside the clearing.
