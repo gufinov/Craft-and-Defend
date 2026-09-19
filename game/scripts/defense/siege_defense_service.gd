@@ -520,6 +520,14 @@ func _ride_rails(instance_id: String, details: Dictionary, target: Vector3, delt
 			turret.rotation.y = rotate_toward(turret.rotation.y, wrapf(desired - body_yaw, -PI, PI), TURN_RATE * delta)
 
 
+func _chain_degree(chain: Dictionary, cell: Vector3i) -> int:
+	var degree := 0
+	for offset: Vector3i in RAIL_STEPS:
+		if chain.has(cell + offset):
+			degree += 1
+	return degree
+
+
 ## The rail direction at `cell`: the axis along which it has chain neighbours.
 func _chain_direction(chain: Dictionary, cell: Vector3i) -> Vector3i:
 	if chain.has(cell + Vector3i(1, 0, 0)) or chain.has(cell - Vector3i(1, 0, 0)):
@@ -579,8 +587,12 @@ func _rail_chain(start: Vector3i) -> Dictionary:
 
 
 ## Next chain cell on the shortest path from `from` to `goal` (BFS).
+## Rails follow corners as one track; at a T or a crossroads (three or four
+## neighbours) the rider keeps straight on — it never turns onto a branch
+## (owner 2026-09-19). Search states are (cell, arrival direction).
 func _rail_step(chain: Dictionary, from: Vector3i, goal: Vector3i) -> Vector3i:
 	var parents: Dictionary = {from: from}
+	var arrival: Dictionary = {from: Vector3i.ZERO}
 	var queue: Array[Vector3i] = [from]
 	var index := 0
 	while index < queue.size():
@@ -588,10 +600,15 @@ func _rail_step(chain: Dictionary, from: Vector3i, goal: Vector3i) -> Vector3i:
 		index += 1
 		if cell == goal:
 			break
+		var came: Vector3i = arrival[cell]
+		var junction := _chain_degree(chain, cell) >= 3
 		for offset: Vector3i in RAIL_STEPS:
+			if junction and came != Vector3i.ZERO and offset != came:
+				continue
 			var next: Vector3i = cell + offset
 			if chain.has(next) and not parents.has(next):
 				parents[next] = cell
+				arrival[next] = offset
 				queue.append(next)
 	if not parents.has(goal):
 		return from

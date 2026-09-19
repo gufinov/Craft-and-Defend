@@ -497,6 +497,67 @@ func _run_gate() -> void:
 	var reached_both_ends := visited.has(rail_base + Vector3i(0, 2, 0)) and visited.has(rail_base + Vector3i(4, 2, 0))
 	_record("T154_RAIL_AIM_AND_PATROL", rails_laid and aimed_above_rail and kettle_from_view.get("ok", false) and not patrol_id.is_empty() and patrol.get("ok", false) and catapult_patrol.get("reason") == "NOT_A_RAIL_WEAPON" and reached_both_ends, "aiming down at a rail places the kettle on the cell above it; Patrol is a rail-weapon stance that rides the chain from end to end while idle", {"rails": rails_laid, "aim_cell": aim_cell, "placed": kettle_from_view.get("reason"), "patrol": patrol.get("reason"), "catapult_patrol": catapult_patrol.get("reason"), "visited": visited.size(), "both_ends": reached_both_ends})
 
+	# T155 wall mounts, rail junctions, sidestep: a wall lantern hangs on a
+	# wall face (and refuses bare ground), a torch stands or hangs; a kettle
+	# rides through a corner but keeps straight at a T; a stuck raider steps
+	# back and sideways before re-planning.
+	app.session.inventory.try_transaction({}, {"wall_lantern": 2, "torch": 2, "rail": 12, "kettle": 1, "castle_stone": 16})
+	var lantern_wall := center + Vector3i(7, 0, -8)
+	for y in range(3):
+		world.set_cell(lantern_wall + Vector3i(0, y, 0), 8)
+	var lantern_on_wall := ws.try_place("wall_lantern", lantern_wall + Vector3i(1, 1, 0), world.query_cell, AABB(), 0)
+	var lantern_on_ground := ws.try_place("wall_lantern", center + Vector3i(7, 0, -3), world.query_cell, AABB(), 0)
+	var torch_on_ground := ws.try_place("torch", center + Vector3i(6, 0, -3), world.query_cell, AABB(), 0)
+	var torch_on_wall := ws.try_place("torch", lantern_wall + Vector3i(-1, 1, 0), world.query_cell, AABB(), 0)
+	var lantern_rotation := int(lantern_on_wall.get("details", {}).get("station", {}).get("rotation_quarters", -1))
+	# Rails: an L (corner) from x -6..-3 at z -9 turning to z -9..-6 at x -3,
+	# plus a T branch off the corner's middle.
+	var rail_y := 0
+	var rail_cells: Array[Vector3i] = []
+	for x in range(-6, -2):
+		rail_cells.append(center + Vector3i(x, rail_y, -9))
+	for z in range(-8, -5):
+		rail_cells.append(center + Vector3i(-3, rail_y, z))
+	rail_cells.append(center + Vector3i(-5, rail_y, -8))
+	var rails_placed := 0
+	for cell in rail_cells:
+		if ws.try_place("rail", cell, world.query_cell, AABB(), 0).get("ok", false):
+			rails_placed += 1
+	var corner_kettle := ws.try_place("kettle", center + Vector3i(-6, rail_y + 1, -9), world.query_cell, AABB(), 0)
+	var corner_kettle_id := str(corner_kettle.get("details", {}).get("station", {}).get("instance_id", ""))
+	await get_tree().physics_frame
+	var chain: Dictionary = siege._rail_chain(center + Vector3i(-6, rail_y, -9))
+	var step_from_end := siege._rail_step(chain, center + Vector3i(-6, rail_y, -9), center + Vector3i(-3, rail_y, -6))
+	var reaches_around_corner := step_from_end == center + Vector3i(-5, rail_y, -9)
+	# From the far arm heading back west through the T at (-5,-9): the rider
+	# keeps straight (to -6,-9) and never turns onto the branch at (-5,-8).
+	var through_t := siege._rail_step(chain, center + Vector3i(-4, rail_y, -9), center + Vector3i(-5, rail_y, -8))
+	var stays_straight := through_t == center + Vector3i(-5, rail_y, -9) or through_t == center + Vector3i(-4, rail_y, -9)
+	var branch_reached := false
+	var probe := center + Vector3i(-4, rail_y, -9)
+	for _hop in range(6):
+		probe = siege._rail_step(chain, probe, center + Vector3i(-5, rail_y, -8))
+		if probe == center + Vector3i(-5, rail_y, -8):
+			branch_reached = true
+	var junction_degree := siege._chain_degree(chain, center + Vector3i(-5, rail_y, -9))
+	# Sidestep: park a raider facing a stone post; a stuck signal makes it back
+	# up and step sideways instead of re-planning straight away.
+	core.clear_for_other_mode()
+	var side_drill := core.start_prototype({"raiders": 1})
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	core.raider.active = false
+	core.raider.global_position = Vector3(center + Vector3i(3, 0, -6)) + Vector3(0.5, 0.9, 0.5)
+	core.raider.look_at(core.raider.global_position + Vector3(0, 0, -1), Vector3.UP)
+	await get_tree().physics_frame
+	_rearm(core)
+	core._on_raider_stuck()
+	var sidestepping := bool(core.raider.get_meta("sidestepping", false)) and core.raider.route.size() >= 3 and core.raider.active
+	var side_route_second: Vector3i = core.raider.route[2] if core.raider.route.size() >= 3 else Vector3i.ZERO
+	var stepped_aside := side_route_second.x != center.x + 3
+	_record("T155_WALL_MOUNTS_JUNCTIONS_SIDESTEP", lantern_on_wall.get("ok", false) and str(lantern_on_wall.get("details", {}).get("mount", "")) == "wall" and lantern_rotation == 0 and not lantern_on_ground.get("ok", false) and torch_on_ground.get("ok", false) and torch_on_wall.get("ok", false) and rails_placed == 8 and corner_kettle.get("ok", false) and reaches_around_corner and junction_degree == 3 and stays_straight and not branch_reached and side_drill.get("ok", false) and sidestepping and stepped_aside, "a wall lantern hangs on a wall face facing away and refuses bare ground while a torch does both; a kettle rides through a rail corner as one track but never turns onto a T branch; a stuck raider backs up and steps sideways before re-planning", {"lantern_wall": lantern_on_wall.get("reason"), "lantern_mount": lantern_on_wall.get("details", {}).get("mount", ""), "lantern_rotation": lantern_rotation, "lantern_ground": lantern_on_ground.get("reason"), "torch_ground": torch_on_ground.get("reason"), "torch_wall": torch_on_wall.get("reason"), "rails": rails_placed, "kettle": corner_kettle.get("reason"), "corner_step": step_from_end, "junction_degree": junction_degree, "through_t": through_t, "branch_reached": branch_reached, "sidestepping": sidestepping, "route": core.raider.route})
+	core.clear_for_other_mode()
+
 
 ## Rendered evidence: the five machines (ballista, catapult, turret catapult on
 ## a tower platform, cannon, kettle on a rail-topped wall) in one 1280x720 view.
@@ -522,9 +583,18 @@ func _run_visual() -> void:
 	for x in range(4):
 		for y in range(2):
 			world.set_cell(origin + Vector3i(12 + x, y, 4), 8)
+	# Rails: the wall run plus a corner and a T branch on the ground in front.
 	var rails_ok := true
 	for x in range(4):
 		rails_ok = rails_ok and bool(ws.try_place("rail", origin + Vector3i(12 + x, 2, 4), world.query_cell, AABB(), 0).get("ok", false))
+	app.session.inventory.try_transaction({}, {"rail": 8, "wall_lantern": 1, "torch": 1})
+	for x in range(3):
+		ws.try_place("rail", origin + Vector3i(11 + x, 0, 1), world.query_cell, AABB(), 0)
+	for z in range(2):
+		ws.try_place("rail", origin + Vector3i(13, 0, 2 + z), world.query_cell, AABB(), 0)
+	ws.try_place("rail", origin + Vector3i(12, 0, 0), world.query_cell, AABB(), 0)
+	ws.try_place("wall_lantern", origin + Vector3i(12, 1, 3), world.query_cell, AABB(), 0)
+	ws.try_place("torch", origin + Vector3i(15, 1, 3), world.query_cell, AABB(), 0)
 	placements["kettle"] = ws.try_place("kettle", origin + Vector3i(13, 3, 4), world.query_cell, AABB(), 0)
 	var all_placed := rails_ok
 	for key in placements:

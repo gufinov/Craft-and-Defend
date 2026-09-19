@@ -22,10 +22,49 @@ func preview_placement(entity_id: String, anchor: Vector3i, rotation_quarters: i
 	var definition := registry.entity(entity_id)
 	if definition.is_empty():
 		return _result(false, "UNKNOWN_ENTITY")
-	var validated := footprints.validate_placement("preview", anchor, _vector_list(definition.get("occupied_offsets", [])), rotation_quarters, world_query, player_aabb, _vector_list(definition.get("support_offsets", [])))
+	var wall_side := _wall_side(definition, anchor, world_query)
+	if wall_side != Vector3i.ZERO:
+		rotation_quarters = _rotation_facing_away(wall_side)
+	var validated := footprints.validate_placement("preview", anchor, _vector_list(definition.get("occupied_offsets", [])), rotation_quarters, world_query, player_aabb, [] if wall_side != Vector3i.ZERO else _vector_list(definition.get("support_offsets", [])))
 	if not validated.get("ok", false):
 		return validated
+	if wall_side != Vector3i.ZERO:
+		return _result(true, "OK", {"mount": "wall", "wall_side": wall_side, "rotation_quarters": rotation_quarters})
 	return _validate_mount(definition, anchor, rotation_quarters, world_query)
+
+
+## Wall mounting (P4G lanterns/torches, owner 2026-09-19): an entity whose
+## mount allows "wall" may hang on the side of a solid block. Returns the
+## direction of that block from the anchor, or ZERO when not wall-mountable
+## here (no solid side neighbour, or the entity prefers the ground it has).
+func _wall_side(definition: Dictionary, anchor: Vector3i, world_query: Callable) -> Vector3i:
+	var allowed: Array = definition.get("mount", {}).get("allowed", [])
+	if not allowed.has("wall"):
+		return Vector3i.ZERO
+	if allowed.has("ground"):
+		# Prefer standing on the ground when there is ground.
+		var below: Dictionary = world_query.call(anchor + Vector3i.DOWN)
+		if str(below.get("state", "")) == "LOADED" and int(below.get("voxel_id", 0)) != 0:
+			return Vector3i.ZERO
+		if not footprints.owner_at(anchor + Vector3i.DOWN).is_empty():
+			return Vector3i.ZERO
+	for side in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+		var query: Dictionary = world_query.call(anchor + side)
+		if str(query.get("state", "")) == "LOADED" and int(query.get("voxel_id", 0)) != 0:
+			return side
+	return Vector3i.ZERO
+
+
+## Quarter turns so the model's bracket side (local -x; body yaw is
+## -q * PI/2) touches the wall in `wall_side`.
+func _rotation_facing_away(wall_side: Vector3i) -> int:
+	if wall_side == Vector3i(-1, 0, 0):
+		return 0
+	if wall_side == Vector3i(0, 0, -1):
+		return 1
+	if wall_side == Vector3i(1, 0, 0):
+		return 2
+	return 3
 
 
 func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, player_aabb: AABB, rotation_quarters: int = 0) -> Dictionary:
@@ -36,11 +75,17 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		return _result(false, "NO_RESOURCE")
 	if bool(definition.get("linear", false)):
 		rotation_quarters = _aligned_rotation(entity_id, anchor, rotation_quarters)
-	var mount_result := _validate_mount(definition, anchor, rotation_quarters, world_query)
+	var wall_side := _wall_side(definition, anchor, world_query)
+	var mount_result: Dictionary
+	if wall_side != Vector3i.ZERO:
+		rotation_quarters = _rotation_facing_away(wall_side)
+		mount_result = _result(true, "OK", {"mount": "wall"})
+	else:
+		mount_result = _validate_mount(definition, anchor, rotation_quarters, world_query)
 	if not mount_result.get("ok", false):
 		return mount_result
 	var instance_id := "%s_%04d" % [entity_id, _next_instance]
-	var reserved := footprints.try_reserve(instance_id, anchor, _vector_list(definition.get("occupied_offsets", [])), rotation_quarters, world_query, player_aabb, _vector_list(definition.get("support_offsets", [])))
+	var reserved := footprints.try_reserve(instance_id, anchor, _vector_list(definition.get("occupied_offsets", [])), rotation_quarters, world_query, player_aabb, [] if wall_side != Vector3i.ZERO else _vector_list(definition.get("support_offsets", [])))
 	if not reserved.get("ok", false):
 		return reserved
 	var consumed := inventory.try_transaction({entity_id: 1}, {})

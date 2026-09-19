@@ -15,7 +15,7 @@ NAVIGATION_SCENARIOS = {"corridor_detour", "trench", "two_step_stair", "bridge_r
 # source carries a value, a role, its light, its mounting rule and its space.
 ATTRIBUTE_ENTITIES = {"core_of_power", "enemy_core", "torch", "wall_lantern", "post_lantern", "campfire", "light_block_blue", "light_block_red"}
 ATTRIBUTE_ROLES = {"core", "light", "decor"}
-ATTRIBUTE_MOUNTS = {"ground", "wall", "ceiling", "any_solid_top", "block"}
+ATTRIBUTE_MOUNTS = {"ground", "wall", "ceiling", "any_solid_top", "any_solid_top_or_wall", "block"}
 
 
 class ValidationError(ValueError):
@@ -273,7 +273,7 @@ def validate_bundle(bundle):
             allowed = mount.get("allowed", []) if isinstance(mount, dict) else []
             require(isinstance(allowed, list) and allowed and all(isinstance(value, str) for value in allowed)
                     and len(set(allowed)) == len(allowed)
-                    and all(value == "ground" or value in mount_types for value in allowed), "invalid entity mount")
+                    and all(value in ("ground", "wall") or value in mount_types for value in allowed), "invalid entity mount")
         siege = entity.get("siege")
         if siege is not None:
             require(isinstance(siege, dict) and siege.get("fire_mode") in ("direct", "ballistic", "dump")
@@ -319,6 +319,7 @@ def validate_bundle(bundle):
         require(recipe["station"] == "hand" or recipe["station"] in entities, "unknown recipe station")
         require(type(recipe["duration_seconds"]) in (int, float) and recipe["duration_seconds"] >= 0, "invalid recipe time")
         require("recipe_book_order" not in recipe or integer(recipe["recipe_book_order"]), "invalid recipe book order")
+        require(recipe["station"] != "workbench" or sum(recipe["inputs"].values()) <= 9, "workbench recipe must fit the 3x3 grid: " + recipe["id"])
         for field in ("inputs", "outputs"):
             require(recipe[field], "recipe cannot have empty inputs or outputs")
             require(all(i in items and integer(n, 1) for i, n in recipe[field].items()), "invalid recipe item/count")

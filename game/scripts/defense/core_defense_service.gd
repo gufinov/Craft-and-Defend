@@ -294,7 +294,7 @@ func _advance_extras(delta: float) -> void:
 		if int(entry.health) <= 0 or not is_instance_valid(entry.node):
 			continue
 		var phase := str(entry.get("phase", "routing"))
-		if phase == "marching":
+		if phase == "marching" or phase == "sidestep":
 			continue
 		if phase == "chasing":
 			if not _advance_chase(entry.node, entry.chase, int(entry.damage), float(entry.get("attack_interval", raider_attack_interval)), bool(entry.get("ranged", false)), delta):
@@ -920,8 +920,46 @@ func _on_raider_stuck() -> void:
 	if far_mode and last_route_reason == "MARCHING":
 		_remarch(raider)
 		return
+	if _sidestep(raider):
+		return
 	_capture_navigation()
 	_plan_from_raider()
+
+
+## Stuck recovery (owner 2026-09-19): back up one cell and step sideways a
+## couple of cells before re-planning, so a body wedged on a corner or a tree
+## frees itself instead of pushing into the same spot. Returns false when no
+## free sidestep exists (the caller re-plans immediately).
+func _sidestep(node: BasicRaider) -> bool:
+	if node.get_meta("sidestepping", false):
+		node.set_meta("sidestepping", false)
+		return false
+	var feet := node.feet_cell()
+	var heading := -node.global_transform.basis.z
+	var forward := Vector3i(roundi(heading.x), 0, roundi(heading.z))
+	if forward == Vector3i.ZERO:
+		forward = Vector3i(0, 0, -1)
+	var back := feet - forward
+	var options: Array[Vector3i] = [Vector3i(forward.z, 0, -forward.x), Vector3i(-forward.z, 0, forward.x)]
+	for side in options:
+		var first := back + side
+		var second := first + side
+		if _walkable_cell(back) and _walkable_cell(first):
+			var route: Array = [feet, back, first]
+			if _walkable_cell(second):
+				route.append(second)
+			node.set_meta("sidestepping", true)
+			node.set_route(route)
+			node.active = true
+			return true
+	return false
+
+
+func _walkable_cell(cell: Vector3i) -> bool:
+	var feet := _query_navigation_cell(cell)
+	var head := _query_navigation_cell(cell + Vector3i.UP)
+	var floor := _query_navigation_cell(cell + Vector3i.DOWN)
+	return str(feet.get("state", "")) == "LOADED" and not bool(feet.get("solid", false)) and not bool(head.get("solid", false)) and bool(floor.get("solid", false))
 
 
 func _on_extra_stuck(node: BasicRaider) -> void:
@@ -929,6 +967,9 @@ func _on_extra_stuck(node: BasicRaider) -> void:
 		if entry.node == node and int(entry.health) > 0:
 			if str(entry.get("phase", "")) == "marching":
 				_remarch(node)
+				return
+			if _sidestep(node):
+				entry.phase = "sidestep"
 				return
 			_capture_navigation()
 			_plan_extra(entry)
@@ -993,6 +1034,11 @@ func _on_extra_route_finished(node: BasicRaider) -> void:
 				_plan_extra(entry)
 			else:
 				_remarch(node)
+			return
+		if str(entry.get("phase", "")) == "sidestep":
+			node.set_meta("sidestepping", false)
+			_capture_navigation()
+			_plan_extra(entry)
 			return
 		entry.attack_timer = 0.3
 		if str(entry.target_type) == "core":
@@ -1083,6 +1129,11 @@ func _retry_after_stall() -> void:
 
 func _on_raider_route_finished() -> void:
 	if not is_instance_valid(raider):
+		return
+	if raider.get_meta("sidestepping", false):
+		raider.set_meta("sidestepping", false)
+		_capture_navigation()
+		_plan_from_raider()
 		return
 	if far_mode and last_route_reason == "MARCHING":
 		# The march ended: inside the local area the voxel planner takes over,

@@ -599,8 +599,13 @@ func _on_station_changed(result: Dictionary) -> void:
 		core_defense.notify_core_station_changed(details)
 	if details.has("station"):
 		_spawn_station_visual(details.station)
+		if str(details.station.get("entity_id", "")) == "rail":
+			_refresh_rail_neighbours(details.station.get("anchor", Vector3i.ZERO))
 	elif details.has("instance_id") and (details.has("returned_item") or bool(details.get("destroyed", false))):
 		_remove_station_visual(str(details.instance_id))
+		var released: Array = details.get("occupied_cells", [])
+		if str(details.get("entity_id", "")) == "rail" and released.size() > 0 and released[0] is Vector3i:
+			_refresh_rail_neighbours(released[0])
 	elif details.has("instance_id") and details.has("integrity"):
 		_update_station_visual(str(details.instance_id), int(details.integrity), int(details.get("max_integrity", 1)))
 
@@ -656,7 +661,7 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_build_kettle_visual(body)
 		_wrap_siege_turret(body, definition)
 	elif entity_id == "rail":
-		_build_rail_visual(body)
+		_build_rail_visual(body, _rail_neighbour_mask(anchor))
 	elif entity_id == "core_of_power":
 		_build_core_of_power_visual(body, registry.entity_attributes(entity_id))
 	elif entity_id == "enemy_core":
@@ -1053,7 +1058,33 @@ func _build_cannon_visual(parent: Node3D) -> void:
 ## Rail block from the owner's reference art: castle-stone corner posts with
 ## gold studs, an oak plank deck between them and two iron rails along z with
 ## small iron ties. Rails chain along a wall top; the kettle rides them.
-func _build_rail_visual(parent: Node3D) -> void:
+## Rail neighbours as a bit mask: 1 +x, 2 -x, 4 +z, 8 -z (world axes; the
+## rail body is never rotated for its shape).
+func _rail_neighbour_mask(anchor: Vector3i) -> int:
+	var mask := 0
+	var sides := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+	for index in range(sides.size()):
+		var neighbour := workstations.station_at_cell(anchor + sides[index])
+		if not neighbour.is_empty() and str(workstations.station(neighbour).get("entity_id", "")) == "rail":
+			mask |= 1 << index
+	return mask
+
+
+## Rebuilds the rail visuals around `anchor` so corners, T's and crossroads
+## re-shape when a neighbouring rail is laid or removed.
+func _refresh_rail_neighbours(anchor: Vector3i) -> void:
+	for side in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+		var neighbour := workstations.station_at_cell(anchor + side)
+		if neighbour.is_empty() or str(workstations.station(neighbour).get("entity_id", "")) != "rail":
+			continue
+		_remove_station_visual(neighbour)
+		_spawn_station_visual(workstations.station(neighbour))
+
+
+## Rail block: stone corner posts with gold studs, an oak deck and iron rails
+## laid toward every connected neighbour — a straight, a 90-degree corner, a
+## T or a crossroads follow from the neighbour mask. Ties sit under the rails.
+func _build_rail_visual(parent: Node3D, mask: int = 0) -> void:
 	_add_collision_box(parent, Vector3(0.98, 0.56, 0.98), Vector3(0.0, -0.22, 0.0))
 	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
 	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")
@@ -1064,10 +1095,41 @@ func _build_rail_visual(parent: Node3D) -> void:
 		for z in [-0.38, 0.38]:
 			_add_mesh_box(parent, Vector3(0.22, 0.56, 0.22), Vector3(x, -0.22, z), stone)
 			_add_stud(parent, Vector3(x, 0.02, z), gold, Vector3.ZERO)
-	for x in [-0.22, 0.22]:
-		_add_mesh_box(parent, Vector3(0.10, 0.10, 1.0), Vector3(x, 0.00, 0.0), iron)
-	for z in [-0.30, 0.0, 0.30]:
-		_add_mesh_box(parent, Vector3(0.62, 0.06, 0.10), Vector3(0.0, -0.11, z), iron)
+	# The body may carry a placement rotation; undo it so world-axis arms line up.
+	var undo := Node3D.new()
+	undo.name = "RailArms"
+	undo.rotation.y = -parent.rotation.y
+	parent.add_child(undo)
+	var along_x := (mask & 3) != 0
+	var along_z := (mask & 12) != 0
+	if mask == 0:
+		along_z = parent.rotation.y == 0.0 or absf(parent.rotation.y) > 3.0
+		along_x = not along_z
+	var arms: Array[Vector3i] = []
+	for index in range(4):
+		if mask & (1 << index):
+			arms.append([Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)][index])
+	if arms.is_empty():
+		if along_z:
+			arms.append(Vector3i(0, 0, 1))
+			arms.append(Vector3i(0, 0, -1))
+		else:
+			arms.append(Vector3i(1, 0, 0))
+			arms.append(Vector3i(-1, 0, 0))
+	elif arms.size() == 1:
+		arms.append(-arms[0])
+	# Two parallel rails per arm from the centre to the cell edge, and ties.
+	for arm in arms:
+		var direction := Vector3(arm)
+		var side := Vector3(direction.z, 0.0, -direction.x)
+		for offset in [-0.22, 0.22]:
+			_add_mesh_box(undo, Vector3(0.10, 0.10, 0.10) + direction.abs() * 0.40, direction * 0.25 + side * offset, iron)
+		_add_mesh_box(undo, Vector3(0.10, 0.06, 0.10) + side.abs() * 0.52, direction * 0.32 + Vector3(0.0, -0.11, 0.0), iron)
+	# Centre piece: a plate on corners and junctions so the rails join cleanly.
+	if arms.size() >= 2 and not (arms.size() == 2 and arms[0] == -arms[1]):
+		_add_mesh_box(undo, Vector3(0.54, 0.10, 0.54), Vector3(0.0, 0.0, 0.0), iron)
+	elif not along_x or not along_z:
+		_add_mesh_box(undo, Vector3(0.62, 0.06, 0.10) if along_x else Vector3(0.10, 0.06, 0.62), Vector3(0.0, -0.11, 0.0), iron)
 
 
 ## Kettle on rails from the owner's reference art: an iron trolley riding the
