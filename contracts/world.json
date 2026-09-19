@@ -39,8 +39,29 @@
     "safe_clearing_blend": 8,
     "tree_grid_size": 10,
     "tree_chance_percent": 72,
-    "coal_cluster_per_thousand": 55,
-    "iron_cluster_per_thousand": 18
+    "ores": [
+      {
+        "block": "iron_ore",
+        "min_depth": 6,
+        "max_depth": 32,
+        "cluster_per_thousand": 18,
+        "cluster_size": 2
+      },
+      {
+        "block": "coal_ore",
+        "min_depth": 3,
+        "max_depth": 32,
+        "cluster_per_thousand": 37,
+        "cluster_size": 2
+      },
+      {
+        "block": "gold_ore",
+        "min_depth": 12,
+        "max_depth": 32,
+        "cluster_per_thousand": 5,
+        "cluster_size": 2
+      }
+    ]
   },
   "layers": [
     {

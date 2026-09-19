@@ -127,6 +127,10 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T118 | P4a-1 | A catapult turned away from the raider swings its turntable to face it at the turn rate before firing, the arm whips forward on the shot and winds back to rest over the reload, and the bucket stone reappears only when reloaded |
 | T114 | P3I | Furnace select-then-add without the recipe book: clicking an ore or Coal tile highlights it and the message names its slot; Raw Input / Fuel handler presses add +1 and the Shift gesture adds +5; a wrong-slot press is refused with a message; the recipe is inferred from the staged ore so the Load ×1 button and slider are enabled and Load adds one input plus the Coal owed to the staged input (never returns items) |
 | T115 | P3I | Visual: real viewport mouse presses on the ore tile then on Raw Input add one ore and a Shift+click adds up to five more through `CraftingItemSlot` input handling (nothing swallows the plain click) |
+| T119 | P4b-1 | Sampled columns of the seeded generator show coal from depth 3 (above 6), iron only from depth 6, gold only from depth 12, gold rarer than iron rarer than coal, identical for the same seed and different for another |
+| T120 | P4b-1 | Every non-gold cell matches the pre-table P1 formula (iron roll [0,18) from depth 6, coal [18,55) from depth 3) and gold only replaces stone at depth ≥ 12, so `terrain_p1_1` saves keep their layout |
+| T121 | P4b-1 | A generated Gold Ore cell refuses the Stone Pick (`WRONG_TOOL`), breaks under the Iron Pick into one Gold Ore item, and block 11, items, texture and measured gold icons are registered |
+| T122 | P4b-1 | Two Gold Ore and one Coal auto-start the 8 s `gold_ingot` Furnace recipe and yield two collectable Gold Ingots after two durations |
 
 ## Performance evidence, not invented guarantees
 

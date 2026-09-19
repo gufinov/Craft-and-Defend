@@ -12,6 +12,8 @@ extends RefCounted
 const ATLAS_PATH := "res://assets/ui/item_atlas_p3h2.png"
 const WORLD_REFERENCE_PATH := ATLAS_PATH
 const AMMUNITION_ATLAS_PATH := "res://assets/ui/ammunition_atlas_p3h3.png"
+## P4b gold placeholders derived from the iron art (tools/make_gold_atlas_p4.py).
+const GOLD_ATLAS_PATH := "res://assets/ui/gold_atlas_p4.png"
 const REGIONS_PATH := "res://data/item_atlas_regions.json"
 const CELL_SIZE := Vector2(256, 256)
 const SAFE_THIRD_ROW_HEIGHT := 224.0
@@ -50,9 +52,15 @@ const AMMUNITION_REGIONS := {
 	"ballista_bolt": Rect2(0.0, 0.0, 887.0, 887.0),
 	"stone_shot": Rect2(887.0, 0.0, 887.0, 887.0),
 }
+## Nominal fallback cells for the gold atlas: two centred 256x256 cells.
+const GOLD_REGIONS := {
+	"gold_ore": Rect2(0.0, 0.0, 256.0, 256.0),
+	"gold_ingot": Rect2(256.0, 0.0, 256.0, 256.0),
+}
 const ATLAS_PATHS := {
 	"item": ATLAS_PATH,
 	"ammunition": AMMUNITION_ATLAS_PATH,
+	"gold": GOLD_ATLAS_PATH,
 }
 
 static var _atlases: Dictionary = {}
@@ -63,7 +71,7 @@ static var _regions_loaded := false
 
 
 static func has_item(item_id: String) -> bool:
-	return not item_id.is_empty() and (ITEM_CELLS.has(item_id) or AMMUNITION_REGIONS.has(item_id))
+	return not item_id.is_empty() and (ITEM_CELLS.has(item_id) or AMMUNITION_REGIONS.has(item_id) or GOLD_REGIONS.has(item_id))
 
 
 ## Card/slot texture: the measured object padded to a centred square.
@@ -112,6 +120,8 @@ static func region_for(item_id: String) -> Rect2:
 		return _measured_regions[item_id].rect
 	if AMMUNITION_REGIONS.has(item_id):
 		return AMMUNITION_REGIONS[item_id]
+	if GOLD_REGIONS.has(item_id):
+		return GOLD_REGIONS[item_id]
 	if ITEM_CELLS.has(item_id):
 		return region_for_index(int(ITEM_CELLS[item_id]))
 	return Rect2()
@@ -126,7 +136,9 @@ static func atlas_key_for(item_id: String) -> String:
 	_ensure_regions()
 	if _measured_regions.has(item_id):
 		return str(_measured_regions[item_id].atlas)
-	return "ammunition" if AMMUNITION_REGIONS.has(item_id) else "item"
+	if AMMUNITION_REGIONS.has(item_id):
+		return "ammunition"
+	return "gold" if GOLD_REGIONS.has(item_id) else "item"
 
 
 ## Nominal grid cell. Retained for diagnostics and as the fallback layout.

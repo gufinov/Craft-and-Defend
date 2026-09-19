@@ -93,6 +93,11 @@ def reachable_items(content, world):
     """Monotonic capability proof; ignores finite quantities and spatial access."""
     items = {row["id"]: row for row in content["items"]}
     present = {row["block"] for row in world["layers"] + world["patches"]}
+    # Procedural ore rows name blocks by stable id; they are generated in stone
+    # below the surface, so they count as present for capability reachability.
+    block_ids = {row["id"]: row["voxel_id"] for row in content["blocks"]}
+    present |= {block_ids[row["block"]] for row in world.get("terrain", {}).get("ores", [])
+                if row.get("block") in block_ids}
     available, stations = set(), {"hand"}
     changed = True
     while changed:
@@ -111,6 +116,34 @@ def reachable_items(content, world):
                 available.update(recipe["outputs"])
         changed = before != (frozenset(available), frozenset(stations))
     return available
+
+
+def validate_ores(ores, blocks, world):
+    """Ore distribution table: see docs/P4B_RESOURCE_DISTRIBUTION.md.
+
+    depth = surface - y, so depth 1..2 is always dirt and the deepest possible
+    ore sits one cell above bedrock. Rows own cumulative bands of one roll in
+    [0, 1000); the widths must therefore sum below 1000 so stone remains.
+    """
+    require(isinstance(ores, list) and ores, "terrain.ores: nonempty list required")
+    world_height = world["size"][1]
+    seen = set()
+    total = 0
+    for row in ores:
+        require(isinstance(row, dict), "invalid ore row")
+        block = blocks.get(row.get("block"))
+        require(block is not None, f"unknown ore block: {row.get('block')}")
+        require(row["block"] not in seen, f"duplicate ore block: {row['block']}")
+        seen.add(row["block"])
+        require(block["solid"] and not block["protected"] and block["drop"] is not None, f"ore block must be solid, unprotected and droppable: {row['block']}")
+        require(integer(row.get("min_depth"), 1) and integer(row.get("max_depth"), 1)
+                and row["min_depth"] <= row["max_depth"] and row["max_depth"] <= world_height,
+                f"invalid ore depth range: {row['block']}")
+        require(row["min_depth"] >= 3, f"ore cannot occupy the two soil cells under the surface: {row['block']}")
+        require(integer(row.get("cluster_per_thousand"), 1) and row["cluster_per_thousand"] < 1000, f"invalid ore frequency: {row['block']}")
+        require(integer(row.get("cluster_size"), 1) and row["cluster_size"] <= 8, f"invalid ore cluster size: {row['block']}")
+        total += row["cluster_per_thousand"]
+    require(total < 1000, f"ore frequencies sum to {total} per thousand; stone must remain")
 
 
 def validate_bundle(bundle):
@@ -244,8 +277,7 @@ def validate_bundle(bundle):
         require(isinstance(clearing_half_size, list) and len(clearing_half_size) == 2 and all(type(v) is int and v > 0 for v in clearing_half_size), "invalid safe clearing")
         require(integer(terrain.get("safe_clearing_blend"), 1) and integer(terrain.get("tree_grid_size"), 5), "invalid terrain spacing")
         require(integer(terrain.get("tree_chance_percent"), 0) and terrain["tree_chance_percent"] <= 100, "invalid tree chance")
-        for key in ("coal_cluster_per_thousand", "iron_cluster_per_thousand"):
-            require(integer(terrain.get(key), 0) and terrain[key] <= 1000, "invalid ore frequency")
+        validate_ores(terrain.get("ores"), blocks, world)
         landmark_ids = set()
         for landmark in world.get("landmarks", []):
             require(landmark.get("id") and landmark["id"] not in landmark_ids, "invalid or duplicate landmark")

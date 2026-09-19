@@ -18,7 +18,7 @@ An unloaded cell is unknown, not empty. Reject or briefly defer edits until data
 
 ## P1 generation contract
 
-`terrain_p1_1` is a pure blocky generator configured once from `world.json`: two seeded height-noise layers, a blended flat clearing, one deterministic tree candidate per grid cell, and deterministic two-cell ore clusters. Its worker callback reads immutable values and writes only the supplied voxel buffer. It never consults nodes, gameplay inventory, the global random stream or the active SQLite edit overlay. Fixed starter trees and ore patches take priority over procedural distribution to preserve the proven empty-inventory route.
+`terrain_p1_1` is a pure blocky generator configured once from `world.json`: two seeded height-noise layers, a blended flat clearing, one deterministic tree candidate per grid cell, and deterministic ore clusters driven by the `terrain.ores` table (see [P4b resource distribution](P4B_RESOURCE_DISTRIBUTION.md)). Its worker callback reads immutable values and writes only the supplied voxel buffer. It never consults nodes, gameplay inventory, the global random stream or the active SQLite edit overlay. Fixed starter trees and ore patches take priority over procedural distribution to preserve the proven empty-inventory route.
 
 Leaves use additive voxel ID 10 and drop sticks; IDs 0–9 are unchanged. The home HUD uses the saved spawn landmark as an orientation aid: `+Z` is treated as south, so the cue reports the direction back to the clearing plus rounded planar distance. It is guidance, not a waypoint/pathfinding system.
 

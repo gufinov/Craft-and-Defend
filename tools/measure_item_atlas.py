@@ -27,6 +27,7 @@ CELL = 256
 ATLASES = {
     "item": "item_atlas_p3h2.png",
     "ammunition": "ammunition_atlas_p3h3.png",
+    "gold": "gold_atlas_p4.png",
 }
 # Nominal search cells. Row heights for the item atlas follow the shipped
 # ItemIconCatalog grid; the ammunition atlas is two square halves.
@@ -41,6 +42,12 @@ ITEM_ORDER = [
 AMMUNITION_CELLS = {
     "ballista_bolt": (0, 0, 1774, 887),
     "stone_shot": (887, 0, 887, 887),
+}
+# P4b gold placeholders derived from the iron art (tools/make_gold_atlas_p4.py):
+# two centred 256x256 cells.
+GOLD_CELLS = {
+    "gold_ore": (0, 0, CELL, CELL),
+    "gold_ingot": (CELL, 0, CELL, CELL),
 }
 
 
@@ -91,10 +98,12 @@ def main() -> int:
         image = Image.open(UI / filename).convert("RGBA")
         sizes[atlas_key] = list(image.size)
         solid = image.split()[3].point(lambda v: 255 if v > ALPHA_THRESHOLD else 0)
-        cells = (
-            {item: item_cell(i) for i, item in enumerate(ITEM_ORDER)}
-            if atlas_key == "item" else AMMUNITION_CELLS
-        )
+        if atlas_key == "item":
+            cells = {item: item_cell(i) for i, item in enumerate(ITEM_ORDER)}
+        elif atlas_key == "gold":
+            cells = GOLD_CELLS
+        else:
+            cells = AMMUNITION_CELLS
         for item_id, cell in cells.items():
             rect = measure(solid, cell)
             regions[item_id] = {"atlas": atlas_key, "rect": list(rect)}

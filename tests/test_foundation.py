@@ -79,6 +79,73 @@ class FoundationTests(unittest.TestCase):
         self.bundle['world']['terrain']['max_surface_y'] = self.bundle['world']['terrain']['min_surface_y']
         self.rejects('invalid terrain height range')
 
+    def ore_row(self, block):
+        return next(row for row in self.bundle['world']['terrain']['ores'] if row['block'] == block)
+
+    def test_ore_table_reaches_gold_through_the_iron_pick(self):
+        validate_bundle(self.bundle)
+        reachable = reachable_items(self.bundle['content'], self.bundle['world'])
+        self.assertIn('gold_ore', reachable)
+        self.assertIn('gold_ingot', reachable)
+        gold = next(b for b in self.bundle['content']['blocks'] if b['id'] == 'gold_ore')
+        self.assertEqual(gold['voxel_id'], 11)
+        self.assertEqual(gold['min_pick_tier'], 3)
+        depths = {row['block']: row['min_depth'] for row in self.bundle['world']['terrain']['ores']}
+        self.assertLess(depths['coal_ore'], depths['iron_ore'])
+        self.assertLess(depths['iron_ore'], depths['gold_ore'])
+        self.assertGreaterEqual(depths['gold_ore'], 12)
+        rates = {row['block']: row['cluster_per_thousand'] for row in self.bundle['world']['terrain']['ores']}
+        self.assertLess(rates['gold_ore'], rates['iron_ore'])
+        self.assertLess(rates['iron_ore'], rates['coal_ore'])
+
+    def test_ore_row_preserves_p1_layout_bands(self):
+        # Rows own cumulative bands of one roll: iron [0,18), coal [18,55) is the
+        # exact P1 layout, so existing terrain_p1_1 saves keep their coal and iron.
+        ores = self.bundle['world']['terrain']['ores']
+        self.assertEqual([row['block'] for row in ores[:2]], ['iron_ore', 'coal_ore'])
+        self.assertEqual([row['cluster_per_thousand'] for row in ores[:2]], [18, 37])
+        self.assertTrue(all(row['cluster_size'] == 2 for row in ores))
+
+    def test_unknown_ore_block_rejected(self):
+        self.ore_row('gold_ore')['block'] = 'mithril_ore'
+        self.rejects('unknown ore block')
+
+    def test_duplicate_ore_block_rejected(self):
+        self.ore_row('gold_ore')['block'] = 'coal_ore'
+        self.rejects('duplicate ore block')
+
+    def test_ore_frequency_sum_must_leave_stone(self):
+        self.ore_row('coal_ore')['cluster_per_thousand'] = 990
+        self.rejects('stone must remain')
+
+    def test_ore_frequency_zero_or_thousand_rejected(self):
+        self.ore_row('gold_ore')['cluster_per_thousand'] = 0
+        self.rejects('invalid ore frequency')
+        self.ore_row('gold_ore')['cluster_per_thousand'] = 1000
+        self.rejects('invalid ore frequency')
+
+    def test_inverted_or_oversized_ore_depth_rejected(self):
+        self.ore_row('iron_ore')['max_depth'] = 5
+        self.rejects('invalid ore depth range')
+        self.ore_row('iron_ore')['max_depth'] = self.bundle['world']['size'][1] + 1
+        self.rejects('invalid ore depth range')
+
+    def test_ore_inside_soil_layer_rejected(self):
+        self.ore_row('coal_ore')['min_depth'] = 2
+        self.rejects('soil cells')
+
+    def test_missing_ore_table_rejected(self):
+        del self.bundle['world']['terrain']['ores']
+        self.rejects('terrain.ores')
+
+    def test_protected_block_cannot_be_ore(self):
+        self.ore_row('gold_ore')['block'] = 'bedrock'
+        self.rejects('solid, unprotected and droppable')
+
+    def test_removing_gold_ore_row_breaks_gold_progression(self):
+        self.bundle['world']['terrain']['ores'] = [row for row in self.bundle['world']['terrain']['ores'] if row['block'] != 'gold_ore']
+        self.rejects('unreachable progression')
+
     def test_unknown_generator_rejected(self):
         self.bundle['world']['generator_version'] = 'terrain_future_unknown'
         self.rejects('unsupported generator version')

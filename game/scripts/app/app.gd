@@ -245,6 +245,11 @@ func _ready() -> void:
 		var p3h_automation := P3HBalanceAndControlsAutomation.new()
 		add_child(p3h_automation)
 		p3h_automation.call_deferred("run", self, p3h_mode)
+	var p4_resources_mode := _argument_value("--p4-resources-automation=")
+	if not p4_resources_mode.is_empty():
+		var p4_resources_automation := P4ResourcesAutomation.new()
+		add_child(p4_resources_automation)
+		p4_resources_automation.call_deferred("run", self, p4_resources_mode)
 
 
 func _input(event: InputEvent) -> void:

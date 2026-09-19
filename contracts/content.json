@@ -122,6 +122,14 @@
       "min_pick_tier": 0,
       "protected": false,
       "solid": true
+    },
+    {
+      "voxel_id": 11,
+      "id": "gold_ore",
+      "drop": "gold_ore",
+      "min_pick_tier": 3,
+      "protected": false,
+      "solid": true
     }
   ],
   "items": [
@@ -172,6 +180,16 @@
     },
     {
       "id": "iron_ingot",
+      "category": "resource",
+      "max_stack": 64
+    },
+    {
+      "id": "gold_ore",
+      "category": "resource",
+      "max_stack": 64
+    },
+    {
+      "id": "gold_ingot",
       "category": "resource",
       "max_stack": 64
     },
@@ -500,6 +518,19 @@
       "duration_seconds": 5
     },
     {
+      "id": "gold_ingot",
+      "station": "furnace",
+      "recipe_book_order": 10,
+      "inputs": {
+        "gold_ore": 1,
+        "coal": 1
+      },
+      "outputs": {
+        "gold_ingot": 1
+      },
+      "duration_seconds": 8
+    },
+    {
       "id": "iron_pick",
       "station": "workbench",
       "recipe_book_order": 140,
@@ -634,6 +665,7 @@
     "furnace",
     "iron_ingot",
     "iron_pick",
+    "gold_ingot",
     "iron_sword",
     "ballista_bolt",
     "stone_shot",
