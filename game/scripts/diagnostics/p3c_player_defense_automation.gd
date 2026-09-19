@@ -36,7 +36,7 @@ func _run_phase1() -> void:
 	app.session.simulation_paused = true
 	var registry := app.session.registry
 	var missing_icons := ItemIconCatalog.missing_item_ids(registry.items.keys())
-	_record("T72_VISUAL_CATALOG", missing_icons.is_empty() and registry.items.size() == 26, "every registered item resolves a stable original atlas region", {"items": registry.items.size(), "missing": missing_icons})
+	_record("T72_VISUAL_CATALOG", missing_icons.is_empty() and registry.items.size() >= 26, "every registered item resolves a stable atlas region (original or derived placeholder)", {"items": registry.items.size(), "missing": missing_icons})
 
 	app.session.inventory.try_transaction({}, {"workbench": 1, "planks": 16, "stone": 16, "stick": 8, "iron_ingot": 8})
 	var workbench_cell := Vector3i(5, 0, 43)
@@ -120,11 +120,11 @@ func _run_phase1() -> void:
 	# P4a-1: machines turn to face their target before firing; the firing-rule
 	# checks below face the raider instantly so they test range and occlusion.
 	app.session.siege_defense.face_target_now(ballista_id, core.raider_target_position())
-	var blocked := app.session.siege_defense._attempt_fire(ballista_id, ballista_before.get("details", {}))
+	var blocked := app.session.siege_defense._attempt_fire(ballista_id, ballista_before.get("details", {}), true)
 	var ammo_after_block := int(app.session.workstations.siege_status(ballista_id).get("details", {}).get("ammo", -1))
 	blocker.queue_free()
 	await get_tree().physics_frame
-	var clear := app.session.siege_defense._attempt_fire(ballista_id, app.session.workstations.siege_status(ballista_id).get("details", {}))
+	var clear := app.session.siege_defense._attempt_fire(ballista_id, app.session.workstations.siege_status(ballista_id).get("details", {}), true)
 	var ammo_after_clear := int(app.session.workstations.siege_status(ballista_id).get("details", {}).get("ammo", -1))
 	var ballista_ok: bool = bool(ground_ballista.get("ok", false)) and bool(tower.get("ok", false)) and bool(socket_ballista.get("ok", false)) and blocked.get("reason") == "LINE_OF_SIGHT_BLOCKED" and ammo_after_block == 8 and clear.get("ok", false) and ammo_after_clear == 7 and core.raider_health == 14
 	_record("T75_BALLISTA", ballista_ok, "ground and typed tower mounts work; direct occlusion costs nothing; a clear shot consumes one bolt and damages once", {"ground": ground_ballista, "tower": tower, "socket": socket_ballista, "blocked": blocked, "ammo_after_block": ammo_after_block, "clear": clear, "ammo_after_clear": ammo_after_clear, "raider_health": core.raider_health})
@@ -136,7 +136,7 @@ func _run_phase1() -> void:
 	var too_far := app.session.siege_defense.trajectory_result(catapult_id, muzzle + Vector3(40.0, 0.0, 0.0))
 	var catapult_before := int(catapult_status.get("details", {}).get("ammo", -1))
 	app.session.siege_defense.face_target_now(catapult_id, core.raider_target_position())
-	var catapult_fire := app.session.siege_defense._attempt_fire(catapult_id, catapult_status.get("details", {}))
+	var catapult_fire := app.session.siege_defense._attempt_fire(catapult_id, catapult_status.get("details", {}), true)
 	var catapult_after := int(app.session.workstations.siege_status(catapult_id).get("details", {}).get("ammo", -1))
 	var catapult_ok: bool = bool(catapult.get("ok", false)) and too_close.get("reason") == "TARGET_TOO_CLOSE" and too_far.get("reason") == "TARGET_TOO_FAR" and catapult_fire.get("ok", false) and catapult_after == catapult_before - 1 and core.raider_health == 5
 	_record("T76_CATAPULT", catapult_ok, "the catapult enforces minimum/maximum range and consumes one shot only for a clear valid ballistic arc", {"placed": catapult, "too_close": too_close, "too_far": too_far, "fire": catapult_fire, "ammo_before": catapult_before, "ammo_after": catapult_after, "raider_health": core.raider_health})
@@ -174,6 +174,67 @@ func _run_phase1() -> void:
 	var rest_after_reload := absf(arm.rotation.x - SiegeDefenseService.ARM_REST) < 0.05
 	var stone_back: bool = stone.visible
 	_record("T118_CATAPULT_MOTION", not faced_immediately and faced_after_turning and turned_seconds > 0.5 and turned_seconds < 2.5 and thrown_after_fire and stone_hidden_after_fire and rest_after_reload and stone_back, "a catapult turned away from the raider swings its turntable to face it at the turn rate before firing, the arm whips forward on the shot and winds back to rest over the reload, and the bucket stone reappears only when reloaded", {"faced_immediately": faced_immediately, "turned_seconds": turned_seconds, "faced_after_turning": faced_after_turning, "thrown_after_fire": thrown_after_fire, "stone_hidden_after_fire": stone_hidden_after_fire, "rest_after_reload": rest_after_reload, "stone_back": stone_back})
+
+	# T119 munitions and supply: stance Hold withholds fire; load/unload move
+	# munitions between inventory and weapon with type rules; a Chest within the
+	# supply radius auto-reloads an empty weapon; one outside does not.
+	var ws := app.session.workstations
+	core.raider_health = CoreDefenseService.RAIDER_MAX_HEALTH
+	core.state = CoreDefenseService.ROUTING
+	core.raider.active = false
+	core.raider.global_position = Vector3(center + Vector3i(0, 0, 8)) + Vector3(0.5, 0.9, 0.5)
+	siege.face_target_now(catapult_id, core.raider_target_position())
+	var ammo_before_hold := int(ws.siege_status(catapult_id).get("details", {}).get("ammo", -1))
+	var stance_hold := ws.siege_set_stance(catapult_id, "hold")
+	var held_fire := siege._attempt_fire(catapult_id, ws.siege_status(catapult_id).get("details", {}), true)
+	siege.advance(0.5, false)
+	var ammo_after_hold := int(ws.siege_status(catapult_id).get("details", {}).get("ammo", -1))
+	ws.siege_set_stance(catapult_id, "fire_at_will")
+	var pack_before_unload := app.session.inventory.count("stone_shot")
+	var unloaded := ws.siege_unload(catapult_id)
+	var stone_back_in_pack := app.session.inventory.count("stone_shot") - pack_before_unload
+	app.session.inventory.try_transaction({}, {"flame_shot": 3, "stone_shot": 2, "chest": 2})
+	var wrong_type_ok: bool = ws.siege_load(catapult_id, "ballista_bolt", 1).get("reason") == "WRONG_AMMUNITION"
+	var flame_loaded := ws.siege_load(catapult_id, "flame_shot", 2)
+	var mixed_refused: bool = ws.siege_load(catapult_id, "stone_shot", 1).get("reason") == "AMMO_TYPE_LOADED"
+	var status_after_load: Dictionary = ws.siege_status(catapult_id).get("details", {})
+	ws.siege_unload(catapult_id)
+	var near_chest := ws.try_place("chest", center + Vector3i(-4, 0, 0), app.session.world.query_cell, AABB(), 0)
+	var far_chest := ws.try_place("chest", center + Vector3i(9, 0, 9), app.session.world.query_cell, AABB(), 0)
+	var near_id := str(near_chest.get("details", {}).get("station", {}).get("instance_id", ""))
+	var far_id := str(far_chest.get("details", {}).get("station", {}).get("instance_id", ""))
+	var far_deposit := ws.container_deposit(far_id, "stone_shot", 2)
+	var supply_without_near := ws.siege_supply(catapult_id).size()
+	var no_supply: bool = ws.siege_auto_reload(catapult_id).get("reason") == "NO_SUPPLY"
+	var near_deposit := ws.container_deposit(near_id, "flame_shot", 3)
+	var reloaded := ws.siege_auto_reload(catapult_id)
+	var chest_left := ws.container_count(near_id, "flame_shot")
+	var withdraw := ws.container_withdraw(far_id, "stone_shot", 2)
+	var munitions_ok: bool = stance_hold.get("ok", false) and held_fire.get("reason") == "STANCE_HOLD" and ammo_after_hold == ammo_before_hold and ammo_before_hold > 0 		and unloaded.get("ok", false) and stone_back_in_pack == ammo_before_hold and wrong_type_ok and flame_loaded.get("ok", false) and mixed_refused 		and str(status_after_load.get("ammo_item", "")) == "flame_shot" and int(status_after_load.get("ammo", 0)) == 2 		and str(status_after_load.get("munition", {}).get("effect", "")) == "fire" 		and near_chest.get("ok", false) and far_chest.get("ok", false) and far_deposit.get("ok", false) and supply_without_near == 0 and no_supply 		and near_deposit.get("ok", false) and reloaded.get("ok", false) and int(reloaded.get("details", {}).get("moved", 0)) == 3 and chest_left == 0 		and withdraw.get("ok", false) and app.session.inventory.count("stone_shot") == pack_before_unload + ammo_before_hold + 2
+	_record("T119_MUNITIONS_AND_SUPPLY", munitions_ok, "Hold withholds fire; unload returns shot; load enforces the weapon's munition list and one type at a time; a chest inside the supply radius auto-reloads an empty weapon while one outside is ignored; chest deposit and withdraw round-trip", {"hold": held_fire.get("reason"), "ammo_after_hold": ammo_after_hold, "unloaded": unloaded.get("reason"), "flame_loaded": flame_loaded.get("reason"), "mixed_refused": mixed_refused, "status": status_after_load, "supply_without_near": supply_without_near, "reloaded": reloaded.get("reason"), "chest_left": chest_left, "wrong_type_ok": wrong_type_ok, "stone_back": stone_back_in_pack, "ammo_before_hold": ammo_before_hold, "near_chest": near_chest.get("reason"), "far_chest": far_chest.get("reason"), "far_deposit": far_deposit.get("reason"), "no_supply": no_supply, "near_deposit": near_deposit.get("reason"), "moved": reloaded.get("details", {}).get("moved", -1), "withdraw": withdraw.get("reason"), "final_stone": app.session.inventory.count("stone_shot"), "pack_before": pack_before_unload})
+
+	# T120 flame shot: the impact ignites cells, fire damages the raider standing
+	# in it, a planks block in the fire is consumed after its fuel burns, and the
+	# fire on bare ground goes out after burn_seconds.
+	var fire_service := app.session.fire_service
+	var plank_cell := center + Vector3i(2, 0, 9)
+	app.session.world.set_cell(plank_cell, 5)
+	core.raider.global_position = Vector3(center + Vector3i(0, 0, 9)) + Vector3(0.5, 0.9, 0.5)
+	core.raider_health = CoreDefenseService.RAIDER_MAX_HEALTH
+	core.state = CoreDefenseService.ROUTING
+	siege.face_target_now(catapult_id, core.raider_target_position())
+	var flame_fire := siege._attempt_fire(catapult_id, ws.siege_status(catapult_id).get("details", {}), true)
+	var burning_after_shot := fire_service.burning_cells().size()
+	var plank_burning := fire_service.is_burning(plank_cell)
+	var health_before_burn := core.raider_health
+	for _tick in range(12):
+		fire_service.advance(0.5, false)
+	var health_after_burn := core.raider_health
+	var plank_gone := int(app.session.world.query_cell(plank_cell).get("voxel_id", -1)) == 0
+	for _tick in range(40):
+		fire_service.advance(0.5, false)
+	var fires_out := fire_service.burning_cells().size() == 0
+	_record("T120_FLAME_SHOT_FIRE", flame_fire.get("ok", false) and burning_after_shot >= 3 and plank_burning and health_after_burn < health_before_burn and plank_gone and fires_out, "a flame shot ignites the ground around its impact, burns the raider standing there, consumes a planks block once its fuel is spent, and the ground fire dies out after burn_seconds", {"fire": flame_fire.get("reason"), "burning": burning_after_shot, "plank_burning": plank_burning, "health_before": health_before_burn, "health_after": health_after_burn, "plank_gone": plank_gone, "fires_out": fires_out})
 
 
 

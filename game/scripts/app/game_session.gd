@@ -78,6 +78,7 @@ var _station_visual_materials: Dictionary = {}
 var _placement_preview: Node3D
 var _placement_preview_key := ""
 var _held_item_view: HeldItemView
+var fire_service: FireService
 var _resource_markers: Node3D
 var _environment: Environment
 var _sun: DirectionalLight3D
@@ -155,10 +156,15 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	core_defense.name = "CoreDefenseService"
 	add_child(core_defense)
 	core_defense.initialize(world, registry, workstations, snapshot.get("core_defense", {}))
+	fire_service = FireService.new()
+	fire_service.name = "FireService"
+	add_child(fire_service)
+	fire_service.initialize(world, workstations, _fire_damage_at, int(open_data.get("snapshot", {}).get("world", {}).get("seed", 41026)))
+	fire_service.feedback.connect(_on_interaction_feedback)
 	siege_defense = SiegeDefenseService.new()
 	siege_defense.name = "SiegeDefenseService"
 	add_child(siege_defense)
-	siege_defense.initialize(workstations, core_defense)
+	siege_defense.initialize(workstations, core_defense, fire_service)
 	siege_defense.feedback.connect(_on_interaction_feedback)
 	siege_defense.state_changed.connect(_on_defense_state_changed)
 	interaction = InteractionService.new(world, inventory, player.get_body_aabb, registry, workstations, _raycast_station, _defense_interact)
@@ -193,6 +199,7 @@ func _process(delta: float) -> void:
 		core_defense.advance(delta, simulation_paused or saving)
 	if siege_defense != null:
 		siege_defense.advance(delta, simulation_paused or saving)
+		fire_service.advance(delta, simulation_paused or saving)
 	if not simulation_paused:
 		_melee_cooldown = maxf(0.0, _melee_cooldown - delta)
 	if workstations != null and not saving:
@@ -1028,6 +1035,16 @@ func _defense_interact(origin: Vector3, direction: Vector3) -> Dictionary:
 	if structure_id == "training_wall":
 		return defense.try_repair(structure_id)
 	return workstations.try_repair_structure(structure_id)
+
+
+## Fire damage callback: a raider standing in a burning cell takes damage.
+func _fire_damage_at(cell: Vector3i, damage: int) -> void:
+	if core_defense == null or not is_instance_valid(core_defense.raider):
+		return
+	var position := core_defense.raider_target_position()
+	var raider_cell := Vector3i(floori(position.x), floori(position.y - 0.5), floori(position.z))
+	if raider_cell == cell or raider_cell == cell + Vector3i(0, 1, 0) or raider_cell == cell - Vector3i(0, 1, 0):
+		core_defense.try_damage_raider(damage, "fire")
 
 
 func _player_primary_action(origin: Vector3, direction: Vector3) -> Dictionary:

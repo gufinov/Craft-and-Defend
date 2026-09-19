@@ -12,6 +12,7 @@ extends RefCounted
 const ATLAS_PATH := "res://assets/ui/item_atlas_p3h2.png"
 const WORLD_REFERENCE_PATH := ATLAS_PATH
 const AMMUNITION_ATLAS_PATH := "res://assets/ui/ammunition_atlas_p3h3.png"
+const DERIVED_ATLAS_PATH := "res://assets/ui/derived_atlas_p4.png"
 const REGIONS_PATH := "res://data/item_atlas_regions.json"
 const CELL_SIZE := Vector2(256, 256)
 const SAFE_THIRD_ROW_HEIGHT := 224.0
@@ -53,6 +54,7 @@ const AMMUNITION_REGIONS := {
 const ATLAS_PATHS := {
 	"item": ATLAS_PATH,
 	"ammunition": AMMUNITION_ATLAS_PATH,
+	"derived": DERIVED_ATLAS_PATH,
 }
 
 static var _atlases: Dictionary = {}
@@ -63,7 +65,10 @@ static var _regions_loaded := false
 
 
 static func has_item(item_id: String) -> bool:
-	return not item_id.is_empty() and (ITEM_CELLS.has(item_id) or AMMUNITION_REGIONS.has(item_id))
+	if item_id.is_empty():
+		return false
+	_ensure_regions()
+	return ITEM_CELLS.has(item_id) or AMMUNITION_REGIONS.has(item_id) or _measured_regions.has(item_id)
 
 
 ## Card/slot texture: the measured object padded to a centred square.

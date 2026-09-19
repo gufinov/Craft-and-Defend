@@ -59,6 +59,14 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 	if not siege_definition.is_empty():
 		record["siege_ammo"] = maxi(0, int(siege_definition.get("starting_ammo", 0)))
 		record["siege_cooldown"] = 0.0
+		record["siege_ammo_item"] = str(siege_definition.get("ammo_item", ""))
+		record["siege_stance"] = "fire_at_will"
+		record["siege_target_filter"] = "any"
+	if int(definition.get("container_slots", 0)) > 0:
+		var slots: Array = []
+		for _slot in range(int(definition.get("container_slots", 0))):
+			slots.append(_empty_stack())
+		record["container_slots"] = slots
 	stations[instance_id] = record
 	var result := _result(true, "OK", {"station": stations[instance_id].duplicate(true), "consumed_item": entity_id, "occupied_cells": reserved.get("details", {}).get("cells", []).duplicate()})
 	station_changed.emit(result)
@@ -653,9 +661,259 @@ func siege_status(instance_id: String) -> Dictionary:
 		"anchor": record.get("anchor", Vector3i.ZERO),
 		"rotation_quarters": int(record.get("rotation_quarters", 0)),
 		"ammo": maxi(0, int(record.get("siege_ammo", siege.get("starting_ammo", 0)))),
+		"ammo_item": str(record.get("siege_ammo_item", siege.get("ammo_item", ""))),
+		"capacity": maxi(1, int(siege.get("capacity", siege.get("starting_ammo", 1)))),
+		"stance": str(record.get("siege_stance", "fire_at_will")),
+		"target_filter": str(record.get("siege_target_filter", "any")),
 		"cooldown": maxf(0.0, float(record.get("siege_cooldown", 0.0))),
+		"munition": registry.munition(str(record.get("siege_ammo_item", siege.get("ammo_item", "")))),
 		"definition": siege.duplicate(true),
 	})
+
+
+# ---------------------------------------------------------------------------
+# P4a-2/3: weapon controls, loading and supply. A weapon holds one munition
+# type at a time (siege_ammo_item / siege_ammo up to capacity). The player
+# loads it from the inventory; an empty weapon auto-reloads from the nearest
+# Chest within supply_radius that holds a compatible munition.
+# ---------------------------------------------------------------------------
+
+func siege_set_stance(instance_id: String, stance: String) -> Dictionary:
+	if not siege_status(instance_id).get("ok", false):
+		return _result(false, "NOT_SIEGE")
+	if stance not in ["fire_at_will", "hold"]:
+		return _result(false, "INVALID_STANCE")
+	stations[instance_id]["siege_stance"] = stance
+	var result := _result(true, "STANCE_SET", {"instance_id": instance_id, "stance": stance})
+	station_changed.emit(result)
+	return result
+
+
+func siege_set_target_filter(instance_id: String, target_filter: String) -> Dictionary:
+	if not siege_status(instance_id).get("ok", false):
+		return _result(false, "NOT_SIEGE")
+	if target_filter not in ["any", "raider", "brute", "structure"]:
+		return _result(false, "INVALID_TARGET_FILTER")
+	stations[instance_id]["siege_target_filter"] = target_filter
+	var result := _result(true, "TARGET_FILTER_SET", {"instance_id": instance_id, "target_filter": target_filter})
+	station_changed.emit(result)
+	return result
+
+
+## Loads up to `amount` of `item_id` from the inventory into the weapon.
+## Switching munition type is allowed only when the weapon is empty.
+func siege_load(instance_id: String, item_id: String, amount: int) -> Dictionary:
+	var status := siege_status(instance_id)
+	if not status.get("ok", false):
+		return status
+	var details: Dictionary = status.get("details", {})
+	var allowed: Array = details.get("definition", {}).get("ammo_items", [details.get("definition", {}).get("ammo_item", "")])
+	if item_id not in allowed:
+		return _result(false, "WRONG_AMMUNITION", {"item_id": item_id})
+	var loaded := int(details.get("ammo", 0))
+	if loaded > 0 and str(details.get("ammo_item", "")) != item_id:
+		return _result(false, "AMMO_TYPE_LOADED", {"loaded": str(details.get("ammo_item", ""))})
+	var room := int(details.get("capacity", 1)) - loaded
+	var moved := mini(amount, mini(room, inventory.count(item_id)))
+	if moved <= 0:
+		return _result(false, "WEAPON_FULL" if room <= 0 else "NO_RESOURCE")
+	var removed := inventory.try_transaction({item_id: moved}, {})
+	if not removed.get("ok", false):
+		return removed
+	stations[instance_id]["siege_ammo_item"] = item_id
+	stations[instance_id]["siege_ammo"] = loaded + moved
+	var result := _result(true, "AMMO_LOADED", {"instance_id": instance_id, "item_id": item_id, "moved": moved, "ammo": loaded + moved})
+	station_changed.emit(result)
+	return result
+
+
+## Returns the loaded munitions to the inventory (all-or-nothing).
+func siege_unload(instance_id: String) -> Dictionary:
+	var status := siege_status(instance_id)
+	if not status.get("ok", false):
+		return status
+	var details: Dictionary = status.get("details", {})
+	var loaded := int(details.get("ammo", 0))
+	var item_id := str(details.get("ammo_item", ""))
+	if loaded <= 0 or item_id.is_empty():
+		return _result(false, "WEAPON_EMPTY")
+	var added := inventory.try_transaction({}, {item_id: loaded})
+	if not added.get("ok", false):
+		return added
+	stations[instance_id]["siege_ammo"] = 0
+	var result := _result(true, "AMMO_UNLOADED", {"instance_id": instance_id, "item_id": item_id, "moved": loaded})
+	station_changed.emit(result)
+	return result
+
+
+## Chests within the weapon's supply radius holding a compatible munition,
+## nearest first: [{instance_id, distance, item_id, count}].
+func siege_supply(instance_id: String) -> Array[Dictionary]:
+	var found: Array[Dictionary] = []
+	var status := siege_status(instance_id)
+	if not status.get("ok", false):
+		return found
+	var details: Dictionary = status.get("details", {})
+	var siege: Dictionary = details.get("definition", {})
+	var allowed: Array = siege.get("ammo_items", [siege.get("ammo_item", "")])
+	var loaded_item := str(details.get("ammo_item", ""))
+	var loaded := int(details.get("ammo", 0))
+	var radius := float(siege.get("supply_radius", 8.0))
+	var origin := Vector3(details.get("anchor", Vector3i.ZERO))
+	for chest_id: String in stations.keys():
+		var record: Dictionary = stations[chest_id]
+		if not record.has("container_slots"):
+			continue
+		var distance := origin.distance_to(Vector3(record.get("anchor", Vector3i.ZERO)))
+		if distance > radius:
+			continue
+		for stack in record.container_slots:
+			var item_id := str(stack.get("item_id", ""))
+			var count := int(stack.get("count", 0))
+			if count <= 0 or item_id not in allowed:
+				continue
+			if loaded > 0 and item_id != loaded_item:
+				continue
+			found.append({"instance_id": chest_id, "distance": distance, "item_id": item_id, "count": count})
+	found.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.distance) < float(b.distance))
+	return found
+
+
+## Fills an empty (or partly loaded, same type) weapon from the nearest
+## supplying chest. Returns AMMO_RELOADED with the amount, or NO_SUPPLY.
+func siege_auto_reload(instance_id: String) -> Dictionary:
+	var status := siege_status(instance_id)
+	if not status.get("ok", false):
+		return status
+	var details: Dictionary = status.get("details", {})
+	var room := int(details.get("capacity", 1)) - int(details.get("ammo", 0))
+	if room <= 0:
+		return _result(false, "WEAPON_FULL")
+	var supply := siege_supply(instance_id)
+	if supply.is_empty():
+		return _result(false, "NO_SUPPLY")
+	var source: Dictionary = supply[0]
+	var taken := container_take(str(source.instance_id), str(source.item_id), room)
+	var moved := int(taken.get("details", {}).get("moved", 0))
+	if moved <= 0:
+		return _result(false, "NO_SUPPLY")
+	stations[instance_id]["siege_ammo_item"] = str(source.item_id)
+	stations[instance_id]["siege_ammo"] = int(details.get("ammo", 0)) + moved
+	var result := _result(true, "AMMO_RELOADED", {"instance_id": instance_id, "from": str(source.instance_id), "item_id": str(source.item_id), "moved": moved, "ammo": stations[instance_id]["siege_ammo"]})
+	station_changed.emit(result)
+	return result
+
+
+# ---------------------------------------------------------------------------
+# Chest containers: fixed slot list, stack rules from the registry.
+# ---------------------------------------------------------------------------
+
+func container_slots(instance_id: String) -> Array:
+	var record: Dictionary = stations.get(instance_id, {})
+	return record.get("container_slots", []).duplicate(true)
+
+
+func is_container(instance_id: String) -> bool:
+	return stations.get(instance_id, {}).has("container_slots")
+
+
+## Moves `amount` of `item_id` from the inventory into the chest (merging
+## into matching stacks, then empty slots). Moves what fits.
+func container_deposit(instance_id: String, item_id: String, amount: int) -> Dictionary:
+	if not is_container(instance_id):
+		return _result(false, "NOT_CONTAINER")
+	var wanted := mini(amount, inventory.count(item_id))
+	if wanted <= 0:
+		return _result(false, "NO_RESOURCE")
+	var slots: Array = stations[instance_id].container_slots
+	var room := 0
+	var max_stack := registry.max_stack(item_id)
+	for stack in slots:
+		if str(stack.get("item_id", "")) == item_id:
+			room += max_stack - int(stack.get("count", 0))
+		elif str(stack.get("item_id", "")).is_empty():
+			room += max_stack
+	var moved := mini(wanted, room)
+	if moved <= 0:
+		return _result(false, "CONTAINER_FULL")
+	var removed := inventory.try_transaction({item_id: moved}, {})
+	if not removed.get("ok", false):
+		return removed
+	_container_add(slots, item_id, moved, max_stack)
+	var result := _result(true, "DEPOSITED", {"instance_id": instance_id, "item_id": item_id, "moved": moved, "container_slots": container_slots(instance_id)})
+	station_changed.emit(result)
+	return result
+
+
+## Moves `amount` of `item_id` from the chest into the inventory.
+func container_withdraw(instance_id: String, item_id: String, amount: int) -> Dictionary:
+	if not is_container(instance_id):
+		return _result(false, "NOT_CONTAINER")
+	var available := container_count(instance_id, item_id)
+	var moved := mini(amount, available)
+	if moved <= 0:
+		return _result(false, "NO_RESOURCE")
+	var added := inventory.try_transaction({}, {item_id: moved})
+	if not added.get("ok", false):
+		return added
+	_container_remove(stations[instance_id].container_slots, item_id, moved)
+	var result := _result(true, "WITHDRAWN", {"instance_id": instance_id, "item_id": item_id, "moved": moved, "container_slots": container_slots(instance_id)})
+	station_changed.emit(result)
+	return result
+
+
+func container_count(instance_id: String, item_id: String) -> int:
+	var total := 0
+	for stack in stations.get(instance_id, {}).get("container_slots", []):
+		if str(stack.get("item_id", "")) == item_id:
+			total += int(stack.get("count", 0))
+	return total
+
+
+## Takes up to `amount` of `item_id` out of the chest for another consumer
+## (auto-reload). Does not touch the player inventory.
+func container_take(instance_id: String, item_id: String, amount: int) -> Dictionary:
+	if not is_container(instance_id):
+		return _result(false, "NOT_CONTAINER")
+	var moved := mini(amount, container_count(instance_id, item_id))
+	if moved <= 0:
+		return _result(false, "NO_RESOURCE")
+	_container_remove(stations[instance_id].container_slots, item_id, moved)
+	return _result(true, "TAKEN", {"instance_id": instance_id, "item_id": item_id, "moved": moved})
+
+
+func _container_add(slots: Array, item_id: String, amount: int, max_stack: int) -> void:
+	var remaining := amount
+	for stack in slots:
+		if remaining <= 0:
+			break
+		if str(stack.get("item_id", "")) == item_id:
+			var add := mini(remaining, max_stack - int(stack.get("count", 0)))
+			stack["count"] = int(stack.get("count", 0)) + add
+			remaining -= add
+	for stack in slots:
+		if remaining <= 0:
+			break
+		if str(stack.get("item_id", "")).is_empty():
+			var add := mini(remaining, max_stack)
+			stack["item_id"] = item_id
+			stack["count"] = add
+			remaining -= add
+
+
+func _container_remove(slots: Array, item_id: String, amount: int) -> void:
+	var remaining := amount
+	for stack in slots:
+		if remaining <= 0:
+			break
+		if str(stack.get("item_id", "")) != item_id:
+			continue
+		var take := mini(remaining, int(stack.get("count", 0)))
+		stack["count"] = int(stack.get("count", 0)) - take
+		remaining -= take
+		if int(stack.get("count", 0)) <= 0:
+			stack["item_id"] = ""
+			stack["count"] = 0
 
 
 func advance_siege_cooldowns(delta: float) -> void:
@@ -832,6 +1090,29 @@ func restore(data: Dictionary, world_query: Callable) -> Dictionary:
 				return _result(false, "INVALID_STATION_SNAPSHOT")
 			record["siege_ammo"] = siege_ammo
 			record["siege_cooldown"] = siege_cooldown
+			var allowed_ammo: Array = siege_definition.get("ammo_items", [siege_definition.get("ammo_item", "")])
+			var ammo_item := str(record.get("siege_ammo_item", siege_definition.get("ammo_item", "")))
+			if ammo_item not in allowed_ammo:
+				return _result(false, "INVALID_STATION_SNAPSHOT")
+			record["siege_ammo_item"] = ammo_item
+			var stance := str(record.get("siege_stance", "fire_at_will"))
+			if stance not in ["fire_at_will", "hold"]:
+				return _result(false, "INVALID_STATION_SNAPSHOT")
+			record["siege_stance"] = stance
+			record["siege_target_filter"] = str(record.get("siege_target_filter", "any"))
+		if int(definition.get("container_slots", 0)) > 0:
+			var raw_container: Variant = record.get("container_slots", [])
+			if not raw_container is Array:
+				return _result(false, "INVALID_STATION_SNAPSHOT")
+			var clean_container: Array = []
+			for raw_stack in raw_container:
+				var clean_stack := _validated_stack(raw_stack)
+				if clean_stack.is_empty():
+					return _result(false, "INVALID_STATION_SNAPSHOT")
+				clean_container.append(clean_stack)
+			while clean_container.size() < int(definition.get("container_slots", 0)):
+				clean_container.append(_empty_stack())
+			record["container_slots"] = clean_container
 		if str(record.get("entity_id", "")) == "furnace":
 			var raw_slots: Variant = record.get("furnace_slots", _empty_furnace_slots())
 			if not raw_slots is Dictionary:

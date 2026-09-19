@@ -214,9 +214,24 @@ def validate_bundle(bundle):
                     and integer(siege.get("starting_ammo"), 1)
                     and siege.get("ammo_item") in items
                     and numeric_vector(siege.get("muzzle_offset", [])), "invalid siege definition")
+            munitions = content.get("munitions", {})
+            require(isinstance(siege.get("ammo_items"), list) and siege["ammo_items"]
+                    and siege["ammo_item"] in siege["ammo_items"]
+                    and all(a in items and a in munitions for a in siege["ammo_items"])
+                    and integer(siege.get("capacity"), 1) and siege["capacity"] >= siege["starting_ammo"]
+                    and type(siege.get("supply_radius")) in (int, float) and siege["supply_radius"] > 0, "invalid siege ammunition")
             if siege["fire_mode"] == "ballistic":
                 require(type(siege.get("arc_height")) in (int, float) and siege["arc_height"] > 0,
                         "invalid siege arc")
+        if entity.get("container_slots") is not None:
+            require(integer(entity["container_slots"], 1) and entity.get("station_type") == "chest", "invalid container entity")
+    for munition_id, munition in content.get("munitions", {}).items():
+        require(munition_id in items and munition.get("effect") in ("impact", "fire")
+                and integer(munition.get("damage"), 0)
+                and type(munition.get("splash_radius")) in (int, float) and munition["splash_radius"] >= 0, "invalid munition")
+        if munition["effect"] == "fire":
+            require(all(type(munition.get(k)) in (int, float) and munition[k] > 0 for k in ("burn_seconds", "fuel_seconds", "spread_chance", "fire_damage_per_second"))
+                    and munition["spread_chance"] <= 1, "invalid fire munition")
     for recipe in content["recipes"]:
         require(recipe["station"] == "hand" or recipe["station"] in entities, "unknown recipe station")
         require(type(recipe["duration_seconds"]) in (int, float) and recipe["duration_seconds"] >= 0, "invalid recipe time")

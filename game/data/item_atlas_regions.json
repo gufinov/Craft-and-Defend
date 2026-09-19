@@ -15,6 +15,13 @@
         1774,
         887
       ]
+    },
+    "derived": {
+      "file": "derived_atlas_p4.png",
+      "size": [
+        1536,
+        512
+      ]
     }
   },
   "regions": {
@@ -250,6 +257,78 @@
         244,
         465,
         460
+      ]
+    },
+    "flame_shot": {
+      "atlas": "derived",
+      "rect": [
+        43,
+        0,
+        170,
+        242
+      ]
+    },
+    "chest": {
+      "atlas": "derived",
+      "rect": [
+        292,
+        76,
+        185,
+        135
+      ]
+    },
+    "cannon": {
+      "atlas": "derived",
+      "rect": [
+        540,
+        92,
+        217,
+        141
+      ]
+    },
+    "cannonball": {
+      "atlas": "derived",
+      "rect": [
+        826,
+        58,
+        141,
+        141
+      ]
+    },
+    "turret_catapult": {
+      "atlas": "derived",
+      "rect": [
+        1062,
+        24,
+        179,
+        213
+      ]
+    },
+    "hot_oil": {
+      "atlas": "derived",
+      "rect": [
+        1356,
+        40,
+        105,
+        181
+      ]
+    },
+    "kettle": {
+      "atlas": "derived",
+      "rect": [
+        30,
+        308,
+        197,
+        181
+      ]
+    },
+    "rail": {
+      "atlas": "derived",
+      "rect": [
+        296,
+        306,
+        177,
+        161
       ]
     }
   }

@@ -5,7 +5,7 @@ const EXPECTED_WORKBENCH_ORDER: Array[String] = [
 	"planks", "sticks", "workbench", "wood_pick", "wood_axe", "stone_pick",
 	"furnace", "castle_stone", "stone_stair", "wall_walk_slab",
 	"parapet_merlon", "tower_platform", "gate_frame", "wood_barricade",
-	"iron_pick", "iron_sword", "ballista_bolt", "stone_shot", "ballista", "catapult",
+	"iron_pick", "iron_sword", "ballista_bolt", "stone_shot", "flame_shot", "ballista", "catapult", "chest",
 ]
 const VISUAL_ITEMS: Array[String] = [
 	"wood_pick", "iron_sword", "wood_axe", "stick",

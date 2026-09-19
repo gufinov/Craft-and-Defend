@@ -27,7 +27,13 @@ CELL = 256
 ATLASES = {
     "item": "item_atlas_p3h2.png",
     "ammunition": "ammunition_atlas_p3h3.png",
+    "derived": "derived_atlas_p4.png",
 }
+# Derived placeholder icons (tools/generate_derived_icons.py): 256 px cells, 6 per row.
+DERIVED_ORDER = [
+    "flame_shot", "chest", "cannon", "cannonball", "turret_catapult", "hot_oil",
+    "kettle", "rail",
+]
 # Nominal search cells. Row heights for the item atlas follow the shipped
 # ItemIconCatalog grid; the ammunition atlas is two square halves.
 ITEM_ORDER = [
@@ -91,10 +97,12 @@ def main() -> int:
         image = Image.open(UI / filename).convert("RGBA")
         sizes[atlas_key] = list(image.size)
         solid = image.split()[3].point(lambda v: 255 if v > ALPHA_THRESHOLD else 0)
-        cells = (
-            {item: item_cell(i) for i, item in enumerate(ITEM_ORDER)}
-            if atlas_key == "item" else AMMUNITION_CELLS
-        )
+        if atlas_key == "item":
+            cells = {item: item_cell(i) for i, item in enumerate(ITEM_ORDER)}
+        elif atlas_key == "derived":
+            cells = {item: ((i % 6) * CELL, (i // 6) * CELL, CELL, CELL) for i, item in enumerate(DERIVED_ORDER)}
+        else:
+            cells = AMMUNITION_CELLS
         for item_id, cell in cells.items():
             rect = measure(solid, cell)
             regions[item_id] = {"atlas": atlas_key, "rect": list(rect)}

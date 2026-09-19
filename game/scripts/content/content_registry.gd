@@ -13,6 +13,7 @@ var blocks_by_id: Dictionary = {}
 var items: Dictionary = {}
 var entities: Dictionary = {}
 var recipes: Dictionary = {}
+var munitions: Dictionary = {}
 var load_error := ""
 
 
@@ -43,6 +44,8 @@ func load_registry(path: String = REGISTRY_PATH) -> Dictionary:
 	if not balance_value is Dictionary:
 		return {"ok": false, "reason": "REGISTRY_BALANCE_INVALID"}
 	balance = balance_value.duplicate(true)
+	var munition_value: Variant = document.get("munitions", {})
+	munitions = munition_value.duplicate(true) if munition_value is Dictionary else {}
 	inventory_slots = int(inventory.get("slots", 0))
 	hotbar_slots = int(inventory.get("hotbar_slots", 0))
 	if content_version.is_empty() or inventory_slots < 1 or hotbar_slots < 1 or hotbar_slots > inventory_slots:
@@ -86,6 +89,11 @@ func item(item_id: String) -> Dictionary:
 
 func entity(entity_id: String) -> Dictionary:
 	return entities.get(entity_id, {}).duplicate(true)
+
+
+## Munition definition for an ammunition item ({} when none).
+func munition(item_id: String) -> Dictionary:
+	return munitions.get(item_id, {}).duplicate(true)
 
 
 func recipe(recipe_id: String) -> Dictionary:
