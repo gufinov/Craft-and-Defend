@@ -32,6 +32,14 @@ Owner direction (2026-09-19): "randomize the world generation and ensure ore is 
 - With a placed `core_of_power` station the drill's arena centres on it (`arena_center + (0, 0, 5)` is the core's centre column), raiders route to the nearest free cell beside the 3×3 footprint, hits go through `WorkstationService.try_damage` (visual and save follow) and destroying the core (by any path) fails the drill. Without one the prototype core cell remains.
 - New games start with one Core of Power in the pack (outside automation). The red `enemy_core` is placed on a levelled stone slab at the enemy base the first time its cells are loaded.
 
+## Aggro, player health, view distance (owner round-2 notes)
+
+- **Sword**: the swing first ray-casts along the aim on layers 1|4 (raiders live on 4); a raider it touches is hit. Otherwise the nearest raider inside a 3.25 reach cone (37°) is hit unless something solid sits more than 0.9 from it on the line. Raiders stay targetable after a lost drill so you can finish them.
+- **Aggro** (`CoreDefenseService.notify_raider_provoked`, `ATTENTION_SECONDS` 8, `ATTENTION_RANGE` 14): a raider hurt by the player chases the player and hits (melee 6/10, trolls shoot); one hurt by a machine chases that machine and smashes it; when attention lapses or the target leaves range it re-plans to the core. Siege impacts pass the machine's instance id as the provoker.
+- **Player health** (`PlayerController.health`, 100): HUD `HP 100/100`; regenerates 2/s after 6 s without damage; at 0 you respawn beside your core (or home) with full health.
+- **Navigation**: water is impassable for raiders (they path around lakes).
+- **View distance**: Settings → Graphics → Terrain view distance (64/128/192/256/320 blocks, default 128; `WorldAdapter.set_view_distance`, saved in settings.cfg).
+
 ## Acceptance
 
 T151 (far attack from the enemy base), T152 (placed core defended) in `--p4-siege-units-automation=gate`; world tests T137/T138 follow the new bands; F0 T03/T06 follow the bounds; the P1 visual shows a lake beside the clearing.

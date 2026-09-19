@@ -37,6 +37,14 @@ var working_database_path := ""
 var revision := 0
 var generator_version := P1_GENERATOR_VERSION
 var world_seed := DEFAULT_WORLD_SEED
+## Blocks of terrain streamed around the viewer (Settings > Graphics).
+var view_distance := 128
+
+
+func set_view_distance(blocks: int) -> void:
+	view_distance = maxi(32, blocks)
+	if terrain != null:
+		terrain.max_view_distance = view_distance
 var _spawn_ready_emitted := false
 var _ready_feet := SPAWN_FEET
 
@@ -67,7 +75,7 @@ func initialize(database_path: String, ready_feet: Vector3 = SPAWN_FEET, world_s
 	terrain.name = "VoxelTerrain"
 	terrain.bounds = AABB(Vector3(WORLD_MIN), Vector3(WORLD_SIZE))
 	terrain.mesh_block_size = 16
-	terrain.max_view_distance = 64
+	terrain.max_view_distance = view_distance
 	terrain.generate_collisions = true
 	terrain.collision_layer = 1
 	terrain.collision_mask = 1

@@ -391,6 +391,60 @@ func _run_gate() -> void:
 	_record("T152_PLACED_CORE_DEFENDED", placed_core.get("ok", false) and core_drill.get("ok", false) and centred and routed_to_core and approach_adjacent and station_after_hit == 234 and drill_after_hit == 234 and core_gone and failed, "the drill centres on the placed Core of Power (240 integrity), routes raiders to a free cell beside it, mirrors hits onto the station and fails when the core is destroyed", {"placed": placed_core.get("reason"), "drill": core_drill.get("reason"), "centred": centred, "routed": routed_to_core, "route_reason": core.last_route_reason, "approach": approach, "station_after_hit": station_after_hit, "drill_after_hit": drill_after_hit, "core_gone": core_gone, "failed": failed})
 	core.clear_for_other_mode()
 
+	# T153 aggro and player health: a sword hit provokes the raider, which
+	# chases the player and hits back (health drops, HUD shows it); a machine
+	# hit provokes a chase of that machine; attention lapses back to the core.
+	core.clear_for_other_mode()
+	_level_ground(center + Vector3i(-8, 0, -10), 17, 19)
+	var aggro := core.start_prototype({"raiders": 2})
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var player := app.session.player
+	player.restore_health()
+	core.raider.active = false
+	core.raider.global_position = Vector3(center + Vector3i(0, 0, -4)) + Vector3(0.5, 0.9, 0.5)
+	player.global_position = Vector3(center + Vector3i(0, 0, -6)) + Vector3(0.5, 1.0, 0.5)
+	await get_tree().physics_frame
+	_rearm(core)
+	app.session.inventory.try_transaction({}, {"iron_sword": 1})
+	var sword_slot := -1
+	for slot_index in range(F0Inventory.SLOT_COUNT):
+		if str(app.session.inventory.slots[slot_index].get("item_id", "")) == "iron_sword":
+			sword_slot = slot_index
+	if sword_slot >= F0Inventory.HOTBAR_COUNT:
+		app.session.inventory.swap_slots(sword_slot, 0)
+		sword_slot = 0
+	app.session.inventory.select_hotbar(sword_slot)
+	app.session._melee_cooldown = 0.0
+	var eye := player.global_position + Vector3(0.0, 0.6, 0.0)
+	var to_raider := (core.raider.global_position + Vector3.UP * 0.65 - eye).normalized()
+	var swing := app.session._player_primary_action(eye, to_raider)
+	var provoked := not core._primary_chase.is_empty() and str(core._primary_chase.get("kind", "")) == "player"
+	var health_before := player.health
+	for _tick in range(50):
+		core.advance(0.1, false)
+	var hit_back := player.health < health_before and core.player_hits > 0
+	# Attention lapses: push the clock past the window and the raider re-plans.
+	core._primary_chase["until"] = Time.get_ticks_msec() - 1
+	core.advance(0.1, false)
+	await get_tree().process_frame
+	var back_to_core := core._primary_chase.is_empty() and core.active_target_type == "core"
+	# A machine hit provokes a chase of that machine.
+	app.session.inventory.try_transaction({}, {"chest": 1})
+	var bait_chest := ws.try_place("chest", center + Vector3i(3, 0, -4), world.query_cell, AABB(), 0)
+	var bait_chest_id := str(bait_chest.get("details", {}).get("station", {}).get("instance_id", ""))
+	core.notify_raider_provoked(core.raider, bait_chest_id)
+	var chases_machine := str(core._primary_chase.get("kind", "")) == "structure" and str(core._primary_chase.get("id", "")) == bait_chest_id
+	for _frame in range(150):
+		core.advance(1.0 / 60.0, false)
+		await get_tree().physics_frame
+	var chest_hurt := int(ws.defense_status(bait_chest_id).get("details", {}).get("integrity", 24)) < 24
+	# Death respawns at full health beside the core/home.
+	player.take_damage(999, "test")
+	var respawned := player.health == PlayerController.MAX_HEALTH
+	_record("T153_AGGRO_AND_PLAYER_HEALTH", aggro.get("ok", false) and swing.get("ok", false) and provoked and hit_back and back_to_core and chases_machine and chest_hurt and respawned, "a sword hit lands and provokes the raider, which chases and hits the player (health drops); when attention lapses it returns to the core; a machine that hurt it gets chased and hit; the player respawns at full health", {"aggro": aggro.get("reason"), "swing": swing.get("reason"), "provoked": provoked, "hit_back": hit_back, "health_after": player.health if not respawned else health_before, "player_hits": core.player_hits, "back_to_core": back_to_core, "route": core.last_route_reason, "chases_machine": chases_machine, "chest_hurt": chest_hurt, "respawned": respawned})
+	core.clear_for_other_mode()
+
 
 ## Rendered evidence: the five machines (ballista, catapult, turret catapult on
 ## a tower platform, cannon, kettle on a rail-topped wall) in one 1280x720 view.

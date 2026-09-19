@@ -88,6 +88,11 @@ var master_volume := DEFAULT_MASTER_VOLUME
 var window_mode := DEFAULT_WINDOW_MODE
 var resolution := DEFAULT_RESOLUTION
 var msaa_3d := DEFAULT_MSAA_3D
+## Terrain view distance in blocks (VoxelTerrain.max_view_distance). The
+## owner plays on a 5090: the high options are meant to be used.
+const VIEW_DISTANCE_OPTIONS: Array[int] = [64, 128, 192, 256, 320]
+const DEFAULT_VIEW_DISTANCE := 128
+var view_distance := DEFAULT_VIEW_DISTANCE
 var vsync_enabled := DEFAULT_VSYNC_ENABLED
 
 
@@ -117,6 +122,9 @@ func load_and_apply() -> Dictionary:
 		if RESOLUTION_OPTIONS.has(candidate_resolution):
 			resolution = candidate_resolution
 		msaa_3d = clampi(int(config.get_value("graphics", "msaa_3d", DEFAULT_MSAA_3D)), 0, 3)
+		var candidate_view := int(config.get_value("graphics", "view_distance", DEFAULT_VIEW_DISTANCE))
+		if VIEW_DISTANCE_OPTIONS.has(candidate_view):
+			view_distance = candidate_view
 		vsync_enabled = bool(config.get_value("graphics", "vsync_enabled", DEFAULT_VSYNC_ENABLED))
 		if window_mode not in ["windowed", "fullscreen"]:
 			window_mode = DEFAULT_WINDOW_MODE
@@ -218,20 +226,25 @@ func set_input_audio_preferences(sensitivity: float, inverted: bool, volume: flo
 	return {"ok": true, "reason": "OK"}
 
 
-func set_graphics_preferences(candidate_msaa_3d: int, candidate_vsync_enabled: bool) -> Dictionary:
+func set_graphics_preferences(candidate_msaa_3d: int, candidate_vsync_enabled: bool, candidate_view_distance: int = -1) -> Dictionary:
 	if candidate_msaa_3d < 0 or candidate_msaa_3d > 3:
 		return {"ok": false, "reason": "INVALID_MSAA"}
-	var previous := {"msaa_3d": msaa_3d, "vsync_enabled": vsync_enabled}
+	if candidate_view_distance != -1 and not VIEW_DISTANCE_OPTIONS.has(candidate_view_distance):
+		return {"ok": false, "reason": "INVALID_VIEW_DISTANCE"}
+	var previous := {"msaa_3d": msaa_3d, "vsync_enabled": vsync_enabled, "view_distance": view_distance}
 	msaa_3d = candidate_msaa_3d
 	vsync_enabled = candidate_vsync_enabled
+	if candidate_view_distance != -1:
+		view_distance = candidate_view_distance
 	_apply_non_display_settings()
 	var save_error := _save()
 	if save_error != OK:
 		msaa_3d = int(previous.msaa_3d)
 		vsync_enabled = bool(previous.vsync_enabled)
+		view_distance = int(previous.view_distance)
 		_apply_non_display_settings()
 		return {"ok": false, "reason": "SAVE_FAILED", "error": save_error}
-	return {"ok": true, "reason": "OK", "msaa_3d": msaa_3d, "vsync_enabled": vsync_enabled}
+	return {"ok": true, "reason": "OK", "msaa_3d": msaa_3d, "vsync_enabled": vsync_enabled, "view_distance": view_distance}
 
 
 func begin_display_preview(candidate_mode: String, candidate_resolution: Vector2i) -> Dictionary:
@@ -448,5 +461,6 @@ func _save() -> Error:
 	config.set_value("display", "width", resolution.x)
 	config.set_value("display", "height", resolution.y)
 	config.set_value("graphics", "msaa_3d", msaa_3d)
+	config.set_value("graphics", "view_distance", view_distance)
 	config.set_value("graphics", "vsync_enabled", vsync_enabled)
 	return config.save(_settings_path)

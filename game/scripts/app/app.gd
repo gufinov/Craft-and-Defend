@@ -135,6 +135,7 @@ var volume_value_label: Label
 var window_mode_option: OptionButton
 var resolution_option: OptionButton
 var msaa_option: OptionButton
+var view_distance_option: OptionButton
 var vsync_check: CheckButton
 var windowed_resolution_row: HBoxContainer
 var fullscreen_resolution_row: HBoxContainer
@@ -644,6 +645,14 @@ func _build_settings(canvas: CanvasLayer) -> void:
 	msaa_option.tooltip_text = "Smooths moving block and silhouette edges; 4× is the default quality setting"
 	msaa_row.add_child(msaa_option)
 	box.add_child(msaa_row)
+	var view_row := _settings_row("Terrain view distance")
+	view_distance_option = OptionButton.new()
+	for blocks in SettingsStore.VIEW_DISTANCE_OPTIONS:
+		view_distance_option.add_item("%d blocks%s" % [blocks, " (Recommended)" if blocks == SettingsStore.DEFAULT_VIEW_DISTANCE else ""])
+	view_distance_option.custom_minimum_size = Vector2(350, 36)
+	view_distance_option.tooltip_text = "How far terrain streams in around you; higher values load more chunks and cost CPU while they build"
+	view_row.add_child(view_distance_option)
+	box.add_child(view_row)
 	var vsync_row := _settings_row("Vertical synchronization")
 	vsync_check = CheckButton.new()
 	vsync_check.text = "Enabled"
@@ -1236,6 +1245,7 @@ func _open_session(continue_existing: bool) -> void:
 		_show_error(open_result.get("reason", "OPEN_FAILED"))
 		return
 	session = GameSession.new()
+	session.settings_view_distance = settings.view_distance
 	session.name = "GameSession"
 	add_child(session)
 	session.ready_for_play.connect(_on_session_ready)
@@ -2686,6 +2696,7 @@ func _refresh_settings_controls() -> void:
 	var resolution_index := SettingsStore.RESOLUTION_OPTIONS.find(settings.resolution)
 	resolution_option.select(maxi(0, resolution_index))
 	msaa_option.select(settings.msaa_3d)
+	view_distance_option.select(maxi(0, SettingsStore.VIEW_DISTANCE_OPTIONS.find(settings.view_distance)))
 	vsync_check.button_pressed = settings.vsync_enabled
 	_refresh_display_mode_controls(window_mode_option.selected)
 	_on_sensitivity_value_changed(sensitivity_slider.value)
@@ -2737,7 +2748,7 @@ func _save_input_audio() -> void:
 
 
 func _save_graphics() -> void:
-	var result := settings.set_graphics_preferences(msaa_option.selected, vsync_check.button_pressed)
+	var result := settings.set_graphics_preferences(msaa_option.selected, vsync_check.button_pressed, SettingsStore.VIEW_DISTANCE_OPTIONS[maxi(0, view_distance_option.selected)])
 	if result.get("ok", false):
 		_apply_runtime_graphics()
 		settings_message.text = "Graphics quality saved and applied."
@@ -2747,6 +2758,8 @@ func _save_graphics() -> void:
 
 func _apply_runtime_graphics() -> void:
 	get_viewport().msaa_3d = settings.msaa_3d
+	if session != null and session.world != null:
+		session.world.set_view_distance(settings.view_distance)
 
 
 func _preview_display_changes() -> void:

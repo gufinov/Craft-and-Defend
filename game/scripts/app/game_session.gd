@@ -79,6 +79,8 @@ var _placement_preview: Node3D
 var _placement_preview_key := ""
 var _held_item_view: HeldItemView
 var fire_service: FireService
+## Set by the app before initialize(): Settings > Graphics terrain view distance.
+var settings_view_distance := 0
 var _resource_markers: Node3D
 var _environment: Environment
 var _sun: DirectionalLight3D
@@ -160,6 +162,9 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	core_defense.name = "CoreDefenseService"
 	add_child(core_defense)
 	core_defense.initialize(world, registry, workstations, snapshot.get("core_defense", {}))
+	core_defense.player = player
+	player.health_changed.connect(_on_player_health_changed)
+	player.died.connect(_on_player_died)
 	fire_service = FireService.new()
 	fire_service.name = "FireService"
 	add_child(fire_service)
@@ -176,6 +181,8 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	player.interaction = interaction
 	player.primary_action = _player_primary_action
 	world.spawn_area_ready.connect(_on_spawn_area_ready)
+	if settings_view_distance > 0:
+		world.set_view_distance(settings_view_distance)
 	world.status_changed.connect(status_changed.emit)
 	inventory.changed.connect(_on_inventory_changed)
 	interaction.result_reported.connect(_on_interaction_result)
@@ -206,6 +213,8 @@ func _process(delta: float) -> void:
 		fire_service.advance(delta, simulation_paused or saving)
 	if not simulation_paused:
 		_melee_cooldown = maxf(0.0, _melee_cooldown - delta)
+		if player != null and world_ready:
+			player.advance_health(delta)
 	if workstations != null and not saving:
 		workstations.advance(delta, simulation_paused)
 		_ensure_enemy_core(delta)
@@ -467,7 +476,25 @@ func _emit_hud() -> void:
 	var selected := inventory.active_item_id()
 	var selected_text := "Empty" if selected.is_empty() else registry.display_name(selected)
 	var cycle_text := "" if clock.cycle_enabled else " · cycle paused"
-	hud_changed.emit("Slot %d: %s   |   %s · %s%s" % [inventory.selected_hotbar + 1, selected_text, clock.period_label(), clock.time_label(), cycle_text])
+	var health_text := "HP %d/%d   |   " % [player.health, PlayerController.MAX_HEALTH] if player != null else ""
+	hud_changed.emit("%sSlot %d: %s   |   %s · %s%s" % [health_text, inventory.selected_hotbar + 1, selected_text, clock.period_label(), clock.time_label(), cycle_text])
+
+
+func _on_player_health_changed(_health: int, _max_health: int) -> void:
+	_emit_hud()
+
+
+## Death: back to the core (or home) with full health after a short pause.
+func _on_player_died() -> void:
+	_on_interaction_feedback("You fell. You wake at your core.")
+	var respawn := WorldAdapter.SPAWN_FEET
+	for record: Dictionary in workstations.stations.values():
+		if str(record.get("entity_id", "")) == "core_of_power":
+			var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+			respawn = Vector3(anchor) + Vector3(1.5, 1.0, -1.0)
+	player.global_position = respawn
+	player.velocity = Vector3.ZERO
+	player.restore_health()
 
 
 func _emit_navigation() -> void:
@@ -1888,23 +1915,35 @@ func _player_primary_action(origin: Vector3, direction: Vector3) -> Dictionary:
 		return {"handled": true, "ok": false, "reason": "SWORD_MISS"}
 	var reach := float(weapon.get("range", 3.25))
 	var aim_direction := direction.normalized()
-	var target_position := core_defense.nearest_raider_position(origin)
-	var target_offset := target_position - origin
-	if target_offset.length() > reach or aim_direction.dot(target_offset.normalized()) < 0.94:
-		return {"handled": true, "ok": false, "reason": "SWORD_MISS"}
-	# Trace to the raider's center instead of past its capsule. This keeps walls as
-	# blockers while remaining stable when a diagnostic moves the body directly.
-	var query := PhysicsRayQueryParameters3D.create(origin, target_position, 1)
-	query.exclude = [player.get_rid()]
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if not hit.is_empty() and not core_defense.is_raider_node(hit.get("collider")):
-		return {"handled": true, "ok": false, "reason": "SWORD_MISS"}
-	var struck: Variant = hit.get("collider") if not hit.is_empty() else null
+	# First: whatever body the swing ray touches (raiders live on layer 4).
+	var swing := PhysicsRayQueryParameters3D.create(origin, origin + aim_direction * reach, 1 | 4)
+	swing.exclude = [player.get_rid()]
+	var struck: Variant = null
+	var swing_hit := get_world_3d().direct_space_state.intersect_ray(swing)
+	if not swing_hit.is_empty() and core_defense.is_raider_node(swing_hit.get("collider")):
+		struck = swing_hit.get("collider")
+	if struck == null:
+		# Otherwise the nearest raider inside the reach cone, with nothing solid
+		# closer than its own bulk in between.
+		var target_position := core_defense.nearest_raider_position(origin)
+		var target_offset := target_position - origin
+		if not target_position.is_finite() or target_offset.length() > reach or aim_direction.dot(target_offset.normalized()) < 0.80:
+			return {"handled": true, "ok": false, "reason": "SWORD_MISS"}
+		var query := PhysicsRayQueryParameters3D.create(origin, target_position, 1 | 4)
+		query.exclude = [player.get_rid()]
+		var hit := get_world_3d().direct_space_state.intersect_ray(query)
+		if not hit.is_empty() and not core_defense.is_raider_node(hit.get("collider")) and Vector3(hit.get("position", target_position)).distance_to(target_position) > 0.9:
+			return {"handled": true, "ok": false, "reason": "SWORD_MISS"}
+		for node in core_defense.raider_nodes():
+			if (node.global_position + Vector3.UP * 0.65).distance_to(target_position) < 0.01:
+				struck = node
 	var result: Dictionary
 	if struck != null and core_defense.is_raider_node(struck):
 		result = core_defense.try_damage_raider_node(struck, int(weapon.get("damage", 0)), item_id)
 	else:
 		result = core_defense.try_damage_raider(int(weapon.get("damage", 0)), item_id)
+	if result.get("ok", false) and struck != null:
+		core_defense.notify_raider_provoked(struck, "player")
 	result["handled"] = true
 	return result
 

@@ -91,6 +91,18 @@ const WAVE_SPREAD := 4
 const MARCH_HANDOVER := 18
 const LOCAL_RADIUS := 20
 var far_mode := false
+## P4H aggro (owner 2026-09-19): "if an enemy gets attacked by something it
+## tries to destroy that as long as it is in range and attention, otherwise
+## drive to the core." A provoked raider chases its attacker (the player or
+## the machine that shot it) for ATTENTION_SECONDS within ATTENTION_RANGE,
+## hits it when in reach, then resumes its route.
+const ATTENTION_SECONDS := 8.0
+const ATTENTION_RANGE := 14.0
+const MELEE_REACH := 2.0
+const CHASE_REPLAN_SECONDS := 0.4
+var player: Node3D
+var player_hits := 0
+var _primary_chase: Dictionary = {}
 ## P4G: when the player has placed a Core of Power, the drill defends that
 ## station (its integrity is the core's integrity) instead of the prototype
 ## core cell; "" means the legacy prototype core at arena_center + (0, 0, 5).
@@ -261,6 +273,10 @@ func advance(delta: float, paused: bool = false) -> void:
 			else:
 				_attack_core()
 	if is_active():
+		if not _primary_chase.is_empty() and is_instance_valid(raider):
+			if not _advance_chase(raider, _primary_chase, raider_damage, raider_attack_interval, false, delta):
+				_primary_chase = {}
+				_queue_replan()
 		_advance_extras(delta)
 
 
@@ -272,6 +288,11 @@ func _advance_extras(delta: float) -> void:
 			continue
 		var phase := str(entry.get("phase", "routing"))
 		if phase == "marching":
+			continue
+		if phase == "chasing":
+			if not _advance_chase(entry.node, entry.chase, int(entry.damage), float(entry.get("attack_interval", raider_attack_interval)), bool(entry.get("ranged", false)), delta):
+				entry.erase("chase")
+				_plan_extra(entry)
 			continue
 		if phase == "routing":
 			if str(entry.kind) == BasicRaider.KIND_BRUTE:
@@ -485,13 +506,13 @@ func _extras_snapshot() -> Array:
 func try_damage_raider(amount: int, source: String = "player") -> Dictionary:
 	if amount <= 0:
 		return {"ok": false, "reason": "INVALID_DAMAGE"}
-	if not is_active() or not is_instance_valid(raider) or raider_health <= 0:
+	if not (is_active() or state == FAILED) or not is_instance_valid(raider) or raider_health <= 0:
 		return {"ok": false, "reason": "NO_RAIDER"}
 	var before := raider_health
 	raider_health = maxi(0, raider_health - amount)
 	if raider_health <= 0:
 		raider.die()
-		if living_raider_count() == 0:
+		if living_raider_count() == 0 and state != FAILED:
 			state = WON
 			feedback.emit("Defense won: %s defeated the %s." % [source.replace("_", " ").capitalize(), "raider" if wave_size <= 1 else "last raider"])
 		else:
@@ -509,13 +530,13 @@ func try_damage_raider_node(node: Node, amount: int, source: String = "player") 
 	for entry in extra_raiders:
 		if entry.node != node:
 			continue
-		if int(entry.health) <= 0 or not is_active():
+		if int(entry.health) <= 0 or not (is_active() or state == FAILED):
 			return {"ok": false, "reason": "NO_RAIDER"}
 		var before := int(entry.health)
 		entry.health = maxi(0, int(entry.health) - amount)
 		if int(entry.health) <= 0:
 			entry.node.die()
-			if living_raider_count() == 0:
+			if living_raider_count() == 0 and state != FAILED:
 				state = WON
 				feedback.emit("Defense won: %s defeated the last raider." % source.replace("_", " ").capitalize())
 			else:
@@ -525,15 +546,103 @@ func try_damage_raider_node(node: Node, amount: int, source: String = "player") 
 	return {"ok": false, "reason": "NO_RAIDER"}
 
 
+## A raider was hurt by `source` ("player" or a station instance id): it
+## turns on that attacker if it is within ATTENTION_RANGE.
+func notify_raider_provoked(node: Node, source: String) -> void:
+	if not is_active() or not is_raider_node(node):
+		return
+	var attacker := _attacker_point(source)
+	if not attacker.is_finite() or attacker.distance_to(node.global_position) > ATTENTION_RANGE:
+		return
+	var chase := {"kind": "player" if source == "player" else "structure", "id": source, "until": Time.get_ticks_msec() + int(ATTENTION_SECONDS * 1000.0), "replan": 0.0, "attack_timer": 0.4}
+	if node == raider:
+		if far_mode and last_route_reason == "MARCHING":
+			return
+		_primary_chase = chase
+		raider.active = false
+		return
+	for entry in extra_raiders:
+		if entry.node == node and str(entry.get("phase", "")) != "marching":
+			entry.chase = chase
+			entry.phase = "chasing"
+			node.active = false
+			return
+
+
+func provoke_raiders_within(point: Vector3, radius: float, source: String) -> void:
+	for node in raider_nodes():
+		var position := node.global_position + Vector3.UP * 0.65
+		if Vector2(position.x - point.x, position.z - point.z).length() <= radius:
+			notify_raider_provoked(node, source)
+
+
+## Where the attacker is: the player's body or a station's anchor centre.
+func _attacker_point(source: String) -> Vector3:
+	if source == "player":
+		return player.global_position if is_instance_valid(player) else Vector3.INF
+	if workstations == null or not workstations.stations.has(source):
+		return Vector3.INF
+	var anchor: Vector3i = workstations.stations[source].get("anchor", Vector3i.ZERO)
+	return Vector3(anchor) + Vector3(0.5, 0.9, 0.5)
+
+
+## Drives one chase for `node`. Returns false when the chase is over.
+func _advance_chase(node: BasicRaider, chase: Dictionary, damage: int, interval: float, ranged: bool, delta: float) -> bool:
+	if not is_instance_valid(node) or node.dead:
+		return false
+	var source := str(chase.id)
+	var target := _attacker_point(source)
+	if Time.get_ticks_msec() > int(chase.until) or not target.is_finite() or target.distance_to(node.global_position) > ATTENTION_RANGE:
+		return false
+	if str(chase.kind) == "structure" and not workstations.defense_status(source).get("ok", false):
+		return false
+	var reach := float(entry_range(ranged)) if ranged else MELEE_REACH
+	var distance := Vector2(target.x - node.global_position.x, target.z - node.global_position.z).length()
+	chase.attack_timer = float(chase.attack_timer) - delta
+	if distance <= reach:
+		node.active = false
+		node.velocity = Vector3.ZERO
+		node.face_point(target)
+		if float(chase.attack_timer) <= 0.0:
+			chase.attack_timer = interval
+			node.play_attack()
+			if ranged:
+				_spawn_troll_bolt(node.muzzle_position(), target)
+			if str(chase.kind) == "player":
+				if is_instance_valid(player) and player.has_method("take_damage"):
+					var hit: Dictionary = player.take_damage(damage, str(node.kind))
+					if hit.get("ok", false):
+						player_hits += 1
+						feedback.emit("A %s hit you for %d. Health %d/100." % [str(node.kind), damage, int(hit.get("health", 0))])
+			else:
+				var result := workstations.try_damage(source, damage)
+				if result.get("reason") == "DESTROYED":
+					return false
+		return true
+	chase.replan = float(chase.replan) - delta
+	if float(chase.replan) <= 0.0:
+		chase.replan = CHASE_REPLAN_SECONDS
+		var feet := node.feet_cell()
+		var goal := Vector3i(floori(target.x), feet.y, floori(target.z))
+		node.set_route([feet, goal])
+	return true
+
+
+func entry_range(ranged: bool) -> float:
+	return troll_range if ranged else MELEE_REACH
+
+
 ## Splash: damages every living raider within `radius` (horizontal) of
 ## `point`. Returns the number of raiders hit.
-func damage_raiders_within(point: Vector3, radius: float, amount: int, source: String = "siege") -> int:
+func damage_raiders_within(point: Vector3, radius: float, amount: int, source: String = "siege", provoker: String = "") -> int:
 	var hits := 0
 	for node in raider_nodes():
 		var position := node.global_position + Vector3.UP * 0.65
 		if Vector2(position.x - point.x, position.z - point.z).length() <= radius and absf(position.y - point.y) <= 3.0:
 			if try_damage_raider_node(node, amount, source).get("ok", false):
 				hits += 1
+				if not provoker.is_empty():
+					notify_raider_provoked(node, provoker)
 	return hits
 
 
@@ -552,10 +661,11 @@ func damage_raiders_in_cell(cell: Vector3i, amount: int, source: String = "fire"
 ## Every living raider body, primary first.
 func raider_nodes() -> Array[BasicRaider]:
 	var nodes: Array[BasicRaider] = []
-	if is_active() and is_instance_valid(raider) and raider_health > 0 and not raider.dead:
+	var bodies_live := is_active() or state == FAILED
+	if bodies_live and is_instance_valid(raider) and raider_health > 0 and not raider.dead:
 		nodes.append(raider)
 	for entry in extra_raiders:
-		if int(entry.health) > 0 and is_instance_valid(entry.node) and not entry.node.dead and is_active():
+		if int(entry.health) > 0 and is_instance_valid(entry.node) and not entry.node.dead and bodies_live:
 			nodes.append(entry.node)
 	return nodes
 
@@ -878,6 +988,8 @@ func _plan_from_raider() -> void:
 		return
 	if far_mode and last_route_reason == "MARCHING":
 		return
+	if not _primary_chase.is_empty():
+		return
 	_capture_navigation()
 	if navigation_snapshot == null:
 		# Far wave lines can reach terrain the streamer has not loaded yet;
@@ -1033,6 +1145,9 @@ func _query_navigation_cell(cell: Vector3i) -> Dictionary:
 		return {"state": "LOADED", "solid": false, "voxel_id": 0, "material_id": "air", "source": "voxel", "tags": [], "integrity": 0, "protected": false}
 	var block := registry.block_for_voxel(voxel_id)
 	var material_id := str(block.get("id", "unknown"))
+	if material_id == "water":
+		# Raiders do not wade: water is an impassable, unbreakable cell.
+		return {"state": "LOADED", "solid": true, "voxel_id": voxel_id, "material_id": material_id, "source": "voxel", "source_id": material_id, "tags": [], "integrity": 999, "protected": true}
 	var tags: Array = ["stone"]
 	var integrity := 60
 	if material_id in ["grass", "dirt"]:
@@ -1074,7 +1189,7 @@ func _run_queued_replan() -> void:
 	if is_instance_valid(raider) and core_integrity > 0:
 		_plan_from_raider()
 	for entry in extra_raiders:
-		if int(entry.health) > 0 and str(entry.get("phase", "routing")) not in ["attacking_core", "marching"]:
+		if int(entry.health) > 0 and str(entry.get("phase", "routing")) not in ["attacking_core", "marching", "chasing"]:
 			_plan_extra(entry)
 
 
@@ -1188,6 +1303,7 @@ func _clear_fixture() -> void:
 		if is_instance_valid(entry.node):
 			entry.node.queue_free()
 	extra_raiders.clear()
+	_primary_chase = {}
 	_core_root = null
 	_core_material = null
 	raider = null

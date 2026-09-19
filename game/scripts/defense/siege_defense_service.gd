@@ -372,7 +372,7 @@ func _resolve_impact(impact: Dictionary) -> Dictionary:
 	var radius := float(munition.get("splash_radius", 0.0))
 	var damage := int(munition.get("damage", 0))
 	var result := {"ok": false, "reason": "NO_RAIDER"}
-	var hits := core_defense.damage_raiders_within(point, maxf(radius, 0.9), damage, str(impact.source))
+	var hits := core_defense.damage_raiders_within(point, maxf(radius, 0.9), damage, str(impact.source), str(impact.get("instance_id", "")))
 	if hits > 0:
 		result = {"ok": true, "reason": "RAIDER_DAMAGED", "hits": hits}
 	if str(munition.get("effect", "impact")) == "fire" and fire != null:

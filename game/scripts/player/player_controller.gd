@@ -2,6 +2,48 @@ class_name PlayerController
 extends CharacterBody3D
 
 signal interaction_feedback(message: String)
+## P4H: the player can be hurt by raiders. health_changed carries the new
+## value; died fires once when it reaches zero (the session respawns).
+signal health_changed(health: int, max_health: int)
+signal died
+const MAX_HEALTH := 100
+const HEALTH_REGEN_PER_SECOND := 2.0
+const REGEN_DELAY_SECONDS := 6.0
+var health := MAX_HEALTH
+var _regen_delay := 0.0
+var _regen_accumulator := 0.0
+
+
+func take_damage(amount: int, source: String = "raider") -> Dictionary:
+	if amount <= 0 or health <= 0:
+		return {"ok": false, "reason": "NO_DAMAGE"}
+	health = maxi(0, health - amount)
+	_regen_delay = REGEN_DELAY_SECONDS
+	health_changed.emit(health, MAX_HEALTH)
+	if health <= 0:
+		died.emit()
+	return {"ok": true, "reason": "PLAYER_HIT", "health": health, "source": source}
+
+
+func restore_health() -> void:
+	health = MAX_HEALTH
+	_regen_delay = 0.0
+	health_changed.emit(health, MAX_HEALTH)
+
+
+## Slow regeneration once no damage landed for REGEN_DELAY_SECONDS.
+func advance_health(delta: float) -> void:
+	if health <= 0 or health >= MAX_HEALTH:
+		return
+	if _regen_delay > 0.0:
+		_regen_delay = maxf(0.0, _regen_delay - delta)
+		return
+	_regen_accumulator += HEALTH_REGEN_PER_SECOND * delta
+	if _regen_accumulator >= 1.0:
+		var gained := int(_regen_accumulator)
+		_regen_accumulator -= float(gained)
+		health = mini(MAX_HEALTH, health + gained)
+		health_changed.emit(health, MAX_HEALTH)
 signal boundary_feedback(message: String)
 
 const WALK_SPEED := 5.0
