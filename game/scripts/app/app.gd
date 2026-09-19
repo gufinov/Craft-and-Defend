@@ -80,6 +80,7 @@ var inventory_message: Label
 var crafting_title_label: Label
 var crafting_context_label: Label
 var crafting_inventory_grid: GridContainer
+var crafting_inventory_help: Label
 var crafting_inventory_slots: Array[CraftingItemSlot] = []
 var crafting_recipe_list: GridContainer
 var crafting_recipe_search: LineEdit
@@ -98,9 +99,24 @@ var furnace_progress_label: Label
 var crafting_message: Label
 var craft_selected_button: Button
 var crafting_clear_button: Button
+## P4a-2: the modal's middle/right cards swap by station type. The crafting
+## grid + recipe book serve hand/workbench/furnace; a siege weapon shows the
+## weapon panel + munition legend; a Chest shows its 3 x 3 container grid.
+var crafting_grid_card: PanelContainer
+var crafting_grid_column: VBoxContainer
+var crafting_recipe_card: PanelContainer
+var siege_card: PanelContainer
+var siege_column: VBoxContainer
+var siege_panel: SiegeWeaponPanel
+var siege_legend_card: PanelContainer
+var siege_legend_list: VBoxContainer
+var chest_card: PanelContainer
+var chest_column: VBoxContainer
+var chest_panel: ChestPanel
 var cursor_stack_panel: PanelContainer
 var cursor_stack_icon: TextureRect
 var cursor_stack_count: Label
+const CRAFTING_STATION_TYPES: Array[String] = ["workbench", "furnace", "siege", "chest"]
 var _crafting_station_id := ""
 var _crafting_station_type := "hand"
 var _selected_recipe_id := ""
@@ -245,6 +261,11 @@ func _ready() -> void:
 		var p3h_automation := P3HBalanceAndControlsAutomation.new()
 		add_child(p3h_automation)
 		p3h_automation.call_deferred("run", self, p3h_mode)
+	var p4_weapon_panel_mode := _argument_value("--p4-weapon-panel-automation=")
+	if not p4_weapon_panel_mode.is_empty():
+		var p4_weapon_panel_automation := P4WeaponPanelAutomation.new()
+		add_child(p4_weapon_panel_automation)
+		p4_weapon_panel_automation.call_deferred("run", self, p4_weapon_panel_mode)
 
 
 func _input(event: InputEvent) -> void:
@@ -273,6 +294,10 @@ func _process(delta: float) -> void:
 			_refresh_furnace_live_status()
 		else:
 			_refresh_crafting_panel()
+	elif state == AppState.CRAFTING and _crafting_station_type == "siege" and session != null and session.workstations != null:
+		# P4a-2: ammo, cooldown and supply change while the panel is open (the
+		# weapon fires or auto-reloads), so the weapon column refreshes live.
+		_refresh_siege_panel_state()
 	if not display_confirm_panel.visible:
 		return
 	_display_confirm_remaining = maxf(0.0, _display_confirm_remaining - delta)
@@ -851,11 +876,11 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	inventory_heading.text = "INVENTORY"
 	inventory_heading.add_theme_color_override("font_color", Color("9fd8e8"))
 	inventory_column.add_child(inventory_heading)
-	var inventory_help := Label.new()
-	inventory_help.text = "Drag into the grid, or select then choose a cell"
-	inventory_help.add_theme_font_size_override("font_size", 13)
-	inventory_help.add_theme_color_override("font_color", Color("8fa5af"))
-	inventory_column.add_child(inventory_help)
+	crafting_inventory_help = Label.new()
+	crafting_inventory_help.text = "Drag into the grid, or select then choose a cell"
+	crafting_inventory_help.add_theme_font_size_override("font_size", 13)
+	crafting_inventory_help.add_theme_color_override("font_color", Color("8fa5af"))
+	inventory_column.add_child(crafting_inventory_help)
 	var inventory_scroll := ScrollContainer.new()
 	inventory_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	inventory_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -881,8 +906,10 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	grid_card.custom_minimum_size.x = 330
 	grid_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 14))
 	columns.add_child(grid_card)
+	crafting_grid_card = grid_card
 	var grid_column := VBoxContainer.new()
 	grid_card.add_child(grid_column)
+	crafting_grid_column = grid_column
 	var grid_heading := Label.new()
 	grid_heading.text = "CRAFTING GRID"
 	grid_heading.add_theme_color_override("font_color", Color("9fd8e8"))
@@ -954,11 +981,43 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	crafting_message.mouse_filter = Control.MOUSE_FILTER_STOP
 	grid_column.add_child(crafting_message)
 
+	# P4a-2 cards: weapon column (middle) + munition legend (right) for siege
+	# weapons, chest column (middle) for Chests. Hidden unless that station
+	# type is open; the message label moves into the visible middle column.
+	siege_card = PanelContainer.new()
+	siege_card.custom_minimum_size.x = 330
+	siege_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 14))
+	siege_card.hide()
+	columns.add_child(siege_card)
+	siege_column = VBoxContainer.new()
+	siege_card.add_child(siege_column)
+	siege_panel = SiegeWeaponPanel.new()
+	siege_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	siege_panel.unload_requested.connect(_on_siege_unload_pressed)
+	siege_panel.stance_requested.connect(_on_siege_stance_requested)
+	siege_panel.target_filter_requested.connect(_on_siege_target_filter_requested)
+	siege_panel.ammo_slot.pressed.connect(_on_siege_ammo_slot_pressed)
+	siege_panel.ammo_slot.item_dropped.connect(_on_crafting_item_dropped)
+	siege_panel.ammo_slot.stack_gesture.connect(_on_crafting_stack_gesture)
+	siege_column.add_child(siege_panel)
+	chest_card = PanelContainer.new()
+	chest_card.custom_minimum_size.x = 330
+	chest_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chest_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 14))
+	chest_card.hide()
+	columns.add_child(chest_card)
+	chest_column = VBoxContainer.new()
+	chest_card.add_child(chest_column)
+	chest_panel = ChestPanel.new()
+	chest_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	chest_column.add_child(chest_panel)
+
 	var recipe_card := PanelContainer.new()
 	recipe_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	recipe_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 14))
 	recipe_card.gui_input.connect(_on_crafting_recipe_book_gui_input.bind(recipe_card))
 	columns.add_child(recipe_card)
+	crafting_recipe_card = recipe_card
 	var recipe_column := VBoxContainer.new()
 	recipe_card.add_child(recipe_column)
 	var recipe_heading := Label.new()
@@ -990,6 +1049,28 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	page_row.add_child(crafting_recipe_page_label)
 	crafting_recipe_next = _button("Next ›", _change_recipe_page.bind(1), Vector2(118, 36))
 	page_row.add_child(crafting_recipe_next)
+	siege_legend_card = PanelContainer.new()
+	siege_legend_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	siege_legend_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 14))
+	siege_legend_card.hide()
+	columns.add_child(siege_legend_card)
+	var legend_column := VBoxContainer.new()
+	legend_column.add_theme_constant_override("separation", 8)
+	siege_legend_card.add_child(legend_column)
+	var legend_heading := Label.new()
+	legend_heading.text = "MUNITIONS"
+	legend_heading.add_theme_color_override("font_color", Color("9fd8e8"))
+	legend_column.add_child(legend_heading)
+	var legend_help := Label.new()
+	legend_help.text = "What this weapon can fire. One munition type is loaded at a time; unload to switch."
+	legend_help.add_theme_font_size_override("font_size", 12)
+	legend_help.add_theme_color_override("font_color", Color("8fa5af"))
+	legend_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	legend_help.max_lines_visible = 2
+	legend_column.add_child(legend_help)
+	siege_legend_list = VBoxContainer.new()
+	siege_legend_list.add_theme_constant_override("separation", 8)
+	legend_column.add_child(siege_legend_list)
 
 
 func _build_hud(canvas: CanvasLayer) -> void:
@@ -1206,14 +1287,22 @@ func _show_inventory() -> void:
 
 
 func _show_workstation(instance_id: String, station_type: String) -> void:
-	_show_crafting(instance_id, station_type)
+	# The session may pass the entity id (catapult, chest); resolve the real
+	# station type from the service so siege weapons and Chests open their
+	# own panels instead of falling back to hand crafting.
+	var resolved := station_type
+	if resolved not in CRAFTING_STATION_TYPES and session != null and session.workstations != null:
+		var service_type: String = session.workstations.station_type(instance_id)
+		if service_type in CRAFTING_STATION_TYPES:
+			resolved = service_type
+	_show_crafting(instance_id, resolved)
 
 
 func _show_crafting(station_id: String = "", station_type: String = "hand") -> void:
 	if state != AppState.PLAYING or session == null:
 		return
 	_crafting_station_id = station_id
-	_crafting_station_type = station_type if station_type in ["workbench", "furnace"] else "hand"
+	_crafting_station_type = station_type if station_type in CRAFTING_STATION_TYPES else "hand"
 	_selected_recipe_id = ""
 	_craft_grid_items.clear()
 	_crafting_selected_inventory_item = ""
@@ -1401,6 +1490,20 @@ func _stack_reason_text(reason: String) -> String:
 			return "That item does not belong in this Furnace slot."
 		"OUTPUT_TAKE_ONLY":
 			return "The Output slot only releases finished items."
+		"WRONG_AMMUNITION":
+			return "That is not ammunition this weapon can fire."
+		"AMMO_TYPE_LOADED":
+			return "Unload the loaded munition before switching to another type."
+		"WEAPON_FULL":
+			return "The weapon is fully loaded."
+		"WEAPON_EMPTY":
+			return "The weapon is empty — nothing to unload."
+		"NO_RESOURCE":
+			return "None of that item is left to move."
+		"CONTAINER_FULL":
+			return "The chest has no room for that."
+		"NOT_CONTAINER", "NOT_SIEGE", "NO_ENTITY":
+			return "That station is no longer available."
 		_:
 			return reason.replace("_", " ").capitalize()
 
@@ -1467,6 +1570,23 @@ func _refresh_inventory_panel() -> void:
 
 func _refresh_crafting_panel() -> void:
 	if session == null:
+		return
+	_apply_crafting_card_layout()
+	if _crafting_station_type == "siege":
+		_refresh_crafting_inventory()
+		var siege_status := session.workstations.siege_status(_crafting_station_id)
+		var siege_details: Dictionary = siege_status.get("details", {})
+		var siege_definition: Dictionary = siege_details.get("definition", {})
+		crafting_title_label.text = session.registry.display_name(str(siege_details.get("entity_id", "weapon"))).to_upper()
+		crafting_context_label.text = "AMMUNITION  ·  STANCE  ·  TARGET FILTER  ·  RELOADS FROM CHESTS WITHIN %.0f BLOCKS  ·  ESC CLOSES" % float(siege_definition.get("supply_radius", 8.0))
+		_refresh_siege_legend(siege_definition)
+		_refresh_siege_panel_state()
+		return
+	if _crafting_station_type == "chest":
+		_refresh_crafting_inventory()
+		crafting_title_label.text = "CHEST"
+		crafting_context_label.text = "STORE AND TAKE ITEMS  ·  SIEGE WEAPONS IN SUPPLY RANGE RELOAD FROM HERE  ·  ESC CLOSES"
+		_refresh_chest_panel_state()
 		return
 	var recipes := _available_crafting_recipes()
 	var grid_size := 2
@@ -1566,6 +1686,283 @@ func _refresh_crafting_panel() -> void:
 		outputs.append("%d %s" % [int(selected_recipe.outputs[item_id]), session.registry.display_name(item_id)])
 	crafting_output_label.text = "OUTPUT  →  %s\n%s" % [" + ".join(outputs), "READY" if selected_status.get("ok", false) else _craft_reason_text(str(selected_status.get("reason", "UNAVAILABLE")), str(selected_status.get("item_id", "")))]
 	craft_selected_button.disabled = not selected_status.get("ok", false)
+
+
+# ---------------------------------------------------------------------------
+# P4a-2: siege weapon panel and Chest panel inside the crafting modal shell.
+# ---------------------------------------------------------------------------
+
+## Shows the cards that belong to the open station type and parks the shared
+## message label at the bottom of the visible middle column.
+func _apply_crafting_card_layout() -> void:
+	var siege := _crafting_station_type == "siege"
+	var chest := _crafting_station_type == "chest"
+	if siege:
+		crafting_inventory_help.text = "Drag a munition onto the slot, or select then click it"
+	elif chest:
+		crafting_inventory_help.text = "Drag onto the chest, or select then click a chest tile"
+	else:
+		crafting_inventory_help.text = "Drag into the grid, or select then choose a cell"
+	crafting_grid_card.visible = not siege and not chest
+	crafting_recipe_card.visible = not siege and not chest
+	siege_card.visible = siege
+	siege_legend_card.visible = siege
+	chest_card.visible = chest
+	var message_parent: Container = crafting_grid_column
+	if siege:
+		message_parent = siege_column
+	elif chest:
+		message_parent = chest_column
+	if crafting_message.get_parent() != message_parent:
+		crafting_message.reparent(message_parent, false)
+
+
+func _cursor_holds_item() -> bool:
+	return session != null and not str(session.inventory.cursor_stack.get("item_id", "")).is_empty()
+
+
+func _refresh_siege_panel_state() -> void:
+	if session == null or siege_panel == null or _crafting_station_type != "siege" or _crafting_station_id.is_empty():
+		return
+	var status := session.workstations.siege_status(_crafting_station_id)
+	if not status.get("ok", false):
+		return
+	var supply: Array = session.workstations.siege_supply(_crafting_station_id)
+	siege_panel.refresh(status.get("details", {}), supply, session.registry, _crafting_selected_inventory_item, _cursor_holds_item())
+
+
+func _siege_effect_text(munition: Dictionary) -> String:
+	if str(munition.get("effect", "impact")) == "fire":
+		return "fire — burns %.0f s, spreads on wood" % float(munition.get("burn_seconds", 0.0))
+	return "impact"
+
+
+## Right column: one row per munition the weapon accepts (icon, name, damage,
+## splash, effect) so the player can pick a shot type without leaving the panel.
+func _refresh_siege_legend(definition: Dictionary) -> void:
+	for child in siege_legend_list.get_children():
+		siege_legend_list.remove_child(child)
+		child.queue_free()
+	var allowed: Array = definition.get("ammo_items", [definition.get("ammo_item", "")])
+	for entry in allowed:
+		var item_id := str(entry)
+		var munition := session.registry.munition(item_id)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		var icon_holder := PanelContainer.new()
+		icon_holder.custom_minimum_size = Vector2(56, 56)
+		icon_holder.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("0a141b"), Color("365363"), 5, 6))
+		var icon := TextureRect.new()
+		icon.custom_minimum_size = Vector2(44, 44)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.texture = ItemIconCatalog.texture_for(item_id)
+		icon_holder.add_child(icon)
+		row.add_child(icon_holder)
+		var text := Label.new()
+		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		text.max_lines_visible = 3
+		text.add_theme_font_size_override("font_size", 13)
+		text.add_theme_color_override("font_color", Color("c9f4ff"))
+		var splash := float(munition.get("splash_radius", 0.0))
+		text.text = "%s  ·  carrying %d\nDamage %d  ·  Splash %s\nEffect: %s" % [session.registry.display_name(item_id), session.inventory.count(item_id), int(munition.get("damage", 0)), "%.1f" % splash if splash > 0.0 else "none", _siege_effect_text(munition)]
+		row.add_child(text)
+		siege_legend_list.add_child(row)
+
+
+func _siege_capacity() -> int:
+	var status := session.workstations.siege_status(_crafting_station_id)
+	return int(status.get("details", {}).get("capacity", 1))
+
+
+func _load_siege_ammo(item_id: String, amount: int) -> void:
+	if session == null or _crafting_station_type != "siege" or item_id.is_empty():
+		return
+	var result := session.workstations.siege_load(_crafting_station_id, item_id, amount)
+	if result.get("ok", false):
+		var details: Dictionary = result.get("details", {})
+		crafting_message.text = "Loaded %d %s — %d / %d in the weapon." % [int(details.get("moved", amount)), session.registry.display_name(item_id), int(details.get("ammo", 0)), _siege_capacity()]
+	else:
+		crafting_message.text = _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
+	_refresh_crafting_panel()
+
+
+func _on_siege_ammo_slot_pressed() -> void:
+	if session == null or _crafting_station_type != "siege":
+		return
+	if _cursor_holds_item():
+		crafting_message.text = "Place the held stack first."
+		return
+	if _crafting_selected_inventory_item.is_empty():
+		crafting_message.text = "Select a munition tile in the inventory, then click the Ammunition slot to load 1 (Shift+Click 5)."
+		return
+	_load_siege_ammo(_crafting_selected_inventory_item, 1)
+
+
+func _on_siege_unload_pressed() -> void:
+	if session == null or _crafting_station_type != "siege":
+		return
+	var result := session.workstations.siege_unload(_crafting_station_id)
+	if result.get("ok", false):
+		var details: Dictionary = result.get("details", {})
+		crafting_message.text = "Returned %d %s to the inventory." % [int(details.get("moved", 0)), session.registry.display_name(str(details.get("item_id", "")))]
+	else:
+		crafting_message.text = _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
+	_refresh_crafting_panel()
+
+
+func _on_siege_stance_requested(stance: String) -> void:
+	if session == null or _crafting_station_type != "siege":
+		return
+	var result := session.workstations.siege_set_stance(_crafting_station_id, stance)
+	if result.get("ok", false):
+		crafting_message.text = "Holding fire — the weapon tracks targets but will not shoot." if stance == "hold" else "Fire at will — shoots the first matching target in range."
+	else:
+		crafting_message.text = _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
+	_refresh_siege_panel_state()
+
+
+func _on_siege_target_filter_requested(target_filter: String) -> void:
+	if session == null or _crafting_station_type != "siege":
+		return
+	var result := session.workstations.siege_set_target_filter(_crafting_station_id, target_filter)
+	if result.get("ok", false):
+		crafting_message.text = "Target filter: %s." % str(SiegeWeaponPanel.TARGET_FILTER_LABELS.get(target_filter, target_filter))
+	else:
+		crafting_message.text = _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
+	_refresh_siege_panel_state()
+
+
+func _on_siege_stack_gesture(source_kind: String, source_index: int, mouse_button: int, double_click: bool, dragging: bool, shift_pressed: bool) -> void:
+	var cursor_has_item := _cursor_holds_item()
+	if dragging:
+		var visit_key := "%s:%d" % [source_kind, source_index]
+		if source_kind != "inventory" or not cursor_has_item or _right_drag_visited.has(visit_key):
+			return
+		_right_drag_visited[visit_key] = true
+		if session.inventory.cursor_deposit_slot(source_index, true).get("ok", false):
+			crafting_message.text = "Distributed one item."
+		_refresh_crafting_panel()
+		return
+	if source_kind == "inventory":
+		var item_id := str(session.inventory.slots[source_index].get("item_id", ""))
+		if cursor_has_item or item_id.is_empty() or mouse_button != MOUSE_BUTTON_LEFT or not (double_click or shift_pressed):
+			_handle_inventory_cursor_gesture(source_index, mouse_button, double_click, false, crafting_message)
+			return
+		_crafting_selected_inventory_item = item_id
+		# Double-click loads as many as fit; Shift+click loads five.
+		_load_siege_ammo(item_id, _siege_capacity() if double_click else 5)
+		return
+	if source_kind == "siege_ammo":
+		if cursor_has_item:
+			crafting_message.text = "Place the held stack first."
+			return
+		if shift_pressed and mouse_button == MOUSE_BUTTON_LEFT and not _crafting_selected_inventory_item.is_empty():
+			_load_siege_ammo(_crafting_selected_inventory_item, 5)
+		elif shift_pressed or double_click:
+			_on_siege_unload_pressed()
+
+
+func _refresh_chest_panel_state() -> void:
+	if session == null or chest_panel == null or _crafting_station_type != "chest" or _crafting_station_id.is_empty():
+		return
+	var container_slots: Array = session.workstations.container_slots(_crafting_station_id)
+	chest_panel.ensure_slots(container_slots.size(), _connect_chest_tile)
+	chest_panel.refresh(container_slots, session.registry, _cursor_holds_item())
+
+
+func _connect_chest_tile(tile: CraftingItemSlot, index: int) -> void:
+	tile.pressed.connect(_on_chest_slot_pressed.bind(index))
+	tile.item_dropped.connect(_on_crafting_item_dropped)
+	tile.stack_gesture.connect(_on_crafting_stack_gesture)
+
+
+func _chest_stack(index: int) -> Dictionary:
+	var container_slots: Array = session.workstations.container_slots(_crafting_station_id)
+	if index < 0 or index >= container_slots.size():
+		return {"item_id": "", "count": 0}
+	return container_slots[index]
+
+
+func _deposit_to_chest(item_id: String, amount: int) -> void:
+	if session == null or _crafting_station_type != "chest" or item_id.is_empty():
+		return
+	var result := session.workstations.container_deposit(_crafting_station_id, item_id, amount)
+	if result.get("ok", false):
+		crafting_message.text = "Stored %d %s in the chest." % [int(result.get("details", {}).get("moved", amount)), session.registry.display_name(item_id)]
+	else:
+		crafting_message.text = _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
+	_refresh_crafting_panel()
+
+
+func _withdraw_from_chest(item_id: String, amount: int) -> void:
+	if session == null or _crafting_station_type != "chest" or item_id.is_empty():
+		return
+	var result := session.workstations.container_withdraw(_crafting_station_id, item_id, amount)
+	if result.get("ok", false):
+		crafting_message.text = "Took %d %s from the chest." % [int(result.get("details", {}).get("moved", amount)), session.registry.display_name(item_id)]
+	else:
+		crafting_message.text = _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
+	_refresh_crafting_panel()
+
+
+## Plain click on a chest tile: with a selected inventory item it stores one;
+## otherwise it takes one of whatever the tile holds.
+func _on_chest_slot_pressed(index: int) -> void:
+	if session == null or _crafting_station_type != "chest":
+		return
+	if _cursor_holds_item():
+		crafting_message.text = "Place the held stack first."
+		return
+	if not _crafting_selected_inventory_item.is_empty():
+		_deposit_to_chest(_crafting_selected_inventory_item, 1)
+		return
+	var stack := _chest_stack(index)
+	var item_id := str(stack.get("item_id", ""))
+	if item_id.is_empty():
+		crafting_message.text = "Chest slot %d is empty. Select an inventory tile, then click here to store it." % (index + 1)
+		return
+	_withdraw_from_chest(item_id, 1)
+
+
+func _on_chest_stack_gesture(source_kind: String, source_index: int, mouse_button: int, double_click: bool, dragging: bool, shift_pressed: bool) -> void:
+	var cursor_has_item := _cursor_holds_item()
+	if dragging:
+		var visit_key := "%s:%d" % [source_kind, source_index]
+		if source_kind != "inventory" or not cursor_has_item or _right_drag_visited.has(visit_key):
+			return
+		_right_drag_visited[visit_key] = true
+		if session.inventory.cursor_deposit_slot(source_index, true).get("ok", false):
+			crafting_message.text = "Distributed one item."
+		_refresh_crafting_panel()
+		return
+	if source_kind == "inventory":
+		var slot: Dictionary = session.inventory.slots[source_index]
+		var item_id := str(slot.get("item_id", ""))
+		if cursor_has_item or item_id.is_empty() or mouse_button != MOUSE_BUTTON_LEFT or not (double_click or shift_pressed):
+			_handle_inventory_cursor_gesture(source_index, mouse_button, double_click, false, crafting_message)
+			return
+		_crafting_selected_inventory_item = item_id
+		# Double-click stores the whole stack; Shift+click stores five.
+		_deposit_to_chest(item_id, int(slot.get("count", 0)) if double_click else 5)
+		return
+	if source_kind == "chest":
+		if cursor_has_item:
+			crafting_message.text = "Place the held stack first."
+			return
+		var stack := _chest_stack(source_index)
+		var item_id := str(stack.get("item_id", ""))
+		if mouse_button == MOUSE_BUTTON_LEFT and not _crafting_selected_inventory_item.is_empty() and (shift_pressed or double_click):
+			_deposit_to_chest(_crafting_selected_inventory_item, int(session.inventory.count(_crafting_selected_inventory_item)) if double_click else 5)
+			return
+		if item_id.is_empty():
+			crafting_message.text = "Chest slot %d is empty." % (source_index + 1)
+			return
+		if shift_pressed or double_click:
+			_withdraw_from_chest(item_id, int(stack.get("count", 0)))
+		elif mouse_button == MOUSE_BUTTON_RIGHT:
+			_withdraw_from_chest(item_id, 1)
 
 
 ## Round 3: the Furnace panel works without the recipe book. The recipe is
@@ -1768,6 +2165,17 @@ func _select_crafting_inventory_slot(index: int) -> void:
 
 func _selection_message(item_id: String) -> String:
 	var display_name := session.registry.display_name(item_id)
+	if _crafting_station_type == "siege":
+		var definition: Dictionary = session.workstations.siege_status(_crafting_station_id).get("details", {}).get("definition", {})
+		var allowed: Array = definition.get("ammo_items", [definition.get("ammo_item", "")])
+		if item_id in allowed:
+			return "%s selected — click the Ammunition slot to load 1, Shift+Click loads 5" % display_name
+		var names: PackedStringArray = PackedStringArray()
+		for allowed_item in allowed:
+			names.append(session.registry.display_name(str(allowed_item)))
+		return "%s is not ammunition for this weapon. Select %s." % [display_name, " or ".join(names)]
+	if _crafting_station_type == "chest":
+		return "%s selected — click a chest tile to store 1, Shift+Click stores 5, double-click stores all" % display_name
 	if _crafting_station_type != "furnace":
 		return "%s selected. Choose a crafting-grid cell." % display_name
 	var role := session.workstations._furnace_role_for_item(item_id)
@@ -1793,6 +2201,22 @@ func _on_crafting_item_dropped(target_kind: String, target_index: int, payload: 
 	var source_kind := str(payload.get("source_kind", ""))
 	var source_index := int(payload.get("source_index", -1))
 	var item_id := str(payload.get("item_id", ""))
+	if _crafting_station_type in ["siege", "chest"]:
+		if source_kind == "inventory" and target_kind == "inventory":
+			if source_index != target_index:
+				var swapped := session.inventory.swap_slots(source_index, target_index)
+				crafting_message.text = "Inventory slots rearranged." if swapped.get("ok", false) else "Inventory move failed."
+				_refresh_crafting_panel()
+		elif _crafting_station_type == "siege" and source_kind == "inventory" and target_kind == "siege_ammo":
+			_load_siege_ammo(item_id, _siege_capacity())
+		elif _crafting_station_type == "siege" and source_kind == "siege_ammo" and target_kind == "inventory":
+			_on_siege_unload_pressed()
+		elif _crafting_station_type == "chest" and source_kind == "inventory" and target_kind == "chest":
+			_deposit_to_chest(item_id, int(session.inventory.slots[source_index].get("count", 0)) if source_index >= 0 else 1)
+		elif _crafting_station_type == "chest" and source_kind == "chest" and target_kind == "inventory":
+			var stack := _chest_stack(source_index)
+			_withdraw_from_chest(str(stack.get("item_id", "")), int(stack.get("count", 0)))
+		return
 	if _crafting_station_type == "furnace":
 		var furnace_result: Dictionary = {"ok": false, "reason": "INVALID_SLOT"}
 		if source_kind == "inventory" and target_kind == "furnace" and target_index in [0, 1]:
@@ -1822,6 +2246,12 @@ func _on_crafting_item_dropped(target_kind: String, target_index: int, payload: 
 
 func _on_crafting_stack_gesture(source_kind: String, source_index: int, mouse_button: int, double_click: bool, dragging: bool, shift_pressed: bool) -> void:
 	if session == null or state != AppState.CRAFTING:
+		return
+	if _crafting_station_type == "siege":
+		_on_siege_stack_gesture(source_kind, source_index, mouse_button, double_click, dragging, shift_pressed)
+		return
+	if _crafting_station_type == "chest":
+		_on_chest_stack_gesture(source_kind, source_index, mouse_button, double_click, dragging, shift_pressed)
 		return
 	if _crafting_station_type != "furnace":
 		if source_kind == "inventory":

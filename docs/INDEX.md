@@ -24,6 +24,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P3I Furnace auto-processing](P3I_FURNACE_AUTO_PROCESSING.md)
 - [P3J drag building](P3J_DRAG_BUILDING.md)
 - [P3K blueprints](P3K_BLUEPRINTS.md)
+- [P4a-2 weapon and chest panels](P4A2_WEAPON_AND_CHEST_PANELS.md)
 - [Balance, ecology and siege systems](BALANCE_ECOLOGY_AND_SIEGE_SYSTEMS.md)
 - [Design direction 2026-09-18 — owner vision and proposals](DESIGN_DIRECTION_2026-09-18.md)
 
@@ -63,6 +64,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P3I Furnace auto-processing evidence](evidence/P3I_FURNACE_AUTO_PROCESSING.md)
 - [P3J drag building evidence](evidence/P3J_DRAG_BUILDING.md)
 - [P3K blueprints slice 1 evidence](evidence/P3K_BLUEPRINTS.md)
+- [P4a-2 weapon and chest panels evidence](evidence/P4A2_WEAPON_AND_CHEST_PANELS.md)
 - [Tool usage](../tools/README.md)
 - [Third-party audit and recovery, 2026-09-18](AUDIT_2026-09-18.md)
 - [Current status](STATUS.md)
