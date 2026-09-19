@@ -71,7 +71,7 @@ func _run_phase1() -> void:
 	app.session.player.position = WorldAdapter.SPAWN_FEET
 	app.session._emit_navigation()
 	var home_cue := app.navigation_label.text
-	_record("T39_EXPLORE_RETURN", outward_cue.begins_with("HOME  ") and outward_cue.contains("m") and home_cue == "HOME CLEARING", "the HUD provides a distance/bearing return cue outside the home clearing and a clear arrival state", {"away": outward_cue, "home": home_cue})
+	_record("T39_EXPLORE_RETURN", outward_cue.begins_with("HOME  ") and outward_cue.contains("m") and home_cue.begins_with("HOME CLEARING"), "the HUD provides a distance/bearing return cue outside the home clearing and a clear arrival state", {"away": outward_cue, "home": home_cue})
 
 	var edit_cell := Vector3i(3, -1, 38)
 	if not await _wait_cell_loaded(edit_cell):

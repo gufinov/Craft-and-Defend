@@ -137,6 +137,10 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T135 | P4D | A wave drill spawns four raiders (one brute) twenty cells out; splash damages every raider in radius; the nearest raider is targeted; the drill is won only once the whole wave is down; the snapshot records the wave size |
 | T136 | P4C | Visual: the ballista, catapult, turret catapult on its tower, cannon and kettle on a rail-topped wall render as distinct multi-part machines in one 1280×720 view (`p4-siege-units.png`) |
 | T123 | P4a-2 | Visual: rendered 1280×720 evidence of the weapon panel (loaded Flame Shot, stance, filter, supply, legend) and the Chest panel; real viewport clicks on a munition tile then the Ammunition slot (and on the chest grid) route through `CraftingItemSlot`; message, supply, legend and chest-grid bottoms are ≤ 720 |
+| T137 | P4b-1 | Sampled columns of the seeded generator show coal from depth 3 (above 6), iron only from depth 6, gold only from depth 12, gold rarer than iron rarer than coal, identical for the same seed and different for another |
+| T138 | P4b-1 | Every non-gold cell matches the pre-table P1 formula (iron roll [0,18) from depth 6, coal [18,55) from depth 3) and gold only replaces stone at depth ≥ 12, so `terrain_p1_1` saves keep their layout |
+| T139 | P4b-1 | A generated Gold Ore cell refuses the Stone Pick (`WRONG_TOOL`), breaks under the Iron Pick into one Gold Ore item, and block 11, items, texture and measured gold icons are registered |
+| T140 | P4b-1 | Two Gold Ore and one Coal auto-start the 8 s `gold_ingot` Furnace recipe and yield two collectable Gold Ingots after two durations |
 
 ## Performance evidence, not invented guarantees
 

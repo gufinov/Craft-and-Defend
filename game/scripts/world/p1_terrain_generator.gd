@@ -11,12 +11,23 @@ const COAL_ORE := 6
 const IRON_ORE := 7
 const BEDROCK := 9
 const LEAVES := 10
+const GOLD_ORE := 11
 const DEFAULT_SEED := 41026
+## Ore rows are read from `terrain.ores` in world.json (see
+## docs/P4B_RESOURCE_DISTRIBUTION.md). This fallback mirrors the shipped table
+## so a generator built without settings still produces the same layout.
+const DEFAULT_ORES := [
+	{"block": "iron_ore", "min_depth": 6, "max_depth": 32, "cluster_per_thousand": 18, "cluster_size": 2},
+	{"block": "coal_ore", "min_depth": 3, "max_depth": 32, "cluster_per_thousand": 37, "cluster_size": 2},
+	{"block": "gold_ore", "min_depth": 12, "max_depth": 32, "cluster_per_thousand": 5, "cluster_size": 2},
+]
 
 var world_seed := DEFAULT_SEED
 var settings: Dictionary = {}
 var _height_noise: FastNoiseLite
 var _detail_noise: FastNoiseLite
+## Compiled once in _init and never mutated afterwards: worker threads only read it.
+var _ores: Array[Dictionary] = []
 
 
 func _init(candidate_seed: int = DEFAULT_SEED, candidate_settings: Dictionary = {}) -> void:
@@ -32,6 +43,41 @@ func _init(candidate_seed: int = DEFAULT_SEED, candidate_settings: Dictionary = 
 	_detail_noise.frequency = float(settings.get("detail_frequency", 0.085))
 	_detail_noise.fractal_octaves = 2
 	_detail_noise.fractal_gain = 0.42
+	_ores = compile_ores(settings.get("ores", DEFAULT_ORES))
+
+
+## Resolves an ore table (block ids as strings) into voxel ids and cumulative
+## roll bands. Rows are ordered as written; each row owns the band
+## [start, start + cluster_per_thousand) of a per-cluster roll in [0, 1000).
+## Rows sharing a cluster_size share the same roll, so their bands never overlap.
+static func compile_ores(rows: Variant) -> Array[Dictionary]:
+	var compiled: Array[Dictionary] = []
+	if not rows is Array:
+		return compiled
+	var band_start := 0
+	for row in rows:
+		if not row is Dictionary:
+			continue
+		var voxel_id := WorldAdapter.BLOCK_NAMES.find(str(row.get("block", "")))
+		var width: int = maxi(int(row.get("cluster_per_thousand", 0)), 0)
+		if voxel_id <= AIR or width == 0:
+			band_start += width
+			continue
+		compiled.append({
+			"block": str(row.get("block", "")),
+			"voxel_id": voxel_id,
+			"min_depth": int(row.get("min_depth", 3)),
+			"max_depth": int(row.get("max_depth", 40)),
+			"cluster_size": maxi(int(row.get("cluster_size", 2)), 1),
+			"band_start": band_start,
+			"band_end": band_start + width,
+		})
+		band_start += width
+	return compiled
+
+
+func ore_table() -> Array[Dictionary]:
+	return _ores.duplicate(true)
 
 
 func _get_used_channels_mask() -> int:
@@ -137,14 +183,22 @@ func _tree_voxel_at(x: int, y: int, z: int) -> int:
 
 
 func _ore_at(x: int, y: int, z: int, surface: int) -> int:
+	# Depth counts down from the surface block: depth 1 and 2 are always dirt
+	# (see sample_voxel), so no ore row can reach them. Bedrock never carries ore.
 	if y >= surface - 2 or y <= -16:
 		return AIR
-	var cluster := Vector3i(floori(float(x) / 2.0), floori(float(y) / 2.0), floori(float(z) / 2.0))
-	var roll := _roll_3d(cluster.x, cluster.y, cluster.z, 1000)
-	if y <= surface - 6 and roll < int(settings.get("iron_cluster_per_thousand", 18)):
-		return IRON_ORE
-	if roll >= 18 and roll < int(settings.get("coal_cluster_per_thousand", 55)):
-		return COAL_ORE
+	var depth := surface - y
+	for ore in _ores:
+		var min_depth: int = ore["min_depth"]
+		var max_depth: int = ore["max_depth"]
+		if depth < min_depth or depth > max_depth:
+			continue
+		var size := float(ore["cluster_size"])
+		var roll := _roll_3d(floori(float(x) / size), floori(float(y) / size), floori(float(z) / size), 1000)
+		var band_start: int = ore["band_start"]
+		var band_end: int = ore["band_end"]
+		if roll >= band_start and roll < band_end:
+			return int(ore["voxel_id"])
 	return AIR
 
 

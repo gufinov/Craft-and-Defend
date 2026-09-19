@@ -113,9 +113,9 @@ func _run_phase1() -> void:
 	app._capture_forward_key()
 	var rebind_event := InputEventKey.new()
 	rebind_event.pressed = true
-	rebind_event.physical_keycode = KEY_R
+	rebind_event.physical_keycode = KEY_T
 	app._unhandled_input(rebind_event)
-	_record("T08_REBIND_SAVE", app.settings.get_keycode("move_forward") == KEY_R and app.forward_binding_label.text.contains("R"), "keybind UI saves physical R for Forward", {"message": app.keybind_message.text, "label": app.forward_binding_label.text})
+	_record("T08_REBIND_SAVE", app.settings.get_keycode("move_forward") == KEY_T and app.forward_binding_label.text.contains("T"), "keybind UI saves physical T for Forward (R is taken by Rotate Build Preview since P3H)", {"message": app.keybind_message.text, "label": app.forward_binding_label.text})
 	app._close_keybinds()
 	app._resume_game()
 	_record("T07_RESUME", app.state == app.AppState.PLAYING and not get_tree().paused, "Resume restores play state", app.state)
@@ -137,7 +137,7 @@ func _run_phase1() -> void:
 
 func _run_phase2() -> void:
 	await get_tree().process_frame
-	_record("T08_RESTART_BINDING", app.settings.get_keycode("move_forward") == KEY_R, "physical R restored after full process restart", app.settings.get_keycode("move_forward"))
+	_record("T08_RESTART_BINDING", app.settings.get_keycode("move_forward") == KEY_T, "physical T restored after full process restart", app.settings.get_keycode("move_forward"))
 	_record("T09_CONTINUE_AVAILABLE", app.saves.has_checkpoint() and not app.continue_button.disabled, "valid Continue action", app.continue_button.disabled)
 	app.continue_button.pressed.emit()
 	if not await _wait_for_session_ready():
@@ -166,8 +166,8 @@ func _run_phase2() -> void:
 			and is_equal_approx(float(actual.get("player", {}).get("pitch", 99.0)), float(expected.get("player", {}).get("pitch", -99.0)))
 	_record("T09_CONTINUE_RESTORE", terrain_ok and exact_inventory and player_ok, "terrain edits, exact inventory, and transform restored", {"terrain": terrain_ok, "inventory_exact": exact_inventory, "inventory": actual.get("inventory"), "player_ok": player_ok, "position_distance": position_distance, "player": actual.get("player")})
 	var events := InputMap.action_get_events("move_forward")
-	var mapped_r: bool = events.size() == 1 and events[0] is InputEventKey and events[0].physical_keycode == KEY_R
-	_record("T08_INPUTMAP_RESTORE", mapped_r, "runtime InputMap uses restored physical R", events[0].as_text() if not events.is_empty() else "none")
+	var mapped_r: bool = events.size() == 1 and events[0] is InputEventKey and events[0].physical_keycode == KEY_T
+	_record("T08_INPUTMAP_RESTORE", mapped_r, "runtime InputMap uses restored physical T", events[0].as_text() if not events.is_empty() else "none")
 	_finish(0 if not failed else 1)
 
 

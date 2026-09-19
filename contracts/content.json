@@ -20,7 +20,8 @@
     {"voxel_id": 7, "id": "iron_ore", "drop": "iron_ore", "min_pick_tier": 2, "protected": false, "solid": true},
     {"voxel_id": 8, "id": "castle_stone", "drop": "castle_stone", "min_pick_tier": 1, "protected": false, "solid": true},
     {"voxel_id": 9, "id": "bedrock", "drop": null, "min_pick_tier": 0, "protected": true, "solid": true},
-    {"voxel_id": 10, "id": "leaves", "drop": "stick", "min_pick_tier": 0, "protected": false, "solid": true}
+    {"voxel_id": 10, "id": "leaves", "drop": "stick", "min_pick_tier": 0, "protected": false, "solid": true},
+    {"voxel_id": 11, "id": "gold_ore", "drop": "gold_ore", "min_pick_tier": 3, "protected": false, "solid": true}
   ],
   "items": [
     {"id": "dirt", "category": "resource", "max_stack": 64, "places_block": 2},
@@ -32,6 +33,8 @@
     {"id": "coal", "category": "resource", "max_stack": 64},
     {"id": "iron_ore", "category": "resource", "max_stack": 64},
     {"id": "iron_ingot", "category": "resource", "max_stack": 64},
+    {"id": "gold_ore", "category": "resource", "max_stack": 64},
+    {"id": "gold_ingot", "category": "resource", "max_stack": 64},
     {"id": "wood_pick", "category": "tool", "max_stack": 1, "pick_tier": 1},
     {"id": "stone_pick", "category": "tool", "max_stack": 1, "pick_tier": 2},
     {"id": "iron_pick", "category": "tool", "max_stack": 1, "pick_tier": 3},
@@ -83,6 +86,7 @@
     {"id": "stone_pick", "station": "workbench", "recipe_book_order": 50, "inputs": {"stone": 3, "stick": 2}, "outputs": {"stone_pick": 1}, "duration_seconds": 0},
     {"id": "furnace", "station": "workbench", "recipe_book_order": 60, "inputs": {"stone": 8}, "outputs": {"furnace": 1}, "duration_seconds": 0},
     {"id": "iron_ingot", "station": "furnace", "recipe_book_order": 0, "inputs": {"iron_ore": 1, "coal": 1}, "outputs": {"iron_ingot": 1}, "duration_seconds": 5},
+    {"id": "gold_ingot", "station": "furnace", "recipe_book_order": 10, "inputs": {"gold_ore": 1, "coal": 1}, "outputs": {"gold_ingot": 1}, "duration_seconds": 8},
     {"id": "iron_pick", "station": "workbench", "recipe_book_order": 140, "inputs": {"iron_ingot": 3, "stick": 2}, "outputs": {"iron_pick": 1}, "duration_seconds": 0},
     {"id": "wood_axe", "station": "workbench", "recipe_book_order": 40, "inputs": {"planks": 3, "stick": 2}, "outputs": {"wood_axe": 1}, "duration_seconds": 0},
     {"id": "castle_stone", "station": "workbench", "recipe_book_order": 70, "inputs": {"stone": 1}, "outputs": {"castle_stone": 1}, "duration_seconds": 0},
@@ -97,7 +101,7 @@
     {"id": "stone_shot", "station": "workbench", "recipe_book_order": 170, "inputs": {"stone": 2}, "outputs": {"stone_shot": 4}, "duration_seconds": 0},
     {"id": "flame_shot", "station": "workbench", "recipe_book_order": 175, "inputs": {"stone_shot": 2, "coal": 1}, "outputs": {"flame_shot": 2}, "duration_seconds": 0},
     {"id": "cannonball", "station": "workbench", "recipe_book_order": 176, "inputs": {"iron_ingot": 1, "stone": 1}, "outputs": {"cannonball": 2}, "duration_seconds": 0},
-    {"id": "hot_oil", "station": "furnace", "recipe_book_order": 10, "inputs": {"log": 2, "coal": 1}, "outputs": {"hot_oil": 2}, "duration_seconds": 4},
+    {"id": "hot_oil", "station": "furnace", "recipe_book_order": 20, "inputs": {"log": 2, "coal": 1}, "outputs": {"hot_oil": 2}, "duration_seconds": 4},
     {"id": "ballista", "station": "workbench", "recipe_book_order": 180, "inputs": {"planks": 4, "iron_ingot": 2, "stick": 2}, "outputs": {"ballista": 1}, "duration_seconds": 0},
     {"id": "catapult", "station": "workbench", "recipe_book_order": 190, "inputs": {"planks": 5, "stone": 2, "stick": 2}, "outputs": {"catapult": 1}, "duration_seconds": 0},
     {"id": "turret_catapult", "station": "workbench", "recipe_book_order": 191, "inputs": {"planks": 4, "iron_ingot": 2, "stone": 3}, "outputs": {"turret_catapult": 1}, "duration_seconds": 0},
@@ -106,7 +110,7 @@
     {"id": "kettle", "station": "workbench", "recipe_book_order": 194, "inputs": {"iron_ingot": 4, "planks": 2}, "outputs": {"kettle": 1}, "duration_seconds": 0},
     {"id": "chest", "station": "workbench", "recipe_book_order": 195, "inputs": {"planks": 8}, "outputs": {"chest": 1}, "duration_seconds": 0}
   ],
-  "progression_goals": ["workbench", "wood_pick", "wood_axe", "stone_pick", "furnace", "iron_ingot", "iron_pick", "iron_sword", "ballista_bolt", "stone_shot", "ballista", "catapult"],
+  "progression_goals": ["workbench", "wood_pick", "wood_axe", "stone_pick", "furnace", "iron_ingot", "iron_pick", "gold_ingot", "iron_sword", "ballista_bolt", "stone_shot", "ballista", "catapult"],
   "munitions": {
     "ballista_bolt": {"damage": 6, "splash_radius": 0.0, "effect": "impact"},
     "stone_shot": {"damage": 9, "splash_radius": 2.5, "effect": "impact"},

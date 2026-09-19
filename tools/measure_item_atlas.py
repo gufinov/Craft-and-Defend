@@ -28,6 +28,7 @@ ATLASES = {
     "item": "item_atlas_p3h2.png",
     "ammunition": "ammunition_atlas_p3h3.png",
     "derived": "derived_atlas_p4.png",
+    "gold": "gold_atlas_p4.png",
 }
 # Derived placeholder icons (tools/generate_derived_icons.py): 256 px cells, 6 per row.
 DERIVED_ORDER = [
@@ -47,6 +48,12 @@ ITEM_ORDER = [
 AMMUNITION_CELLS = {
     "ballista_bolt": (0, 0, 1774, 887),
     "stone_shot": (887, 0, 887, 887),
+}
+# P4b gold placeholders derived from the iron art (tools/make_gold_atlas_p4.py):
+# two centred 256x256 cells.
+GOLD_CELLS = {
+    "gold_ore": (0, 0, CELL, CELL),
+    "gold_ingot": (CELL, 0, CELL, CELL),
 }
 
 
@@ -101,6 +108,8 @@ def main() -> int:
             cells = {item: item_cell(i) for i, item in enumerate(ITEM_ORDER)}
         elif atlas_key == "derived":
             cells = {item: ((i % 6) * CELL, (i // 6) * CELL, CELL, CELL) for i, item in enumerate(DERIVED_ORDER)}
+        elif atlas_key == "gold":
+            cells = GOLD_CELLS
         else:
             cells = AMMUNITION_CELLS
         for item_id, cell in cells.items():

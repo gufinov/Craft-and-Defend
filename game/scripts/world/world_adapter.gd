@@ -17,11 +17,13 @@ const DEFAULT_WORLD_SEED := 41026
 const BLOCK_NAMES := [
 	"air", "grass", "dirt", "stone", "log", "planks",
 	"coal_ore", "iron_ore", "castle_stone", "bedrock", "leaves",
+	"gold_ore",
 ]
 const BLOCK_COLORS := [
 	Color(0, 0, 0, 0), Color("74a65a"), Color("8b5f3c"), Color("777b82"),
 	Color("9b6a3d"), Color("b88954"), Color("34383f"), Color("a65b42"),
 	Color("8b929d"), Color("25282d"), Color("4f873c"),
+	Color("c9a640"),
 ]
 
 var terrain: VoxelTerrain
