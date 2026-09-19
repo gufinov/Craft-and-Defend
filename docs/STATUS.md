@@ -1,4 +1,28 @@
-# Current checkpoint — 2026-09-19 (P4F enemy units on `feature/p4-enemy-units`)
+# Current checkpoint — 2026-09-19 (owner playtest round 1 fixes + owner-art machines + enemy units)
+
+**STATUS:** **PLAYTEST ROUND-1 CORRECTIONS, OWNER-ART MACHINES, ORC/TROLL UNITS — CANDIDATE PASS ON THE EXPORT (PCK `fd2b7b0f…`, branch `feature/p3d-tools-world-feedback`, pushed); OWNER RE-PLAYTEST PENDING; NOT MERGED TO `main`.**
+
+**DONE (newest first):**
+- **P4F enemy units** (merged `8271f25`, subagent): orc melee with two cleavers replaces the capsule raider; brute = purple orc ×1.25; new **troll** ranged kind (28 hp, bolt 5 every 2 s from 9 cells, stops at range); Wave Drill 6+1 brute+1 troll, Siege Drill 12+3+3; weapon target filter gains `troll`; T144–T146, `TEST_P4_ENEMY_UNITS.cmd`. See [P4F](P4F_ENEMY_UNITS.md).
+- **Hybrid rule** (`a87a332`): brutes turn on player defenses within 2.6 cells (T147); plain raiders rush the core.
+- **Owner-art machines** (`716d410`): cannon (now 2×2), rail block and kettle restyled after the owner's renders on a shared studded platform; new `turret_catapult_mk2` (owner-art version, the pedestal one stays); card icons of cannon/kettle/rail/mk2 are the owner's renders; wood-axe card icon mirrored to face like the picks.
+- **Cursor-stack loading** (`c6427cd`): a stack picked up on the cursor loads into a weapon (Ammunition slot) or a chest tile instead of "Place the held stack first"; right-click one, click all.
+- **The enemy never gives up** (`6ba89ed`): raiders with no permitted route probe every 2 s (HUD "RAIDERS PROBING FOR A WAY IN") instead of freezing until a station changed; siege machines, chests, rails and kettles are breachable structures with integrity (blocked raiders smash them); defeated raiders topple and vanish after 6 s; restored raiders stand on the ground (no half-buried bodies); waves spawn only once the terrain under the spawn line is loaded; T143.
+- Runner fix: `TEST_P4_SIEGE_UNITS.cmd` restore step path.
+
+**EXPECT:** Wave Drill: orcs lead, a purple brute smashes any machine/chest it passes, a troll stops ~9 cells out and shoots bolts; machines turn and fire at their nearest raider; dead raiders fall over. Walled-in raiders keep probing (HUD says so) and break through a chest/machine plugging the gap. Workbench page 2–3: Cannon, Rail, Kettle and Turret Catapult Mk2 show the owner's renders; placed, they match them (platform with iron corners, gold studs, blue banner). Click a munition tile, then click the Ammunition slot: it loads.
+
+**TEST:** Static PASS (182 links; 60/60). Exported PCK `fd2b7b0f…` (EXE `4ac12872…`): `TEST_P4_SIEGE_UNITS` (T130–T136, T141–T143, T147), `TEST_P4_ENEMY_UNITS` (T144–T146), `TEST_P4_WEAPON_PANEL`, `TEST_P4_RESOURCES`, `TEST_P3C`, `TEST_P3D`, `TEST_P3F`, `TEST_P3K`, `TEST_P3E`, `TEST_P3H` PASS; `TEST_P3G` PASS on its second run (T115 real-click test failed once — flaky window focus, see limitations). Editor gates for P3B (phase1/save/restore), P3, P4 weapon panel PASS after the merge.
+
+**LIMITATIONS/FAILURES:** T115 (P3G real-click furnace test) is flaky when the desktop steals focus during the windowed run; rerun passes. Trolls shoot through walls (no line of sight) and only target the core or the structure they were sent to breach. Unit and machine proportions are box-part approximations of the owner's renders — expect notes. Raiders can still step onto 1-cell-high entities (chests, rails) when the cell above is free.
+
+**NEXT:** Owner re-playtest (checklist in the session report); then line of sight for trolls, raiders vs walls/gates by siege kind, P3K slice 2, province/market.
+
+**GIT/REPRODUCIBILITY:** Worktree `D:\CODEX\Craft_and_Defend\worktrees\p3d-tools-world-feedback`, branch `feature/p3d-tools-world-feedback`, pushed; `feature/p4-enemy-units` (`891529f`) and `feature/p4-resources` merged in. Engine `4.6.stable.custom_build.89cea1439`; EXE SHA-256 `4ac128729e86108904e6d038d161322404d42d71892b1cc0dca751039aa7e4b2`; PCK SHA-256 `fd2b7b0f0ed3e6e4fbab67b142c0e563afea13a46c9f947fcd8871fd918ca475`. Evidence roots `artifacts/manual-p4-siege-units-1210924237`, `manual-p4-enemy-units-12152126`, `manual-p4-weapon-panel-121749829`, `manual-p4-resources-121948784`, `manual-p3c-player-defense-122048261`, `manual-p3d-usability-122635124`, `manual-p3f-presentation-1228514827`, `manual-p3k-blueprints-123122510`, `manual-p3e-furnace-1233412213`, `manual-p3h-balance-1235411168`.
+
+---
+
+## Previous checkpoint — 2026-09-19 (P4F enemy units on `feature/p4-enemy-units`, since merged)
 
 **STATUS:** **P4F — ENEMY UNITS (ORC MELEE, BRUTE, TROLL RANGED) — CANDIDATE PASS IN THE EDITOR; NOT EXPORTED, NOT PLAYTESTED, NOT MERGED.** Bounded card built in worktree `worktrees\p4-enemy-units` on top of `6ba89ed` (`feature/p3d-tools-world-feedback`).
 
