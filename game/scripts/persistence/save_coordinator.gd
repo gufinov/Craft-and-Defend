@@ -67,6 +67,10 @@ func set_test_failure(point: String) -> void:
 
 func open_session(continue_existing: bool) -> Dictionary:
 	var snapshot := _default_snapshot()
+	if not continue_existing and random_world_seed:
+		# Every player starts with their Core of Power (owner 2026-09-19).
+		# Diagnostics (fixed seed) keep the empty pack their fixtures assume.
+		snapshot["inventory"] = {"dirt": 0, "revision": 0, "grant": {"core_of_power": 1}}
 	if random_world_seed and not continue_existing:
 		var rng := RandomNumberGenerator.new()
 		rng.randomize()

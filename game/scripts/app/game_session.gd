@@ -95,8 +95,12 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	if not registry.load_error.is_empty():
 		return {"ok": false, "reason": registry.load_error}
 	inventory = F0Inventory.new(registry)
-	if not inventory.restore(snapshot.get("inventory", {"dirt": 0, "revision": 0})):
+	var inventory_snapshot: Dictionary = snapshot.get("inventory", {"dirt": 0, "revision": 0})
+	if not inventory.restore(inventory_snapshot):
 		return {"ok": false, "reason": "INVALID_INVENTORY_SNAPSHOT"}
+	var grant: Variant = inventory_snapshot.get("grant", {})
+	if grant is Dictionary and not grant.is_empty():
+		inventory.try_transaction({}, grant)
 	crafting = CraftingService.new(registry, inventory)
 	workstations = WorkstationService.new(registry, inventory)
 	_pending_workstation_snapshot = snapshot.get("workstations", {})
@@ -204,6 +208,7 @@ func _process(delta: float) -> void:
 		_melee_cooldown = maxf(0.0, _melee_cooldown - delta)
 	if workstations != null and not saving:
 		workstations.advance(delta, simulation_paused)
+		_ensure_enemy_core(delta)
 	if clock != null and not saving:
 		var clock_advanced := clock.advance(delta, simulation_paused)
 		_update_sun_visual()
@@ -341,6 +346,45 @@ func select_hotbar(index: int) -> Dictionary:
 	return result
 
 
+## P4G: the red enemy core stands on the enemy base clearing. It is placed
+## through the ordinary station path the first time the base's cells are
+## loaded (the player wandered there), on a stone slab levelled for it.
+var _enemy_core_timer := 0.0
+func _ensure_enemy_core(delta: float) -> void:
+	if not world_ready or simulation_paused or registry.entity("enemy_core").is_empty():
+		return
+	_enemy_core_timer -= delta
+	if _enemy_core_timer > 0.0:
+		return
+	_enemy_core_timer = 2.0
+	for record: Dictionary in workstations.stations.values():
+		if str(record.get("entity_id", "")) == "enemy_core":
+			return
+	if not world.terrain.generator is P1TerrainGenerator:
+		return
+	var base: Vector3i = world.terrain.generator.enemy_base_cell()
+	var anchor := base - Vector3i(1, 0, 1)
+	for x in range(3):
+		for z in range(3):
+			var cell := anchor + Vector3i(x, 0, z)
+			if str(world.query_cell(cell).get("state", "")) != "LOADED" or str(world.query_cell(cell + Vector3i.DOWN).get("state", "")) != "LOADED":
+				return
+	# Level a stone slab under the footprint and clear its column.
+	for x in range(3):
+		for z in range(3):
+			var cell := anchor + Vector3i(x, 0, z)
+			world.set_cell(cell + Vector3i.DOWN, WorldAdapter.BLOCK_NAMES.find("castle_stone"))
+			for y in range(5):
+				world.set_cell(cell + Vector3i(0, y, 0), 0)
+	inventory.try_transaction({}, {"enemy_core": 1})
+	var placed := workstations.try_place("enemy_core", anchor, world.query_cell, AABB(), 0)
+	if not placed.get("ok", false):
+		inventory.try_transaction({"enemy_core": 1}, {})
+		_enemy_core_timer = 10.0
+		return
+	_on_interaction_feedback("The enemy Core of Power stands here. Their raids come from this base.")
+
+
 func _on_spawn_area_ready() -> void:
 	if world_ready:
 		return
@@ -438,7 +482,17 @@ func _emit_navigation() -> void:
 	var angle := atan2(offset.x, -offset.y)
 	var directions := ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 	var direction_index := posmod(roundi(angle / (PI / 4.0)), 8)
-	navigation_changed.emit("HOME  %d m  %s" % [roundi(distance), directions[direction_index]])
+	navigation_changed.emit("HOME  %d m  %s%s" % [roundi(distance), directions[direction_index], _enemy_base_hint(directions)])
+
+
+## "· ENEMY BASE 160 m NW" from the generator's seed-chosen base site.
+func _enemy_base_hint(directions: Array) -> String:
+	if world == null or world.terrain == null or not world.terrain.generator is P1TerrainGenerator:
+		return ""
+	var base: Vector3i = world.terrain.generator.enemy_base_cell()
+	var offset := Vector2(float(base.x) + 0.5 - player.global_position.x, float(base.z) + 0.5 - player.global_position.z)
+	var angle := atan2(offset.x, -offset.y)
+	return "  ·  ENEMY BASE %d m %s" % [roundi(offset.length()), directions[posmod(roundi(angle / (PI / 4.0)), 8)]]
 
 
 func _create_sun_visual() -> void:
@@ -513,6 +567,7 @@ func _on_station_changed(result: Dictionary) -> void:
 		defense.notify_placed_entity_cells(details.get("occupied_cells", []))
 	if core_defense != null:
 		core_defense.notify_placed_entity_cells(details.get("occupied_cells", []))
+		core_defense.notify_core_station_changed(details)
 	if details.has("station"):
 		_spawn_station_visual(details.station)
 	elif details.has("instance_id") and (details.has("returned_item") or bool(details.get("destroyed", false))):

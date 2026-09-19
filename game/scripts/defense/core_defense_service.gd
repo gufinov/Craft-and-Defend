@@ -91,6 +91,11 @@ const WAVE_SPREAD := 4
 const MARCH_HANDOVER := 18
 const LOCAL_RADIUS := 20
 var far_mode := false
+## P4G: when the player has placed a Core of Power, the drill defends that
+## station (its integrity is the core's integrity) instead of the prototype
+## core cell; "" means the legacy prototype core at arena_center + (0, 0, 5).
+var core_station_id := ""
+const CORE_ENTITY := "core_of_power"
 var _march_router: SurfaceRouter
 var _wave_rng := RandomNumberGenerator.new()
 var _capture_retries := 0
@@ -149,7 +154,7 @@ func restore_after_world_ready() -> Dictionary:
 	if not center_value is Array or center_value.size() != 3:
 		return {"ok": false, "reason": "INVALID_CORE_DEFENSE_SNAPSHOT"}
 	arena_center = Vector3i(int(center_value[0]), int(center_value[1]), int(center_value[2]))
-	if not _arena_is_available(arena_center):
+	if str(saved.get("core_station_id", "")).is_empty() and not _arena_is_available(arena_center):
 		return {"ok": false, "reason": "CORE_ARENA_BLOCKED"}
 	warning_remaining = maxf(0.0, float(saved.get("warning_remaining", 0.0)))
 	core_integrity = clampi(int(saved.get("core_integrity", core_max_integrity)), 0, core_max_integrity)
@@ -161,6 +166,10 @@ func restore_after_world_ready() -> Dictionary:
 	spawn_distance = clampi(int(saved.get("spawn_distance", SPAWN_DISTANCE)), SPAWN_DISTANCE, MAX_SPAWN_DISTANCE)
 	wave_size = maxi(1, int(saved.get("wave_size", 1)))
 	far_mode = bool(saved.get("far_mode", false)) and _terrain_generator() != null
+	core_station_id = str(saved.get("core_station_id", ""))
+	if not core_station_id.is_empty() and not workstations.stations.has(core_station_id):
+		return {"ok": false, "reason": "CORE_STATION_MISSING"}
+	_sync_core_from_station()
 	_build_core_visual()
 	if state in [ROUTING, ATTACKING_STRUCTURE, ATTACKING_CORE] and raider_health > 0 and core_integrity > 0:
 		var saved_position := _vector3_from_array(saved.get("raider_position", []), _start_position())
@@ -203,6 +212,7 @@ func start_prototype(options: Dictionary = {}) -> Dictionary:
 		return found
 	_clear_fixture()
 	arena_center = found.get("center", Vector3i.ZERO)
+	core_station_id = str(found.get("core_station_id", ""))
 	far_mode = requested_far
 	spawn_distance = requested_distance
 	_wave_rng.randomize()
@@ -213,6 +223,7 @@ func start_prototype(options: Dictionary = {}) -> Dictionary:
 	state = WARNING
 	warning_remaining = warning_seconds
 	core_integrity = core_max_integrity
+	_sync_core_from_station()
 	raider_health = raider_max_health
 	attack_timer = raider_attack_interval
 	active_target_type = ""
@@ -404,13 +415,12 @@ func _spawn_troll_bolt(origin: Vector3, target: Vector3) -> void:
 func _extra_attacks_core(entry: Dictionary) -> void:
 	if core_integrity <= 0:
 		return
-	core_integrity = maxi(0, core_integrity - int(entry.damage))
-	_update_core_presentation()
-	feedback.emit("%s %s the strategic core for %d. Core integrity: %d/%d." % [str(entry.kind).capitalize(), "shot" if bool(entry.get("ranged", false)) else "hit", int(entry.damage), core_integrity, core_max_integrity])
+	_damage_core(int(entry.damage))
+	feedback.emit("%s %s your core for %d. Core integrity: %d/%d." % [str(entry.kind).capitalize(), "shot" if bool(entry.get("ranged", false)) else "hit", int(entry.damage), core_integrity, core_max_integrity])
 	if core_integrity <= 0:
 		state = FAILED
 		_halt_all_raiders()
-		feedback.emit("Core-defense prototype failed: the strategic core was destroyed.")
+		feedback.emit("Your Core of Power was destroyed." if _uses_placed_core() else "Core-defense prototype failed: the strategic core was destroyed.")
 	_emit_state()
 
 
@@ -420,6 +430,21 @@ func _halt_all_raiders() -> void:
 	for entry in extra_raiders:
 		if is_instance_valid(entry.node):
 			entry.node.active = false
+
+
+## The placed core's record changed (damage from any raider path): mirror it
+## and fail the drill when it is gone.
+func notify_core_station_changed(details: Dictionary) -> void:
+	if not is_active() or core_station_id.is_empty() or str(details.get("instance_id", "")) != core_station_id:
+		return
+	if bool(details.get("destroyed", false)):
+		core_integrity = 0
+		state = FAILED
+		_halt_all_raiders()
+		feedback.emit("Your Core of Power was destroyed.")
+	else:
+		core_integrity = int(details.get("integrity", core_integrity))
+	_emit_state()
 
 
 func notify_placed_entity_cells(changed_cells: Array) -> void:
@@ -443,6 +468,7 @@ func snapshot() -> Dictionary:
 		"spawn_distance": spawn_distance,
 		"wave_size": wave_size,
 		"far_mode": far_mode,
+		"core_station_id": core_station_id,
 		"extra_raiders": _extras_snapshot(),
 	}
 
@@ -593,7 +619,7 @@ func hud_text() -> String:
 			var details: Dictionary = status.get("details", {})
 			return "BREACHING %s · raider %d/%d · wall %d/%d · core %d/%d" % [registry.display_name(str(details.get("entity_id", "wood_barricade"))), raider_health, raider_max_health, int(details.get("integrity", 0)), int(details.get("max_integrity", 0)), core_integrity, core_max_integrity]
 		ATTACKING_CORE:
-			return "CORE UNDER ATTACK · raider %d/%d · core %d/%d · no open defense remains" % [raider_health, raider_max_health, core_integrity, core_max_integrity]
+			return "CORE UNDER ATTACK · %d/%d raiders · core %d/%d" % [living_raider_count(), wave_size, core_integrity, core_max_integrity]
 		WON:
 			return "DEFENSE WON · core %d/%d · raider defeated" % [core_integrity, core_max_integrity]
 		FAILED:
@@ -791,7 +817,7 @@ func _plan_extra(entry: Dictionary) -> void:
 	var capability := _basic_raider_capability()
 	capability["damage_per_hit"] = {"breachable_wood": int(entry.damage)}
 	var planner := LocalGridPathfinder.new()
-	var plan := planner.plan_next(navigation_snapshot, start, _core_approach_cell(), capability)
+	var plan := planner.plan_next(navigation_snapshot, start, _core_approach_cell(start), capability)
 	entry.route_reason = str(plan.get("reason", "NO_ROUTE"))
 	entry.phase = "routing"
 	if entry.route_reason == "OK":
@@ -868,7 +894,7 @@ func _plan_from_raider() -> void:
 	var start := raider.feet_cell()
 	var capability := _basic_raider_capability()
 	var planner := LocalGridPathfinder.new()
-	var plan := planner.plan_next(navigation_snapshot, start, _core_approach_cell(), capability)
+	var plan := planner.plan_next(navigation_snapshot, start, _core_approach_cell(start), capability)
 	last_route_reason = str(plan.get("reason", "NO_ROUTE"))
 	if last_route_reason == "OK":
 		active_target_type = "core"
@@ -965,13 +991,12 @@ func _attack_core() -> void:
 		return
 	if is_instance_valid(raider):
 		raider.play_attack()
-	core_integrity = maxi(0, core_integrity - raider_damage)
-	_update_core_presentation()
-	feedback.emit("Raider hit the strategic core for %d. Core integrity: %d/%d." % [raider_damage, core_integrity, core_max_integrity])
+	_damage_core(raider_damage)
+	feedback.emit("Raider hit your core for %d. Core integrity: %d/%d." % [raider_damage, core_integrity, core_max_integrity])
 	if core_integrity <= 0:
 		state = FAILED
 		_halt_all_raiders()
-		feedback.emit("Core-defense prototype failed: the strategic core was destroyed.")
+		feedback.emit("Your Core of Power was destroyed." if _uses_placed_core() else "Core-defense prototype failed: the strategic core was destroyed.")
 	_emit_state()
 
 
@@ -983,11 +1008,11 @@ func _capture_navigation() -> void:
 	navigation_snapshot = NavigationSnapshot.new()
 	var half_width := 5 if spawn_distance <= SPAWN_DISTANCE else 7
 	var depth := 2 if spawn_distance <= SPAWN_DISTANCE else 8
-	var height := 5 if spawn_distance <= SPAWN_DISTANCE else 18
+	var height := 5 if spawn_distance <= SPAWN_DISTANCE else 26
 	var region := AABB(Vector3(arena_center + Vector3i(-half_width, -depth, -spawn_distance - 6)), Vector3(half_width * 2 + 1, height, spawn_distance + 13))
 	if far_mode:
 		# Raiders arrive from any bearing: a square around the arena.
-		region = AABB(Vector3(arena_center + Vector3i(-LOCAL_RADIUS, -8, -LOCAL_RADIUS)), Vector3(LOCAL_RADIUS * 2 + 1, 18, LOCAL_RADIUS * 2 + 1))
+		region = AABB(Vector3(arena_center + Vector3i(-LOCAL_RADIUS, -8, -LOCAL_RADIUS)), Vector3(LOCAL_RADIUS * 2 + 1, 24, LOCAL_RADIUS * 2 + 1))
 	var result := navigation_snapshot.capture(region, _query_navigation_cell, world.revision + navigation_revision)
 	_capture_reason = str(result.get("reason", "OK"))
 	if not result.get("ok", false):
@@ -995,7 +1020,7 @@ func _capture_navigation() -> void:
 
 
 func _query_navigation_cell(cell: Vector3i) -> Dictionary:
-	if cell == _core_cell():
+	if cell == _core_cell() and not _uses_placed_core():
 		return {"state": "LOADED", "solid": true, "voxel_id": -1, "material_id": "strategic_core_prototype", "source": "core", "source_id": "strategic_core_prototype", "tags": [], "integrity": core_integrity, "protected": true}
 	var instance_id := workstations.station_at_cell(cell)
 	if not instance_id.is_empty():
@@ -1059,6 +1084,12 @@ func _on_world_cell_changed(cell: Vector3i, _previous: int, _next: int, _revisio
 
 
 func _find_available_arena(distance: int = SPAWN_DISTANCE) -> Dictionary:
+	var placed := _placed_core_id()
+	if not placed.is_empty():
+		# The arena is laid out so the legacy core offset lands on the core's
+		# centre column: arena_center + (0, 0, 5) == anchor + (1, 0, 1).
+		var anchor: Vector3i = workstations.stations[placed].get("anchor", Vector3i.ZERO)
+		return {"ok": true, "reason": "OK", "center": anchor + Vector3i(1, 0, 1) - Vector3i(0, 0, 5), "core_station_id": placed}
 	for candidate: Vector3i in ARENA_CANDIDATES:
 		if _arena_is_available(candidate, distance):
 			return {"ok": true, "reason": "OK", "center": candidate}
@@ -1066,6 +1097,8 @@ func _find_available_arena(distance: int = SPAWN_DISTANCE) -> Dictionary:
 
 
 func _arena_is_available(center: Vector3i, distance: int = SPAWN_DISTANCE) -> bool:
+	if not _placed_core_id().is_empty():
+		return true
 	if distance > SPAWN_DISTANCE and _surface_cell(center + Vector3i(0, 0, -distance)) == Vector3i.MAX:
 		return false
 	for cell: Vector3i in [center + Vector3i(0, 0, -8), center + Vector3i(0, 0, 4), center + Vector3i(0, 0, 5)]:
@@ -1084,7 +1117,7 @@ func _arena_is_available(center: Vector3i, distance: int = SPAWN_DISTANCE) -> bo
 
 
 func _build_core_visual() -> void:
-	if core_integrity <= 0:
+	if core_integrity <= 0 or _uses_placed_core():
 		return
 	_core_root = StaticBody3D.new()
 	_core_root.name = "StrategicCorePrototype"
@@ -1210,8 +1243,64 @@ func _surface_cell(column: Vector3i) -> Vector3i:
 	return Vector3i.MAX
 
 
-func _core_approach_cell() -> Vector3i:
-	return arena_center + Vector3i(0, 0, 4)
+## The Core of Power station the drill defends, or "" (prototype core).
+func _placed_core_id() -> String:
+	if workstations == null:
+		return ""
+	for instance_id: String in workstations.stations.keys():
+		if str(workstations.stations[instance_id].get("entity_id", "")) == CORE_ENTITY:
+			return instance_id
+	return ""
+
+
+func _uses_placed_core() -> bool:
+	return not core_station_id.is_empty() and workstations != null and workstations.stations.has(core_station_id)
+
+
+## Reads the placed core's integrity into the drill (and its maximum).
+func _sync_core_from_station() -> void:
+	if not _uses_placed_core():
+		return
+	var status := workstations.defense_status(core_station_id)
+	if status.get("ok", false):
+		core_max_integrity = int(status.get("details", {}).get("max_integrity", core_max_integrity))
+		core_integrity = int(status.get("details", {}).get("integrity", core_integrity))
+
+
+## Damages the core: the placed station through the workstation service (so
+## its visual and save record follow), else the prototype counter.
+func _damage_core(amount: int) -> void:
+	if _uses_placed_core():
+		var result := workstations.try_damage(core_station_id, amount)
+		if result.get("reason") == "DESTROYED":
+			core_integrity = 0
+		elif result.get("ok", false):
+			core_integrity = int(result.get("details", {}).get("integrity", core_integrity))
+		return
+	core_integrity = maxi(0, core_integrity - amount)
+	_update_core_presentation()
+
+
+## Raiders walk to a free cell beside the core: with a placed 3x3 core the
+## side nearest the raider, else the legacy approach cell.
+func _core_approach_cell(from: Vector3i = Vector3i.MAX) -> Vector3i:
+	if not _uses_placed_core():
+		return arena_center + Vector3i(0, 0, 4)
+	var centre := _core_cell()
+	var candidates: Array[Vector3i] = [centre + Vector3i(0, 0, 2), centre + Vector3i(0, 0, -2), centre + Vector3i(2, 0, 0), centre + Vector3i(-2, 0, 0)]
+	var best := candidates[0]
+	var best_distance := INF
+	for candidate in candidates:
+		var feet := world.query_cell(candidate)
+		var head := world.query_cell(candidate + Vector3i.UP)
+		var open := str(feet.get("state", "")) == "LOADED" and int(feet.get("voxel_id", 0)) == 0 and str(head.get("state", "")) == "LOADED" and int(head.get("voxel_id", 0)) == 0 and workstations.station_at_cell(candidate).is_empty()
+		if not open:
+			continue
+		var distance := INF if from == Vector3i.MAX else float((candidate - from).length_squared())
+		if distance < best_distance or best_distance == INF:
+			best_distance = distance
+			best = candidate
+	return best
 
 
 func _core_cell() -> Vector3i:

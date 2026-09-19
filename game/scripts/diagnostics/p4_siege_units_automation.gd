@@ -192,6 +192,10 @@ func _run_gate() -> void:
 	var wave := core.start_prototype({"raiders": 4, "brutes": 1, "spawn_distance": 20})
 	core.warning_remaining = 0.0
 	core._begin_attack()
+	var waited_wave := 0
+	while core.last_route_reason == "WAITING_FOR_TERRAIN" and waited_wave < 600:
+		await get_tree().process_frame
+		waited_wave += 1
 	var wave_count := core.living_raider_count()
 	var brutes := 0
 	var far_spawns := 0
@@ -357,6 +361,34 @@ func _run_gate() -> void:
 	core._on_raider_route_finished()
 	var handed_over := core.last_route_reason != "MARCHING"
 	_record("T151_FAR_ATTACK_FROM_ENEMY_BASE", far_attack.get("ok", false) and base_distance >= 150.0 and base_distance <= 200.0 and spawned_far and routed_all and lead_moved >= 4.0 and marching and handed_over, "the enemy base lies 150-200 cells from home; a far wave spawns there with long surface routes, marches (ghost-walking unloaded ground) and hands over to the local planner inside the defended area", {"far": far_attack.get("reason"), "base": base, "base_distance": base_distance, "spawned_far": spawned_far, "routed_all": routed_all, "lead_moved": lead_moved, "marching": marching, "handover_reason": core.last_route_reason})
+	core.clear_for_other_mode()
+
+	# T152 the placed Core of Power is what the drill defends: the arena
+	# centres on it, raider hits land on the station's integrity, and its
+	# destruction fails the drill and removes the core.
+	core.clear_for_other_mode()
+	_level_ground(center + Vector3i(-8, 0, -10), 17, 19)
+	app.session.inventory.try_transaction({}, {"core_of_power": 1})
+	var core_anchor := center + Vector3i(4, 0, 4)
+	var placed_core := ws.try_place("core_of_power", core_anchor, world.query_cell, AABB(), 0)
+	var core_id := str(placed_core.get("details", {}).get("station", {}).get("instance_id", ""))
+	var core_drill := core.start_prototype()
+	var centred := core.core_station_id == core_id and core._core_cell() == core_anchor + Vector3i(1, 0, 1) and core.core_max_integrity == 240
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var routed_to_core := core.last_route_reason == "OK" and core.active_target_type == "core"
+	var approach := core._core_approach_cell(core.raider.feet_cell())
+	var approach_adjacent := (approach - core._core_cell()).length() == 2.0
+	core.raider.active = false
+	core.state = CoreDefenseService.ATTACKING_CORE
+	core._attack_core()
+	var station_after_hit := int(ws.defense_status(core_id).get("details", {}).get("integrity", -1))
+	var drill_after_hit := core.core_integrity
+	ws.try_damage(core_id, 9999)
+	await get_tree().process_frame
+	var core_gone := ws.station(core_id).is_empty()
+	var failed := core.state == CoreDefenseService.FAILED and core.core_integrity == 0
+	_record("T152_PLACED_CORE_DEFENDED", placed_core.get("ok", false) and core_drill.get("ok", false) and centred and routed_to_core and approach_adjacent and station_after_hit == 234 and drill_after_hit == 234 and core_gone and failed, "the drill centres on the placed Core of Power (240 integrity), routes raiders to a free cell beside it, mirrors hits onto the station and fails when the core is destroyed", {"placed": placed_core.get("reason"), "drill": core_drill.get("reason"), "centred": centred, "routed": routed_to_core, "route_reason": core.last_route_reason, "approach": approach, "station_after_hit": station_after_hit, "drill_after_hit": drill_after_hit, "core_gone": core_gone, "failed": failed})
 	core.clear_for_other_mode()
 
 
