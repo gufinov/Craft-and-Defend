@@ -296,6 +296,37 @@ func _run_gate() -> void:
 	var route_after := core.last_route_reason
 	_record("T143_ENEMY_NEVER_GIVES_UP", walled.get("ok", false) and probing == "NO_PERMITTED_ROUTE" and still_routing and plug.get("ok", false) and breach_reason == "ATTACK_OBSTRUCTION" and breach_target == plug_id and attacking and chest_gone and route_after == "OK", "a walled-in raider keeps probing instead of failing the drill, re-plans on its own once a gap opens, attacks the chest plugging the gap as a breachable obstruction, destroys it and routes on to the core", {"walled": walled.get("reason"), "probing": probing, "still_routing": still_routing, "plug": plug.get("reason"), "breach_reason": breach_reason, "breach_target": breach_target, "attacking": attacking, "chest_gone": chest_gone, "route_after": route_after, "waited": waited_stall})
 
+	# T147 hybrid rule: a brute passing a player-built structure turns on it
+	# and smashes it; plain raiders keep rushing the core.
+	core.clear_for_other_mode()
+	for x in range(2):
+		for y in range(3):
+			world.set_cell(Vector3i(center.x + x, y, wall_z), 0)
+	app.session.inventory.try_transaction({}, {"chest": 1})
+	var bait := ws.try_place("chest", Vector3i(center.x + 4, 0, center.z + 1), world.query_cell, AABB(), 0)
+	var bait_id := str(bait.get("details", {}).get("station", {}).get("instance_id", ""))
+	var brute_wave := core.start_prototype({"raiders": 2, "brutes": 1})
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var brute_entry: Dictionary = {}
+	for entry in core.extra_raiders:
+		if str(entry.kind) == BasicRaider.KIND_BRUTE:
+			brute_entry = entry
+	var brute_node: BasicRaider = brute_entry.get("node")
+	if brute_node != null:
+		brute_node.active = false
+		brute_node.global_position = Vector3(center.x + 4.5, 0.9, center.z + 2.5)
+	core.raider.active = false
+	for _tick in range(30):
+		core.advance(1.0 / 20.0, false)
+	var diverted := str(brute_entry.get("phase", "")) == "attacking_structure" and str(brute_entry.get("target_id", "")) == bait_id
+	var chest_before := int(ws.defense_status(bait_id).get("details", {}).get("integrity", -1))
+	for _tick in range(40):
+		core.advance(1.0 / 20.0, false)
+	var chest_after := int(ws.defense_status(bait_id).get("details", {}).get("integrity", -1))
+	var raider_still_routing := core.active_target_type == "core"
+	_record("T147_BRUTE_SMASHES_DEFENSES", bait.get("ok", false) and brute_wave.get("ok", false) and brute_node != null and diverted and chest_after < chest_before and raider_still_routing, "a brute within reach of a chest turns on it and hits it (integrity drops) while the plain raider keeps its core route", {"bait": bait.get("reason"), "wave": brute_wave.get("reason"), "diverted": diverted, "phase": brute_entry.get("phase", ""), "target": brute_entry.get("target_id", ""), "chest_before": chest_before, "chest_after": chest_after, "raider_target": core.active_target_type})
+
 
 ## Rendered evidence: the five machines (ballista, catapult, turret catapult on
 ## a tower platform, cannon, kettle on a rail-topped wall) in one 1280x720 view.

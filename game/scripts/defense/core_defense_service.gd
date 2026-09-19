@@ -68,6 +68,7 @@ var _pending_brutes := 0
 var _capture_reason := "OK"
 var _stall_retry_pending := false
 const STALL_RETRY_SECONDS := 2.0
+const BRUTE_SMASH_RADIUS := 2.6
 var _capture_retries := 0
 const CAPTURE_RETRY_LIMIT := 40
 const CAPTURE_RETRY_SECONDS := 0.5
@@ -212,6 +213,8 @@ func _advance_extras(delta: float) -> void:
 			continue
 		var phase := str(entry.get("phase", "routing"))
 		if phase == "routing":
+			if str(entry.kind) == BasicRaider.KIND_BRUTE:
+				_brute_smashes_nearby(entry, delta)
 			continue
 		entry.attack_timer = float(entry.attack_timer) - delta
 		if float(entry.attack_timer) > 0.0:
@@ -226,6 +229,38 @@ func _advance_extras(delta: float) -> void:
 			var result := workstations.try_damage(str(entry.target_id), int(entry.damage))
 			if not result.get("ok", false) or result.get("reason") == "DESTROYED":
 				_plan_extra(entry)
+
+
+## Hybrid rule (owner direction 2026-09-19): raiders rush the core, but a
+## brute passing within BRUTE_SMASH_RADIUS of a player-built breachable
+## structure (machine, chest, rail, kettle, barricade) turns on it and smashes
+## it before continuing. Checked once per second per brute.
+func _brute_smashes_nearby(entry: Dictionary, delta: float) -> void:
+	entry.divert_timer = float(entry.get("divert_timer", 1.0)) - delta
+	if float(entry.divert_timer) > 0.0:
+		return
+	entry.divert_timer = 1.0
+	var node: BasicRaider = entry.node
+	var nearest := ""
+	var best := BRUTE_SMASH_RADIUS
+	for instance_id: String in workstations.stations.keys():
+		var record: Dictionary = workstations.stations[instance_id]
+		if not workstations.defense_status(instance_id).get("ok", false):
+			continue
+		var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+		var distance := Vector2(anchor.x + 0.5 - node.global_position.x, anchor.z + 0.5 - node.global_position.z).length()
+		if distance < best and absf(float(anchor.y) - (node.global_position.y - 0.9)) <= 1.5:
+			best = distance
+			nearest = instance_id
+	if nearest.is_empty():
+		return
+	entry.target_type = "structure"
+	entry.target_id = nearest
+	entry.target_cell = workstations.stations[nearest].get("anchor", Vector3i.ZERO)
+	entry.phase = "attacking_structure"
+	entry.attack_timer = 0.3
+	node.active = false
+	feedback.emit("A brute turns on your %s." % registry.display_name(str(workstations.stations[nearest].get("entity_id", "structure"))))
 
 
 func _extra_attacks_core(entry: Dictionary) -> void:
