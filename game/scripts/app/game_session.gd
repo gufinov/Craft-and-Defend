@@ -411,8 +411,9 @@ func _on_spawn_area_ready() -> void:
 		return
 	var core_restore := core_defense.restore_after_world_ready()
 	if not core_restore.get("ok", false):
-		status_changed.emit("Core-defense restore failed: %s" % core_restore.get("reason", "UNKNOWN"))
-		return
+		# A broken drill record must never brick a save: drop the drill and go on.
+		core_defense.clear_for_other_mode()
+		_on_interaction_feedback("The saved defense drill could not be restored (%s); it was cleared." % str(core_restore.get("reason", "UNKNOWN")))
 	world_ready = true
 	_spawn_starter_resource_markers()
 	simulation_paused = false

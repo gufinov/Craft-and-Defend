@@ -180,7 +180,14 @@ func restore_after_world_ready() -> Dictionary:
 	far_mode = bool(saved.get("far_mode", false)) and _terrain_generator() != null
 	core_station_id = str(saved.get("core_station_id", ""))
 	if not core_station_id.is_empty() and not workstations.stations.has(core_station_id):
-		return {"ok": false, "reason": "CORE_STATION_MISSING"}
+		# The defended core no longer exists (destroyed before the save, or the
+		# record is gone): the drill is over, never a reason to refuse the save.
+		core_station_id = ""
+		core_integrity = 0
+		state = FAILED
+		feedback.emit("Your Core of Power is gone; the last defense counts as lost. Place a new core to defend again.")
+		_emit_state()
+		return {"ok": true, "reason": "CORE_STATION_MISSING_RESOLVED"}
 	_sync_core_from_station()
 	_build_core_visual()
 	if state in [ROUTING, ATTACKING_STRUCTURE, ATTACKING_CORE] and raider_health > 0 and core_integrity > 0:

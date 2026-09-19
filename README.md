@@ -13,7 +13,7 @@ First-person voxel survival and fortress building: **from forest to fortress**. 
 3. Double-click `START_GAME.cmd` for the local playable slice, or follow [Windows setup](docs/WINDOWS_SETUP.md) to reproduce the toolchain and export.
 4. Review the newest evidence records listed in [the documentation index](docs/INDEX.md) before promoting another milestone.
 
-The exported portable folder is `builds\CraftAndDefend`. Keep its EXE, PCK, `START_GAME.cmd` and manifest together; double-click its `START_GAME.cmd` on a Windows PC. It does not need the repository or Godot Editor. Saves and settings are in `%APPDATA%\CraftAndDefend`; F2 in-game screenshots are in `%APPDATA%\CraftAndDefend\screenshots`.
+The exported portable folder is `builds\CraftAndDefend`. Keep its EXE, PCK, `START_GAME.cmd`, `STOP_GAME.cmd` (closes a stuck game window) and manifest together; double-click its `START_GAME.cmd` on a Windows PC. It does not need the repository or Godot Editor. Saves and settings are in `%APPDATA%\CraftAndDefend`; F2 in-game screenshots are in `%APPDATA%\CraftAndDefend\screenshots`.
 
 Proven candidate stack: **Godot 4.6 custom build + Zylann Voxel Tools 1.6 Module edition + GDScript**, Windows x86-64, offline single player. Exact release archives and publisher-reported SHA-256 values are in [tools/versions.json](tools/versions.json). The evidence records identify the locally verified hashes and runtime results. This is not a general performance or durability guarantee.
 
