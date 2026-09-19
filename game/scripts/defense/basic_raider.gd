@@ -2,6 +2,9 @@ class_name BasicRaider
 extends CharacterBody3D
 
 signal route_finished
+## Emitted when the body made no progress toward its next route cell for
+## STUCK_SECONDS (blocked by a corner, a tree or another body).
+signal stuck
 
 const MOVE_SPEED := 2.8
 const GRAVITY := 14.0
@@ -28,6 +31,9 @@ var kind := KIND_RAIDER
 var move_speed := MOVE_SPEED
 ## Set by die(): the body topples, stays a few seconds, then frees itself.
 var dead := false
+const STUCK_SECONDS := 1.6
+var _stuck_timer := 0.0
+var _best_distance := INF
 var _death_tween: Tween
 var _attack_tween: Tween
 ## Model root (feet at its origin, 0.9 below the body origin); the limb pivots
@@ -47,6 +53,10 @@ var _swing_count := 0
 
 
 func _ready() -> void:
+	# Raiders live on layer 4 and collide only with the world (layer 1): they
+	# never shove each other off their routes. The player's mask includes 4.
+	collision_layer = 4
+	collision_mask = 1
 	match kind:
 		KIND_BRUTE:
 			name = "BruteRaider"
@@ -160,6 +170,8 @@ func play_attack() -> void:
 
 
 func set_route(cells: Array) -> void:
+	_best_distance = INF
+	_stuck_timer = 0.0
 	route.clear()
 	for value in cells:
 		if value is Vector3i:
@@ -197,11 +209,24 @@ func _physics_process(delta: float) -> void:
 	if horizontal.length() <= 0.08 and absf(offset.y) <= 0.6:
 		global_position = target
 		route_index += 1
+		_best_distance = INF
+		_stuck_timer = 0.0
 		if route_index >= route.size():
 			active = false
 			velocity = Vector3.ZERO
 			route_finished.emit()
 		return
+	# Progress watchdog: no gain toward the cell for STUCK_SECONDS -> stuck.
+	var distance := horizontal.length()
+	if distance < _best_distance - 0.02:
+		_best_distance = distance
+		_stuck_timer = 0.0
+	else:
+		_stuck_timer += delta
+		if _stuck_timer >= STUCK_SECONDS:
+			_stuck_timer = 0.0
+			_best_distance = INF
+			stuck.emit()
 	var direction := horizontal.normalized()
 	velocity.x = direction.x * move_speed
 	velocity.z = direction.z * move_speed

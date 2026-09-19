@@ -522,7 +522,9 @@ func ballista_line_of_sight_result() -> Dictionary:
 		return {"clear": false, "reason": "TARGET_UNAVAILABLE"}
 	var origin := _ballista_muzzle_position()
 	var target := _ballista_target_position()
-	var query := PhysicsRayQueryParameters3D.create(origin, target, 1)
+	# Raiders sit on layer 4 (they no longer shove each other); the ray sees
+	# both the world and the raider.
+	var query := PhysicsRayQueryParameters3D.create(origin, target, 1 | 4)
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if hit.is_empty():
 		return {"clear": false, "reason": "NO_PHYSICS_HIT", "origin": origin, "target": target}

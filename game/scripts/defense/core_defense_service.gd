@@ -84,6 +84,8 @@ var _capture_reason := "OK"
 var _stall_retry_pending := false
 const STALL_RETRY_SECONDS := 2.0
 const BRUTE_SMASH_RADIUS := 2.6
+const WAVE_SPREAD := 4
+var _wave_rng := RandomNumberGenerator.new()
 var _capture_retries := 0
 const CAPTURE_RETRY_LIMIT := 40
 const CAPTURE_RETRY_SECONDS := 0.5
@@ -184,6 +186,7 @@ func start_prototype(options: Dictionary = {}) -> Dictionary:
 	_clear_fixture()
 	arena_center = found.get("center", Vector3i.ZERO)
 	spawn_distance = requested_distance
+	_wave_rng.randomize()
 	wave_size = maxi(1, int(options.get("raiders", 1)))
 	_pending_brutes = clampi(int(options.get("brutes", 0)), 0, wave_size)
 	_pending_trolls = clampi(int(options.get("trolls", 0)), 0, wave_size)
@@ -610,12 +613,13 @@ func _begin_attack() -> void:
 	_emit_state()
 
 
-## Spread the wave across the spawn line: alternating left/right, one row
-## back every four.
+## Spread the wave across the spawn line: a seeded random lateral spread of
+## up to WAVE_SPREAD cells and up to three rows back, so no two drills line
+## up the same way (owner playtest 2026-09-19: identical huddles every run).
 func _wave_offset(index: int) -> Vector3:
-	var lateral := ((index + 1) / 2) * (1 if index % 2 == 1 else -1)
-	var back := -(index / 4)
-	return Vector3(float(clampi(lateral, -3, 3)), 0.0, float(back))
+	var lateral := _wave_rng.randi_range(-WAVE_SPREAD, WAVE_SPREAD)
+	var back := -_wave_rng.randi_range(0, mini(3, 1 + index / 3))
+	return Vector3(float(lateral), 0.0, float(back))
 
 
 func _spawn_extra_raider(spawn_position: Vector3, kind: String) -> Dictionary:
@@ -651,7 +655,24 @@ func _spawn_extra_raider(spawn_position: Vector3, kind: String) -> Dictionary:
 	}
 	extra_raiders.append(entry)
 	node.route_finished.connect(_on_extra_route_finished.bind(node))
+	node.stuck.connect(_on_extra_stuck.bind(node))
 	return entry
+
+
+## A body that stopped gaining on its next cell re-plans from where it
+## actually stands (corner clipping, a tree, a fallen barricade).
+func _on_raider_stuck() -> void:
+	if is_active() and is_instance_valid(raider) and raider_health > 0:
+		_capture_navigation()
+		_plan_from_raider()
+
+
+func _on_extra_stuck(node: BasicRaider) -> void:
+	for entry in extra_raiders:
+		if entry.node == node and int(entry.health) > 0:
+			_capture_navigation()
+			_plan_extra(entry)
+			return
 
 
 func _plan_extra(entry: Dictionary) -> void:
@@ -996,6 +1017,7 @@ func _spawn_raider(spawn_position: Vector3) -> void:
 	add_child(raider)
 	raider.global_position = spawn_position
 	raider.route_finished.connect(_on_raider_route_finished)
+	raider.stuck.connect(_on_raider_stuck)
 
 
 func _clear_fixture() -> void:
