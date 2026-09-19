@@ -562,6 +562,9 @@ func _spawn_station_visual(record: Dictionary) -> void:
 	elif entity_id == "turret_catapult":
 		_build_turret_catapult_visual(body)
 		_wrap_siege_turret(body, definition)
+	elif entity_id == "turret_catapult_mk2":
+		_build_turret_catapult_mk2_visual(body)
+		_wrap_siege_turret(body, definition)
 	elif entity_id == "cannon":
 		_build_cannon_visual(body)
 		_wrap_siege_turret(body, definition)
@@ -879,118 +882,232 @@ func _build_turret_catapult_visual(parent: Node3D) -> void:
 	_add_mesh_cylinder(bucket, 0.16, 0.18, Vector3(0.0, 0.10, 0.0), Vector3.ZERO, _visual_material(Color("8f969d"), "res://assets/blocks/stone.svg"), "CatapultStone")
 
 
-## Cannon (2x3, direct fire): oak carriage on two spoked wheels, trail beams
-## behind, an iron barrel on trunnions that recoils when fired. Muzzle at -z.
+## Cannon (2x2) from the owner's reference art (2026-09-19): a studded oak
+## platform with iron corner caps and a blue banner, an iron turntable ring,
+## two oak cheek plates with big hex bolts, and a black iron barrel with gold
+## bands and studs pitched up on trunnions. Bore is -z; `CannonBarrel` recoils.
 func _build_cannon_visual(parent: Node3D) -> void:
-	_add_collision_box(parent, Vector3(1.90, 0.80, 2.90), Vector3(0.5, -0.10, 1.0))
-	_add_collision_box(parent, Vector3(0.60, 0.70, 2.60), Vector3(0.5, 0.60, 0.80))
+	_add_collision_box(parent, Vector3(1.96, 0.50, 1.96), Vector3(0.5, -0.25, 0.5))
+	_add_collision_box(parent, Vector3(1.10, 1.10, 1.30), Vector3(0.5, 0.55, 0.55))
 	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
 	var dark_oak := _visual_material(Color("6b3d1f"), "res://assets/blocks/log.svg")
-	var iron := _visual_material(Color("6f7880"))
+	var iron := _visual_material(Color("7b838c"))
 	var dark_iron := _visual_material(Color("2f353b"))
 	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
-	# Carriage cheeks (two thick side plates stepped down to the rear) and trails.
-	for x in [0.12, 0.88]:
-		_add_mesh_box(parent, Vector3(0.22, 0.60, 1.40), Vector3(x, 0.10, 0.60), oak)
-		_add_mesh_box(parent, Vector3(0.22, 0.34, 1.30), Vector3(x, -0.12, 1.80), oak)
-		for z in [0.10, 1.10, 2.20]:
-			_add_mesh_box(parent, Vector3(0.26, 0.24, 0.12), Vector3(x, -0.12, z), dark_iron)
-			_add_stud(parent, Vector3(x + (0.14 if x > 0.5 else -0.14), -0.12, z), gold, Vector3(0.0, 0.0, PI / 2.0))
-	_add_mesh_box(parent, Vector3(0.98, 0.18, 0.18), Vector3(0.5, -0.20, 2.40), dark_oak)
-	_add_mesh_box(parent, Vector3(0.98, 0.16, 0.16), Vector3(0.5, 0.20, 0.10), dark_oak)
-	# Axle and two large wheels.
-	_add_mesh_cylinder(parent, 0.08, 2.00, Vector3(0.5, -0.10, 0.55), Vector3(0.0, 0.0, PI / 2.0), iron, "CannonAxle")
-	for x in [-0.30, 1.30]:
-		var wheel := _add_mesh_cylinder(parent, 0.50, 0.14, Vector3(x, -0.10, 0.55), Vector3(0.0, 0.0, PI / 2.0), oak, "CannonWheel")
-		_add_mesh_torus(wheel, 0.44, 0.54, Vector3.ZERO, Vector3.ZERO, iron)
-		_add_mesh_cone(parent, 0.09, 0.18, Vector3(x + (0.14 if x > 0.5 else -0.14), -0.10, 0.55), Vector3(0.0, 0.0, (-PI / 2.0) if x > 0.5 else (PI / 2.0)), gold)
-		for angle in [0.0, 1.047, 2.094]:
-			_add_mesh_box(wheel, Vector3(0.06, 0.06, 0.92), Vector3.ZERO, dark_oak).rotation.x = angle
-	# Barrel on trunnions: tube, reinforcing rings, breech knob, muzzle bell.
+	_add_siege_platform(parent, Vector3(0.5, -0.30, 0.5), 1.96, 1.96, oak, iron, gold)
+	# Turntable ring and hub.
+	_add_mesh_cylinder(parent, 0.78, 0.14, Vector3(0.5, -0.03, 0.5), Vector3.ZERO, dark_iron, "CannonRing")
+	_add_mesh_cylinder(parent, 0.66, 0.16, Vector3(0.5, 0.06, 0.5), Vector3.ZERO, iron, "CannonPlate")
+	for angle in [0.4, 1.6, 2.7, 3.9, 5.1]:
+		_add_stud(parent, Vector3(0.5 + cos(angle) * 0.72, 0.02, 0.5 + sin(angle) * 0.72), gold, Vector3(0.0, -angle, 0.0))
+	_add_mesh_cylinder(parent, 0.34, 0.20, Vector3(0.5, 0.20, 0.55), Vector3.ZERO, dark_oak, "CannonHub")
+	# Cheek plates: oak trapezoids (a tall box plus a leaning brace) with hex bolts.
+	for x in [0.14, 0.86]:
+		var side := -1.0 if x < 0.5 else 1.0
+		_add_mesh_box(parent, Vector3(0.20, 0.82, 0.72), Vector3(x, 0.52, 0.62), oak)
+		var brace := _add_mesh_box(parent, Vector3(0.20, 0.70, 0.24), Vector3(x, 0.40, 0.20), oak)
+		brace.rotation.x = -0.55
+		_add_mesh_box(parent, Vector3(0.24, 0.16, 0.80), Vector3(x, 0.94, 0.62), dark_iron)
+		_add_mesh_cylinder(parent, 0.13, 0.10, Vector3(x + side * 0.14, 0.70, 0.62), Vector3(0.0, 0.0, PI / 2.0), iron, "CannonBolt")
+		_add_mesh_cylinder(parent, 0.10, 0.10, Vector3(x + side * 0.14, 0.34, 0.86), Vector3(0.0, 0.0, PI / 2.0), iron, "CannonBolt")
+		_add_stud(parent, Vector3(x + side * 0.14, 0.52, 0.30), gold, Vector3(0.0, 0.0, PI / 2.0))
+	# Barrel on trunnions, pitched up like the reference.
 	var barrel := Node3D.new()
 	barrel.name = "CannonBarrel"
-	barrel.position = Vector3(0.5, 0.50, 0.55)
-	barrel.rotation.x = 0.06
+	barrel.position = Vector3(0.5, 0.78, 0.62)
+	barrel.rotation.x = 0.30
 	parent.add_child(barrel)
-	_add_mesh_cylinder(barrel, 0.22, 2.10, Vector3(0.0, 0.0, -0.30), Vector3(PI / 2.0, 0.0, 0.0), dark_iron, "CannonTube")
-	for z in [0.50, -0.20, -0.95]:
-		_add_mesh_cylinder(barrel, 0.26, 0.12, Vector3(0.0, 0.0, z), Vector3(PI / 2.0, 0.0, 0.0), iron, "CannonRing")
-	_add_mesh_cylinder(barrel, 0.28, 0.16, Vector3(0.0, 0.0, -1.30), Vector3(PI / 2.0, 0.0, 0.0), iron, "CannonMuzzleRing")
-	_add_mesh_cylinder(barrel, 0.16, 0.20, Vector3(0.0, 0.0, 0.85), Vector3(PI / 2.0, 0.0, 0.0), dark_iron, "CannonBreech")
+	_add_mesh_cylinder(barrel, 0.24, 1.80, Vector3(0.0, 0.0, -0.45), Vector3(PI / 2.0, 0.0, 0.0), dark_iron, "CannonTube")
+	_add_mesh_cylinder(barrel, 0.27, 0.34, Vector3(0.0, 0.0, 0.30), Vector3(PI / 2.0, 0.0, 0.0), dark_iron, "CannonBreechBand")
+	for z in [0.12, -0.55, -1.10]:
+		_add_mesh_cylinder(barrel, 0.29, 0.10, Vector3(0.0, 0.0, z), Vector3(PI / 2.0, 0.0, 0.0), gold, "CannonGoldBand")
+		for angle in [0.0, 1.571, 3.142, 4.712]:
+			_add_stud(barrel, Vector3(cos(angle) * 0.29, sin(angle) * 0.29, z), gold, Vector3(0.0, 0.0, angle))
+	_add_mesh_cylinder(barrel, 0.31, 0.22, Vector3(0.0, 0.0, -1.30), Vector3(PI / 2.0, 0.0, 0.0), iron, "CannonMuzzleRing")
+	_add_mesh_cylinder(barrel, 0.20, 0.06, Vector3(0.0, 0.0, -1.42), Vector3(PI / 2.0, 0.0, 0.0), _visual_material(Color("101214")), "CannonBore")
+	_add_mesh_cylinder(barrel, 0.08, 1.30, Vector3.ZERO, Vector3(0.0, 0.0, PI / 2.0), iron, "CannonTrunnion")
 	var knob := MeshInstance3D.new()
 	var knob_mesh := SphereMesh.new()
-	knob_mesh.radius = 0.11
-	knob_mesh.height = 0.22
+	knob_mesh.radius = 0.12
+	knob_mesh.height = 0.24
 	knob.mesh = knob_mesh
 	knob.material_override = iron
-	knob.position = Vector3(0.0, 0.0, 1.02)
+	knob.position = Vector3(0.0, 0.0, 0.56)
 	barrel.add_child(knob)
-	_add_mesh_cylinder(barrel, 0.08, 0.80, Vector3(0.0, 0.0, 0.0), Vector3(0.0, 0.0, PI / 2.0), iron, "CannonTrunnion")
+	_add_mesh_box(barrel, Vector3(0.10, 0.22, 0.10), Vector3(0.0, 0.30, 0.25), gold)
 	var loaded := MeshInstance3D.new()
 	loaded.name = "CannonBall"
 	var ball_mesh := SphereMesh.new()
-	ball_mesh.radius = 0.15
-	ball_mesh.height = 0.30
+	ball_mesh.radius = 0.16
+	ball_mesh.height = 0.32
 	loaded.mesh = ball_mesh
 	loaded.material_override = dark_iron
-	loaded.position = Vector3(0.0, 0.0, -1.30)
+	loaded.position = Vector3(0.0, 0.0, -1.28)
 	barrel.add_child(loaded)
 	var muzzle := Node3D.new()
 	muzzle.name = "SiegeMuzzle"
-	muzzle.position = Vector3(0.0, 0.0, -1.42)
+	muzzle.position = Vector3(0.0, 0.0, -1.46)
 	barrel.add_child(muzzle)
-	_add_mesh_box(parent, Vector3(0.10, 0.10, 0.10), Vector3(0.5, 0.86, 0.95), gold)
 
 
-## Rail segment: iron sleepers and two rails along z. Rails chain along a
-## wall top; the kettle rides the connected chain.
+## Rail block from the owner's reference art: castle-stone corner posts with
+## gold studs, an oak plank deck between them and two iron rails along z with
+## small iron ties. Rails chain along a wall top; the kettle rides them.
 func _build_rail_visual(parent: Node3D) -> void:
-	_add_collision_box(parent, Vector3(0.96, 0.30, 0.96), Vector3(0.0, -0.35, 0.0))
-	var dark_oak := _visual_material(Color("5b321e"), "res://assets/blocks/log.svg")
+	_add_collision_box(parent, Vector3(0.98, 0.56, 0.98), Vector3(0.0, -0.22, 0.0))
+	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
+	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")
 	var iron := _visual_material(Color("8a939b"))
-	for z in [-0.33, 0.0, 0.33]:
-		_add_mesh_box(parent, Vector3(0.92, 0.10, 0.16), Vector3(0.0, -0.45, z), dark_oak)
-	for x in [-0.30, 0.30]:
-		_add_mesh_box(parent, Vector3(0.10, 0.12, 1.0), Vector3(x, -0.34, 0.0), iron)
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	_add_mesh_box(parent, Vector3(0.96, 0.36, 0.96), Vector3(0.0, -0.32, 0.0), oak)
+	for x in [-0.38, 0.38]:
+		for z in [-0.38, 0.38]:
+			_add_mesh_box(parent, Vector3(0.22, 0.56, 0.22), Vector3(x, -0.22, z), stone)
+			_add_stud(parent, Vector3(x, 0.02, z), gold, Vector3.ZERO)
+	for x in [-0.22, 0.22]:
+		_add_mesh_box(parent, Vector3(0.10, 0.10, 1.0), Vector3(x, 0.00, 0.0), iron)
+	for z in [-0.30, 0.0, 0.30]:
+		_add_mesh_box(parent, Vector3(0.62, 0.06, 0.10), Vector3(0.0, -0.11, z), iron)
 
 
-## Kettle on rails (1x1, mounts on a rail): an iron trolley on four small
-## wheels, two uprights carrying a tilting cauldron over a brazier. The pot
-## tilts toward -z to dump. Node names: KettlePot (tilts), KettleOil (shown
-## while loaded), SiegeMuzzle (the pouring lip).
+## Kettle on rails from the owner's reference art: an iron trolley riding the
+## rail block below on four wheels, oak A-brackets with iron caps and gold
+## studs on both sides, a big black iron cauldron with a gold studded band
+## and a wide rim, a gold crank. The pot tilts toward -z to pour. Node names:
+## KettlePot (tilts), KettleOil (shown while loaded), SiegeMuzzle (the lip).
 func _build_kettle_visual(parent: Node3D) -> void:
-	# The kettle sits low in its cell so its wheels rest on the rail below.
-	var drop := Vector3(0.0, -0.70, 0.0)
-	_add_collision_box(parent, Vector3(0.96, 1.00, 0.96), Vector3(0.0, 0.10, 0.0) + drop)
-	var iron := _visual_material(Color("6f7880"))
-	var dark_iron := _visual_material(Color("353b41"))
-	var oak := _visual_material(Color("8a5a32"), "res://assets/blocks/planks.svg")
-	var ember := _visual_material(Color("ff6a1a"), "", Color("ff4a00"))
+	_add_collision_box(parent, Vector3(0.96, 1.10, 0.96), Vector3(0.0, -0.40, 0.0))
+	# The rail block below tops out 0.5 under this cell's floor line, so the
+	# whole trolley hangs 0.5 lower to rest its wheels on the rails.
 	var frame := Node3D.new()
 	frame.name = "KettleFrame"
-	frame.position = drop
+	frame.position = Vector3(0.0, -0.50, 0.0)
 	parent.add_child(frame)
-	_add_mesh_box(frame, Vector3(0.90, 0.12, 0.90), Vector3(0.0, -0.42, 0.0), oak)
-	for x in [-0.36, 0.36]:
+	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
+	var iron := _visual_material(Color("7b838c"))
+	var dark_iron := _visual_material(Color("2f353b"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	# Trolley: wheels on the rails (rail top sits at -0.45 in this cell), an
+	# iron chassis and an oak bed.
+	for x in [-0.22, 0.22]:
 		for z in [-0.30, 0.30]:
-			_add_mesh_cylinder(frame, 0.11, 0.08, Vector3(x, -0.44, z), Vector3(0.0, 0.0, PI / 2.0), dark_iron, "KettleWheel")
-	_add_mesh_box(frame, Vector3(0.60, 0.10, 0.60), Vector3(0.0, -0.32, 0.0), dark_iron)
-	_add_mesh_box(frame, Vector3(0.36, 0.14, 0.36), Vector3(0.0, -0.22, 0.0), ember)
-	for x in [-0.40, 0.40]:
-		_add_mesh_box(frame, Vector3(0.10, 0.90, 0.10), Vector3(x, 0.10, 0.0), iron)
-	_add_mesh_cylinder(frame, 0.05, 0.90, Vector3(0.0, 0.28, 0.0), Vector3(0.0, 0.0, PI / 2.0), iron, "KettleAxle")
+			_add_mesh_cylinder(frame, 0.11, 0.10, Vector3(x, -0.34, z), Vector3(0.0, 0.0, PI / 2.0), dark_iron, "KettleWheel")
+	_add_mesh_box(frame, Vector3(0.80, 0.10, 0.90), Vector3(0.0, -0.24, 0.0), dark_iron)
+	_add_mesh_box(frame, Vector3(0.90, 0.12, 0.80), Vector3(0.0, -0.14, 0.0), oak)
+	# A-brackets: two leaning oak beams per side meeting at the axle cap.
+	for x in [-0.42, 0.42]:
+		for z in [-0.26, 0.26]:
+			var beam := _add_mesh_box(frame, Vector3(0.14, 0.78, 0.14), Vector3(x, 0.22, z * 0.55), oak)
+			beam.rotation.x = -0.42 if z < 0.0 else 0.42
+		_add_mesh_box(frame, Vector3(0.20, 0.20, 0.20), Vector3(x, 0.56, 0.0), iron)
+		_add_stud(frame, Vector3(x + (0.12 if x > 0.0 else -0.12), 0.56, 0.0), gold, Vector3(0.0, 0.0, PI / 2.0))
+		_add_stud(frame, Vector3(x + (0.09 if x > 0.0 else -0.09), 0.12, 0.0), gold, Vector3(0.0, 0.0, PI / 2.0))
+	_add_mesh_cylinder(frame, 0.05, 0.96, Vector3(0.0, 0.56, 0.0), Vector3(0.0, 0.0, PI / 2.0), iron, "KettleAxle")
+	_add_mesh_box(frame, Vector3(0.08, 0.08, 0.16), Vector3(0.56, 0.62, -0.10), gold)
+	_add_mesh_box(frame, Vector3(0.08, 0.18, 0.08), Vector3(0.56, 0.72, -0.16), gold)
+	# Cauldron on the axle.
 	var pot := Node3D.new()
 	pot.name = "KettlePot"
-	pot.position = Vector3(0.0, 0.28, 0.0)
+	pot.position = Vector3(0.0, 0.56, 0.0)
 	frame.add_child(pot)
-	_add_mesh_cylinder(pot, 0.34, 0.46, Vector3(0.0, -0.12, 0.0), Vector3.ZERO, dark_iron, "KettleBody")
-	_add_mesh_torus(pot, 0.30, 0.40, Vector3(0.0, 0.10, 0.0), Vector3.ZERO, iron)
-	_add_mesh_cylinder(pot, 0.29, 0.04, Vector3(0.0, 0.07, 0.0), Vector3.ZERO, _visual_material(Color("d98a1e"), "", Color("ff9a1e")), "KettleOil")
-	_add_mesh_box(pot, Vector3(0.16, 0.06, 0.12), Vector3(0.0, 0.10, -0.38), iron)
+	_add_mesh_cylinder(pot, 0.34, 0.52, Vector3(0.0, 0.0, 0.0), Vector3.ZERO, dark_iron, "KettleBody")
+	_add_mesh_cylinder(pot, 0.30, 0.16, Vector3(0.0, -0.32, 0.0), Vector3.ZERO, dark_iron, "KettleBottom")
+	_add_mesh_cylinder(pot, 0.37, 0.09, Vector3(0.0, 0.02, 0.0), Vector3.ZERO, gold, "KettleBand")
+	for angle in [0.0, 1.047, 2.094, 3.142, 4.189, 5.236]:
+		_add_stud(pot, Vector3(cos(angle) * 0.37, 0.02, sin(angle) * 0.37), gold, Vector3(0.0, -angle, 0.0))
+	_add_mesh_torus(pot, 0.30, 0.42, Vector3(0.0, 0.28, 0.0), Vector3.ZERO, iron)
+	_add_mesh_cylinder(pot, 0.31, 0.04, Vector3(0.0, 0.25, 0.0), Vector3.ZERO, _visual_material(Color("d98a1e"), "", Color("ff9a1e")), "KettleOil")
+	_add_mesh_box(pot, Vector3(0.18, 0.06, 0.14), Vector3(0.0, 0.29, -0.42), iron)
 	var muzzle := Node3D.new()
 	muzzle.name = "SiegeMuzzle"
-	muzzle.position = Vector3(0.0, 0.12, -0.42)
+	muzzle.position = Vector3(0.0, 0.30, -0.46)
 	pot.add_child(muzzle)
+
+
+## The owner's siege platform (reference art 2026-09-19): an oak plank deck
+## with iron corner caps carrying gold diamonds, iron strap plates mid-edge,
+## and a blue banner with a gold fleur on the front (-z) face. `centre` is the
+## deck centre; `width`/`depth` its plan size.
+func _add_siege_platform(parent: Node3D, centre: Vector3, width: float, depth: float, oak: Material, iron: Material, gold: Material) -> void:
+	var banner := _visual_material(Color("1f4fb3"))
+	_add_mesh_box(parent, Vector3(width, 0.40, depth), centre, oak)
+	for z in [-0.40, 0.40]:
+		_add_mesh_box(parent, Vector3(width + 0.02, 0.06, 0.08), centre + Vector3(0.0, 0.0, z * depth * 0.5), _visual_material(Color("6b3d1f"), "res://assets/blocks/log.svg"))
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			var corner := centre + Vector3(sx * (width * 0.5 - 0.20), 0.10, sz * (depth * 0.5 - 0.20))
+			_add_mesh_box(parent, Vector3(0.40, 0.58, 0.40), corner, iron)
+			_add_stud(parent, corner + Vector3(sx * 0.21, 0.06, 0.0), gold, Vector3(0.0, 0.0, PI / 2.0))
+			_add_stud(parent, corner + Vector3(0.0, 0.06, sz * 0.21), gold, Vector3(PI / 2.0, 0.0, 0.0))
+	for sx in [-1.0, 1.0]:
+		_add_mesh_box(parent, Vector3(0.12, 0.46, 0.26), centre + Vector3(sx * (width * 0.5 + 0.02), 0.04, 0.0), iron)
+	for sz in [-1.0, 1.0]:
+		_add_mesh_box(parent, Vector3(0.26, 0.46, 0.12), centre + Vector3(0.0, 0.04, sz * (depth * 0.5 + 0.02)), iron)
+	var flag := _add_mesh_box(parent, Vector3(0.34, 0.50, 0.05), centre + Vector3(0.30, -0.10, -(depth * 0.5 + 0.09)), banner)
+	_add_mesh_box(flag, Vector3(0.14, 0.18, 0.02), Vector3(0.0, 0.04, -0.03), gold)
+
+
+## Turret catapult mk2 from the owner's reference art: the siege platform, an
+## iron turntable ring, an oak A-frame with iron caps and gold studs, a rope
+## winch drum with a gold crank between the front legs, and a rope-wrapped
+## throwing arm ending in an iron bucket with gold studs. Shares the catapult
+## node names (CatapultArm / CatapultBucket / CatapultStone) for its animation.
+func _build_turret_catapult_mk2_visual(parent: Node3D) -> void:
+	_add_collision_box(parent, Vector3(1.96, 0.50, 1.96), Vector3(0.5, -0.25, 0.5))
+	_add_collision_box(parent, Vector3(1.30, 1.30, 1.40), Vector3(0.5, 0.60, 0.55))
+	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
+	var dark_oak := _visual_material(Color("6b3d1f"), "res://assets/blocks/log.svg")
+	var iron := _visual_material(Color("7b838c"))
+	var dark_iron := _visual_material(Color("2f353b"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	var rope := _visual_material(Color("c9b17a"))
+	_add_siege_platform(parent, Vector3(0.5, -0.30, 0.5), 1.96, 1.96, oak, iron, gold)
+	_add_mesh_cylinder(parent, 0.80, 0.14, Vector3(0.5, -0.03, 0.5), Vector3.ZERO, dark_iron, "TurretRing")
+	_add_mesh_cylinder(parent, 0.70, 0.14, Vector3(0.5, 0.06, 0.5), Vector3.ZERO, iron, "TurretPlate")
+	for angle in [0.5, 1.7, 2.9, 4.1, 5.3]:
+		_add_stud(parent, Vector3(0.5 + cos(angle) * 0.74, 0.02, 0.5 + sin(angle) * 0.74), gold, Vector3(0.0, -angle, 0.0))
+	_add_mesh_box(parent, Vector3(1.20, 0.14, 1.30), Vector3(0.5, 0.20, 0.55), oak)
+	# A-frame: two leaning legs per side to an iron cap at the axle.
+	var apex := Vector3(0.5, 1.05, 0.45)
+	for x in [0.02, 0.98]:
+		var lean := -0.30 if x < 0.5 else 0.30
+		var front_leg := _add_mesh_box(parent, Vector3(0.18, 1.12, 0.18), Vector3(x, 0.62, 0.05), oak)
+		front_leg.rotation = Vector3(0.36, 0.0, lean)
+		var rear_leg := _add_mesh_box(parent, Vector3(0.18, 1.12, 0.18), Vector3(x, 0.62, 0.85), oak)
+		rear_leg.rotation = Vector3(-0.36, 0.0, lean)
+		var cap := _add_mesh_box(parent, Vector3(0.26, 0.26, 0.26), Vector3(x - (0.10 if x < 0.5 else -0.10), 1.05, 0.45), dark_iron)
+		_add_stud(parent, Vector3(cap.position.x + (-0.15 if x < 0.5 else 0.15), 1.05, 0.45), gold, Vector3(0.0, 0.0, PI / 2.0))
+		_add_mesh_box(parent, Vector3(0.22, 0.22, 0.22), Vector3(x - (0.06 if x < 0.5 else -0.06), 0.40, 0.05), dark_iron)
+		_add_stud(parent, Vector3(x + (-0.14 if x < 0.5 else 0.14), 0.40, 0.05), gold, Vector3(0.0, 0.0, PI / 2.0))
+	_add_mesh_cylinder(parent, 0.09, 1.40, apex, Vector3(0.0, 0.0, PI / 2.0), iron, "CatapultAxle")
+	_add_mesh_cylinder(parent, 0.16, 0.18, Vector3(1.22, apex.y, apex.z), Vector3(0.0, 0.0, PI / 2.0), dark_iron, "CatapultAxleNut")
+	# Winch drum with rope and a gold crank on the left.
+	_add_mesh_cylinder(parent, 0.20, 0.90, Vector3(0.5, 0.55, 0.05), Vector3(0.0, 0.0, PI / 2.0), rope, "CatapultWinch")
+	_add_mesh_cylinder(parent, 0.06, 1.30, Vector3(0.5, 0.55, 0.05), Vector3(0.0, 0.0, PI / 2.0), iron, "CatapultWinchAxle")
+	_add_mesh_box(parent, Vector3(0.08, 0.08, 0.30), Vector3(-0.20, 0.55, 0.16), iron)
+	_add_mesh_box(parent, Vector3(0.10, 0.22, 0.10), Vector3(-0.20, 0.62, 0.30), gold)
+	_add_mesh_box(parent, Vector3(0.10, 0.10, 0.10), Vector3(-0.20, 0.55, 0.02), gold)
+	# Rear cross bar the arm rests on.
+	_add_mesh_box(parent, Vector3(1.30, 0.14, 0.14), Vector3(0.5, 0.66, 1.05), oak)
+	# Arm with rope wraps and a studded iron bucket.
+	var arm := Node3D.new()
+	arm.name = "CatapultArm"
+	arm.position = apex
+	arm.rotation.x = -0.40
+	parent.add_child(arm)
+	_add_mesh_box(arm, Vector3(0.20, 0.20, 1.90), Vector3(0.0, 0.0, 0.60), oak)
+	_add_mesh_box(arm, Vector3(0.26, 0.26, 0.30), Vector3(0.0, 0.0, -0.30), dark_oak)
+	for z in [0.55, 0.68, 0.81, 0.94]:
+		_add_mesh_cylinder(arm, 0.16, 0.09, Vector3(0.0, 0.0, z), Vector3(PI / 2.0, 0.0, 0.0), rope, "CatapultRope")
+	var bucket := Node3D.new()
+	bucket.name = "CatapultBucket"
+	bucket.position = Vector3(0.0, 0.14, 1.52)
+	arm.add_child(bucket)
+	_add_mesh_cylinder(bucket, 0.32, 0.30, Vector3.ZERO, Vector3.ZERO, dark_iron, "CatapultBucketWall")
+	_add_mesh_torus(bucket, 0.28, 0.38, Vector3(0.0, 0.15, 0.0), Vector3.ZERO, iron)
+	for angle in [0.0, 1.571, 3.142, 4.712]:
+		_add_stud(bucket, Vector3(cos(angle) * 0.36, 0.08, sin(angle) * 0.36), gold, Vector3(0.0, -angle, 0.0))
+	_add_mesh_cylinder(bucket, 0.17, 0.18, Vector3(0.0, 0.10, 0.0), Vector3.ZERO, _visual_material(Color("8f969d"), "res://assets/blocks/stone.svg"), "CatapultStone")
 
 
 ## A small gold diamond: a cube rotated 45 degrees about the given axis.

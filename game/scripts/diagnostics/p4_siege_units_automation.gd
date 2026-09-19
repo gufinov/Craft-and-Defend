@@ -309,8 +309,9 @@ func _run_visual() -> void:
 	var world := app.session.world
 	var origin := Vector3i(-6, 0, 36)
 	_level_ground(origin + Vector3i(-2, 0, -2), 20, 14)
-	app.session.inventory.try_transaction({}, {"ballista": 1, "catapult": 1, "turret_catapult": 1, "tower_platform": 1, "cannon": 1, "rail": 4, "kettle": 1})
+	app.session.inventory.try_transaction({}, {"ballista": 1, "catapult": 1, "turret_catapult": 1, "turret_catapult_mk2": 1, "tower_platform": 1, "cannon": 1, "rail": 4, "kettle": 1})
 	var placements := {
+		"turret_catapult_mk2": ws.try_place("turret_catapult_mk2", origin + Vector3i(-3, 0, 4), world.query_cell, AABB(), 0),
 		"ballista": ws.try_place("ballista", origin + Vector3i(0, 0, 4), world.query_cell, AABB(), 0),
 		"catapult": ws.try_place("catapult", origin + Vector3i(3, 0, 3), world.query_cell, AABB(), 0),
 		"tower_platform": ws.try_place("tower_platform", origin + Vector3i(6, 0, 4), world.query_cell, AABB(), 0),
@@ -329,8 +330,8 @@ func _run_visual() -> void:
 		all_placed = all_placed and bool(placements[key].get("ok", false))
 	for _frame in range(4):
 		await get_tree().physics_frame
-	player.global_position = Vector3(origin) + Vector3(8.5, 2.6, -5.0)
-	player.look_at(Vector3(origin) + Vector3(8.5, 0.6, 4.0), Vector3.UP)
+	player.global_position = Vector3(origin) + Vector3(7.0, 3.0, -7.5)
+	player.look_at(Vector3(origin) + Vector3(7.0, 0.6, 4.0), Vector3.UP)
 	player.camera.rotation.x = -0.12
 	for _frame in range(90):
 		await get_tree().process_frame
@@ -344,11 +345,11 @@ func _run_visual() -> void:
 		return
 	var error := image.save_png(path)
 	var mesh_parts := 0
-	for key in ["cannon", "turret_catapult", "kettle"]:
+	for key in ["cannon", "turret_catapult", "kettle", "turret_catapult_mk2"]:
 		var body: Node3D = app.session._station_visuals.get(str(placements[key].get("details", {}).get("station", {}).get("instance_id", "")))
 		if body != null:
 			mesh_parts += body.find_children("*", "MeshInstance3D", true, false).size()
-	_record("T136_SIEGE_UNITS_RENDERED", all_placed and error == OK and image.get_size() == Vector2i(1280, 720) and mesh_parts >= 40, "the ballista, catapult, turret catapult on its tower, cannon and kettle on a rail-topped wall render as distinct multi-part machines in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "placed": all_placed, "mesh_parts": mesh_parts, "rails": rails_ok})
+	_record("T136_SIEGE_UNITS_RENDERED", all_placed and error == OK and image.get_size() == Vector2i(1280, 720) and mesh_parts >= 60, "the turret catapult mk2, ballista, catapult, turret catapult on its tower, cannon and kettle on a rail-topped wall render as distinct multi-part machines in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "placed": all_placed, "mesh_parts": mesh_parts, "rails": rails_ok})
 
 
 ## T141 wave persistence: a running wave (three raiders, one brute, two of

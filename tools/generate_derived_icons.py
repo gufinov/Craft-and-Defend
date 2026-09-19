@@ -28,8 +28,30 @@ COLUMNS = 6
 # Order defines cell index. Keep appending; never reorder existing entries.
 DERIVED = [
     "flame_shot", "chest", "cannon", "cannonball", "turret_catapult", "hot_oil",
-    "kettle", "rail",
+    "kettle", "rail", "turret_catapult_mk2", "wood_axe_flipped",
 ]
+
+# Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
+# present it IS the icon: trimmed to its alpha bounds and fitted into the cell.
+OWNER_ART = ROOT / "docs" / "reference" / "owner_art"
+OWNER_ICONS = {
+    "cannon": "cannon.webp",
+    "kettle": "kettle_on_rails.webp",
+    "rail": "rail_block.webp",
+    "turret_catapult_mk2": "turret_catapult.webp",
+}
+
+
+def owner_icon(item_id: str) -> Image.Image | None:
+    path = OWNER_ART / OWNER_ICONS.get(item_id, "")
+    if not OWNER_ICONS.get(item_id) or not path.exists():
+        return None
+    art = Image.open(path).convert("RGBA")
+    art = art.crop(art.getbbox())
+    art = fit(art, 236)
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    canvas.alpha_composite(art, ((CELL - art.width) // 2, (CELL - art.height) // 2))
+    return canvas
 
 
 def source_region(item_id: str) -> Image.Image:
@@ -101,11 +123,24 @@ def icon_cannonball() -> Image.Image:
 
 
 def icon_turret_catapult() -> Image.Image:
+    # Pedestal catapult: the catapult art without its wheel row, on an iron
+    # turntable over a stone slab (matches the placed pedestal model).
     base = fit(source_region("catapult"), 190)
+    base = base.crop((0, 0, base.width, int(base.height * 0.72)))
     canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
-    draw.ellipse([40, 176, 216, 236], fill=(110, 118, 126, 255), outline=(60, 66, 72, 255), width=5)
-    canvas.alpha_composite(base, ((CELL - base.width) // 2, 24))
+    draw.rectangle([28, 196, 228, 236], fill=(139, 146, 157, 255), outline=(80, 86, 94, 255), width=4)
+    draw.ellipse([56, 176, 200, 212], fill=(110, 118, 126, 255), outline=(60, 66, 72, 255), width=5)
+    canvas.alpha_composite(base, ((CELL - base.width) // 2, 40))
+    return canvas
+
+
+def icon_wood_axe_flipped() -> Image.Image:
+    # Card icon of the axe mirrored so its blade faces the same way as the
+    # picks (owner playtest 2026-09-19); the held view keeps the original.
+    axe = ImageOps.mirror(fit(source_region("wood_axe"), 220))
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    canvas.alpha_composite(axe, ((CELL - axe.width) // 2, (CELL - axe.height) // 2))
     return canvas
 
 
@@ -141,6 +176,7 @@ def icon_rail() -> Image.Image:
 BUILDERS = {
     "flame_shot": icon_flame_shot, "chest": icon_chest, "cannon": icon_cannon, "cannonball": icon_cannonball,
     "turret_catapult": icon_turret_catapult, "hot_oil": icon_hot_oil, "kettle": icon_kettle, "rail": icon_rail,
+    "turret_catapult_mk2": lambda: owner_icon("turret_catapult_mk2"), "wood_axe_flipped": icon_wood_axe_flipped,
 }
 
 
@@ -148,7 +184,7 @@ def main() -> int:
     rows = (len(DERIVED) + COLUMNS - 1) // COLUMNS
     atlas = Image.new("RGBA", (CELL * COLUMNS, CELL * rows), (0, 0, 0, 0))
     for index, item_id in enumerate(DERIVED):
-        icon = BUILDERS[item_id]()
+        icon = owner_icon(item_id) or BUILDERS[item_id]()
         atlas.alpha_composite(icon, ((index % COLUMNS) * CELL, (index // COLUMNS) * CELL))
         print(f"{index:2d} {item_id}")
     atlas.save(OUTPUT)

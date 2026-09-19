@@ -11,7 +11,8 @@ Owner direction (2026-09-19, four reference images and [design direction §11](D
 | `ballista` (remodelled) | 2×2 | ground, `light_siege` | direct | ballista_bolt (8) | 4–28 | 6 | 1.5 s |
 | `catapult` | 2×4 | ground | ballistic | stone_shot, flame_shot (5) | 8–34 | 9 / 4+fire | 3.2 s |
 | `turret_catapult` **new** | 2×2 | ground, `light_siege` (tower platform socket) | ballistic | stone_shot, flame_shot (4) | 6–30 | 9 / 4+fire | 2.8 s |
-| `cannon` **new** | 2×3 | ground, `light_siege` | direct | cannonball (4) | 3–32 | 14, splash 1.5 | 4.0 s |
+| `cannon` **new** | 2×2 (square platform, owner art) | ground, `light_siege` | direct | cannonball (4) | 3–32 | 14, splash 1.5 | 4.0 s |
+| `turret_catapult_mk2` **new** | 2×2 (owner-art platform version of the turret catapult; the pedestal version stays) | ground, `light_siege` | ballistic | stone_shot, flame_shot (4) | 6–30 | 9 / 4+fire | 2.8 s |
 | `rail` **new** | 1×1 | any solid top (wall tops) | — | — | — | — | — |
 | `kettle` **new** | 1×1 | `rail_mount` only (on a rail) | **dump** | hot_oil (3) | 0–2.5 horizontal | 6 + fire | 5.0 s |
 
@@ -19,13 +20,20 @@ Munitions table: `cannonball` (14, splash 1.5, impact) and `hot_oil` (6, splash 
 
 Validator: `fire_mode` may be `dump`; a dump weapon must carry `rail_speed > 0` and mount only on `rail_mount`. `station_type: "siege"` for every machine.
 
+## Owner art and icons
+
+The owner's reference renders live in `docs/reference/owner_art/` (`cannon.webp`, `kettle_on_rails.webp`, `rail_block.webp`, `turret_catapult.webp`, `catapult.webp`, `orc_melee.webp`, `troll_ranged.webp`). `tools/generate_derived_icons.py` uses the transparent ones directly as the card icons of `cannon`, `kettle`, `rail` and `turret_catapult_mk2` (`OWNER_ICONS`); re-run it and then `tools/measure_item_atlas.py` after changing them. The card icon of the wood axe is a mirrored copy (`wood_axe_flipped`, `ItemIconCatalog.CARD_ICON_OVERRIDES`) so its blade faces like the picks; the held axe is unchanged.
+
 ## Models (`GameSession._build_*_visual`, all turned by `_wrap_siege_turret`)
+
+All four owner-art machines share `_add_siege_platform`: an oak plank deck with iron corner caps carrying gold diamonds, iron strap plates, and a blue banner with a gold fleur on the front face.
 
 - **Ballista remodel**: dark-oak base with gold studs, iron pedestal and turntable, oak stock with an iron channel, a `BallistaSlider` carriage that draws back over the reload (`SLIDER_RELEASED_Z` → `SLIDER_DRAWN_Z`) and snaps forward on the shot, `BallistaBolt` shown only while loaded, two forward-swept arms with iron tips and rope strings (`BallistaString_L/R` pivots re-laid each frame from tip to nock), `SiegeMuzzle` at the stock front.
 - **Turret catapult**: castle-stone pedestal, iron ring and plate with gold studs, oak deck, short A-frame, `CatapultArm` / `CatapultBucket` / `CatapultStone` — the same node names as the field catapult, so the wind-back and throw animation is shared.
-- **Cannon**: oak cheeks and trails with iron bands, two spoked wheels with iron rims and gold hub spikes, an iron `CannonBarrel` on trunnions (rings, breech knob, muzzle bell) that recoils `CANNON_RECOIL` on the shot, a `CannonBall` shown while loaded, `SiegeMuzzle` at the bore; a muzzle flash (light + smoke puffs) spawns at the bore.
-- **Rail**: three sleepers and two iron rails along z; chains along a wall top.
-- **Kettle**: iron trolley on four wheels (dropped 0.70 into its cell so the wheels rest on the rail), two uprights, an axle, a tilting `KettlePot` with a rim, `KettleOil` (shown while loaded) and a brazier glow; `SiegeMuzzle` at the pouring lip. The pot tilts `POT_DUMP_TILT` on a dump and rights itself.
+- **Cannon** (owner art): the platform, an iron turntable ring with gold studs, two oak cheek plates with hex bolts, and a black iron `CannonBarrel` pitched up on trunnions with three gold studded bands, a muzzle ring and a breech knob; it recoils `CANNON_RECOIL` on the shot, shows a `CannonBall` while loaded, `SiegeMuzzle` at the bore; a muzzle flash (light + smoke puffs) spawns there.
+- **Turret catapult mk2** (owner art): the platform, iron turntable, oak A-frame with iron caps and gold studs, rope winch drum with a gold crank, rope-wrapped arm and a studded iron bucket; shares `CatapultArm` / `CatapultBucket` / `CatapultStone`.
+- **Rail** (owner art): castle-stone corner posts with gold studs, an oak plank deck and two iron rails with ties along z (0.55 tall); chains along a wall top.
+- **Kettle** (owner art): an iron trolley on four wheels riding the rail block below (the frame hangs 0.5 into the rail cell), oak A-brackets with iron caps and gold studs on both sides, a gold crank, and a black iron cauldron with a gold studded band and a wide rim on the axle: `KettlePot` tilts `POT_DUMP_TILT` on a dump and rights itself, `KettleOil` shows while loaded, `SiegeMuzzle` is the pouring lip.
 
 `SiegeDefenseService._muzzle_position` prefers a `SiegeMuzzle` node, then `CatapultBucket`, then the content `muzzle_offset`.
 

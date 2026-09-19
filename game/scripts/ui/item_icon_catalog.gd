@@ -79,13 +79,19 @@ static func has_item(item_id: String) -> bool:
 	return ITEM_CELLS.has(item_id) or AMMUNITION_REGIONS.has(item_id) or GOLD_REGIONS.has(item_id) or _measured_regions.has(item_id)
 
 
+## Card icons drawn from a different region than the held art (the axe card
+## is mirrored to face like the picks; the held axe keeps its blade north-east).
+const CARD_ICON_OVERRIDES := {"wood_axe": "wood_axe_flipped"}
+
+
 ## Card/slot texture: the measured object padded to a centred square.
 static func texture_for(item_id: String) -> Texture2D:
 	if not has_item(item_id):
 		return null
 	if _textures.has(item_id):
 		return _textures[item_id]
-	var texture := _atlas_texture(item_id)
+	var source_id := str(CARD_ICON_OVERRIDES.get(item_id, item_id))
+	var texture := _atlas_texture(source_id if has_item(source_id) else item_id)
 	if texture == null:
 		return null
 	var region := texture.region

@@ -287,10 +287,10 @@
     "cannon": {
       "atlas": "derived",
       "rect": [
-        540,
-        92,
-        217,
-        141
+        523,
+        15,
+        234,
+        223
       ]
     },
     "cannonball": {
@@ -305,10 +305,10 @@
     "turret_catapult": {
       "atlas": "derived",
       "rect": [
-        1062,
-        24,
-        179,
-        213
+        1052,
+        40,
+        201,
+        129
       ]
     },
     "hot_oil": {
@@ -323,19 +323,37 @@
     "kettle": {
       "atlas": "derived",
       "rect": [
-        30,
-        308,
-        197,
-        181
+        14,
+        281,
+        231,
+        217
       ]
     },
     "rail": {
       "atlas": "derived",
       "rect": [
-        296,
-        306,
-        177,
-        161
+        267,
+        284,
+        234,
+        202
+      ]
+    },
+    "turret_catapult_mk2": {
+      "atlas": "derived",
+      "rect": [
+        523,
+        270,
+        234,
+        228
+      ]
+    },
+    "wood_axe_flipped": {
+      "atlas": "derived",
+      "rect": [
+        827,
+        302,
+        138,
+        163
       ]
     },
     "gold_ore": {

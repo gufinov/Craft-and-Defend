@@ -33,7 +33,7 @@ ATLASES = {
 # Derived placeholder icons (tools/generate_derived_icons.py): 256 px cells, 6 per row.
 DERIVED_ORDER = [
     "flame_shot", "chest", "cannon", "cannonball", "turret_catapult", "hot_oil",
-    "kettle", "rail",
+    "kettle", "rail", "turret_catapult_mk2", "wood_axe_flipped",
 ]
 # Nominal search cells. Row heights for the item atlas follow the shipped
 # ItemIconCatalog grid; the ammunition atlas is two square halves.
