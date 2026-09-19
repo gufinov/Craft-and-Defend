@@ -16,6 +16,12 @@ const CORE_MAX_INTEGRITY := 30
 const RAIDER_MAX_HEALTH := 20
 const RAIDER_DAMAGE := 6
 const RAIDER_ATTACK_INTERVAL := 1.4
+const BRUTE_MAX_HEALTH := 40
+const BRUTE_DAMAGE := 10
+## Default spawn line (cells from the arena centre toward the field side) and
+## the farthest a wave may start from.
+const SPAWN_DISTANCE := 8
+const MAX_SPAWN_DISTANCE := 28
 const ARENA_CANDIDATES: Array[Vector3i] = [
 	Vector3i(6, 0, 38),
 	Vector3i(-6, 0, 38),
@@ -46,10 +52,19 @@ var navigation_revision := 0
 var exact_invalidations := 0
 var navigation_snapshot: NavigationSnapshot
 var raider: BasicRaider
+var brute_max_health := BRUTE_MAX_HEALTH
+var brute_damage := BRUTE_DAMAGE
+## P4D waves: the spawn line for the current drill and the extra raiders
+## beyond the primary one. Each entry: {node, health, max_health, kind,
+## damage, target_type, target_id, target_cell, attack_timer, route_reason}.
+var spawn_distance := SPAWN_DISTANCE
+var wave_size := 1
+var extra_raiders: Array[Dictionary] = []
 var _core_root: StaticBody3D
 var _core_material: StandardMaterial3D
 var _pending_restore: Dictionary = {}
 var _replan_queued := false
+var _pending_brutes := 0
 
 
 func initialize(world_adapter: WorldAdapter, content_registry: ContentRegistry, station_service: WorkstationService, saved: Dictionary = {}) -> void:
@@ -61,6 +76,8 @@ func initialize(world_adapter: WorldAdapter, content_registry: ContentRegistry, 
 	raider_max_health = maxi(1, registry.balance_integer("core_defense.raider_health", RAIDER_MAX_HEALTH))
 	raider_damage = maxi(1, registry.balance_integer("core_defense.raider_damage", RAIDER_DAMAGE))
 	raider_attack_interval = maxf(0.05, registry.balance_number("core_defense.raider_attack_interval_seconds", RAIDER_ATTACK_INTERVAL))
+	brute_max_health = maxi(1, registry.balance_integer("core_defense.brute_health", BRUTE_MAX_HEALTH))
+	brute_damage = maxi(1, registry.balance_integer("core_defense.brute_damage", BRUTE_DAMAGE))
 	core_integrity = core_max_integrity
 	raider_health = raider_max_health
 	_pending_restore = saved.duplicate(true)
@@ -106,23 +123,41 @@ func restore_after_world_ready() -> Dictionary:
 	active_target_type = str(saved.get("active_target_type", ""))
 	active_target_id = str(saved.get("active_target_id", ""))
 	active_target_cell = _vector3i_from_array(saved.get("active_target_cell", []), Vector3i.ZERO)
+	spawn_distance = clampi(int(saved.get("spawn_distance", SPAWN_DISTANCE)), SPAWN_DISTANCE, MAX_SPAWN_DISTANCE)
+	wave_size = maxi(1, int(saved.get("wave_size", 1)))
 	_build_core_visual()
 	if state in [ROUTING, ATTACKING_STRUCTURE, ATTACKING_CORE] and raider_health > 0 and core_integrity > 0:
 		var saved_position := _vector3_from_array(saved.get("raider_position", []), _start_position())
 		_spawn_raider(saved_position)
 		_plan_from_raider()
+	if state in [ROUTING, ATTACKING_STRUCTURE, ATTACKING_CORE] and core_integrity > 0:
+		var saved_extras: Variant = saved.get("extra_raiders", [])
+		if saved_extras is Array:
+			for value in saved_extras:
+				if not value is Dictionary or int(value.get("health", 0)) <= 0:
+					continue
+				var entry := _spawn_extra_raider(_vector3_from_array(value.get("position", []), _start_position()), str(value.get("kind", BasicRaider.KIND_RAIDER)))
+				entry.health = clampi(int(value.get("health", entry.max_health)), 1, int(entry.max_health))
+				_plan_extra(entry)
 	_emit_state()
 	return {"ok": true, "reason": "OK"}
 
 
-func start_prototype() -> Dictionary:
+## Starts the drill. Options (P4D): "raiders" (wave size, default 1),
+## "brutes" (how many of them are brutes, default 0) and "spawn_distance"
+## (cells from the arena centre to the field-side spawn line, 8..28).
+func start_prototype(options: Dictionary = {}) -> Dictionary:
 	if is_active():
 		return {"ok": false, "reason": "DEFENSE_ALREADY_ACTIVE"}
-	var found := _find_available_arena()
+	var requested_distance := clampi(int(options.get("spawn_distance", SPAWN_DISTANCE)), SPAWN_DISTANCE, MAX_SPAWN_DISTANCE)
+	var found := _find_available_arena(requested_distance)
 	if not found.get("ok", false):
 		return found
 	_clear_fixture()
 	arena_center = found.get("center", Vector3i.ZERO)
+	spawn_distance = requested_distance
+	wave_size = maxi(1, int(options.get("raiders", 1)))
+	_pending_brutes = clampi(int(options.get("brutes", 0)), 0, wave_size)
 	state = WARNING
 	warning_remaining = warning_seconds
 	core_integrity = core_max_integrity
@@ -135,9 +170,12 @@ func start_prototype() -> Dictionary:
 	navigation_revision = 0
 	exact_invalidations = 0
 	_build_core_visual()
-	feedback.emit("Core-defense setup: 20 seconds. Place wooden barricades across the field-side approach; any opening will be used.")
+	if wave_size > 1:
+		feedback.emit("Wave setup: %d raiders will enter from %d cells out in %d seconds. Build across the field-side approach." % [wave_size, spawn_distance, ceili(warning_seconds)])
+	else:
+		feedback.emit("Core-defense setup: 20 seconds. Place wooden barricades across the field-side approach; any opening will be used.")
 	_emit_state()
-	return {"ok": true, "reason": "OK", "center": arena_center, "core_cell": _core_cell()}
+	return {"ok": true, "reason": "OK", "center": arena_center, "core_cell": _core_cell(), "spawn_distance": spawn_distance, "raiders": wave_size}
 
 
 func advance(delta: float, paused: bool = false) -> void:
@@ -156,6 +194,50 @@ func advance(delta: float, paused: bool = false) -> void:
 				_attack_structure()
 			else:
 				_attack_core()
+	if is_active():
+		_advance_extras(delta)
+
+
+## Extra raiders (P4D) run their own attack timers against whatever they
+## reached; the drill state machine still follows the primary raider.
+func _advance_extras(delta: float) -> void:
+	for entry in extra_raiders:
+		if int(entry.health) <= 0 or not is_instance_valid(entry.node):
+			continue
+		var phase := str(entry.get("phase", "routing"))
+		if phase == "routing":
+			continue
+		entry.attack_timer = float(entry.attack_timer) - delta
+		if float(entry.attack_timer) > 0.0:
+			continue
+		entry.attack_timer = float(entry.attack_timer) + raider_attack_interval
+		if phase == "attacking_core":
+			_extra_attacks_core(entry)
+		elif phase == "attacking_structure":
+			var result := workstations.try_damage(str(entry.target_id), int(entry.damage))
+			if not result.get("ok", false) or result.get("reason") == "DESTROYED":
+				_plan_extra(entry)
+
+
+func _extra_attacks_core(entry: Dictionary) -> void:
+	if core_integrity <= 0:
+		return
+	core_integrity = maxi(0, core_integrity - int(entry.damage))
+	_update_core_presentation()
+	feedback.emit("%s hit the strategic core for %d. Core integrity: %d/%d." % [str(entry.kind).capitalize(), int(entry.damage), core_integrity, core_max_integrity])
+	if core_integrity <= 0:
+		state = FAILED
+		_halt_all_raiders()
+		feedback.emit("Core-defense prototype failed: the strategic core was destroyed.")
+	_emit_state()
+
+
+func _halt_all_raiders() -> void:
+	if is_instance_valid(raider):
+		raider.active = false
+	for entry in extra_raiders:
+		if is_instance_valid(entry.node):
+			entry.node.active = false
 
 
 func notify_placed_entity_cells(changed_cells: Array) -> void:
@@ -176,7 +258,19 @@ func snapshot() -> Dictionary:
 		"active_target_cell": _vector3i_to_array(active_target_cell),
 		"last_route_reason": last_route_reason,
 		"navigation_revision": navigation_revision,
+		"spawn_distance": spawn_distance,
+		"wave_size": wave_size,
+		"extra_raiders": _extras_snapshot(),
 	}
+
+
+func _extras_snapshot() -> Array:
+	var entries: Array = []
+	for entry in extra_raiders:
+		if int(entry.health) <= 0 or not is_instance_valid(entry.node):
+			continue
+		entries.append({"kind": str(entry.kind), "health": int(entry.health), "position": _vector3_to_array(entry.node.global_position)})
+	return entries
 
 
 func try_damage_raider(amount: int, source: String = "player") -> Dictionary:
@@ -187,17 +281,113 @@ func try_damage_raider(amount: int, source: String = "player") -> Dictionary:
 	var before := raider_health
 	raider_health = maxi(0, raider_health - amount)
 	if raider_health <= 0:
-		state = WON
 		raider.active = false
-		feedback.emit("Defense won: %s defeated the raider." % source.replace("_", " ").capitalize())
+		if living_raider_count() == 0:
+			state = WON
+			feedback.emit("Defense won: %s defeated the %s." % [source.replace("_", " ").capitalize(), "raider" if wave_size <= 1 else "last raider"])
+		else:
+			feedback.emit("%s defeated a raider. %d left." % [source.replace("_", " ").capitalize(), living_raider_count()])
 	else:
 		feedback.emit("%s hit the raider for %d. Raider health: %d/%d." % [source.replace("_", " ").capitalize(), amount, raider_health, raider_max_health])
 	_emit_state()
 	return {"ok": true, "reason": "RAIDER_DEFEATED" if raider_health <= 0 else "RAIDER_DAMAGED", "handled": true, "changes": {"health_before": before, "health": raider_health, "damage": amount, "source": source}}
 
 
+## Damages a specific raider body (primary or extra).
+func try_damage_raider_node(node: Node, amount: int, source: String = "player") -> Dictionary:
+	if node == raider:
+		return try_damage_raider(amount, source)
+	for entry in extra_raiders:
+		if entry.node != node:
+			continue
+		if int(entry.health) <= 0 or not is_active():
+			return {"ok": false, "reason": "NO_RAIDER"}
+		var before := int(entry.health)
+		entry.health = maxi(0, int(entry.health) - amount)
+		if int(entry.health) <= 0:
+			entry.node.active = false
+			if living_raider_count() == 0:
+				state = WON
+				feedback.emit("Defense won: %s defeated the last raider." % source.replace("_", " ").capitalize())
+			else:
+				feedback.emit("%s defeated a %s. %d left." % [source.replace("_", " ").capitalize(), str(entry.kind), living_raider_count()])
+		_emit_state()
+		return {"ok": true, "reason": "RAIDER_DEFEATED" if int(entry.health) <= 0 else "RAIDER_DAMAGED", "handled": true, "changes": {"health_before": before, "health": int(entry.health), "damage": amount, "source": source}}
+	return {"ok": false, "reason": "NO_RAIDER"}
+
+
+## Splash: damages every living raider within `radius` (horizontal) of
+## `point`. Returns the number of raiders hit.
+func damage_raiders_within(point: Vector3, radius: float, amount: int, source: String = "siege") -> int:
+	var hits := 0
+	for node in raider_nodes():
+		var position := node.global_position + Vector3.UP * 0.65
+		if Vector2(position.x - point.x, position.z - point.z).length() <= radius and absf(position.y - point.y) <= 3.0:
+			if try_damage_raider_node(node, amount, source).get("ok", false):
+				hits += 1
+	return hits
+
+
+## Fire: damages raiders whose feet stand in `cell` (or a cell above/below it).
+func damage_raiders_in_cell(cell: Vector3i, amount: int, source: String = "fire") -> int:
+	var hits := 0
+	for node in raider_nodes():
+		var position := node.global_position
+		var feet := Vector3i(floori(position.x), floori(position.y - 0.5), floori(position.z))
+		if feet == cell or feet == cell + Vector3i(0, 1, 0) or feet == cell - Vector3i(0, 1, 0):
+			if try_damage_raider_node(node, amount, source).get("ok", false):
+				hits += 1
+	return hits
+
+
+## Every living raider body, primary first.
+func raider_nodes() -> Array[BasicRaider]:
+	var nodes: Array[BasicRaider] = []
+	if is_active() and is_instance_valid(raider) and raider_health > 0:
+		nodes.append(raider)
+	for entry in extra_raiders:
+		if int(entry.health) > 0 and is_instance_valid(entry.node) and is_active():
+			nodes.append(entry.node)
+	return nodes
+
+
+func is_raider_node(value: Variant) -> bool:
+	if value == null or not value is BasicRaider:
+		return false
+	if value == raider:
+		return true
+	for entry in extra_raiders:
+		if entry.node == value:
+			return true
+	return false
+
+
+func living_raider_count() -> int:
+	return raider_nodes().size()
+
+
+func raider_kind_of(node: Node) -> String:
+	return str(node.kind) if node is BasicRaider else ""
+
+
 func raider_target_position() -> Vector3:
 	return raider.global_position + Vector3.UP * 0.65 if is_active() and is_instance_valid(raider) and raider_health > 0 else Vector3.INF
+
+
+## The aim point of the living raider nearest `from` that passes `filter`
+## ("any", "raider" or "brute"), or Vector3.INF when none.
+func nearest_raider_position(from: Vector3, filter: String = "any") -> Vector3:
+	var best := Vector3.INF
+	var best_distance := INF
+	for node in raider_nodes():
+		if filter != "any" and filter != str(node.kind):
+			continue
+		var position := node.global_position + Vector3.UP * 0.65
+		var distance := from.distance_squared_to(position)
+		if distance < best_distance:
+			best_distance = distance
+			best = position
+	return best
 
 
 func hud_text() -> String:
@@ -207,6 +397,8 @@ func hud_text() -> String:
 		WARNING:
 			return "⚠ CORE SETUP · raider in %d · build across the field-side approach · core %d/%d" % [ceili(warning_remaining), core_integrity, core_max_integrity]
 		ROUTING:
+			if wave_size > 1:
+				return "WAVE ROUTING TO CORE · %d/%d raiders left · lead HP %d/%d · core %d/%d" % [living_raider_count(), wave_size, raider_health, raider_max_health, core_integrity, core_max_integrity]
 			return "RAIDER ROUTING TO CORE · HP %d/%d · open path preferred · core %d/%d" % [raider_health, raider_max_health, core_integrity, core_max_integrity]
 		ATTACKING_STRUCTURE:
 			var status := workstations.defense_status(active_target_id)
@@ -225,8 +417,103 @@ func _begin_attack() -> void:
 	state = ROUTING
 	_spawn_raider(_start_position())
 	_plan_from_raider()
-	feedback.emit("Raider entered from the field side with the strategic core as its destination.")
+	var brutes_left := _pending_brutes
+	for index in range(1, wave_size):
+		var kind := BasicRaider.KIND_BRUTE if brutes_left > 0 else BasicRaider.KIND_RAIDER
+		if brutes_left > 0:
+			brutes_left -= 1
+		var entry := _spawn_extra_raider(_start_position() + _wave_offset(index), kind)
+		_plan_extra(entry)
+	if wave_size > 1:
+		feedback.emit("A wave of %d entered from %d cells out with the strategic core as its destination." % [wave_size, spawn_distance])
+	else:
+		feedback.emit("Raider entered from the field side with the strategic core as its destination.")
 	_emit_state()
+
+
+## Spread the wave across the spawn line: alternating left/right, one row
+## back every four.
+func _wave_offset(index: int) -> Vector3:
+	var lateral := ((index + 1) / 2) * (1 if index % 2 == 1 else -1)
+	var back := -(index / 4)
+	return Vector3(float(clampi(lateral, -3, 3)), 0.0, float(back))
+
+
+func _spawn_extra_raider(spawn_position: Vector3, kind: String) -> Dictionary:
+	var node := BasicRaider.new()
+	node.configure(kind)
+	add_child(node)
+	node.global_position = spawn_position
+	var brute := kind == BasicRaider.KIND_BRUTE
+	var entry := {
+		"node": node,
+		"kind": kind,
+		"health": brute_max_health if brute else raider_max_health,
+		"max_health": brute_max_health if brute else raider_max_health,
+		"damage": brute_damage if brute else raider_damage,
+		"target_type": "",
+		"target_id": "",
+		"target_cell": Vector3i.ZERO,
+		"attack_timer": 0.3,
+		"route_reason": "",
+		"phase": "routing",
+	}
+	extra_raiders.append(entry)
+	node.route_finished.connect(_on_extra_route_finished.bind(node))
+	return entry
+
+
+func _plan_extra(entry: Dictionary) -> void:
+	var node: BasicRaider = entry.node
+	if not is_instance_valid(node) or core_integrity <= 0 or int(entry.health) <= 0:
+		return
+	if navigation_snapshot == null:
+		_capture_navigation()
+	if navigation_snapshot == null:
+		return
+	var start := node.feet_cell()
+	var capability := _basic_raider_capability()
+	capability["damage_per_hit"] = {"breachable_wood": int(entry.damage)}
+	var planner := LocalGridPathfinder.new()
+	var plan := planner.plan_next(navigation_snapshot, start, _core_approach_cell(), capability)
+	entry.route_reason = str(plan.get("reason", "NO_ROUTE"))
+	entry.phase = "routing"
+	if entry.route_reason == "OK":
+		entry.target_type = "core"
+		entry.target_id = "strategic_core_prototype"
+		entry.target_cell = _core_cell()
+		node.set_route(plan.get("path", []))
+		return
+	if entry.route_reason == "ATTACK_OBSTRUCTION":
+		var action: Dictionary = plan.get("action", {})
+		var instance_id := str(action.get("source_id", ""))
+		if str(action.get("source", "")) != "entity" or not workstations.defense_status(instance_id).get("ok", false):
+			node.active = false
+			return
+		var route := planner.find_route(navigation_snapshot, start, action.get("from", start), capability)
+		if not route.get("ok", false):
+			node.active = false
+			return
+		entry.target_type = "structure"
+		entry.target_id = instance_id
+		entry.target_cell = action.get("cell", Vector3i.ZERO)
+		node.set_route(route.get("path", []))
+		return
+	node.active = false
+
+
+func _on_extra_route_finished(node: BasicRaider) -> void:
+	for entry in extra_raiders:
+		if entry.node != node:
+			continue
+		entry.attack_timer = 0.3
+		if str(entry.target_type) == "core":
+			entry.phase = "attacking_core"
+		elif str(entry.target_type) == "structure" and workstations.defense_status(str(entry.target_id)).get("ok", false):
+			entry.phase = "attacking_structure"
+		else:
+			_plan_extra(entry)
+		return
 
 
 func _plan_from_raider() -> void:
@@ -307,8 +594,7 @@ func _attack_core() -> void:
 	feedback.emit("Raider hit the strategic core for %d. Core integrity: %d/%d." % [raider_damage, core_integrity, core_max_integrity])
 	if core_integrity <= 0:
 		state = FAILED
-		if is_instance_valid(raider):
-			raider.active = false
+		_halt_all_raiders()
 		feedback.emit("Core-defense prototype failed: the strategic core was destroyed.")
 	_emit_state()
 
@@ -319,7 +605,8 @@ func _basic_raider_capability() -> Dictionary:
 
 func _capture_navigation() -> void:
 	navigation_snapshot = NavigationSnapshot.new()
-	var region := AABB(Vector3(arena_center + Vector3i(-5, -2, -9)), Vector3(11, 5, 16))
+	var half_width := 5 if spawn_distance <= SPAWN_DISTANCE else 7
+	var region := AABB(Vector3(arena_center + Vector3i(-half_width, -2, -spawn_distance - 2)), Vector3(half_width * 2 + 1, 5, spawn_distance + 9))
 	var result := navigation_snapshot.capture(region, _query_navigation_cell, world.revision + navigation_revision)
 	if not result.get("ok", false):
 		navigation_snapshot = null
@@ -379,6 +666,9 @@ func _run_queued_replan() -> void:
 	_replan_queued = false
 	if is_instance_valid(raider) and core_integrity > 0:
 		_plan_from_raider()
+	for entry in extra_raiders:
+		if int(entry.health) > 0 and str(entry.get("phase", "routing")) != "attacking_core":
+			_plan_extra(entry)
 
 
 func _on_world_cell_changed(cell: Vector3i, _previous: int, _next: int, _revision: int) -> void:
@@ -386,15 +676,15 @@ func _on_world_cell_changed(cell: Vector3i, _previous: int, _next: int, _revisio
 		_queue_replan()
 
 
-func _find_available_arena() -> Dictionary:
+func _find_available_arena(distance: int = SPAWN_DISTANCE) -> Dictionary:
 	for candidate: Vector3i in ARENA_CANDIDATES:
-		if _arena_is_available(candidate):
+		if _arena_is_available(candidate, distance):
 			return {"ok": true, "reason": "OK", "center": candidate}
 	return {"ok": false, "reason": "CORE_ARENA_BLOCKED"}
 
 
-func _arena_is_available(center: Vector3i) -> bool:
-	for cell: Vector3i in [center + Vector3i(0, 0, -8), center + Vector3i(0, 0, 4), center + Vector3i(0, 0, 5)]:
+func _arena_is_available(center: Vector3i, distance: int = SPAWN_DISTANCE) -> bool:
+	for cell: Vector3i in [center + Vector3i(0, 0, -8), center + Vector3i(0, 0, -distance), center + Vector3i(0, 0, 4), center + Vector3i(0, 0, 5)]:
 		var floor_query := world.query_cell(cell + Vector3i.DOWN)
 		var feet_query := world.query_cell(cell)
 		var head_query := world.query_cell(cell + Vector3i.UP)
@@ -476,6 +766,10 @@ func _clear_fixture() -> void:
 	for value in [_core_root, raider]:
 		if is_instance_valid(value):
 			value.queue_free()
+	for entry in extra_raiders:
+		if is_instance_valid(entry.node):
+			entry.node.queue_free()
+	extra_raiders.clear()
 	_core_root = null
 	_core_material = null
 	raider = null
@@ -488,7 +782,7 @@ func _start_position() -> Vector3:
 
 
 func _start_cell() -> Vector3i:
-	return arena_center + Vector3i(0, 0, -8)
+	return arena_center + Vector3i(0, 0, -spawn_distance)
 
 
 func _core_approach_cell() -> Vector3i:
@@ -506,8 +800,7 @@ func _emit_state() -> void:
 func _fail(reason: String) -> void:
 	state = FAILED
 	last_route_reason = reason
-	if is_instance_valid(raider):
-		raider.active = false
+	_halt_all_raiders()
 	feedback.emit("Core-defense prototype stopped: %s." % reason.replace("_", " ").capitalize())
 	_emit_state()
 

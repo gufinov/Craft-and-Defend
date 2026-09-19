@@ -61,7 +61,7 @@ func _run_phase1() -> void:
 	var repaired_status := app.session.workstations.defense_status(barricade_id)
 	var repair_atomic: bool = repaired_once.get("ok", false) and app.session.inventory.count("planks") == planks_before_repair - 1 and int(repaired_status.get("details", {}).get("integrity", 0)) == 30
 	var recipe_placement_ok: bool = bool(workbench.get("ok", false)) and bool(recipe_ui.get("ok", false)) and bool(crafted.get("ok", false)) and bool(placed.get("ok", false)) and occupied.size() == 2 and status.get("ok", false) and int(status.get("details", {}).get("integrity", 0)) == 30 and nav.get("tags", []).has("breachable_wood") and damaged_once.get("ok", false) and repair_atomic
-	_record("T66_BARRICADE_RECIPE_PLACEMENT", recipe_placement_ok, "the visible Workbench book presents Wood Barricade first and finds it by search before crafting one placeable two-cell defense with a stable identity, exact footprint, 30 integrity and atomic Planks repair", {"workbench": workbench, "recipe_ui": recipe_ui, "crafted": crafted, "placed": placed, "status": status, "navigation": nav, "damage": damaged_once, "repair": repaired_once, "repair_status": repaired_status})
+	_record("T66_BARRICADE_RECIPE_PLACEMENT", recipe_placement_ok, "the progression-ordered Workbench book (Planks first) finds Wood Barricade by search before crafting one placeable two-cell defense with a stable identity, exact footprint, 30 integrity and atomic Planks repair", {"workbench": workbench, "recipe_ui": recipe_ui, "crafted": crafted, "placed": placed, "status": status, "navigation": nav, "damage": damaged_once, "repair": repaired_once, "repair_status": repaired_status})
 
 	core.warning_remaining = 0.0
 	core._begin_attack()
@@ -196,6 +196,10 @@ func _run_recipe_visual() -> void:
 	var workbench := _place("workbench", workbench_cell)
 	var workbench_id := str(workbench.get("details", {}).get("station", {}).get("instance_id", ""))
 	app._show_crafting(workbench_id, "workbench")
+	# P3F ordered the book by progression (Planks first); the barricade sits on
+	# page two, so the evidence capture reaches it through the search box.
+	app.crafting_recipe_search.text = "wood barricade"
+	app._on_crafting_recipe_search_changed("wood barricade")
 	for _frame in range(30):
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
@@ -204,7 +208,8 @@ func _run_recipe_visual() -> void:
 	var error := image.save_png(path)
 	var first_card_text := _first_recipe_button_text()
 	var visible := bool(workbench.get("ok", false)) and first_card_text.contains("Wood Barricade") and first_card_text.contains("READY") and error == OK and not image.is_empty() and image.get_size() == Vector2i(1280, 720)
-	_record("T66_WORKBENCH_RECIPE_VISIBLE", visible, "the default 1280×720 Workbench page visibly presents a READY Wood Barricade recipe without scrolling or search", {"path": path, "size": image.get_size(), "error": error, "first_card_text": first_card_text, "workbench": workbench})
+	app.crafting_recipe_search.clear()
+	_record("T66_WORKBENCH_RECIPE_VISIBLE", visible, "the default 1280×720 Workbench page visibly presents a READY Wood Barricade recipe once searched (the progression-ordered book starts with Planks)", {"path": path, "size": image.get_size(), "error": error, "first_card_text": first_card_text, "workbench": workbench})
 
 
 func _place(entity_id: String, cell: Vector3i) -> Dictionary:
@@ -224,7 +229,7 @@ func _inspect_workbench_barricade_recipe(workbench_id: String) -> Dictionary:
 	var search_cards := app.crafting_recipe_list.get_child_count()
 	var search_card_text := _first_recipe_button_text()
 	var result := {
-		"ok": first_recipe_id == "wood_barricade" and initial_cards == mini(app.RECIPE_PAGE_SIZE, recipes.size()) and first_card_text.contains("Wood Barricade") and search_cards == 1 and search_card_text.contains("Wood Barricade"),
+		"ok": first_recipe_id == "planks" and initial_cards == mini(app.RECIPE_PAGE_SIZE, recipes.size()) and first_card_text.contains("Planks") and search_cards == 1 and search_card_text.contains("Wood Barricade"),
 		"first_recipe_id": first_recipe_id,
 		"recipe_count": recipes.size(),
 		"initial_cards": initial_cards,

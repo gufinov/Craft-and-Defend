@@ -206,7 +206,7 @@ def validate_bundle(bundle):
                     and all(value == "ground" or value in mount_types for value in allowed), "invalid entity mount")
         siege = entity.get("siege")
         if siege is not None:
-            require(isinstance(siege, dict) and siege.get("fire_mode") in ("direct", "ballistic")
+            require(isinstance(siege, dict) and siege.get("fire_mode") in ("direct", "ballistic", "dump")
                     and integer(siege.get("damage"), 1)
                     and type(siege.get("minimum_range")) in (int, float) and siege["minimum_range"] >= 0
                     and type(siege.get("maximum_range")) in (int, float) and siege["maximum_range"] > siege["minimum_range"]
@@ -223,6 +223,9 @@ def validate_bundle(bundle):
             if siege["fire_mode"] == "ballistic":
                 require(type(siege.get("arc_height")) in (int, float) and siege["arc_height"] > 0,
                         "invalid siege arc")
+            if siege["fire_mode"] == "dump":
+                require(type(siege.get("rail_speed")) in (int, float) and siege["rail_speed"] > 0
+                        and entity.get("mount", {}).get("allowed") == ["rail_mount"], "invalid rail weapon")
         if entity.get("container_slots") is not None:
             require(integer(entity["container_slots"], 1) and entity.get("station_type") == "chest", "invalid container entity")
     for munition_id, munition in content.get("munitions", {}).items():

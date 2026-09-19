@@ -68,7 +68,7 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 			slots.append(_empty_stack())
 		record["container_slots"] = slots
 	stations[instance_id] = record
-	var result := _result(true, "OK", {"station": stations[instance_id].duplicate(true), "consumed_item": entity_id, "occupied_cells": reserved.get("details", {}).get("cells", []).duplicate()})
+	var result := _result(true, "OK", {"station": stations[instance_id].duplicate(true), "consumed_item": entity_id, "occupied_cells": reserved.get("details", {}).get("cells", []).duplicate(), "mount": str(mount_result.get("details", {}).get("mount", "ground"))})
 	station_changed.emit(result)
 	return result
 

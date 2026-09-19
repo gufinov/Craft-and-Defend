@@ -266,6 +266,11 @@ func _ready() -> void:
 		var p4_weapon_panel_automation := P4WeaponPanelAutomation.new()
 		add_child(p4_weapon_panel_automation)
 		p4_weapon_panel_automation.call_deferred("run", self, p4_weapon_panel_mode)
+	var p4_siege_units_mode := _argument_value("--p4-siege-units-automation=")
+	if not p4_siege_units_mode.is_empty():
+		var p4_siege_units_automation := P4SiegeUnitsAutomation.new()
+		add_child(p4_siege_units_automation)
+		p4_siege_units_automation.call_deferred("run", self, p4_siege_units_mode)
 
 
 func _input(event: InputEvent) -> void:
@@ -433,6 +438,7 @@ func _build_pause(canvas: CanvasLayer) -> void:
 	pause_box.add_child(_button("Keybinds", _show_keybinds))
 	pause_box.add_child(_button("Start Defense Drill", _start_defense_drill))
 	pause_box.add_child(_button("Start Core Defense Prototype", _start_core_defense_prototype))
+	pause_box.add_child(_button("Start Wave Drill (5 raiders + 1 brute, far spawn)", _start_wave_drill))
 	pause_box.add_child(_button("Save and Exit to Menu", _save_and_exit_to_menu))
 	pause_box.add_child(_button("Save and Quit", _save_and_quit))
 
@@ -1268,6 +1274,15 @@ func _start_core_defense_prototype() -> void:
 	if state != AppState.PAUSED or session == null:
 		return
 	var result := session.start_core_defense_prototype()
+	if result.get("ok", false):
+		_resume_game()
+
+
+## P4D wave drill: the core-defense arena with a bigger, farther wave.
+func _start_wave_drill() -> void:
+	if state != AppState.PAUSED or session == null:
+		return
+	var result := session.start_core_defense_prototype({"raiders": 6, "brutes": 1, "spawn_distance": 22})
 	if result.get("ok", false):
 		_resume_game()
 

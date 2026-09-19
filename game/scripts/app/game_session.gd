@@ -319,14 +319,15 @@ func start_defense_drill() -> Dictionary:
 	return result
 
 
-func start_core_defense_prototype() -> Dictionary:
+## `options` (P4D): {"raiders": n, "brutes": b, "spawn_distance": cells}.
+func start_core_defense_prototype(options: Dictionary = {}) -> Dictionary:
 	if core_defense == null or not world_ready:
 		return {"ok": false, "reason": "WORLD_NOT_READY"}
 	if defense != null and defense.is_active():
 		return {"ok": false, "reason": "DEFENSE_ALREADY_ACTIVE"}
 	if defense != null:
 		defense.clear_for_other_mode()
-	var result := core_defense.start_prototype()
+	var result := core_defense.start_prototype(options)
 	if not result.get("ok", false):
 		_on_interaction_feedback(str(result.get("reason", "DEFENSE_START_FAILED")))
 	return result
@@ -558,6 +559,17 @@ func _spawn_station_visual(record: Dictionary) -> void:
 	elif entity_id == "catapult":
 		_build_catapult_visual(body)
 		_wrap_siege_turret(body, definition)
+	elif entity_id == "turret_catapult":
+		_build_turret_catapult_visual(body)
+		_wrap_siege_turret(body, definition)
+	elif entity_id == "cannon":
+		_build_cannon_visual(body)
+		_wrap_siege_turret(body, definition)
+	elif entity_id == "kettle":
+		_build_kettle_visual(body)
+		_wrap_siege_turret(body, definition)
+	elif entity_id == "rail":
+		_build_rail_visual(body)
 	else:
 		_add_visual_parts(body, visual.get("parts", []), material, true)
 	add_child(body)
@@ -633,23 +645,63 @@ func _build_furnace_visual(parent: Node3D) -> void:
 
 
 func _build_ballista_visual(parent: Node3D) -> void:
+	# Remodelled from the owner's reference (2026-09-19): an iron pedestal on
+	# a dark-oak base, a turntable, a heavy oak stock with an iron slider that
+	# draws back over the reload, two forward-swept bow arms with iron tips, a
+	# rope string laid from each tip to the slider nock, and a loaded bolt
+	# shown only while the machine holds ammunition. Forward (shot) is -z.
 	_add_collision_box(parent, Vector3(1.90, 1.10, 1.90), Vector3(0.5, 0.02, 0.5))
-	var wood := _visual_material(Color("a96532"), "res://assets/blocks/planks.svg")
-	var dark_wood := _visual_material(Color("5b321e"), "res://assets/blocks/log.svg")
+	var oak := _visual_material(Color("a96532"), "res://assets/blocks/planks.svg")
+	var dark_oak := _visual_material(Color("5b321e"), "res://assets/blocks/log.svg")
 	var iron := _visual_material(Color("aeb7bd"))
-	_add_mesh_box(parent, Vector3(1.72, 0.18, 1.16), Vector3(0.5, -0.28, 0.52), dark_wood)
-	_add_mesh_box(parent, Vector3(0.22, 0.62, 0.22), Vector3(0.5, 0.02, 0.52), iron)
-	_add_mesh_box(parent, Vector3(0.34, 0.14, 1.68), Vector3(0.5, 0.36, 0.28), wood)
+	var dark_iron := _visual_material(Color("4a5158"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	var rope := _visual_material(Color("c9b17a"))
+	# Base, pedestal and turntable.
+	_add_mesh_box(parent, Vector3(1.72, 0.18, 1.72), Vector3(0.5, -0.40, 0.5), dark_oak)
+	for corner in [Vector3(-0.28, -0.24, -0.28), Vector3(1.28, -0.24, -0.28), Vector3(-0.28, -0.24, 1.28), Vector3(1.28, -0.24, 1.28)]:
+		_add_stud(parent, corner, gold, Vector3.ZERO)
+	_add_mesh_cylinder(parent, 0.20, 0.52, Vector3(0.5, -0.06, 0.5), Vector3.ZERO, iron, "BallistaPedestal")
+	_add_mesh_cylinder(parent, 0.46, 0.08, Vector3(0.5, 0.22, 0.5), Vector3.ZERO, dark_iron, "BallistaTurntable")
+	# Stock: long oak beam with an iron channel on top and a rear grip.
+	_add_mesh_box(parent, Vector3(0.36, 0.16, 1.90), Vector3(0.5, 0.34, 0.40), oak)
+	_add_mesh_box(parent, Vector3(0.14, 0.05, 1.86), Vector3(0.5, 0.445, 0.40), dark_iron)
+	_add_mesh_box(parent, Vector3(0.14, 0.24, 0.16), Vector3(0.5, 0.22, 1.30), dark_oak)
+	for z in [0.05, 0.60, 1.10]:
+		_add_mesh_box(parent, Vector3(0.40, 0.20, 0.10), Vector3(0.5, 0.34, z), dark_iron)
+		_add_stud(parent, Vector3(0.72, 0.34, z), gold, Vector3(0.0, 0.0, PI / 2.0))
+		_add_stud(parent, Vector3(0.28, 0.34, z), gold, Vector3(0.0, 0.0, PI / 2.0))
+	# Bow: iron bracket at the front of the stock and two swept arms.
 	var bow := Node3D.new()
 	bow.name = "BallistaBow"
-	bow.position = Vector3(0.5, 0.42, -0.20)
+	bow.position = Vector3(0.5, 0.40, -0.40)
 	parent.add_child(bow)
-	var left_arm := _add_mesh_box(bow, Vector3(0.98, 0.13, 0.17), Vector3(-0.42, 0.0, 0.08), wood)
-	left_arm.rotation.y = -0.18
-	var right_arm := _add_mesh_box(bow, Vector3(0.98, 0.13, 0.17), Vector3(0.42, 0.0, 0.08), wood)
-	right_arm.rotation.y = 0.18
-	_add_mesh_box(parent, Vector3(0.07, 0.07, 1.72), Vector3(0.5, 0.48, -0.18), iron)
-	_add_mesh_box(parent, Vector3(0.28, 0.05, 0.07), Vector3(0.5, 0.48, -1.02), iron)
+	_add_mesh_box(bow, Vector3(0.50, 0.30, 0.22), Vector3.ZERO, dark_iron)
+	for side in [-1.0, 1.0]:
+		var arm := _add_mesh_box(bow, Vector3(1.05, 0.12, 0.14), Vector3(side * 0.66, 0.0, -0.14), oak)
+		arm.rotation.y = side * 0.42
+		var tip := Node3D.new()
+		tip.name = "BallistaTip_%s" % ("L" if side < 0.0 else "R")
+		tip.position = Vector3(side * 1.14, 0.0, -0.36)
+		bow.add_child(tip)
+		_add_mesh_box(tip, Vector3(0.12, 0.18, 0.12), Vector3.ZERO, iron)
+		var string_pivot := Node3D.new()
+		string_pivot.name = "BallistaString_%s" % ("L" if side < 0.0 else "R")
+		tip.add_child(string_pivot)
+		_add_mesh_box(string_pivot, Vector3(0.04, 0.04, 1.0), Vector3(0.0, 0.0, 0.5), rope)
+	# Slider: iron carriage that rides the stock channel; the bolt sits on it.
+	var slider := Node3D.new()
+	slider.name = "BallistaSlider"
+	slider.position = Vector3(0.5, 0.50, 0.55)
+	parent.add_child(slider)
+	_add_mesh_box(slider, Vector3(0.22, 0.10, 0.34), Vector3.ZERO, dark_iron)
+	_add_mesh_box(slider, Vector3(0.06, 0.12, 0.06), Vector3(0.0, 0.08, 0.10), iron)
+	var bolt := _add_mesh_cylinder(slider, 0.035, 0.90, Vector3(0.0, 0.08, -0.32), Vector3(PI / 2.0, 0.0, 0.0), _visual_material(Color("f2d18b")), "BallistaBolt")
+	_add_mesh_cone(bolt, 0.06, 0.16, Vector3(0.0, 0.52, 0.0), Vector3.ZERO, iron)
+	var muzzle := Node3D.new()
+	muzzle.name = "SiegeMuzzle"
+	muzzle.position = Vector3(0.5, 0.56, -0.55)
+	parent.add_child(muzzle)
 
 
 func _build_catapult_visual(parent: Node3D) -> void:
@@ -776,6 +828,169 @@ func _wrap_siege_turret(body: Node3D, definition: Dictionary) -> void:
 		body.remove_child(part)
 		turret.add_child(part)
 		part.position -= centre
+
+
+## Compact tower-top catapult (2x2): stone pedestal, iron turntable, short
+## A-frame and a hinged arm. Node names match the field catapult so the same
+## wind-back/throw animation drives it. Throw direction is -z.
+func _build_turret_catapult_visual(parent: Node3D) -> void:
+	_add_collision_box(parent, Vector3(1.90, 0.60, 1.90), Vector3(0.5, -0.20, 0.5))
+	_add_collision_box(parent, Vector3(1.20, 1.20, 1.20), Vector3(0.5, 0.60, 0.5))
+	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")
+	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
+	var dark_oak := _visual_material(Color("6b3d1f"), "res://assets/blocks/log.svg")
+	var iron := _visual_material(Color("6f7880"))
+	var dark_iron := _visual_material(Color("474e55"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	var rope := _visual_material(Color("c9b17a"))
+	_add_mesh_box(parent, Vector3(1.90, 0.40, 1.90), Vector3(0.5, -0.30, 0.5), stone)
+	_add_mesh_cylinder(parent, 0.78, 0.12, Vector3(0.5, -0.04, 0.5), Vector3.ZERO, dark_iron, "TurretRing")
+	_add_mesh_cylinder(parent, 0.62, 0.16, Vector3(0.5, 0.06, 0.5), Vector3.ZERO, iron, "TurretPlate")
+	for angle in [0.0, 1.571, 3.142, 4.712]:
+		_add_stud(parent, Vector3(0.5 + cos(angle) * 0.70, 0.02, 0.5 + sin(angle) * 0.70), gold, Vector3(0.0, -angle, 0.0))
+	# Deck and A-frame.
+	_add_mesh_box(parent, Vector3(1.30, 0.14, 1.30), Vector3(0.5, 0.20, 0.5), oak)
+	var apex := Vector3(0.5, 1.02, 0.35)
+	for x in [0.05, 0.95]:
+		var lean := -0.30 if x < 0.5 else 0.30
+		var front_leg := _add_mesh_box(parent, Vector3(0.16, 1.10, 0.16), Vector3(x, 0.62, 0.05), oak)
+		front_leg.rotation = Vector3(0.34, 0.0, lean)
+		var rear_leg := _add_mesh_box(parent, Vector3(0.16, 1.10, 0.16), Vector3(x, 0.62, 0.65), oak)
+		rear_leg.rotation = Vector3(-0.34, 0.0, lean)
+		_add_mesh_box(parent, Vector3(0.22, 0.20, 0.22), Vector3(x - (0.08 if x < 0.5 else -0.08), 1.02, 0.35), dark_iron)
+	_add_mesh_cylinder(parent, 0.08, 1.20, apex, Vector3(0.0, 0.0, PI / 2.0), iron, "CatapultAxle")
+	_add_mesh_box(parent, Vector3(1.20, 0.14, 0.14), Vector3(0.5, 0.62, 1.05), oak)
+	# Arm with bucket (same names as the field catapult).
+	var arm := Node3D.new()
+	arm.name = "CatapultArm"
+	arm.position = apex
+	arm.rotation.x = -0.40
+	parent.add_child(arm)
+	_add_mesh_box(arm, Vector3(0.18, 0.18, 1.70), Vector3(0.0, 0.0, 0.55), oak)
+	_add_mesh_box(arm, Vector3(0.24, 0.24, 0.30), Vector3(0.0, 0.0, -0.30), dark_oak)
+	for z in [0.10, 0.25]:
+		_add_mesh_cylinder(arm, 0.15, 0.09, Vector3(0.0, 0.0, z), Vector3(PI / 2.0, 0.0, 0.0), rope, "CatapultRope")
+	var bucket := Node3D.new()
+	bucket.name = "CatapultBucket"
+	bucket.position = Vector3(0.0, 0.14, 1.36)
+	arm.add_child(bucket)
+	_add_mesh_cylinder(bucket, 0.30, 0.26, Vector3.ZERO, Vector3.ZERO, _visual_material(Color("5c656d")), "CatapultBucketWall")
+	_add_mesh_torus(bucket, 0.25, 0.34, Vector3(0.0, 0.13, 0.0), Vector3.ZERO, iron)
+	_add_mesh_cylinder(bucket, 0.16, 0.18, Vector3(0.0, 0.10, 0.0), Vector3.ZERO, _visual_material(Color("8f969d"), "res://assets/blocks/stone.svg"), "CatapultStone")
+
+
+## Cannon (2x3, direct fire): oak carriage on two spoked wheels, trail beams
+## behind, an iron barrel on trunnions that recoils when fired. Muzzle at -z.
+func _build_cannon_visual(parent: Node3D) -> void:
+	_add_collision_box(parent, Vector3(1.90, 0.80, 2.90), Vector3(0.5, -0.10, 1.0))
+	_add_collision_box(parent, Vector3(0.60, 0.70, 2.60), Vector3(0.5, 0.60, 0.80))
+	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
+	var dark_oak := _visual_material(Color("6b3d1f"), "res://assets/blocks/log.svg")
+	var iron := _visual_material(Color("6f7880"))
+	var dark_iron := _visual_material(Color("2f353b"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	# Carriage cheeks (two thick side plates stepped down to the rear) and trails.
+	for x in [0.12, 0.88]:
+		_add_mesh_box(parent, Vector3(0.22, 0.60, 1.40), Vector3(x, 0.10, 0.60), oak)
+		_add_mesh_box(parent, Vector3(0.22, 0.34, 1.30), Vector3(x, -0.12, 1.80), oak)
+		for z in [0.10, 1.10, 2.20]:
+			_add_mesh_box(parent, Vector3(0.26, 0.24, 0.12), Vector3(x, -0.12, z), dark_iron)
+			_add_stud(parent, Vector3(x + (0.14 if x > 0.5 else -0.14), -0.12, z), gold, Vector3(0.0, 0.0, PI / 2.0))
+	_add_mesh_box(parent, Vector3(0.98, 0.18, 0.18), Vector3(0.5, -0.20, 2.40), dark_oak)
+	_add_mesh_box(parent, Vector3(0.98, 0.16, 0.16), Vector3(0.5, 0.20, 0.10), dark_oak)
+	# Axle and two large wheels.
+	_add_mesh_cylinder(parent, 0.08, 2.00, Vector3(0.5, -0.10, 0.55), Vector3(0.0, 0.0, PI / 2.0), iron, "CannonAxle")
+	for x in [-0.30, 1.30]:
+		var wheel := _add_mesh_cylinder(parent, 0.50, 0.14, Vector3(x, -0.10, 0.55), Vector3(0.0, 0.0, PI / 2.0), oak, "CannonWheel")
+		_add_mesh_torus(wheel, 0.44, 0.54, Vector3.ZERO, Vector3.ZERO, iron)
+		_add_mesh_cone(parent, 0.09, 0.18, Vector3(x + (0.14 if x > 0.5 else -0.14), -0.10, 0.55), Vector3(0.0, 0.0, (-PI / 2.0) if x > 0.5 else (PI / 2.0)), gold)
+		for angle in [0.0, 1.047, 2.094]:
+			_add_mesh_box(wheel, Vector3(0.06, 0.06, 0.92), Vector3.ZERO, dark_oak).rotation.x = angle
+	# Barrel on trunnions: tube, reinforcing rings, breech knob, muzzle bell.
+	var barrel := Node3D.new()
+	barrel.name = "CannonBarrel"
+	barrel.position = Vector3(0.5, 0.50, 0.55)
+	barrel.rotation.x = 0.06
+	parent.add_child(barrel)
+	_add_mesh_cylinder(barrel, 0.22, 2.10, Vector3(0.0, 0.0, -0.30), Vector3(PI / 2.0, 0.0, 0.0), dark_iron, "CannonTube")
+	for z in [0.50, -0.20, -0.95]:
+		_add_mesh_cylinder(barrel, 0.26, 0.12, Vector3(0.0, 0.0, z), Vector3(PI / 2.0, 0.0, 0.0), iron, "CannonRing")
+	_add_mesh_cylinder(barrel, 0.28, 0.16, Vector3(0.0, 0.0, -1.30), Vector3(PI / 2.0, 0.0, 0.0), iron, "CannonMuzzleRing")
+	_add_mesh_cylinder(barrel, 0.16, 0.20, Vector3(0.0, 0.0, 0.85), Vector3(PI / 2.0, 0.0, 0.0), dark_iron, "CannonBreech")
+	var knob := MeshInstance3D.new()
+	var knob_mesh := SphereMesh.new()
+	knob_mesh.radius = 0.11
+	knob_mesh.height = 0.22
+	knob.mesh = knob_mesh
+	knob.material_override = iron
+	knob.position = Vector3(0.0, 0.0, 1.02)
+	barrel.add_child(knob)
+	_add_mesh_cylinder(barrel, 0.08, 0.80, Vector3(0.0, 0.0, 0.0), Vector3(0.0, 0.0, PI / 2.0), iron, "CannonTrunnion")
+	var loaded := MeshInstance3D.new()
+	loaded.name = "CannonBall"
+	var ball_mesh := SphereMesh.new()
+	ball_mesh.radius = 0.15
+	ball_mesh.height = 0.30
+	loaded.mesh = ball_mesh
+	loaded.material_override = dark_iron
+	loaded.position = Vector3(0.0, 0.0, -1.30)
+	barrel.add_child(loaded)
+	var muzzle := Node3D.new()
+	muzzle.name = "SiegeMuzzle"
+	muzzle.position = Vector3(0.0, 0.0, -1.42)
+	barrel.add_child(muzzle)
+	_add_mesh_box(parent, Vector3(0.10, 0.10, 0.10), Vector3(0.5, 0.86, 0.95), gold)
+
+
+## Rail segment: iron sleepers and two rails along z. Rails chain along a
+## wall top; the kettle rides the connected chain.
+func _build_rail_visual(parent: Node3D) -> void:
+	_add_collision_box(parent, Vector3(0.96, 0.30, 0.96), Vector3(0.0, -0.35, 0.0))
+	var dark_oak := _visual_material(Color("5b321e"), "res://assets/blocks/log.svg")
+	var iron := _visual_material(Color("8a939b"))
+	for z in [-0.33, 0.0, 0.33]:
+		_add_mesh_box(parent, Vector3(0.92, 0.10, 0.16), Vector3(0.0, -0.45, z), dark_oak)
+	for x in [-0.30, 0.30]:
+		_add_mesh_box(parent, Vector3(0.10, 0.12, 1.0), Vector3(x, -0.34, 0.0), iron)
+
+
+## Kettle on rails (1x1, mounts on a rail): an iron trolley on four small
+## wheels, two uprights carrying a tilting cauldron over a brazier. The pot
+## tilts toward -z to dump. Node names: KettlePot (tilts), KettleOil (shown
+## while loaded), SiegeMuzzle (the pouring lip).
+func _build_kettle_visual(parent: Node3D) -> void:
+	# The kettle sits low in its cell so its wheels rest on the rail below.
+	var drop := Vector3(0.0, -0.70, 0.0)
+	_add_collision_box(parent, Vector3(0.96, 1.00, 0.96), Vector3(0.0, 0.10, 0.0) + drop)
+	var iron := _visual_material(Color("6f7880"))
+	var dark_iron := _visual_material(Color("353b41"))
+	var oak := _visual_material(Color("8a5a32"), "res://assets/blocks/planks.svg")
+	var ember := _visual_material(Color("ff6a1a"), "", Color("ff4a00"))
+	var frame := Node3D.new()
+	frame.name = "KettleFrame"
+	frame.position = drop
+	parent.add_child(frame)
+	_add_mesh_box(frame, Vector3(0.90, 0.12, 0.90), Vector3(0.0, -0.42, 0.0), oak)
+	for x in [-0.36, 0.36]:
+		for z in [-0.30, 0.30]:
+			_add_mesh_cylinder(frame, 0.11, 0.08, Vector3(x, -0.44, z), Vector3(0.0, 0.0, PI / 2.0), dark_iron, "KettleWheel")
+	_add_mesh_box(frame, Vector3(0.60, 0.10, 0.60), Vector3(0.0, -0.32, 0.0), dark_iron)
+	_add_mesh_box(frame, Vector3(0.36, 0.14, 0.36), Vector3(0.0, -0.22, 0.0), ember)
+	for x in [-0.40, 0.40]:
+		_add_mesh_box(frame, Vector3(0.10, 0.90, 0.10), Vector3(x, 0.10, 0.0), iron)
+	_add_mesh_cylinder(frame, 0.05, 0.90, Vector3(0.0, 0.28, 0.0), Vector3(0.0, 0.0, PI / 2.0), iron, "KettleAxle")
+	var pot := Node3D.new()
+	pot.name = "KettlePot"
+	pot.position = Vector3(0.0, 0.28, 0.0)
+	frame.add_child(pot)
+	_add_mesh_cylinder(pot, 0.34, 0.46, Vector3(0.0, -0.12, 0.0), Vector3.ZERO, dark_iron, "KettleBody")
+	_add_mesh_torus(pot, 0.30, 0.40, Vector3(0.0, 0.10, 0.0), Vector3.ZERO, iron)
+	_add_mesh_cylinder(pot, 0.29, 0.04, Vector3(0.0, 0.07, 0.0), Vector3.ZERO, _visual_material(Color("d98a1e"), "", Color("ff9a1e")), "KettleOil")
+	_add_mesh_box(pot, Vector3(0.16, 0.06, 0.12), Vector3(0.0, 0.10, -0.38), iron)
+	var muzzle := Node3D.new()
+	muzzle.name = "SiegeMuzzle"
+	muzzle.position = Vector3(0.0, 0.12, -0.42)
+	pot.add_child(muzzle)
 
 
 ## A small gold diamond: a cube rotated 45 degrees about the given axis.
@@ -1039,12 +1254,9 @@ func _defense_interact(origin: Vector3, direction: Vector3) -> Dictionary:
 
 ## Fire damage callback: a raider standing in a burning cell takes damage.
 func _fire_damage_at(cell: Vector3i, damage: int) -> void:
-	if core_defense == null or not is_instance_valid(core_defense.raider):
+	if core_defense == null:
 		return
-	var position := core_defense.raider_target_position()
-	var raider_cell := Vector3i(floori(position.x), floori(position.y - 0.5), floori(position.z))
-	if raider_cell == cell or raider_cell == cell + Vector3i(0, 1, 0) or raider_cell == cell - Vector3i(0, 1, 0):
-		core_defense.try_damage_raider(damage, "fire")
+	core_defense.damage_raiders_in_cell(cell, damage, "fire")
 
 
 func _player_primary_action(origin: Vector3, direction: Vector3) -> Dictionary:
@@ -1057,11 +1269,11 @@ func _player_primary_action(origin: Vector3, direction: Vector3) -> Dictionary:
 		return {"handled": true, "ok": false, "reason": "MELEE_COOLDOWN", "remaining_seconds": _melee_cooldown}
 	_melee_cooldown = maxf(0.05, float(weapon.get("cooldown_seconds", 0.55)))
 	_spawn_sword_swing()
-	if core_defense == null or not is_instance_valid(core_defense.raider):
+	if core_defense == null or core_defense.living_raider_count() == 0:
 		return {"handled": true, "ok": false, "reason": "SWORD_MISS"}
 	var reach := float(weapon.get("range", 3.25))
 	var aim_direction := direction.normalized()
-	var target_position := core_defense.raider_target_position()
+	var target_position := core_defense.nearest_raider_position(origin)
 	var target_offset := target_position - origin
 	if target_offset.length() > reach or aim_direction.dot(target_offset.normalized()) < 0.94:
 		return {"handled": true, "ok": false, "reason": "SWORD_MISS"}
@@ -1070,9 +1282,14 @@ func _player_primary_action(origin: Vector3, direction: Vector3) -> Dictionary:
 	var query := PhysicsRayQueryParameters3D.create(origin, target_position, 1)
 	query.exclude = [player.get_rid()]
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if not hit.is_empty() and hit.get("collider") != core_defense.raider:
+	if not hit.is_empty() and not core_defense.is_raider_node(hit.get("collider")):
 		return {"handled": true, "ok": false, "reason": "SWORD_MISS"}
-	var result := core_defense.try_damage_raider(int(weapon.get("damage", 0)), item_id)
+	var struck: Variant = hit.get("collider") if not hit.is_empty() else null
+	var result: Dictionary
+	if struck != null and core_defense.is_raider_node(struck):
+		result = core_defense.try_damage_raider_node(struck, int(weapon.get("damage", 0)), item_id)
+	else:
+		result = core_defense.try_damage_raider(int(weapon.get("damage", 0)), item_id)
 	result["handled"] = true
 	return result
 

@@ -6,29 +6,53 @@ signal route_finished
 const MOVE_SPEED := 2.8
 const GRAVITY := 14.0
 
+## Raider kinds (P4D waves): a "raider" is the basic capsule; a "brute" is
+## bigger, slower and hits harder (health/damage live in CoreDefenseService).
+const KIND_RAIDER := "raider"
+const KIND_BRUTE := "brute"
+
 var route: Array[Vector3i] = []
 var route_index := 0
 var active := false
+var kind := KIND_RAIDER
+var move_speed := MOVE_SPEED
 
 
 func _ready() -> void:
-	name = "BasicRaider"
+	name = "BasicRaider" if kind == KIND_RAIDER else "BruteRaider"
+	var brute := kind == KIND_BRUTE
 	var collision := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
-	capsule.radius = 0.34
+	capsule.radius = 0.34 if not brute else 0.42
 	capsule.height = 1.8
 	collision.shape = capsule
 	add_child(collision)
 	var mesh_instance := MeshInstance3D.new()
 	var mesh := CapsuleMesh.new()
-	mesh.radius = 0.34
+	mesh.radius = capsule.radius
 	mesh.height = 1.8
 	var material := StandardMaterial3D.new()
-	material.albedo_color = Color("d95a4e")
+	material.albedo_color = Color("d95a4e") if not brute else Color("7a2f5e")
 	material.roughness = 0.85
 	mesh.material = material
 	mesh_instance.mesh = mesh
 	add_child(mesh_instance)
+	if brute:
+		var pauldron := MeshInstance3D.new()
+		var pauldron_mesh := BoxMesh.new()
+		pauldron_mesh.size = Vector3(1.1, 0.24, 0.6)
+		pauldron.mesh = pauldron_mesh
+		var iron := StandardMaterial3D.new()
+		iron.albedo_color = Color("4a5158")
+		pauldron.material_override = iron
+		pauldron.position = Vector3(0.0, 0.55, 0.0)
+		add_child(pauldron)
+		move_speed = MOVE_SPEED * 0.7
+
+
+## Sets the kind before the node enters the tree.
+func configure(raider_kind: String) -> void:
+	kind = raider_kind
 
 
 func set_route(cells: Array) -> void:
@@ -65,8 +89,8 @@ func _physics_process(delta: float) -> void:
 			route_finished.emit()
 		return
 	var direction := horizontal.normalized()
-	velocity.x = direction.x * MOVE_SPEED
-	velocity.z = direction.z * MOVE_SPEED
+	velocity.x = direction.x * move_speed
+	velocity.z = direction.z * move_speed
 	if is_on_floor():
 		velocity.y = clampf(offset.y * 6.0, -2.0, 5.0)
 	else:
