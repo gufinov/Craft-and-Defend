@@ -36,6 +36,6 @@ python -m unittest discover -s tests -v
 
 These validate documentation links and starter data invariants. Windows runtime/export evidence is separate in `docs/evidence/`.
 
-Double-click `TEST_P3D_USABILITY.cmd` to run the matching exported crafting, held-item, axe, iron-marker and rendered-placement gates. It controls and closes the diagnostic itself, then opens two evidence images; use `START_GAME.cmd` for normal play.
+Double-click any `TEST_*.cmd` (for example `TEST_P4_SIEGE_UNITS.cmd` for the siege machines and wave drill, `TEST_P3D_USABILITY.cmd` for crafting and held items) to run that milestone's exported gates. Each runner controls and closes the diagnostic itself, then opens its evidence image(s); use `START_GAME.cmd` for normal play.
 
 Local convention: `D:\CODEX\Craft_and_Defend\main` is canonical and is where the owner plays; implementation branches live in worktrees under `D:\CODEX\Craft_and_Defend\worktrees` (`git worktree add -b feature/<name> ../worktrees/<name> main`). No unreviewed milestone goes directly into `main`; the owner authorises each merge. Developer tooling: the pinned editor runs any diagnostic headless (`godot --headless --path game -- --f0-data-root=<dir> --<suite>=<mode>`; run `godot --headless --path game --import` once in a fresh worktree), and `tools\start_game.ps1 -PrepareOnly` exports a provenance-matched build for the `TEST_*.cmd` runners.

@@ -1,4 +1,28 @@
-# Current checkpoint — 2026-09-19 (baseline merged to `main`)
+# Current checkpoint — 2026-09-19 (autonomous P4 build, awaiting owner playtest)
+
+**STATUS:** **P4a-2..4, P4B, P4C/P4D and P4E — CANDIDATE PASS ON THE EXPORT (PCK `3d1d2cb9…`, branch `feature/p3d-tools-world-feedback`); OWNER PLAYTEST PENDING; NOT MERGED TO `main`.** Built while the owner was away on the standing instruction "program as much game logic as you can … don't stop working". `main` still holds the authorised baseline (`0be5f75`); merging this branch needs the owner's approval.
+
+**DONE (this checkpoint, newest first):**
+- **P4E world expansion** (`1dcceb3`): 128×32×192 cells (was 64×32×128); the seeded generator keeps every existing cell.
+- **P4B resource distribution + gold** (merged `d4c0d35`, subagent): data-driven ore table (`world.json → terrain.ores`), `gold_ore` block 11 (iron pick), gold ingot furnace chain, gold icons; T137–T140, `TEST_P4_RESOURCES.cmd`. See [P4B](P4B_RESOURCE_DISTRIBUTION.md).
+- **P4C siege units + P4D wave drills** (`98352d9`): remodelled Ballista (slider draw/release, strings), Turret Catapult (tower socket), Cannon (cannonball, recoil, muzzle flash), Rail + Kettle (rides rails to the raider, dumps burning hot oil); per-weapon nearest-raider targeting with filters; wave drills with brutes and far spawns (pause menu **Start Wave Drill**); T130–T136, `TEST_P4_SIEGE_UNITS.cmd`. See [P4C](P4C_SIEGE_UNITS_AND_WAVES.md).
+- **P4a-2 weapon and chest panels** (`547ce2c`, subagent): right-click a weapon → panel (load/unload, stance, target, supply readout, munition legend); right-click a Chest → 3×3 grid; T121–T123, `TEST_P4_WEAPON_PANEL.cmd`. See [P4a-2](P4A2_WEAPON_AND_CHEST_PANELS.md).
+- **P4a-2..4 service logic** (`d63b55c`, `1804a84`): munitions table, weapon load/unload/stance/filter, Chest container, supply radius + auto-reload, impacts resolved at landing with splash, Flame Shot and `FireService` (burning, spreading, consuming wood); T119, T120.
+- Tooling: `tools/format_content.py` (record-per-line content mirrors). Stale expectations repaired: T66, T73, T78, T103 (three-page book), F0 T08 (rebind to T), F1 T14 (guard lifted inside the test).
+
+**EXPECT:** From the Workbench: Cannonball, Turret Catapult, Cannon, Rail, Kettle recipes (page 2–3); Hot Oil from logs at the Furnace. Place a Cannon on flat ground, a Turret Catapult on a Tower Platform, Rails along a wall top, a Kettle on a rail. Right-click any weapon for its panel; put munitions in a Chest within 8 blocks and empty weapons refill themselves. Pause → **Start Wave Drill**: six raiders (one purple brute) from 22 cells out; machines turn to their nearest raider; the kettle slides to whoever reaches the wall and pours burning oil. Gold ore appears from depth 12 (iron pick). The world is twice as wide and half again as long.
+
+**TEST:** Static PASS (171 links; 60/60 unit tests). Exported PCK `3d1d2cb9…` (EXE `4ac12872…`): `TEST_P3F` (T90–T92, T103–T106) and `TEST_P3E` PASS; on the immediately preceding PCK `81214a8f…` (same code apart from the T103 expectation): `TEST_P4_SIEGE_UNITS` (T130–T136), `TEST_P4_WEAPON_PANEL` (T121–T123), `TEST_P4_RESOURCES` (T137–T140), `TEST_P3C` (T72–T78, T118–T120), `TEST_P3G`, `TEST_P3D`, `TEST_P3K`, `TEST_P3H` PASS. Editor gates: F0, F1, F2, F3, P1, P2, P3, P3B (phase1/save/restore/visual), P3C (save/restore), castle kit PASS. Owner playtest NOT RUN.
+
+**LIMITATIONS/FAILURES:** Raiders ignore rails, kettles and machines (they only breach barricades and hit the core). Brutes share the basic step capability. Cannon damage to castle stone is not modelled. The wave button's numbers are a first guess. The four unit models follow the reference images from memory of the earlier review; expect proportion notes from the owner. Held items are still 2D billboards; blueprints still have no player entry point (P3K slice 2). Old saves load into the larger world (their unedited outer area generates fresh).
+
+**NEXT:** Owner playtests the four machines, the panels and the wave drill (checklist in the session report); then decide the merge to `main`. Then P3K slice 2, raiders vs machines/rails, cannon vs stone, province/market.
+
+**GIT/REPRODUCIBILITY:** Worktree `D:\CODEX\Craft_and_Defend\worktrees\p3d-tools-world-feedback`, branch `feature/p3d-tools-world-feedback`, pushed. `feature/p4-resources` (`d6ae85f`) merged in and pushed. Engine `4.6.stable.custom_build.89cea1439`, Voxel Tools 1.6.0 Module; EXE SHA-256 `4ac128729e86108904e6d038d161322404d42d71892b1cc0dca751039aa7e4b2`; PCK SHA-256 `3d1d2cb95c04044ba6d37b61b906872c84888d9756164b6e410910115e7a58f5`. Evidence roots `artifacts/manual-p4-siege-units-3212028768`, `manual-p4-weapon-panel-3213616974`, `manual-p4-resources-3215615928`, `manual-p3c-player-defense-3216515405`, `manual-p3g-furnace-322012566`, `manual-p3d-usability-322211520`, `manual-p3k-blueprints-3226032197`, `manual-p3h-balance-3228031152`, `manual-p3f-presentation-3237825924`, `manual-p3e-furnace-3239724878`.
+
+---
+
+## Previous checkpoint — 2026-09-19 (baseline merged to `main`)
 
 **STATUS:** **BASELINE. Owner authorised merging `feature/p3d-tools-world-feedback` to `main` on 2026-09-19.** Everything from F2 through P4a-1 (see the checkpoints below) is on `main` and pushed. The core-defense drill works as a baseline and needs more work later (owner statement); it is not being polished further before the next milestones. Claude is the implementing agent; a new developer can start from `main` with the README's reading order.
 
