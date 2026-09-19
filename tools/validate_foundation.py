@@ -169,8 +169,8 @@ def validate_bundle(bundle):
     for section_name, integer_fields, number_fields in (
         ("practice_defense", ("wall_integrity", "repair_amount", "raider_health", "raider_damage", "ballista_damage", "ballista_starting_bolts"),
          ("warning_seconds", "raider_attack_interval_seconds", "ballista_interval_seconds", "ballista_maximum_range")),
-        ("core_defense", ("core_integrity", "raider_health", "raider_damage"),
-         ("warning_seconds", "raider_attack_interval_seconds")),
+        ("core_defense", ("core_integrity", "raider_health", "raider_damage", "troll_health", "troll_damage"),
+         ("warning_seconds", "raider_attack_interval_seconds", "troll_range", "troll_attack_interval_seconds")),
     ):
         section = balance.get(section_name, {})
         require(isinstance(section, dict)

@@ -18,6 +18,13 @@ const RAIDER_DAMAGE := 6
 const RAIDER_ATTACK_INTERVAL := 1.4
 const BRUTE_MAX_HEALTH := 40
 const BRUTE_DAMAGE := 10
+## P4F trolls: ranged crossbow units that stop within TROLL_RANGE cells of
+## their target and shoot every TROLL_ATTACK_INTERVAL seconds.
+const TROLL_MAX_HEALTH := 28
+const TROLL_DAMAGE := 5
+const TROLL_RANGE := 9.0
+const TROLL_ATTACK_INTERVAL := 2.0
+const TROLL_BOLT_SECONDS := 0.3
 ## Default spawn line (cells from the arena centre toward the field side) and
 ## the farthest a wave may start from.
 const SPAWN_DISTANCE := 8
@@ -54,9 +61,16 @@ var navigation_snapshot: NavigationSnapshot
 var raider: BasicRaider
 var brute_max_health := BRUTE_MAX_HEALTH
 var brute_damage := BRUTE_DAMAGE
+var troll_max_health := TROLL_MAX_HEALTH
+var troll_damage := TROLL_DAMAGE
+var troll_range := TROLL_RANGE
+var troll_attack_interval := TROLL_ATTACK_INTERVAL
+## Bolts fired by trolls in this drill (diagnostics read it).
+var ranged_shots := 0
 ## P4D waves: the spawn line for the current drill and the extra raiders
 ## beyond the primary one. Each entry: {node, health, max_health, kind,
-## damage, target_type, target_id, target_cell, attack_timer, route_reason}.
+## damage, ranged, range, attack_interval, target_type, target_id,
+## target_cell, attack_timer, route_reason, phase}.
 var spawn_distance := SPAWN_DISTANCE
 var wave_size := 1
 var extra_raiders: Array[Dictionary] = []
@@ -65,6 +79,7 @@ var _core_material: StandardMaterial3D
 var _pending_restore: Dictionary = {}
 var _replan_queued := false
 var _pending_brutes := 0
+var _pending_trolls := 0
 var _capture_reason := "OK"
 var _stall_retry_pending := false
 const STALL_RETRY_SECONDS := 2.0
@@ -85,6 +100,10 @@ func initialize(world_adapter: WorldAdapter, content_registry: ContentRegistry, 
 	raider_attack_interval = maxf(0.05, registry.balance_number("core_defense.raider_attack_interval_seconds", RAIDER_ATTACK_INTERVAL))
 	brute_max_health = maxi(1, registry.balance_integer("core_defense.brute_health", BRUTE_MAX_HEALTH))
 	brute_damage = maxi(1, registry.balance_integer("core_defense.brute_damage", BRUTE_DAMAGE))
+	troll_max_health = maxi(1, registry.balance_integer("core_defense.troll_health", TROLL_MAX_HEALTH))
+	troll_damage = maxi(1, registry.balance_integer("core_defense.troll_damage", TROLL_DAMAGE))
+	troll_range = maxf(1.0, registry.balance_number("core_defense.troll_range", TROLL_RANGE))
+	troll_attack_interval = maxf(0.05, registry.balance_number("core_defense.troll_attack_interval_seconds", TROLL_ATTACK_INTERVAL))
 	core_integrity = core_max_integrity
 	raider_health = raider_max_health
 	_pending_restore = saved.duplicate(true)
@@ -150,9 +169,11 @@ func restore_after_world_ready() -> Dictionary:
 	return {"ok": true, "reason": "OK"}
 
 
-## Starts the drill. Options (P4D): "raiders" (wave size, default 1),
-## "brutes" (how many of them are brutes, default 0) and "spawn_distance"
-## (cells from the arena centre to the field-side spawn line, 8..28).
+## Starts the drill. Options (P4D/P4F): "raiders" (wave size, default 1),
+## "brutes" (how many of them are brutes, default 0), "trolls" (how many are
+## ranged trolls, default 0; the primary raider is always a melee orc) and
+## "spawn_distance" (cells from the arena centre to the field-side spawn
+## line, 8..28).
 func start_prototype(options: Dictionary = {}) -> Dictionary:
 	if is_active():
 		return {"ok": false, "reason": "DEFENSE_ALREADY_ACTIVE"}
@@ -165,6 +186,8 @@ func start_prototype(options: Dictionary = {}) -> Dictionary:
 	spawn_distance = requested_distance
 	wave_size = maxi(1, int(options.get("raiders", 1)))
 	_pending_brutes = clampi(int(options.get("brutes", 0)), 0, wave_size)
+	_pending_trolls = clampi(int(options.get("trolls", 0)), 0, wave_size)
+	ranged_shots = 0
 	state = WARNING
 	warning_remaining = warning_seconds
 	core_integrity = core_max_integrity
@@ -215,6 +238,10 @@ func _advance_extras(delta: float) -> void:
 		if phase == "routing":
 			if str(entry.kind) == BasicRaider.KIND_BRUTE:
 				_brute_smashes_nearby(entry, delta)
+			# Ranged units stop as soon as their target is within range and
+			# shoot from there; melee units walk on until the route ends.
+			if bool(entry.get("ranged", false)) and _ranged_target_in_range(entry):
+				_engage_ranged(entry)
 			continue
 		entry.attack_timer = float(entry.attack_timer) - delta
 		if float(entry.attack_timer) > 0.0:
@@ -222,7 +249,11 @@ func _advance_extras(delta: float) -> void:
 		if phase == "stalled":
 			_plan_extra(entry)
 			continue
-		entry.attack_timer = float(entry.attack_timer) + raider_attack_interval
+		entry.attack_timer = float(entry.attack_timer) + float(entry.get("attack_interval", raider_attack_interval))
+		if bool(entry.get("ranged", false)):
+			_fire_ranged(entry)
+		elif is_instance_valid(entry.node):
+			entry.node.play_attack()
 		if phase == "attacking_core":
 			_extra_attacks_core(entry)
 		elif phase == "attacking_structure":
@@ -261,6 +292,86 @@ func _brute_smashes_nearby(entry: Dictionary, delta: float) -> void:
 	entry.attack_timer = 0.3
 	node.active = false
 	feedback.emit("A brute turns on your %s." % registry.display_name(str(workstations.stations[nearest].get("entity_id", "structure"))))
+## The centre of whatever an extra raider is heading for (core or structure).
+func _extra_target_point(entry: Dictionary) -> Vector3:
+	var cell: Vector3i = entry.get("target_cell", Vector3i.ZERO)
+	if str(entry.get("target_type", "")) == "core":
+		return Vector3(cell) + Vector3(0.5, 1.3, 0.5)
+	return Vector3(cell) + Vector3(0.5, 0.6, 0.5)
+
+
+func _ranged_target_in_range(entry: Dictionary) -> bool:
+	if str(entry.get("target_type", "")).is_empty() or not is_instance_valid(entry.node):
+		return false
+	var node: BasicRaider = entry.node
+	var cell: Vector3i = entry.get("target_cell", Vector3i.ZERO)
+	var target := Vector3(cell) + Vector3(0.5, 0.9, 0.5)
+	return node.global_position.distance_to(target) <= float(entry.get("range", troll_range))
+
+
+## A ranged unit whose target came within range stops, turns and starts its
+## shooting timer (line of sight is not required in this slice).
+func _engage_ranged(entry: Dictionary) -> void:
+	var node: BasicRaider = entry.node
+	node.active = false
+	node.velocity = Vector3.ZERO
+	node.face_point(_extra_target_point(entry))
+	entry.attack_timer = 0.3
+	if str(entry.target_type) == "core":
+		entry.phase = "attacking_core"
+	elif str(entry.target_type) == "structure" and workstations.defense_status(str(entry.target_id)).get("ok", false):
+		entry.phase = "attacking_structure"
+	else:
+		_plan_extra(entry)
+
+
+## A troll shot: the crossbow kicks and a bolt flies to the target over
+## TROLL_BOLT_SECONDS. The damage lands with the timer (see _advance_extras),
+## not with the bolt.
+func _fire_ranged(entry: Dictionary) -> void:
+	var node: BasicRaider = entry.node
+	if not is_instance_valid(node):
+		return
+	var target := _extra_target_point(entry)
+	node.face_point(target)
+	node.play_attack()
+	_spawn_troll_bolt(node.muzzle_position(), target)
+	ranged_shots += 1
+
+
+func _spawn_troll_bolt(origin: Vector3, target: Vector3) -> void:
+	var bolt := MeshInstance3D.new()
+	bolt.name = "TrollBolt"
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 0.03
+	mesh.bottom_radius = 0.03
+	mesh.height = 0.6
+	mesh.radial_segments = 6
+	bolt.mesh = mesh
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color("8a5a2b")
+	bolt.material_override = material
+	var tip := MeshInstance3D.new()
+	var tip_mesh := CylinderMesh.new()
+	tip_mesh.top_radius = 0.0
+	tip_mesh.bottom_radius = 0.045
+	tip_mesh.height = 0.12
+	tip_mesh.radial_segments = 6
+	tip.mesh = tip_mesh
+	var tip_material := StandardMaterial3D.new()
+	tip_material.albedo_color = Color("5a6169")
+	tip_material.metallic = 0.5
+	tip.material_override = tip_material
+	tip.position = Vector3(0.0, 0.36, 0.0)
+	bolt.add_child(tip)
+	add_child(bolt)
+	bolt.global_position = origin
+	if origin.distance_squared_to(target) > 0.0001:
+		bolt.look_at(target, Vector3.UP)
+	bolt.rotate_object_local(Vector3.RIGHT, -PI / 2.0)
+	var tween := create_tween()
+	tween.tween_property(bolt, "global_position", target, TROLL_BOLT_SECONDS)
+	tween.finished.connect(bolt.queue_free)
 
 
 func _extra_attacks_core(entry: Dictionary) -> void:
@@ -268,7 +379,7 @@ func _extra_attacks_core(entry: Dictionary) -> void:
 		return
 	core_integrity = maxi(0, core_integrity - int(entry.damage))
 	_update_core_presentation()
-	feedback.emit("%s hit the strategic core for %d. Core integrity: %d/%d." % [str(entry.kind).capitalize(), int(entry.damage), core_integrity, core_max_integrity])
+	feedback.emit("%s %s the strategic core for %d. Core integrity: %d/%d." % [str(entry.kind).capitalize(), "shot" if bool(entry.get("ranged", false)) else "hit", int(entry.damage), core_integrity, core_max_integrity])
 	if core_integrity <= 0:
 		state = FAILED
 		_halt_all_raiders()
@@ -419,7 +530,7 @@ func raider_target_position() -> Vector3:
 
 
 ## The aim point of the living raider nearest `from` that passes `filter`
-## ("any", "raider" or "brute"), or Vector3.INF when none.
+## ("any", "raider", "brute" or "troll"), or Vector3.INF when none.
 func nearest_raider_position(from: Vector3, filter: String = "any") -> Vector3:
 	var best := Vector3.INF
 	var best_distance := INF
@@ -477,10 +588,15 @@ func _begin_attack() -> void:
 	_spawn_raider(_start_position())
 	_plan_from_raider()
 	var brutes_left := _pending_brutes
+	var trolls_left := _pending_trolls
 	for index in range(1, wave_size):
-		var kind := BasicRaider.KIND_BRUTE if brutes_left > 0 else BasicRaider.KIND_RAIDER
+		var kind := BasicRaider.KIND_RAIDER
 		if brutes_left > 0:
+			kind = BasicRaider.KIND_BRUTE
 			brutes_left -= 1
+		elif trolls_left > 0:
+			kind = BasicRaider.KIND_TROLL
+			trolls_left -= 1
 		var offset := _wave_offset(index)
 		var column := _start_cell() + Vector3i(int(offset.x), 0, int(offset.z))
 		var surface := _surface_cell(column) if spawn_distance > SPAWN_DISTANCE else column
@@ -508,12 +624,24 @@ func _spawn_extra_raider(spawn_position: Vector3, kind: String) -> Dictionary:
 	add_child(node)
 	node.global_position = spawn_position
 	var brute := kind == BasicRaider.KIND_BRUTE
+	var troll := kind == BasicRaider.KIND_TROLL
+	var health := raider_max_health
+	var damage := raider_damage
+	if brute:
+		health = brute_max_health
+		damage = brute_damage
+	elif troll:
+		health = troll_max_health
+		damage = troll_damage
 	var entry := {
 		"node": node,
 		"kind": kind,
-		"health": brute_max_health if brute else raider_max_health,
-		"max_health": brute_max_health if brute else raider_max_health,
-		"damage": brute_damage if brute else raider_damage,
+		"health": health,
+		"max_health": health,
+		"damage": damage,
+		"ranged": troll,
+		"range": troll_range if troll else 0.0,
+		"attack_interval": troll_attack_interval if troll else raider_attack_interval,
 		"target_type": "",
 		"target_id": "",
 		"target_cell": Vector3i.ZERO,
@@ -672,6 +800,8 @@ func _on_raider_route_finished() -> void:
 
 
 func _attack_structure() -> void:
+	if is_instance_valid(raider):
+		raider.play_attack()
 	var result := workstations.try_damage(active_target_id, raider_damage)
 	if not result.get("ok", false):
 		_queue_replan()
@@ -688,6 +818,8 @@ func _attack_structure() -> void:
 func _attack_core() -> void:
 	if core_integrity <= 0:
 		return
+	if is_instance_valid(raider):
+		raider.play_attack()
 	core_integrity = maxi(0, core_integrity - raider_damage)
 	_update_core_presentation()
 	feedback.emit("Raider hit the strategic core for %d. Core integrity: %d/%d." % [raider_damage, core_integrity, core_max_integrity])
