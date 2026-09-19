@@ -5,8 +5,10 @@ signal spawn_area_ready
 signal status_changed(message: String)
 signal cell_changed(cell: Vector3i, previous_voxel_id: int, new_voxel_id: int, revision: int)
 
-const WORLD_MIN := Vector3i(-32, -16, -64)
-const WORLD_SIZE := Vector3i(64, 32, 128)
+## Bounds come from data/world.json (min_cell / size) at initialize(); these
+## are the P4E defaults and stay readable as WorldAdapter.WORLD_MIN/SIZE.
+static var WORLD_MIN := Vector3i(-160, -16, -192)
+static var WORLD_SIZE := Vector3i(320, 48, 384)
 const SPAWN_FEET := Vector3(0.5, 2.0, 40.5)
 const CHANNEL := VoxelBuffer.CHANNEL_TYPE
 const WORLD_CONFIG_PATH := "res://data/world.json"
@@ -17,14 +19,16 @@ const DEFAULT_WORLD_SEED := 41026
 const BLOCK_NAMES := [
 	"air", "grass", "dirt", "stone", "log", "planks",
 	"coal_ore", "iron_ore", "castle_stone", "bedrock", "leaves",
-	"gold_ore",
+	"gold_ore", "water",
 ]
 const BLOCK_COLORS := [
 	Color(0, 0, 0, 0), Color("74a65a"), Color("8b5f3c"), Color("777b82"),
 	Color("9b6a3d"), Color("b88954"), Color("34383f"), Color("a65b42"),
 	Color("8b929d"), Color("25282d"), Color("4f873c"),
-	Color("c9a640"),
+	Color("c9a640"), Color(0.25, 0.55, 0.95, 0.55),
 ]
+## Non-solid blocks: no collision, bodies and rays pass through.
+const PASSABLE_BLOCKS := ["water"]
 
 var terrain: VoxelTerrain
 var stream: VoxelStreamSQLite
@@ -48,6 +52,12 @@ func initialize(database_path: String, ready_feet: Vector3 = SPAWN_FEET, world_s
 		return generation_result
 	generator_version = str(generation_result.get("generator_version", P1_GENERATOR_VERSION))
 	world_seed = int(generation_result.get("seed", DEFAULT_WORLD_SEED))
+	var config: Dictionary = world_config_result.get("config", {})
+	var config_min: Variant = config.get("min_cell", [])
+	var config_size: Variant = config.get("size", [])
+	if config_min is Array and config_min.size() == 3 and config_size is Array and config_size.size() == 3:
+		WORLD_MIN = Vector3i(int(config_min[0]), int(config_min[1]), int(config_min[2]))
+		WORLD_SIZE = Vector3i(int(config_size[0]), int(config_size[1]), int(config_size[2]))
 	var parent_dir := database_path.get_base_dir()
 	var mkdir_error := DirAccess.make_dir_recursive_absolute(parent_dir)
 	if mkdir_error != OK:
@@ -64,7 +74,10 @@ func initialize(database_path: String, ready_feet: Vector3 = SPAWN_FEET, world_s
 	if generator_version == LEGACY_GENERATOR_VERSION:
 		terrain.generator = FlatWorldGenerator.new()
 	else:
-		terrain.generator = P1TerrainGenerator.new(world_seed, generation_result.get("terrain", {}))
+		var terrain_settings: Dictionary = generation_result.get("terrain", {}).duplicate(true)
+		terrain_settings["bounds_min"] = [WORLD_MIN.x, WORLD_MIN.y, WORLD_MIN.z]
+		terrain_settings["bounds_size"] = [WORLD_SIZE.x, WORLD_SIZE.y, WORLD_SIZE.z]
+		terrain.generator = P1TerrainGenerator.new(world_seed, terrain_settings)
 
 	var library := VoxelBlockyLibrary.new()
 	library.add_model(VoxelBlockyModelEmpty.new())
@@ -83,6 +96,15 @@ func initialize(database_path: String, ready_feet: Vector3 = SPAWN_FEET, world_s
 		var texture_path := "res://assets/blocks/%s.svg" % BLOCK_NAMES[block_id]
 		if ResourceLoader.exists(texture_path):
 			material.albedo_texture = load(texture_path)
+		if BLOCK_NAMES[block_id] in PASSABLE_BLOCKS:
+			# Water: translucent, no collision, drawn only against non-water.
+			material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			material.albedo_color = Color(1.0, 1.0, 1.0, 0.6)
+			material.roughness = 0.2
+			model.collision_mask = 0
+			model.collision_aabbs = []
+			model.transparency_index = 1
+			model.culls_neighbors = false
 		model.set_material_override(0, material)
 		library.add_model(model)
 	library.bake()

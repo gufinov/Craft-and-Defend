@@ -3,14 +3,14 @@
   "generator_version": "terrain_p1_1",
   "seed": 41026,
   "min_cell": [
-    -64,
+    -160,
     -16,
-    -96
+    -192
   ],
   "size": [
-    128,
-    32,
-    192
+    320,
+    48,
+    384
   ],
   "chunk_size": 16,
   "sea_level": 0,
@@ -25,7 +25,7 @@
   "initial_day_phase": 0.3333333333333333,
   "terrain": {
     "min_surface_y": -4,
-    "max_surface_y": 5,
+    "max_surface_y": 24,
     "height_frequency": 0.032,
     "detail_frequency": 0.085,
     "safe_clearing_center": [
@@ -43,25 +43,51 @@
       {
         "block": "iron_ore",
         "min_depth": 6,
-        "max_depth": 32,
-        "cluster_per_thousand": 18,
+        "max_depth": 48,
+        "cluster_per_thousand": 32,
         "cluster_size": 2
       },
       {
         "block": "coal_ore",
         "min_depth": 3,
-        "max_depth": 32,
-        "cluster_per_thousand": 37,
+        "max_depth": 48,
+        "cluster_per_thousand": 60,
         "cluster_size": 2
       },
       {
         "block": "gold_ore",
         "min_depth": 12,
-        "max_depth": 32,
-        "cluster_per_thousand": 5,
+        "max_depth": 48,
+        "cluster_per_thousand": 9,
         "cluster_size": 2
       }
-    ]
+    ],
+    "mountain_frequency": 0.0075,
+    "mountain_threshold": 0.3,
+    "mountain_height": 20,
+    "rock_surface_y": 12,
+    "lake_frequency": 0.014,
+    "lake_threshold": 0.42,
+    "lake_depth": 4,
+    "surface_ores": [
+      {
+        "block": "coal_ore",
+        "per_thousand": 9,
+        "cluster_size": 2
+      },
+      {
+        "block": "iron_ore",
+        "per_thousand": 5,
+        "cluster_size": 2
+      }
+    ],
+    "enemy_base": {
+      "min_distance": 150,
+      "max_distance": 200,
+      "clearing_radius": 10,
+      "blend": 10,
+      "margin": 24
+    }
   },
   "layers": [
     {
@@ -87,6 +113,11 @@
     {
       "min_y": 0,
       "max_y_exclusive": 16,
+      "block": 0
+    },
+    {
+      "min_y": 16,
+      "max_y_exclusive": 32,
       "block": 0
     }
   ],

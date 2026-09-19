@@ -360,8 +360,10 @@ func _cell_in_bounds(cell: Vector3i) -> bool:
 		and cell.x < maximum.x and cell.y < maximum.y and cell.z < maximum.z
 
 
-func _wait_for_session_ready(max_frames: int = 1200) -> bool:
-	for frame in range(max_frames):
+func _wait_for_session_ready(max_msec: int = 45000) -> bool:
+	# Time-based: the P4E world streams more chunks than 1200 headless frames cover.
+	var deadline := Time.get_ticks_msec() + max_msec
+	while Time.get_ticks_msec() < deadline:
 		if app.session != null and app.session.world_ready:
 			return true
 		await get_tree().process_frame

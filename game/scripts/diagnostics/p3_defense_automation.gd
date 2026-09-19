@@ -204,7 +204,8 @@ func _add_ballista_blocker(defense: DefenseService) -> StaticBody3D:
 
 
 func _wait_ready() -> bool:
-	for _frame in range(1200):
+	var deadline := Time.get_ticks_msec() + 45000
+	while Time.get_ticks_msec() < deadline:
 		if app.state == app.AppState.PLAYING and app.session != null and app.session.world_ready:
 			return true
 		await get_tree().process_frame

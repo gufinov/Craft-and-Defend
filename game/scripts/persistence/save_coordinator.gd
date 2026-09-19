@@ -3,13 +3,17 @@ extends RefCounted
 
 const SAVE_SCHEMA := 1
 const CONTENT_VERSION := "foundation-1"
-const CHECKPOINT_TIMEOUT_MS := 15000
+const CHECKPOINT_TIMEOUT_MS := 60000
 const SLOT_IDS: Array[String] = ["a", "b"]
 const DEFAULT_SLOT := "a"
 const CHECKPOINTS_TO_KEEP := 2
 const DEFAULT_GENERATOR_VERSION := "terrain_p1_1"
 const DEFAULT_WORLD_SEED := 41026
 
+## New games draw a fresh world seed (owner 2026-09-19: "the world generates
+## the same seed over and over"); diagnostics keep the fixed default seed so
+## their fixtures stay deterministic (the app clears this under automation).
+var random_world_seed := true
 var data_root: String
 var slots_base_root: String
 var runtime_root: String
@@ -63,6 +67,10 @@ func set_test_failure(point: String) -> void:
 
 func open_session(continue_existing: bool) -> Dictionary:
 	var snapshot := _default_snapshot()
+	if random_world_seed and not continue_existing:
+		var rng := RandomNumberGenerator.new()
+		rng.randomize()
+		snapshot["world"]["seed"] = int(rng.randi_range(1, 2147483646))
 	var checkpoint: Dictionary = {}
 	if continue_existing:
 		checkpoint = _read_current_checkpoint()

@@ -21,7 +21,8 @@
     {"voxel_id": 8, "id": "castle_stone", "drop": "castle_stone", "min_pick_tier": 1, "protected": false, "solid": true},
     {"voxel_id": 9, "id": "bedrock", "drop": null, "min_pick_tier": 0, "protected": true, "solid": true},
     {"voxel_id": 10, "id": "leaves", "drop": "stick", "min_pick_tier": 0, "protected": false, "solid": true},
-    {"voxel_id": 11, "id": "gold_ore", "drop": "gold_ore", "min_pick_tier": 3, "protected": false, "solid": true}
+    {"voxel_id": 11, "id": "gold_ore", "drop": "gold_ore", "min_pick_tier": 3, "protected": false, "solid": true},
+    {"voxel_id": 12, "id": "water", "drop": null, "min_pick_tier": 0, "protected": true, "solid": false}
   ],
   "items": [
     {"id": "dirt", "category": "resource", "max_stack": 64, "places_block": 2},

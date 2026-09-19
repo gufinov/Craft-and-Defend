@@ -44,7 +44,7 @@ func _run_phase1() -> void:
 		_record("T03_READY", false, "collision-ready spawn", "timeout")
 		_finish(1)
 		return
-	_record("T03_BOUNDS", app.session.world.terrain.bounds == AABB(Vector3(-32, -16, -64), Vector3(64, 32, 128)), "64x32x128 half-open bounds", app.session.world.terrain.bounds)
+	_record("T03_BOUNDS", app.session.world.terrain.bounds == AABB(Vector3(WorldAdapter.WORLD_MIN), Vector3(WorldAdapter.WORLD_SIZE)) and WorldAdapter.WORLD_SIZE == Vector3i(320, 48, 384), "320x48x384 half-open bounds from world.json (P4E)", app.session.world.terrain.bounds)
 	for frame in range(90):
 		await get_tree().physics_frame
 	_record("T03_COLLISION_SPAWN", app.session.player.position.y > -0.5, "player remains on loaded surface", app.session.player.position)
@@ -89,7 +89,7 @@ func _run_phase1() -> void:
 	var unsupported := app.session.interaction.try_place_dirt(Vector3i(5, 5, 38))
 	var after_unsupported := _mutation_snapshot()
 	_record("T06_UNSUPPORTED_FLOATING", unsupported.get("reason") == "UNSUPPORTED" and before_invalid == after_unsupported, "a truly floating block with no neighboring solid face is still rejected without mutation", unsupported)
-	var outside := app.session.interaction.try_place_dirt(Vector3i(32, 0, 0))
+	var outside := app.session.interaction.try_place_dirt(Vector3i(WorldAdapter.WORLD_MIN.x + WorldAdapter.WORLD_SIZE.x, 0, 0))
 	var after_outside := _mutation_snapshot()
 	_record("T06_OUTSIDE_BOUNDS", outside.get("reason") == "OUT_OF_BOUNDS" and before_invalid == after_outside, "reject without mutation", outside)
 	var occupied_before := _mutation_snapshot()
@@ -237,8 +237,10 @@ func _capture_frame(filename: String, test_id: String) -> void:
 	_record(test_id, error == OK and FileAccess.file_exists(path), "PNG screenshot from rendered application", {"path": path, "error": error, "size": image.get_size()})
 
 
-func _wait_for_session_ready(max_frames: int = 1200) -> bool:
-	for frame in range(max_frames):
+func _wait_for_session_ready(max_msec: int = 45000) -> bool:
+	# Time-based: the P4E world streams more chunks than 1200 headless frames cover.
+	var deadline := Time.get_ticks_msec() + max_msec
+	while Time.get_ticks_msec() < deadline:
 		if app.session != null and app.session.world_ready:
 			return true
 		await get_tree().process_frame

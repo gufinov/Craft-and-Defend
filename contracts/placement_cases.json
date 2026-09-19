@@ -5,9 +5,9 @@
     {
       "id": "minimum_inclusive",
       "anchor": [
-        -64,
+        -160,
         -15,
-        -96
+        -192
       ],
       "offsets": [
         [
@@ -25,7 +25,7 @@
     {
       "id": "maximum_exclusive",
       "anchor": [
-        64,
+        160,
         0,
         0
       ],
@@ -120,7 +120,7 @@
     {
       "id": "multicell_cross_boundary",
       "anchor": [
-        63,
+        159,
         0,
         0
       ],

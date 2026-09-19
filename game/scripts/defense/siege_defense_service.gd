@@ -224,7 +224,9 @@ func _animate_fire(instance_id: String, siege: Dictionary) -> void:
 		slider.set_meta("releasing", true)
 		var tween := create_tween()
 		tween.tween_property(slider, "position:z", SLIDER_RELEASED_Z, 0.05)
-		tween.finished.connect(func() -> void: slider.remove_meta("releasing"))
+		tween.finished.connect(func() -> void:
+			if is_instance_valid(slider):
+				slider.remove_meta("releasing"))
 
 
 func _animate_throw(instance_id: String) -> void:
@@ -238,7 +240,9 @@ func _animate_throw(instance_id: String) -> void:
 	var tween := create_tween()
 	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tween.tween_property(arm, "rotation:x", ARM_THROWN, ARM_THROW_SECONDS)
-	tween.finished.connect(func() -> void: arm.remove_meta("throwing"))
+	tween.finished.connect(func() -> void:
+		if is_instance_valid(arm):
+			arm.remove_meta("throwing"))
 
 
 func _turret(instance_id: String) -> Node3D:

@@ -88,8 +88,8 @@ func _test_depth_bands() -> void:
 	var iron_band := int(shallowest[IRON_ORE]) >= 6
 	var gold_band := int(shallowest[GOLD_ORE]) >= 12
 	var rarity_order := gold > 0 and gold < iron and iron < coal
-	var table_ok := table.size() == 3 and int(table[0]["band_start"]) == 0 and int(table[0]["band_end"]) == 18 \
-		and int(table[1]["band_start"]) == 18 and int(table[1]["band_end"]) == 55 \
+	var table_ok := table.size() == 3 and int(table[0]["band_start"]) == 0 and int(table[0]["band_end"]) == 32 \
+		and int(table[1]["band_start"]) == 32 and int(table[1]["band_end"]) == 92 \
 		and int(table[2]["voxel_id"]) == GOLD_ORE and int(table[2]["band_end"]) < 1000
 	_record("T137_ORE_DEPTH_BANDS", deterministic and differs_by_seed and band_violations == 0 and coal_shallow and iron_band and gold_band and rarity_order and table_ok,
 		"sampled columns show coal above depth 6, iron only from depth 6, gold only from depth 12, gold rarer than iron rarer than coal, identical per seed and different for another seed",
@@ -120,11 +120,12 @@ func _test_p1_layout_preserved() -> void:
 				elif actual != reference:
 					mismatches += 1
 	_record("T138_P1_LAYOUT_PRESERVED", compared > 0 and mismatches == 0 and gold_over_ore == 0 and gold_cells > 0,
-		"every non-gold cell matches the P1 reference formula and gold only replaces stone at depth 12 or deeper",
+		"every non-gold cell below the soil matches the reference band formula and gold only replaces stone at depth 12 or deeper",
 		{"compared": compared, "mismatches": mismatches, "gold_cells": gold_cells, "gold_over_ore": gold_over_ore})
 
 
-## The P1 formula as shipped before the table existed (magic bands 18 / 55).
+## The layout formula the table must reproduce (P4E bands 32 / 92; the
+## surface and soil cells are the generator's own since surface ore landed).
 func _p1_reference_voxel(generator: P1TerrainGenerator, x: int, y: int, z: int, surface: int) -> int:
 	if y == -16:
 		return P1TerrainGenerator.BEDROCK
@@ -134,14 +135,15 @@ func _p1_reference_voxel(generator: P1TerrainGenerator, x: int, y: int, z: int, 
 	if y > surface:
 		return generator._tree_voxel_at(x, y, z)
 	if y == surface:
-		return P1TerrainGenerator.GRASS
+		return generator.sample_voxel(x, y, z, surface)
 	if y >= surface - 2:
-		return P1TerrainGenerator.DIRT
+		return generator.sample_voxel(x, y, z, surface)
 	var cluster := Vector3i(floori(float(x) / 2.0), floori(float(y) / 2.0), floori(float(z) / 2.0))
 	var roll := posmod(hash(Vector3i(cluster.x + WORLD_SEED, cluster.y - WORLD_SEED * 3, cluster.z + WORLD_SEED * 7)), 1000)
-	if y <= surface - 6 and roll < 18:
+	# P4E bands: iron [0,32) from depth 6, coal [32,92) from depth 3.
+	if y <= surface - 6 and roll < 32:
 		return IRON_ORE
-	if roll >= 18 and roll < 55:
+	if roll >= 32 and roll < 92:
 		return COAL_ORE
 	return STONE
 

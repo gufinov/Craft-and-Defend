@@ -333,6 +333,8 @@ func _argument_value(prefix: String) -> String:
 		for argument in OS.get_cmdline_user_args():
 			if argument.begins_with(prefix):
 				automation_active = true
+				if saves != null:
+					saves.random_world_seed = false
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with(prefix):
 			return argument.trim_prefix(prefix)

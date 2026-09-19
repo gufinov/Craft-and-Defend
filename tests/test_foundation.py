@@ -99,11 +99,12 @@ class FoundationTests(unittest.TestCase):
         self.assertLess(rates['iron_ore'], rates['coal_ore'])
 
     def test_ore_row_preserves_p1_layout_bands(self):
-        # Rows own cumulative bands of one roll: iron [0,18), coal [18,55) is the
-        # exact P1 layout, so existing terrain_p1_1 saves keep their coal and iron.
+        # Rows own cumulative bands of one roll in row order: iron first, then
+        # coal, then gold. The P4E world (2026-09-19) raised the bands to 32/60/9
+        # (owner: "ore more abundant"); older saves regenerate only untouched chunks.
         ores = self.bundle['world']['terrain']['ores']
-        self.assertEqual([row['block'] for row in ores[:2]], ['iron_ore', 'coal_ore'])
-        self.assertEqual([row['cluster_per_thousand'] for row in ores[:2]], [18, 37])
+        self.assertEqual([row['block'] for row in ores[:3]], ['iron_ore', 'coal_ore', 'gold_ore'])
+        self.assertEqual([row['cluster_per_thousand'] for row in ores[:3]], [32, 60, 9])
         self.assertTrue(all(row['cluster_size'] == 2 for row in ores))
 
     def test_unknown_ore_block_rejected(self):
