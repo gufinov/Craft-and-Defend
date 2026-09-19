@@ -44,7 +44,7 @@ Validator: `fire_mode` may be `dump`; a dump weapon must carry `rail_speed > 0` 
 - Damage API: `try_damage_raider_node`, `damage_raiders_within`, `damage_raiders_in_cell` (fire), `nearest_raider_position(from, filter)`, `raider_nodes`, `is_raider_node`, `living_raider_count`. WON only when every raider is down; FAILED halts all of them. The sword strikes whichever raider the ray hits.
 - Far spawn lines (> 8 cells) sit on the terrain surface of their column (`_surface_cell`), the navigation capture widens vertically (18 cells) and, when the streamer has not loaded the line yet, the drill waits (`WAITING_FOR_TERRAIN`, capture retried every 0.5 s up to 40 times) instead of failing.
 - Snapshot adds `spawn_distance`, `wave_size` and `extra_raiders` (kind, health, position); restore respawns and re-plans them.
-- Pause menu: **Start Wave Drill (5 raiders + 1 brute, far spawn)** → `{"raiders": 6, "brutes": 1, "spawn_distance": 22}` and **Start Siege Drill (9 raiders + 3 brutes, farthest spawn)** → `{"raiders": 12, "brutes": 3, "spawn_distance": 28}`; the single-raider prototype is unchanged.
+- Pause menu: **Start Wave Drill** → `{"raiders": 6, "brutes": 1, "trolls": 1, "spawn_distance": 22}` and **Start Siege Drill** → `{"raiders": 12, "brutes": 3, "trolls": 3, "spawn_distance": 28}` (trolls since [P4F](P4F_ENEMY_UNITS.md)); the single-raider prototype is unchanged.
 
 ## Acceptance
 

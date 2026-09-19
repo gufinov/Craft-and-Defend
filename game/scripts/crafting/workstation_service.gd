@@ -692,7 +692,7 @@ func siege_set_stance(instance_id: String, stance: String) -> Dictionary:
 func siege_set_target_filter(instance_id: String, target_filter: String) -> Dictionary:
 	if not siege_status(instance_id).get("ok", false):
 		return _result(false, "NOT_SIEGE")
-	if target_filter not in ["any", "raider", "brute", "structure"]:
+	if target_filter not in ["any", "raider", "brute", "troll", "structure"]:
 		return _result(false, "INVALID_TARGET_FILTER")
 	stations[instance_id]["siege_target_filter"] = target_filter
 	var result := _result(true, "TARGET_FILTER_SET", {"instance_id": instance_id, "target_filter": target_filter})

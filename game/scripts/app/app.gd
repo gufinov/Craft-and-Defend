@@ -271,6 +271,11 @@ func _ready() -> void:
 		var p4_siege_units_automation := P4SiegeUnitsAutomation.new()
 		add_child(p4_siege_units_automation)
 		p4_siege_units_automation.call_deferred("run", self, p4_siege_units_mode)
+	var p4_enemy_units_mode := _argument_value("--p4-enemy-units-automation=")
+	if not p4_enemy_units_mode.is_empty():
+		var p4_enemy_units_automation := P4EnemyUnitsAutomation.new()
+		add_child(p4_enemy_units_automation)
+		p4_enemy_units_automation.call_deferred("run", self, p4_enemy_units_mode)
 	var p4_resources_mode := _argument_value("--p4-resources-automation=")
 	if not p4_resources_mode.is_empty():
 		var p4_resources_automation := P4ResourcesAutomation.new()
@@ -443,8 +448,8 @@ func _build_pause(canvas: CanvasLayer) -> void:
 	pause_box.add_child(_button("Keybinds", _show_keybinds))
 	pause_box.add_child(_button("Start Defense Drill", _start_defense_drill))
 	pause_box.add_child(_button("Start Core Defense Prototype", _start_core_defense_prototype))
-	pause_box.add_child(_button("Start Wave Drill (5 raiders + 1 brute, far spawn)", _start_wave_drill))
-	pause_box.add_child(_button("Start Siege Drill (9 raiders + 3 brutes, farthest spawn)", _start_siege_drill))
+	pause_box.add_child(_button("Start Wave Drill (4 orcs + 1 brute + 1 troll, far spawn)", _start_wave_drill))
+	pause_box.add_child(_button("Start Siege Drill (6 orcs + 3 brutes + 3 trolls, farthest spawn)", _start_siege_drill))
 	pause_box.add_child(_button("Save and Exit to Menu", _save_and_exit_to_menu))
 	pause_box.add_child(_button("Save and Quit", _save_and_quit))
 
@@ -1288,7 +1293,7 @@ func _start_core_defense_prototype() -> void:
 func _start_wave_drill() -> void:
 	if state != AppState.PAUSED or session == null:
 		return
-	var result := session.start_core_defense_prototype({"raiders": 6, "brutes": 1, "spawn_distance": 22})
+	var result := session.start_core_defense_prototype({"raiders": 6, "brutes": 1, "trolls": 1, "spawn_distance": 22})
 	if result.get("ok", false):
 		_resume_game()
 
@@ -1296,7 +1301,7 @@ func _start_wave_drill() -> void:
 func _start_siege_drill() -> void:
 	if state != AppState.PAUSED or session == null:
 		return
-	var result := session.start_core_defense_prototype({"raiders": 12, "brutes": 3, "spawn_distance": 28})
+	var result := session.start_core_defense_prototype({"raiders": 12, "brutes": 3, "trolls": 3, "spawn_distance": 28})
 	if result.get("ok", false):
 		_resume_game()
 

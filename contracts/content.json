@@ -7,7 +7,7 @@
     "furnace": {"fuel_item": "coal", "operations_per_fuel": 3},
     "harvesting": {"maximum_connected_trunk_blocks": 1},
     "practice_defense": {"wall_integrity": 24, "repair_amount": 6, "warning_seconds": 5.0, "raider_health": 20, "raider_damage": 6, "raider_attack_interval_seconds": 1.4, "ballista_damage": 5, "ballista_starting_bolts": 4, "ballista_interval_seconds": 1.5, "ballista_maximum_range": 28.0},
-    "core_defense": {"core_integrity": 30, "warning_seconds": 20.0, "raider_health": 20, "raider_damage": 6, "raider_attack_interval_seconds": 1.4}
+    "core_defense": {"core_integrity": 30, "warning_seconds": 20.0, "raider_health": 20, "raider_damage": 6, "raider_attack_interval_seconds": 1.4, "troll_health": 28, "troll_damage": 5, "troll_range": 9.0, "troll_attack_interval_seconds": 2.0}
   },
   "blocks": [
     {"voxel_id": 0, "id": "air", "drop": null, "min_pick_tier": 0, "protected": false, "solid": false},

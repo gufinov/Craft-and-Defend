@@ -1,4 +1,22 @@
-# Current checkpoint — 2026-09-19 (autonomous P4 build, awaiting owner playtest)
+# Current checkpoint — 2026-09-19 (P4F enemy units on `feature/p4-enemy-units`)
+
+**STATUS:** **P4F — ENEMY UNITS (ORC MELEE, BRUTE, TROLL RANGED) — CANDIDATE PASS IN THE EDITOR; NOT EXPORTED, NOT PLAYTESTED, NOT MERGED.** Bounded card built in worktree `worktrees\p4-enemy-units` on top of `6ba89ed` (`feature/p3d-tools-world-feedback`).
+
+**DONE:** `BasicRaider` rebuilt as box-part models from the owner's two reference images (orc with two cleavers and a red pauldron; brute = purple orc ×1.25; troll with crossbow, quiver, topknot) with a distance-driven walk bob, melee chop and crossbow kick; new `troll` kind (28 hp, 5 damage, speed 2.4) that stops within 9 cells of its route target and shoots a bolt every 2 s (core or breach structure); `"trolls"` wave option, drills carry 1/3 trolls; `troll` weapon target filter; balance keys `troll_*`; `P4EnemyUnitsAutomation` T144–T146; `TEST_P4_ENEMY_UNITS.cmd`. See [P4F](P4F_ENEMY_UNITS.md) and [evidence](evidence/P4F_ENEMY_UNITS.md).
+
+**EXPECT:** Pause → Start Wave Drill: an orc leads, then a purple brute, a blue-grey troll and three orcs from 22 cells; the troll halts about nine cells short of the core (or of the barricade it would breach) and fires bolts every two seconds; orcs chop at what they reach.
+
+**TEST:** Static PASS (179 links; 60/60). Editor: `--p4-enemy-units-automation=gate` (T144, T145) and windowed `=visual` (T146, `p4-enemy-units.png`) PASS; regression `--p4-siege-units-automation=gate/save/restore`, `--p3c-player-defense-automation=phase1`, `--p3b-core-defense-automation=phase1` PASS. Export and `TEST_P4_ENEMY_UNITS.cmd` NOT RUN. Owner playtest NOT RUN.
+
+**LIMITATIONS/FAILURES:** No line of sight for trolls; the bolt is presentation (damage lands with the timer); trolls do not target machines or the player; model proportions await owner notes.
+
+**NEXT:** Owner playtest of the wave drill with trolls; export; merge decision together with the P4 branch below.
+
+**GIT/REPRODUCIBILITY:** Worktree `D:\CODEX\Craft_and_Defend\worktrees\p4-enemy-units`, branch `feature/p4-enemy-units`, not pushed. Engine `4.6.stable.custom_build.89cea1439`, Voxel Tools 1.6.0 Module.
+
+---
+
+## Previous checkpoint — 2026-09-19 (autonomous P4 build, awaiting owner playtest)
 
 **STATUS:** **P4a-2..4, P4B, P4C/P4D and P4E — CANDIDATE PASS ON THE EXPORT (PCK `19bab7cb…`, branch `feature/p3d-tools-world-feedback`); OWNER PLAYTEST PENDING; NOT MERGED TO `main`.** Built while the owner was away on the standing instruction "program as much game logic as you can … don't stop working". `main` still holds the authorised baseline (`0be5f75`); merging this branch needs the owner's approval.
 

@@ -10,8 +10,8 @@ signal unload_requested
 signal stance_requested(stance: String)
 signal target_filter_requested(target_filter: String)
 
-const TARGET_FILTERS: Array[String] = ["any", "raider", "brute", "structure"]
-const TARGET_FILTER_LABELS: Dictionary = {"any": "Any target", "raider": "Raiders", "brute": "Brutes", "structure": "Structures"}
+const TARGET_FILTERS: Array[String] = ["any", "raider", "brute", "troll", "structure"]
+const TARGET_FILTER_LABELS: Dictionary = {"any": "Any target", "raider": "Raiders", "brute": "Brutes", "troll": "Trolls", "structure": "Structures"}
 
 var heading: Label
 var name_label: Label
