@@ -77,6 +77,17 @@ Eating is a struggle. *Proposal:* hunger meter that drains with time and sprinti
 
 *Proposal:* give held items their own 3D presentation built from the same box-part system the catapult uses: tools and weapons as small part assemblies (handle, head, edge) with a real pivot at the grip and a facing that can be rotated toward the crosshair; held blocks as a textured cube; ammunition and stations as scaled copies of their placed models. Icons stay 2D atlas art for the UI. Owner-authored art then targets one thing each: icons for menus, part lists (or later meshes) for the hand. The hinge/strike path already exists in 3D space, so only the sprite is replaced.
 
+## 11. Siege weapons that act (owner direction 2026-09-19)
+
+*Owner direction.* A placed weapon must **turn to face the enemy it targets** and **swing its armature to throw**. Weapons need an **ammunition supply**: either a radius rule (shot lying on the ground or in a nearby chest/bin) and/or — preferred — the weapon is **interactable**: right-click opens its own inventory with action controls (hold, fire at will, target unit type "x"); the player loads it to its limit and keeps chests nearby for reload; an **auto-reload** feature may pull from chests within "x" blocks. Larger idea: the player dumps resources into chests and the system **auto-distributes** to places that need them (weapons, foundries with a build queue) so the player does not micro-manage; requiring the chest to be near the consumer keeps it challenging. Because the world is 3D, actions need **motion**: shooting, reloading. Shot types differ: **stone** vs **flame** — a flame shot lights the night, explodes into fire on impact; fire burns "x" seconds on non-flammable ground but on wood it has fuel and keeps burning until the fuel is gone (fence, door, wooden wall) and **spreads to nearby structures** — a wooden town can be razed.
+
+*Implemented now (P4a-1):* turntable facing at a turn rate, throw animation on fire, wind-back over the reload, bucket stone shown only when loaded, shot launched from the bucket's real position.
+
+*Proposals for the cards:*
+- **P4a-2 weapon panel**: right-click a siege weapon → panel with an ammunition slot (its trough), stance (Hold / Fire at will), target filter (unit type), and a *supply radius* readout listing chests in range. Data: `siege.stance`, `siege.target_filter`, `siege.supply_radius`.
+- **P4a-3 supply**: a **Chest** entity (2×1 like the trough) and an **auto-reload** rule: an empty weapon takes ammunition from the nearest chest within `supply_radius` that holds its `ammo_item`. Same rule later feeds foundry queues — "auto-distribution" is this rule generalised to any consumer with a need list.
+- **P4a-4 shot types**: `stone_shot` (impact damage) and `flame_shot` (impact fire). Fire is a world effect: a burning cell lights, damages entities on it, expires after `burn_seconds` on non-flammable material, and on `flammable` material (planks, log, barricade, gate) consumes the block over `fuel_seconds` then spreads to flammable neighbours with probability per tick. Needs the voxel-breaching path (P4c) since fire removes blocks.
+
 ## 8. Suggested sequencing
 
 1. **P3I** Furnace auto-processing (small; also needed so refining gold is hands-off).

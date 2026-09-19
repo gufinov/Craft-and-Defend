@@ -547,8 +547,10 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_build_furnace_visual(body)
 	elif entity_id == "ballista":
 		_build_ballista_visual(body)
+		_wrap_siege_turret(body, definition)
 	elif entity_id == "catapult":
 		_build_catapult_visual(body)
+		_wrap_siege_turret(body, definition)
 	else:
 		_add_visual_parts(body, visual.get("parts", []), material, true)
 	add_child(body)
@@ -737,6 +739,36 @@ func _build_catapult_visual(parent: Node3D) -> void:
 	for angle in [0.0, 1.571, 3.142, 4.712]:
 		_add_stud(bucket, Vector3(cos(angle) * 0.37, 0.05, sin(angle) * 0.37), gold, Vector3(0.0, -angle, 0.0))
 	_add_mesh_cylinder(bucket, 0.18, 0.20, Vector3(0.0, 0.10, 0.0), Vector3.ZERO, _visual_material(Color("8f969d"), "res://assets/blocks/stone.svg"), "CatapultStone")
+
+
+## Moves every mesh part of a siege visual under a "SiegeTurret" node placed
+## at the footprint centre so the machine can turn to face its target without
+## touching occupancy or collision (P4a-1). Collision shapes stay on the body.
+func _wrap_siege_turret(body: Node3D, definition: Dictionary) -> void:
+	var cells: Array = definition.get("occupied_offsets", [])
+	var centre := Vector3.ZERO
+	if not cells.is_empty():
+		var minimum := Vector3(INF, 0.0, INF)
+		var maximum := Vector3(-INF, 0.0, -INF)
+		for value in cells:
+			var offset := _vector3_from_array(value, Vector3.ZERO)
+			minimum.x = minf(minimum.x, offset.x)
+			minimum.z = minf(minimum.z, offset.z)
+			maximum.x = maxf(maximum.x, offset.x)
+			maximum.z = maxf(maximum.z, offset.z)
+		centre = Vector3((minimum.x + maximum.x) * 0.5, 0.0, (minimum.z + maximum.z) * 0.5)
+	var turret := Node3D.new()
+	turret.name = "SiegeTurret"
+	turret.position = centre
+	var parts: Array[Node] = []
+	for child in body.get_children():
+		if child is Node3D and not child is CollisionShape3D:
+			parts.append(child)
+	body.add_child(turret)
+	for part in parts:
+		body.remove_child(part)
+		turret.add_child(part)
+		part.position -= centre
 
 
 ## A small gold diamond: a cube rotated 45 degrees about the given axis.

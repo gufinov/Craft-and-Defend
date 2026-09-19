@@ -117,6 +117,9 @@ func _run_phase1() -> void:
 	var ballista_before := app.session.workstations.siege_status(ballista_id)
 	var blocker := _make_blocker(app.session.siege_defense.trajectory_result(ballista_id, core.raider_target_position()).get("origin", Vector3.ZERO).lerp(core.raider_target_position(), 0.5))
 	await get_tree().physics_frame
+	# P4a-1: machines turn to face their target before firing; the firing-rule
+	# checks below face the raider instantly so they test range and occlusion.
+	app.session.siege_defense.face_target_now(ballista_id, core.raider_target_position())
 	var blocked := app.session.siege_defense._attempt_fire(ballista_id, ballista_before.get("details", {}))
 	var ammo_after_block := int(app.session.workstations.siege_status(ballista_id).get("details", {}).get("ammo", -1))
 	blocker.queue_free()
@@ -132,6 +135,7 @@ func _run_phase1() -> void:
 	var too_close := app.session.siege_defense.trajectory_result(catapult_id, muzzle + Vector3(2.0, 0.0, 0.0))
 	var too_far := app.session.siege_defense.trajectory_result(catapult_id, muzzle + Vector3(40.0, 0.0, 0.0))
 	var catapult_before := int(catapult_status.get("details", {}).get("ammo", -1))
+	app.session.siege_defense.face_target_now(catapult_id, core.raider_target_position())
 	var catapult_fire := app.session.siege_defense._attempt_fire(catapult_id, catapult_status.get("details", {}))
 	var catapult_after := int(app.session.workstations.siege_status(catapult_id).get("details", {}).get("ammo", -1))
 	var catapult_ok: bool = bool(catapult.get("ok", false)) and too_close.get("reason") == "TARGET_TOO_CLOSE" and too_far.get("reason") == "TARGET_TOO_FAR" and catapult_fire.get("ok", false) and catapult_after == catapult_before - 1 and core.raider_health == 5
@@ -145,6 +149,32 @@ func _run_phase1() -> void:
 	var restored_catapult := restored_service.siege_status(catapult_id)
 	var persistence_ok: bool = restored.get("ok", false) and int(restored_ballista.get("details", {}).get("ammo", -1)) == ammo_after_clear and int(restored_catapult.get("details", {}).get("ammo", -1)) == catapult_after
 	_record("T77_SIEGE_PERSISTENCE", persistence_ok, "placed siege identity, remaining ammunition and reload state round-trip through the existing station snapshot", {"restore": restored, "ballista": restored_ballista, "catapult": restored_catapult})
+
+	# P4a-1 motion: a fresh catapult turns toward the raider at TURN_RATE and
+	# only then fires; the arm whips to ARM_THROWN and winds back over the
+	# reload; the bucket stone is hidden while unloaded.
+	var siege := app.session.siege_defense
+	var turret: Node3D = app.session._station_visuals[catapult_id].get_node("SiegeTurret")
+	var arm: Node3D = turret.find_child("CatapultArm", true, false)
+	var stone: Node3D = turret.find_child("CatapultStone", true, false)
+	siege.face_target_now(catapult_id, core.raider_target_position())
+	turret.rotation.y = wrapf(turret.rotation.y + 2.4, -PI, PI)
+	var faced_immediately := siege.facing_target(catapult_id, core.raider_target_position())
+	var turned_seconds := 0.0
+	while not siege.facing_target(catapult_id, core.raider_target_position()) and turned_seconds < 3.0:
+		siege.advance(0.05, false)
+		turned_seconds += 0.05
+	var faced_after_turning := siege.facing_target(catapult_id, core.raider_target_position())
+	var thrown_after_fire := absf(arm.rotation.x - SiegeDefenseService.ARM_THROWN) < 0.3 or arm.has_meta("throwing")
+	var stone_hidden_after_fire: bool = not stone.visible
+	var cooldown_total := float(app.session.workstations.siege_status(catapult_id).get("details", {}).get("definition", {}).get("cooldown_seconds", 3.2))
+	arm.remove_meta("throwing")
+	for _step in range(int(ceil(cooldown_total / 0.1)) + 2):
+		siege.advance(0.1, false)
+	var rest_after_reload := absf(arm.rotation.x - SiegeDefenseService.ARM_REST) < 0.05
+	var stone_back: bool = stone.visible
+	_record("T118_CATAPULT_MOTION", not faced_immediately and faced_after_turning and turned_seconds > 0.5 and turned_seconds < 2.5 and thrown_after_fire and stone_hidden_after_fire and rest_after_reload and stone_back, "a catapult turned away from the raider swings its turntable to face it at the turn rate before firing, the arm whips forward on the shot and winds back to rest over the reload, and the bucket stone reappears only when reloaded", {"faced_immediately": faced_immediately, "turned_seconds": turned_seconds, "faced_after_turning": faced_after_turning, "thrown_after_fire": thrown_after_fire, "stone_hidden_after_fire": stone_hidden_after_fire, "rest_after_reload": rest_after_reload, "stone_back": stone_back})
+
 
 
 func _run_save_checkpoint() -> void:

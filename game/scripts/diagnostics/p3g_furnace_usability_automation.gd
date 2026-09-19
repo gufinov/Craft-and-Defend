@@ -91,11 +91,14 @@ func _run_gate() -> void:
 	var catapult_id := str(catapult.get("details", {}).get("station", {}).get("instance_id", ""))
 	var catapult_body: Node3D = app.session._station_visuals.get(catapult_id)
 	var wheel_count := 0
+	var part_count := 0
+	var turret_ok := false
 	if catapult_body != null:
-		for child in catapult_body.get_children():
-			if str(child.name).begins_with("CatapultWheel_"):
-				wheel_count += 1
-	_record("T97_CATAPULT_WORLD_IDENTITY", catapult.get("ok", false) and catapult_body != null and wheel_count == 4 and catapult_body.get_child_count() >= 14, "the placed Catapult has a recognizable wheeled chassis, axle, throwing arm, basket and projectile rather than generic boxes", {"parts": catapult_body.get_child_count() if catapult_body != null else 0, "wheels": wheel_count})
+		var turret: Node = catapult_body.get_node_or_null("SiegeTurret")
+		turret_ok = turret != null and turret.find_child("CatapultArm", true, false) != null and turret.find_child("CatapultBucket", true, false) != null
+		wheel_count = catapult_body.find_children("CatapultWheel_*", "", true, false).size()
+		part_count = catapult_body.find_children("*", "MeshInstance3D", true, false).size()
+	_record("T97_CATAPULT_WORLD_IDENTITY", catapult.get("ok", false) and catapult_body != null and wheel_count == 4 and part_count >= 14 and turret_ok, "the placed Catapult has a recognizable wheeled chassis, axle, throwing arm, basket and projectile rather than generic boxes", {"parts": part_count, "wheels": wheel_count, "turret": turret_ok})
 
 	# P3I: a Furnace with input and fuel deposited, never started by hand, runs
 	# on its own and keeps running one item at a time until the input is spent.
