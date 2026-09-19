@@ -327,6 +327,38 @@ func _run_gate() -> void:
 	var raider_still_routing := core.active_target_type == "core"
 	_record("T147_BRUTE_SMASHES_DEFENSES", bait.get("ok", false) and brute_wave.get("ok", false) and brute_node != null and diverted and chest_after < chest_before and raider_still_routing, "a brute within reach of a chest turns on it and hits it (integrity drops) while the plain raider keeps its core route", {"bait": bait.get("reason"), "wave": brute_wave.get("reason"), "diverted": diverted, "phase": brute_entry.get("phase", ""), "target": brute_entry.get("target_id", ""), "chest_before": chest_before, "chest_after": chest_after, "raider_target": core.active_target_type})
 
+	# T151 far attack: the wave spawns at the enemy base 150-200 cells away,
+	# marches the generated surface (ghost-walking over unloaded ground) and
+	# hands over to the local planner once inside the defended area.
+	core.clear_for_other_mode()
+	var generator: P1TerrainGenerator = world.terrain.generator
+	var base := generator.enemy_base_cell()
+	var far_attack := core.start_prototype({"raiders": 3, "brutes": 1, "from_enemy_base": true})
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var base_distance := Vector2(float(base.x - center.x), float(base.z - center.z)).length()
+	var spawned_far := true
+	var routed_all := true
+	for node in core.raider_nodes():
+		var away := Vector2(node.global_position.x - center.x, node.global_position.z - center.z).length()
+		if away < 100.0:
+			spawned_far = false
+		if node.route.size() < 50:
+			routed_all = false
+	var lead_start: Vector3 = core.raider.global_position
+	for _frame in range(120):
+		await get_tree().physics_frame
+	var lead_moved := lead_start.distance_to(core.raider.global_position)
+	var marching := core.last_route_reason == "MARCHING" and core.state == CoreDefenseService.ROUTING
+	# Jump the lead to the handover ring and finish its march: the local
+	# planner (or its terrain wait) takes over.
+	core.raider.active = false
+	core.raider.global_position = Vector3(center + Vector3i(0, 0, -10)) + Vector3(0.5, 0.9, 0.5)
+	core._on_raider_route_finished()
+	var handed_over := core.last_route_reason != "MARCHING"
+	_record("T151_FAR_ATTACK_FROM_ENEMY_BASE", far_attack.get("ok", false) and base_distance >= 150.0 and base_distance <= 200.0 and spawned_far and routed_all and lead_moved >= 4.0 and marching and handed_over, "the enemy base lies 150-200 cells from home; a far wave spawns there with long surface routes, marches (ghost-walking unloaded ground) and hands over to the local planner inside the defended area", {"far": far_attack.get("reason"), "base": base, "base_distance": base_distance, "spawned_far": spawned_far, "routed_all": routed_all, "lead_moved": lead_moved, "marching": marching, "handover_reason": core.last_route_reason})
+	core.clear_for_other_mode()
+
 
 ## Rendered evidence: the five machines (ballista, catapult, turret catapult on
 ## a tower platform, cannon, kettle on a rail-topped wall) in one 1280x720 view.

@@ -449,7 +449,8 @@ func _build_pause(canvas: CanvasLayer) -> void:
 	pause_box.add_child(_button("Settings", _show_settings))
 	pause_box.add_child(_button("Keybinds", _show_keybinds))
 	pause_box.add_child(_button("Start Defense Drill", _start_defense_drill))
-	pause_box.add_child(_button("Start Core Defense Prototype", _start_core_defense_prototype))
+	pause_box.add_child(_button("Start Attack from the Enemy Base (far)", _start_far_attack))
+	pause_box.add_child(_button("Start Drill (NEAR): single raider", _start_core_defense_prototype))
 	pause_box.add_child(_button("Start Wave Drill (4 orcs + 1 brute + 1 troll, far spawn)", _start_wave_drill))
 	pause_box.add_child(_button("Start Siege Drill (6 orcs + 3 brutes + 3 trolls, farthest spawn)", _start_siege_drill))
 	pause_box.add_child(_button("Save and Exit to Menu", _save_and_exit_to_menu))
@@ -1287,6 +1288,15 @@ func _start_core_defense_prototype() -> void:
 	if state != AppState.PAUSED or session == null:
 		return
 	var result := session.start_core_defense_prototype()
+	if result.get("ok", false):
+		_resume_game()
+
+
+## P4E: the real thing — a wave marches from the enemy base across the map.
+func _start_far_attack() -> void:
+	if state != AppState.PAUSED or session == null:
+		return
+	var result := session.start_core_defense_prototype({"raiders": 8, "brutes": 2, "trolls": 2, "from_enemy_base": true})
 	if result.get("ok", false):
 		_resume_game()
 

@@ -31,6 +31,11 @@ var kind := KIND_RAIDER
 var move_speed := MOVE_SPEED
 ## Set by die(): the body topples, stays a few seconds, then frees itself.
 var dead := false
+## Set by the drill: cell -> bool, true when the world has that cell loaded.
+## Over unloaded ground the body ghost-walks its route kinematically (no
+## physics, y from the route cell) so a march from the far enemy base keeps
+## going where no chunks exist yet.
+var ground_loaded: Callable
 const STUCK_SECONDS := 1.6
 var _stuck_timer := 0.0
 var _best_distance := INF
@@ -228,14 +233,23 @@ func _physics_process(delta: float) -> void:
 			_best_distance = INF
 			stuck.emit()
 	var direction := horizontal.normalized()
+	if direction.length_squared() > 0.0:
+		look_at(global_position + direction, Vector3.UP)
+	if ground_loaded.is_valid() and not bool(ground_loaded.call(feet_cell() + Vector3i.DOWN)):
+		# Ghost walk: slide along the route at walking speed, y from the route.
+		var step := minf(move_speed * delta, horizontal.length())
+		global_position += direction * step
+		global_position.y = move_toward(global_position.y, target.y, 4.0 * delta)
+		velocity = Vector3(direction.x * move_speed, 0.0, direction.z * move_speed)
+		_walk_distance += step
+		_animate_walk(delta, true)
+		return
 	velocity.x = direction.x * move_speed
 	velocity.z = direction.z * move_speed
 	if is_on_floor():
 		velocity.y = clampf(offset.y * 6.0, -2.0, 5.0)
 	else:
 		velocity.y -= GRAVITY * delta
-	if direction.length_squared() > 0.0:
-		look_at(global_position + direction, Vector3.UP)
 	move_and_slide()
 	_walk_distance += Vector2(velocity.x, velocity.z).length() * delta
 	_animate_walk(delta, true)

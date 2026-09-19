@@ -85,6 +85,13 @@ var _stall_retry_pending := false
 const STALL_RETRY_SECONDS := 2.0
 const BRUTE_SMASH_RADIUS := 2.6
 const WAVE_SPREAD := 4
+## Far waves (P4E): raiders march from the enemy base over the generated
+## surface and hand over to the local planner MARCH_HANDOVER cells from the
+## arena; the local capture then covers LOCAL_RADIUS around the arena.
+const MARCH_HANDOVER := 18
+const LOCAL_RADIUS := 20
+var far_mode := false
+var _march_router: SurfaceRouter
 var _wave_rng := RandomNumberGenerator.new()
 var _capture_retries := 0
 const CAPTURE_RETRY_LIMIT := 40
@@ -153,11 +160,17 @@ func restore_after_world_ready() -> Dictionary:
 	active_target_cell = _vector3i_from_array(saved.get("active_target_cell", []), Vector3i.ZERO)
 	spawn_distance = clampi(int(saved.get("spawn_distance", SPAWN_DISTANCE)), SPAWN_DISTANCE, MAX_SPAWN_DISTANCE)
 	wave_size = maxi(1, int(saved.get("wave_size", 1)))
+	far_mode = bool(saved.get("far_mode", false)) and _terrain_generator() != null
 	_build_core_visual()
 	if state in [ROUTING, ATTACKING_STRUCTURE, ATTACKING_CORE] and raider_health > 0 and core_integrity > 0:
 		var saved_position := _vector3_from_array(saved.get("raider_position", []), _start_position())
 		_spawn_raider(_settled_position(saved_position))
-		_plan_from_raider()
+		if far_mode and not _within_local_area(raider):
+			last_route_reason = "MARCHING"
+			active_target_type = ""
+			_remarch(raider)
+		else:
+			_plan_from_raider()
 	if state in [ROUTING, ATTACKING_STRUCTURE, ATTACKING_CORE] and core_integrity > 0:
 		var saved_extras: Variant = saved.get("extra_raiders", [])
 		if saved_extras is Array:
@@ -166,7 +179,11 @@ func restore_after_world_ready() -> Dictionary:
 					continue
 				var entry := _spawn_extra_raider(_settled_position(_vector3_from_array(value.get("position", []), _start_position())), str(value.get("kind", BasicRaider.KIND_RAIDER)))
 				entry.health = clampi(int(value.get("health", entry.max_health)), 1, int(entry.max_health))
-				_plan_extra(entry)
+				if far_mode and not _within_local_area(entry.node):
+					entry.phase = "marching"
+					_remarch(entry.node)
+				else:
+					_plan_extra(entry)
 	_emit_state()
 	return {"ok": true, "reason": "OK"}
 
@@ -179,12 +196,14 @@ func restore_after_world_ready() -> Dictionary:
 func start_prototype(options: Dictionary = {}) -> Dictionary:
 	if is_active():
 		return {"ok": false, "reason": "DEFENSE_ALREADY_ACTIVE"}
+	var requested_far := bool(options.get("from_enemy_base", false)) and _terrain_generator() != null
 	var requested_distance := clampi(int(options.get("spawn_distance", SPAWN_DISTANCE)), SPAWN_DISTANCE, MAX_SPAWN_DISTANCE)
-	var found := _find_available_arena(requested_distance)
+	var found := _find_available_arena(SPAWN_DISTANCE if requested_far else requested_distance)
 	if not found.get("ok", false):
 		return found
 	_clear_fixture()
 	arena_center = found.get("center", Vector3i.ZERO)
+	far_mode = requested_far
 	spawn_distance = requested_distance
 	_wave_rng.randomize()
 	wave_size = maxi(1, int(options.get("raiders", 1)))
@@ -203,7 +222,10 @@ func start_prototype(options: Dictionary = {}) -> Dictionary:
 	navigation_revision = 0
 	exact_invalidations = 0
 	_build_core_visual()
-	if wave_size > 1:
+	if far_mode:
+		var base := _terrain_generator().enemy_base_cell()
+		feedback.emit("The enemy base at %d, %d is sending %d raiders (%d cells away). They arrive in about %d seconds; build around your core." % [base.x, base.z, wave_size, int(Vector2(float(base.x - arena_center.x), float(base.z - arena_center.z)).length()), ceili(warning_seconds) + int(Vector2(float(base.x - arena_center.x), float(base.z - arena_center.z)).length() / BasicRaider.MOVE_SPEED)])
+	elif wave_size > 1:
 		feedback.emit("Wave setup: %d raiders will enter from %d cells out in %d seconds. Build across the field-side approach." % [wave_size, spawn_distance, ceili(warning_seconds)])
 	else:
 		feedback.emit("Core-defense setup: 20 seconds. Place wooden barricades across the field-side approach; any opening will be used.")
@@ -238,6 +260,8 @@ func _advance_extras(delta: float) -> void:
 		if int(entry.health) <= 0 or not is_instance_valid(entry.node):
 			continue
 		var phase := str(entry.get("phase", "routing"))
+		if phase == "marching":
+			continue
 		if phase == "routing":
 			if str(entry.kind) == BasicRaider.KIND_BRUTE:
 				_brute_smashes_nearby(entry, delta)
@@ -418,6 +442,7 @@ func snapshot() -> Dictionary:
 		"navigation_revision": navigation_revision,
 		"spawn_distance": spawn_distance,
 		"wave_size": wave_size,
+		"far_mode": far_mode,
 		"extra_raiders": _extras_snapshot(),
 	}
 
@@ -555,6 +580,9 @@ func hud_text() -> String:
 		WARNING:
 			return "⚠ CORE SETUP · raider in %d · build across the field-side approach · core %d/%d" % [ceili(warning_remaining), core_integrity, core_max_integrity]
 		ROUTING:
+			if far_mode and last_route_reason == "MARCHING" and is_instance_valid(raider):
+				var away := Vector2(float(raider.global_position.x - arena_center.x), float(raider.global_position.z - arena_center.z)).length()
+				return "WAVE MARCHING FROM THE ENEMY BASE · %d/%d raiders · lead %d m out · core %d/%d" % [living_raider_count(), wave_size, int(away), core_integrity, core_max_integrity]
 			if last_route_reason in ["NO_PERMITTED_ROUTE", "NO_PERMITTED_BREACH", "NO_APPROACH_ROUTE"]:
 				return "RAIDERS PROBING FOR A WAY IN · %d/%d left · no route they can breach yet · core %d/%d" % [living_raider_count(), wave_size, core_integrity, core_max_integrity]
 			if wave_size > 1:
@@ -575,6 +603,9 @@ func hud_text() -> String:
 
 func _begin_attack() -> void:
 	state = ROUTING
+	if far_mode:
+		_begin_far_attack()
+		return
 	# Bodies only enter once the terrain under the spawn line is loaded and
 	# captured; a body spawned over unloaded ground falls through it.
 	_capture_navigation()
@@ -611,6 +642,72 @@ func _begin_attack() -> void:
 	else:
 		feedback.emit("Raider entered from the field side with the strategic core as its destination.")
 	_emit_state()
+
+
+## Far attack: the wave spawns around the enemy base and marches the surface
+## route toward the arena; the local planner takes over on arrival.
+func _begin_far_attack() -> void:
+	var generator := _terrain_generator()
+	_march_router = SurfaceRouter.new(generator)
+	var base := generator.enemy_base_cell()
+	var march := _march_router.route(Vector2i(base.x, base.z), Vector2i(arena_center.x, arena_center.z), MARCH_HANDOVER)
+	_spawn_raider(Vector3(base) + Vector3(0.5, 0.9, 0.5))
+	_start_march(raider, march)
+	active_target_type = ""
+	last_route_reason = "MARCHING"
+	var brutes_left := _pending_brutes
+	var trolls_left := _pending_trolls
+	for index in range(1, wave_size):
+		var kind := BasicRaider.KIND_RAIDER
+		if brutes_left > 0:
+			kind = BasicRaider.KIND_BRUTE
+			brutes_left -= 1
+		elif trolls_left > 0:
+			kind = BasicRaider.KIND_TROLL
+			trolls_left -= 1
+		var offset := _wave_offset(index)
+		var column := Vector2i(base.x + int(offset.x), base.z + int(offset.z))
+		var spawn_cell := Vector3i(column.x, generator.surface_height(column.x, column.y) + 1, column.y)
+		var entry := _spawn_extra_raider(Vector3(spawn_cell) + Vector3(0.5, 0.9, 0.5), kind)
+		entry.phase = "marching"
+		_start_march(entry.node, march)
+	feedback.emit("A wave of %d left the enemy base and is marching on your core." % wave_size)
+	_emit_state()
+
+
+func _start_march(node: BasicRaider, march: Array[Vector3i]) -> void:
+	if march.is_empty():
+		return
+	node.ground_loaded = _ground_loaded
+	var cells: Array = []
+	for cell in march:
+		cells.append(cell)
+	node.set_route(cells)
+
+
+func _ground_loaded(cell: Vector3i) -> bool:
+	return str(world.query_cell(cell).get("state", "UNLOADED")) == "LOADED"
+
+
+## Re-routes a marching body from where it stands (stuck, or restored).
+func _remarch(node: BasicRaider) -> void:
+	if _march_router == null:
+		_march_router = SurfaceRouter.new(_terrain_generator())
+	var feet := node.feet_cell()
+	var march := _march_router.route(Vector2i(feet.x, feet.z), Vector2i(arena_center.x, arena_center.z), MARCH_HANDOVER)
+	_start_march(node, march)
+
+
+func _within_local_area(node: BasicRaider) -> bool:
+	var feet := node.feet_cell()
+	return absi(feet.x - arena_center.x) <= LOCAL_RADIUS - 2 and absi(feet.z - arena_center.z) <= LOCAL_RADIUS - 2
+
+
+func _terrain_generator() -> P1TerrainGenerator:
+	if world == null or world.terrain == null:
+		return null
+	var generator: Variant = world.terrain.generator
+	return generator if generator is P1TerrainGenerator else null
 
 
 ## Spread the wave across the spawn line: a seeded random lateral spread of
@@ -662,14 +759,21 @@ func _spawn_extra_raider(spawn_position: Vector3, kind: String) -> Dictionary:
 ## A body that stopped gaining on its next cell re-plans from where it
 ## actually stands (corner clipping, a tree, a fallen barricade).
 func _on_raider_stuck() -> void:
-	if is_active() and is_instance_valid(raider) and raider_health > 0:
-		_capture_navigation()
-		_plan_from_raider()
+	if not (is_active() and is_instance_valid(raider) and raider_health > 0):
+		return
+	if far_mode and last_route_reason == "MARCHING":
+		_remarch(raider)
+		return
+	_capture_navigation()
+	_plan_from_raider()
 
 
 func _on_extra_stuck(node: BasicRaider) -> void:
 	for entry in extra_raiders:
 		if entry.node == node and int(entry.health) > 0:
+			if str(entry.get("phase", "")) == "marching":
+				_remarch(node)
+				return
 			_capture_navigation()
 			_plan_extra(entry)
 			return
@@ -725,6 +829,14 @@ func _on_extra_route_finished(node: BasicRaider) -> void:
 	for entry in extra_raiders:
 		if entry.node != node:
 			continue
+		if str(entry.get("phase", "")) == "marching":
+			if _within_local_area(node):
+				if navigation_snapshot == null:
+					_capture_navigation()
+				_plan_extra(entry)
+			else:
+				_remarch(node)
+			return
 		entry.attack_timer = 0.3
 		if str(entry.target_type) == "core":
 			entry.phase = "attacking_core"
@@ -737,6 +849,8 @@ func _on_extra_route_finished(node: BasicRaider) -> void:
 
 func _plan_from_raider() -> void:
 	if not is_instance_valid(raider) or core_integrity <= 0:
+		return
+	if far_mode and last_route_reason == "MARCHING":
 		return
 	_capture_navigation()
 	if navigation_snapshot == null:
@@ -801,12 +915,22 @@ func _stall(reason: String) -> void:
 
 func _retry_after_stall() -> void:
 	_stall_retry_pending = false
-	if is_active() and core_integrity > 0:
+	if is_active() and core_integrity > 0 and not (far_mode and last_route_reason == "MARCHING"):
 		_queue_replan()
 
 
 func _on_raider_route_finished() -> void:
 	if not is_instance_valid(raider):
+		return
+	if far_mode and last_route_reason == "MARCHING":
+		# The march ended: inside the local area the voxel planner takes over,
+		# otherwise (budget-limited partial path) keep marching.
+		if _within_local_area(raider):
+			last_route_reason = ""
+			_capture_navigation()
+			_plan_from_raider()
+		else:
+			_remarch(raider)
 		return
 	attack_timer = 0.3
 	if active_target_type == "core":
@@ -860,7 +984,10 @@ func _capture_navigation() -> void:
 	var half_width := 5 if spawn_distance <= SPAWN_DISTANCE else 7
 	var depth := 2 if spawn_distance <= SPAWN_DISTANCE else 8
 	var height := 5 if spawn_distance <= SPAWN_DISTANCE else 18
-	var region := AABB(Vector3(arena_center + Vector3i(-half_width, -depth, -spawn_distance - 2)), Vector3(half_width * 2 + 1, height, spawn_distance + 9))
+	var region := AABB(Vector3(arena_center + Vector3i(-half_width, -depth, -spawn_distance - 6)), Vector3(half_width * 2 + 1, height, spawn_distance + 13))
+	if far_mode:
+		# Raiders arrive from any bearing: a square around the arena.
+		region = AABB(Vector3(arena_center + Vector3i(-LOCAL_RADIUS, -8, -LOCAL_RADIUS)), Vector3(LOCAL_RADIUS * 2 + 1, 18, LOCAL_RADIUS * 2 + 1))
 	var result := navigation_snapshot.capture(region, _query_navigation_cell, world.revision + navigation_revision)
 	_capture_reason = str(result.get("reason", "OK"))
 	if not result.get("ok", false):
@@ -922,7 +1049,7 @@ func _run_queued_replan() -> void:
 	if is_instance_valid(raider) and core_integrity > 0:
 		_plan_from_raider()
 	for entry in extra_raiders:
-		if int(entry.health) > 0 and str(entry.get("phase", "routing")) != "attacking_core":
+		if int(entry.health) > 0 and str(entry.get("phase", "routing")) not in ["attacking_core", "marching"]:
 			_plan_extra(entry)
 
 
@@ -1055,6 +1182,9 @@ func _settled_position(saved_position: Vector3) -> Vector3:
 	var column := Vector3i(floori(saved_position.x), floori(saved_position.y - 0.5), floori(saved_position.z))
 	var surface := _surface_cell(column)
 	if surface == Vector3i.MAX:
+		var generator := _terrain_generator()
+		if generator != null:
+			return Vector3(float(column.x) + 0.5, float(generator.surface_height(column.x, column.z)) + 1.9, float(column.z) + 0.5)
 		return saved_position
 	return Vector3(surface) + Vector3(0.5, 0.9, 0.5)
 
