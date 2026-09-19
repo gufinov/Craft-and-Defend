@@ -226,14 +226,17 @@ func restore(data: Dictionary) -> bool:
 
 
 func _position_inside_world() -> void:
+	# The world's edge comes from world.json (P4E): every generated cell is walkable.
 	var before := position
-	position.x = clampf(position.x, -31.65, 31.65)
-	position.z = clampf(position.z, -63.65, 63.65)
+	var minimum := Vector3(WorldAdapter.WORLD_MIN) + Vector3(0.35, 0.0, 0.35)
+	var maximum := Vector3(WorldAdapter.WORLD_MIN + WorldAdapter.WORLD_SIZE) - Vector3(0.35, 0.0, 0.35)
+	position.x = clampf(position.x, minimum.x, maximum.x)
+	position.z = clampf(position.z, minimum.z, maximum.z)
 	if not position.is_equal_approx(before):
 		var now := Time.get_ticks_msec()
 		if now - _last_boundary_notice_msec >= 800:
 			_last_boundary_notice_msec = now
-			boundary_feedback.emit("World boundary — the finite F1 test world ends here.")
+			boundary_feedback.emit("World boundary — the map ends here.")
 
 
 func _report(result: Dictionary) -> void:

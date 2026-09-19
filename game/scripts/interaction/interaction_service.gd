@@ -629,10 +629,38 @@ func break_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
 
 
 func place_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
-	var hit := world.raycast(origin, direction)
-	if hit == null:
+	var anchor := placement_anchor_from_view(origin, direction)
+	if anchor == Vector3i.MAX:
 		return _finish(false, "NO_TARGET")
-	return try_place_item(hit.previous_position, inventory.active_item_id())
+	return try_place_item(anchor, inventory.active_item_id())
+
+
+## The cell a held item lands in: the last free cell along the aim before the
+## first solid voxel OR entity-owned cell. The voxel raycast alone sees
+## through entities, so aiming at a rail/platform used to pick the rail's own
+## (occupied) cell instead of the cell on top of it. Vector3i.MAX = nothing
+## within reach.
+func placement_anchor_from_view(origin: Vector3, direction: Vector3, reach: float = 5.0) -> Vector3i:
+	var step := direction.normalized() * 0.05
+	var point := origin
+	var previous := Vector3i(floori(origin.x), floori(origin.y), floori(origin.z))
+	var travelled := 0.0
+	while travelled <= reach:
+		point += step
+		travelled += 0.05
+		var cell := Vector3i(floori(point.x), floori(point.y), floori(point.z))
+		if cell == previous:
+			continue
+		var query := world.query_cell(cell)
+		if str(query.get("state", "")) != "LOADED":
+			return Vector3i.MAX
+		var blocked := int(query.get("voxel_id", AIR)) != AIR
+		if not blocked and workstations != null and not workstations.station_at_cell(cell).is_empty():
+			blocked = true
+		if blocked:
+			return previous
+		previous = cell
+	return Vector3i.MAX
 
 
 func placement_preview_from_view(origin: Vector3, direction: Vector3) -> Dictionary:
@@ -640,10 +668,9 @@ func placement_preview_from_view(origin: Vector3, direction: Vector3) -> Diction
 	var item := registry.item(item_id)
 	if item.is_empty() or (not item.has("places_entity") and not item.has("places_block")):
 		return {"visible": false}
-	var hit := world.raycast(origin, direction)
-	if hit == null:
+	var anchor := placement_anchor_from_view(origin, direction)
+	if anchor == Vector3i.MAX:
 		return {"visible": false, "reason": "NO_TARGET"}
-	var anchor: Vector3i = hit.previous_position
 	var checked := preview_place_item(anchor, item_id, placement_rotation_quarters)
 	return {
 		"visible": true,

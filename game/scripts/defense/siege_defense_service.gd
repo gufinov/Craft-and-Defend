@@ -479,6 +479,13 @@ func _ride_rails(instance_id: String, details: Dictionary, target: Vector3, delt
 			if d < best:
 				best = d
 				goal = cell
+	elif str(details.get("stance", "fire_at_will")) == "patrol" and chain.size() > 1:
+		# Patrol: ride to the far end of the chain, then back to the other end.
+		var patrol_goal: Vector3i = rider.get("patrol_goal", Vector3i.MAX)
+		if patrol_goal == Vector3i.MAX or not chain.has(patrol_goal) or patrol_goal == current:
+			patrol_goal = _chain_end_farthest(chain, current)
+			rider.patrol_goal = patrol_goal
+		goal = patrol_goal
 	var speed := float(details.get("definition", {}).get("rail_speed", 2.0))
 	var body: Node3D = turret.get_parent()
 	var desired_global := Vector3(current) + Vector3(0.5, 1.5, 0.5)
@@ -496,6 +503,25 @@ func _ride_rails(instance_id: String, details: Dictionary, target: Vector3, delt
 	_rail_riders[instance_id] = rider
 	if body != null:
 		body.set_meta("rail_cell", current)
+
+
+## The chain cell farthest (by chain distance) from `from`: the patrol turn point.
+func _chain_end_farthest(chain: Dictionary, from: Vector3i) -> Vector3i:
+	var distance: Dictionary = {from: 0}
+	var queue: Array[Vector3i] = [from]
+	var index := 0
+	var farthest := from
+	while index < queue.size():
+		var cell := queue[index]
+		index += 1
+		if int(distance[cell]) > int(distance[farthest]):
+			farthest = cell
+		for offset: Vector3i in RAIL_STEPS:
+			var next: Vector3i = cell + offset
+			if chain.has(next) and not distance.has(next):
+				distance[next] = int(distance[cell]) + 1
+				queue.append(next)
+	return farthest
 
 
 ## Where a rider currently sits on its chain (diagnostics).

@@ -681,8 +681,10 @@ func siege_status(instance_id: String) -> Dictionary:
 func siege_set_stance(instance_id: String, stance: String) -> Dictionary:
 	if not siege_status(instance_id).get("ok", false):
 		return _result(false, "NOT_SIEGE")
-	if stance not in ["fire_at_will", "hold"]:
+	if stance not in ["fire_at_will", "hold", "patrol"]:
 		return _result(false, "INVALID_STANCE")
+	if stance == "patrol" and float(siege_status(instance_id).get("details", {}).get("definition", {}).get("rail_speed", 0.0)) <= 0.0:
+		return _result(false, "NOT_A_RAIL_WEAPON")
 	stations[instance_id]["siege_stance"] = stance
 	var result := _result(true, "STANCE_SET", {"instance_id": instance_id, "stance": stance})
 	station_changed.emit(result)

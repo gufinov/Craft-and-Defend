@@ -40,6 +40,14 @@ Owner direction (2026-09-19): "randomize the world generation and ensure ore is 
 - **Navigation**: water is impassable for raiders (they path around lakes).
 - **View distance**: Settings → Graphics → Terrain view distance (64/128/192/256/320 blocks, default 128; `WorldAdapter.set_view_distance`, saved in settings.cfg).
 
+## Round-3 owner notes: fence, minimap, kettle, mountains
+
+- **No invisible fence**: the player clamp uses the world.json edge (`PlayerController._position_inside_world`), so every generated cell is reachable.
+- **Minimap** (`MinimapOverlay`, top-right; **M** toggles the full world map): generator heights coloured by elevation (contours every 4 blocks, lakes blue, rock grey to snow), home marker, placed cores (blue/red), enemy base (red), player heading arrow. Heights are cached per column and the image is rebuilt in row slices, so it never hitches; player edits are not drawn (topology of the generated world).
+- **Kettle placement**: the placement aim (`InteractionService.placement_anchor_from_view`) now stops at entity-owned cells too, so aiming at a rail lands the kettle on the cell above it instead of "inside" the rail (which the voxel raycast saw through).
+- **Patrol** stance (rail weapons only; panel button appears for them): while idle the kettle rides its connected rail chain end to end (`_chain_end_farthest`) and still fires at will; with a target it rides to the nearest rail cell as before.
+- **Mountains**: no mountain lift within 30–55 cells of home and along an 8–20 cell corridor between home and the enemy base, so raiders (one step up/down) always have a way in and the player is never ringed by peaks.
+
 ## Acceptance
 
 T151 (far attack from the enemy base), T152 (placed core defended) in `--p4-siege-units-automation=gate`; world tests T137/T138 follow the new bands; F0 T03/T06 follow the bounds; the P1 visual shows a lake beside the clearing.

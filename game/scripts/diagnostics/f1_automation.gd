@@ -155,9 +155,10 @@ func _test_boundaries() -> void:
 	var bottom_result := app.session.interaction.try_break_cell(bottom_cell)
 	_record("T15_PROTECTED_BOTTOM", loaded and bottom_result.get("reason") == "PROTECTED" and before_bottom == _mutation_snapshot(), "bottom bedrock refuses removal without mutation", bottom_result)
 
-	app.session.player.position = Vector3(100.0, app.session.player.position.y, 100.0)
+	var edge := Vector3(WorldAdapter.WORLD_MIN + WorldAdapter.WORLD_SIZE)
+	app.session.player.position = Vector3(edge.x + 40.0, app.session.player.position.y, edge.z + 40.0)
 	app.session.player._position_inside_world()
-	_record("T15_PLAYER_BOUNDARY_FEEDBACK", app.session.player.position.x <= 31.651 and app.session.player.position.z <= 63.651 and app.feedback_label.text.contains("World boundary"), "player is contained with visible edge feedback", {"position": app.session.player.position, "feedback": app.feedback_label.text})
+	_record("T15_PLAYER_BOUNDARY_FEEDBACK", app.session.player.position.x <= edge.x and app.session.player.position.z <= edge.z and app.feedback_label.text.contains("World boundary"), "player is contained at the world.json edge with visible edge feedback", {"position": app.session.player.position, "feedback": app.feedback_label.text, "edge": edge})
 	app.session.player.position = Vector3(0.5, 0.0, 40.5)
 
 

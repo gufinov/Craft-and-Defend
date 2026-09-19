@@ -445,6 +445,44 @@ func _run_gate() -> void:
 	_record("T153_AGGRO_AND_PLAYER_HEALTH", aggro.get("ok", false) and swing.get("ok", false) and provoked and hit_back and back_to_core and chases_machine and chest_hurt and respawned, "a sword hit lands and provokes the raider, which chases and hits the player (health drops); when attention lapses it returns to the core; a machine that hurt it gets chased and hit; the player respawns at full health", {"aggro": aggro.get("reason"), "swing": swing.get("reason"), "provoked": provoked, "hit_back": hit_back, "health_after": player.health if not respawned else health_before, "player_hits": core.player_hits, "back_to_core": back_to_core, "route": core.last_route_reason, "chases_machine": chases_machine, "chest_hurt": chest_hurt, "respawned": respawned})
 	core.clear_for_other_mode()
 
+	# T154 rail aiming and patrol: aiming at a rail from above lands the kettle
+	# on the cell over the rail (the aim stops at entity-owned cells); Patrol
+	# rides the chain end to end while idle.
+	core.clear_for_other_mode()
+	var rail_base := center + Vector3i(-6, 0, 6)
+	for x in range(5):
+		for y in range(2):
+			world.set_cell(rail_base + Vector3i(x, y, 0), 8)
+	app.session.inventory.try_transaction({}, {"rail": 5, "kettle": 1})
+	var rails_laid := true
+	for x in range(5):
+		rails_laid = rails_laid and bool(app.session.interaction.try_place_item(rail_base + Vector3i(x, 2, 0), "rail").get("ok", false))
+	var aim_origin := Vector3(rail_base) + Vector3(2.5, 6.0, 0.5)
+	var aim_cell := app.session.interaction.placement_anchor_from_view(aim_origin, Vector3.DOWN)
+	var aimed_above_rail := aim_cell == rail_base + Vector3i(2, 3, 0)
+	var kettle_slot := -1
+	for slot_index in range(F0Inventory.SLOT_COUNT):
+		if str(app.session.inventory.slots[slot_index].get("item_id", "")) == "kettle":
+			kettle_slot = slot_index
+	if kettle_slot >= F0Inventory.HOTBAR_COUNT:
+		app.session.inventory.swap_slots(kettle_slot, 1)
+		kettle_slot = 1
+	app.session.inventory.select_hotbar(kettle_slot)
+	var kettle_from_view := app.session.interaction.place_from_view(aim_origin, Vector3.DOWN)
+	var patrol_id := ""
+	for station_id: String in ws.stations.keys():
+		if str(ws.stations[station_id].get("entity_id", "")) == "kettle" and ws.stations[station_id].get("anchor", Vector3i.ZERO) == rail_base + Vector3i(2, 3, 0):
+			patrol_id = station_id
+	var patrol := ws.siege_set_stance(patrol_id, "patrol")
+	var catapult_patrol := ws.siege_set_stance(turret_id, "patrol") if ws.stations.has(turret_id) else {"reason": "NOT_A_RAIL_WEAPON"}
+	await get_tree().physics_frame
+	var visited: Dictionary = {}
+	for _frame in range(240):
+		siege.advance(1.0 / 30.0, false)
+		visited[siege.rail_rider_cell(patrol_id)] = true
+	var reached_both_ends := visited.has(rail_base + Vector3i(0, 2, 0)) and visited.has(rail_base + Vector3i(4, 2, 0))
+	_record("T154_RAIL_AIM_AND_PATROL", rails_laid and aimed_above_rail and kettle_from_view.get("ok", false) and not patrol_id.is_empty() and patrol.get("ok", false) and catapult_patrol.get("reason") == "NOT_A_RAIL_WEAPON" and reached_both_ends, "aiming down at a rail places the kettle on the cell above it; Patrol is a rail-weapon stance that rides the chain from end to end while idle", {"rails": rails_laid, "aim_cell": aim_cell, "placed": kettle_from_view.get("reason"), "patrol": patrol.get("reason"), "catapult_patrol": catapult_patrol.get("reason"), "visited": visited.size(), "both_ends": reached_both_ends})
+
 
 ## Rendered evidence: the five machines (ballista, catapult, turret catapult on
 ## a tower platform, cannon, kettle on a rail-topped wall) in one 1280x720 view.
@@ -489,6 +527,7 @@ func _run_visual() -> void:
 	var texture := get_viewport().get_texture()
 	var image := texture.get_image() if texture != null else null
 	var path := app.data_root.path_join("p4-siege-units.png")
+	var minimap_visible := app.minimap != null and app.minimap.visible and app.minimap.generator != null
 	if image == null:
 		_record("T136_SIEGE_UNITS_RENDERED", false, "the five siege machines render in one 1280x720 view", {"path": path, "reason": "NO_RENDERED_VIEWPORT"})
 		return
@@ -498,7 +537,7 @@ func _run_visual() -> void:
 		var body: Node3D = app.session._station_visuals.get(str(placements[key].get("details", {}).get("station", {}).get("instance_id", "")))
 		if body != null:
 			mesh_parts += body.find_children("*", "MeshInstance3D", true, false).size()
-	_record("T136_SIEGE_UNITS_RENDERED", all_placed and error == OK and image.get_size() == Vector2i(1280, 720) and mesh_parts >= 60, "the turret catapult mk2, ballista, catapult, turret catapult on its tower, cannon and kettle on a rail-topped wall render as distinct multi-part machines in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "placed": all_placed, "mesh_parts": mesh_parts, "rails": rails_ok})
+	_record("T136_SIEGE_UNITS_RENDERED", all_placed and error == OK and image.get_size() == Vector2i(1280, 720) and mesh_parts >= 60 and minimap_visible, "the turret catapult mk2, ballista, catapult, turret catapult on its tower, cannon and kettle on a rail-topped wall render as distinct multi-part machines in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "placed": all_placed, "mesh_parts": mesh_parts, "rails": rails_ok})
 
 
 ## T141 wave persistence: a running wave (three raiders, one brute, two of

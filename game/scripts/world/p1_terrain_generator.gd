@@ -192,7 +192,7 @@ func surface_height(x: int, z: int) -> int:
 	var threshold := float(settings.get("mountain_threshold", 0.30))
 	if mask > threshold:
 		var ramp := (mask - threshold) / 0.35
-		rolling += ramp * (1.2 + ramp) * float(settings.get("mountain_height", 20))
+		rolling += ramp * (1.2 + ramp) * float(settings.get("mountain_height", 20)) * _mountain_allowance(x, z)
 	# Lakes: where the lake mask exceeds its threshold the ground dips below
 	# sea level; sample_voxel fills the dip with water.
 	var dip := _lake_dip(x, z)
@@ -220,6 +220,22 @@ func surface_height(x: int, z: int) -> int:
 			return base_level
 		return roundi(lerpf(float(base_level), float(candidate), (base_distance - radius) / blend))
 	return candidate
+
+
+## Mountains stay off the home surroundings and off a corridor between the
+## home clearing and the enemy base, so raiders (one step up/down) always
+## have a way in and the player is never walled in by peaks (owner 2026-09-19).
+func _mountain_allowance(x: int, z: int) -> float:
+	var point := Vector2(float(x), float(z))
+	var home := _home_center()
+	var home_distance := point.distance_to(home)
+	var allowance := clampf((home_distance - 30.0) / 25.0, 0.0, 1.0)
+	var base := Vector2(enemy_base)
+	var segment := base - home
+	var t := clampf((point - home).dot(segment) / maxf(segment.length_squared(), 1.0), 0.0, 1.0)
+	var corridor_distance := point.distance_to(home + segment * t)
+	allowance = minf(allowance, clampf((corridor_distance - 8.0) / 12.0, 0.0, 1.0))
+	return allowance
 
 
 ## The enemy clearing's level: the raw rolling terrain at its centre, kept

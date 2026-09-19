@@ -22,6 +22,7 @@ var ammo_help: Label
 var unload_button: Button
 var fire_button: Button
 var hold_button: Button
+var patrol_button: Button
 var filter_option: OptionButton
 var supply_heading: Label
 var supply_label: Label
@@ -100,6 +101,14 @@ func _init() -> void:
 	hold_button.tooltip_text = "Holds fire; the weapon still turns to face targets"
 	hold_button.pressed.connect(func() -> void: stance_requested.emit("hold"))
 	stance_row.add_child(hold_button)
+	patrol_button = Button.new()
+	patrol_button.text = "Patrol"
+	patrol_button.toggle_mode = true
+	patrol_button.custom_minimum_size = Vector2(160, 36)
+	patrol_button.tooltip_text = "Rail weapons only: slides back and forth along the connected rails while idle, and still fires at will"
+	patrol_button.pressed.connect(func() -> void: stance_requested.emit("patrol"))
+	patrol_button.visible = false
+	stance_row.add_child(patrol_button)
 	var filter_row := HBoxContainer.new()
 	filter_row.add_theme_constant_override("separation", 8)
 	add_child(filter_row)
@@ -163,6 +172,8 @@ func refresh(details: Dictionary, supply: Array, registry: ContentRegistry, sele
 	var stance := str(details.get("stance", "fire_at_will"))
 	fire_button.set_pressed_no_signal(stance == "fire_at_will")
 	hold_button.set_pressed_no_signal(stance == "hold")
+	patrol_button.visible = float(details.get("definition", {}).get("rail_speed", 0.0)) > 0.0
+	patrol_button.set_pressed_no_signal(stance == "patrol")
 	var target_filter := str(details.get("target_filter", "any"))
 	_filter_refreshing = true
 	filter_option.select(maxi(0, TARGET_FILTERS.find(target_filter)))

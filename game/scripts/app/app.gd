@@ -45,6 +45,7 @@ var crafting_panel: Control
 var display_confirm_panel: Control
 var loading_panel: Control
 var hud_layer: Control
+var minimap: MinimapOverlay
 var continue_button: Button
 var start_button: Button
 var slot_option: OptionButton
@@ -1112,6 +1113,10 @@ func _build_hud(canvas: CanvasLayer) -> void:
 	hud_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	canvas.add_child(hud_layer)
+	minimap = MinimapOverlay.new()
+	minimap.name = "Minimap"
+	minimap.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hud_layer.add_child(minimap)
 	hud_label = Label.new()
 	hud_label.position = Vector2(20, 18)
 	hud_label.add_theme_font_size_override("font_size", 18)
@@ -1264,6 +1269,8 @@ func _open_session(continue_existing: bool) -> void:
 
 
 func _on_session_ready() -> void:
+	if minimap != null and session != null and session.world != null and session.world.terrain != null and session.world.terrain.generator is P1TerrainGenerator:
+		minimap.configure(session.world.terrain.generator, session.player, session.workstations)
 	state = AppState.PLAYING
 	loading_panel.hide()
 	hud_layer.show()
@@ -1889,7 +1896,13 @@ func _on_siege_stance_requested(stance: String) -> void:
 		return
 	var result := session.workstations.siege_set_stance(_crafting_station_id, stance)
 	if result.get("ok", false):
-		crafting_message.text = "Holding fire — the weapon tracks targets but will not shoot." if stance == "hold" else "Fire at will — shoots the first matching target in range."
+		match stance:
+			"hold":
+				crafting_message.text = "Holding fire — the weapon tracks targets but will not shoot."
+			"patrol":
+				crafting_message.text = "Patrolling — the kettle slides along its rails and fires at will."
+			_:
+				crafting_message.text = "Fire at will — shoots the first matching target in range."
 	else:
 		crafting_message.text = _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
 	_refresh_siege_panel_state()
@@ -2855,6 +2868,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if state == AppState.PLAYING and event.is_action_pressed("capture_screenshot") and not (event is InputEventKey and event.echo):
 		get_viewport().set_input_as_handled()
 		_capture_gameplay_screenshot()
+		return
+	if state == AppState.PLAYING and minimap != null and event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_M or event.keycode == KEY_M):
+		get_viewport().set_input_as_handled()
+		minimap.toggle_full_map()
 		return
 
 	if _is_escape_press(event):
