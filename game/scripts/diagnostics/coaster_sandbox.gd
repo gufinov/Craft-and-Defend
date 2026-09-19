@@ -30,6 +30,18 @@ func run(application: CraftAndDefendApp) -> void:
 	_lay_demo()
 	app.session.navigation_changed.emit("COASTER SANDBOX  ·  infinite stock  ·  loop ahead (Shift on the car to ride, 1-9 speed), slope run to the right, V third person")
 	print("COASTER_SANDBOX_READY")
+	if OS.get_cmdline_user_args().has("--coaster-sandbox-board-check"):
+		# Aim from beside the parked car at the rail piece under it: Shift must
+		# still board (owner 2026-09-20: the aim landed on the rail, not the car).
+		var car_cell := Vector3i(-8, 2, 30)
+		var from := Vector3(car_cell) + Vector3(0.5, 1.6, 3.0)
+		var at := Vector3(car_cell) + Vector3(0.5, -0.6, 0.5)
+		var boarded := app.session.interaction.interact_from_view(from, (at - from).normalized())
+		print("COASTER_SANDBOX board via rail aim: %s riding=%s" % [boarded.get("reason"), app.session.is_riding()])
+		app.session.leave_coaster_car()
+		var second := app.session.interaction.secondary_press_from_view(from, (Vector3(car_cell) + Vector3(0.5, 0.2, 0.5) - from).normalized())
+		print("COASTER_SANDBOX board via right-click: %s riding=%s" % [second.get("reason"), app.session.is_riding()])
+		get_tree().quit(0)
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-shot"):
 		var player := app.session.player
 		player.global_position = Vector3(2.0, 6.0, 46.0)

@@ -707,6 +707,11 @@ func _on_interaction_result(result: Dictionary) -> void:
 	var changes: Dictionary = result.get("changes", {})
 	if result.get("ok", false) and str(result.get("reason", "")) == "OPEN_STATION":
 		var station_record: Dictionary = changes.get("station", {})
+		if str(station_record.get("entity_id", "")) == CoasterRails.CAR:
+			# Right-click on a coaster car boards it (owner 2026-09-20).
+			var boarded := board_coaster_car(str(changes.get("instance_id", "")))
+			_on_interaction_feedback(str(boarded.get("reason", "NO_CAR")))
+			return
 		workstation_requested.emit(str(changes.get("instance_id", "")), str(station_record.get("entity_id", "")))
 
 
@@ -2296,18 +2301,46 @@ func _defense_interact(origin: Vector3, direction: Vector3) -> Dictionary:
 	if collider == null:
 		return {"handled": false}
 	# Coaster car and hero: Shift on a coaster car boards it (repair of a car
-	# is not offered; dismantle and re-place it instead).
-	if collider.has_meta("station_instance_id"):
-		var station_id := str(collider.get_meta("station_instance_id"))
-		if str(workstations.station(station_id).get("entity_id", "")) == CoasterRails.CAR:
-			var boarded := board_coaster_car(station_id)
-			return {"handled": true, "ok": bool(boarded.get("ok", false)), "reason": str(boarded.get("reason", "NO_CAR"))}
+	# is not offered; dismantle and re-place it instead). Owner 2026-09-20:
+	# the aim often lands on the rail or the ground under the car, so a car
+	# standing within reach of the hit point counts too.
+	var car_id := _coaster_car_near(hit.get("position", origin), collider)
+	if not car_id.is_empty():
+		var boarded := board_coaster_car(car_id)
+		return {"handled": true, "ok": bool(boarded.get("ok", false)), "reason": str(boarded.get("reason", "NO_CAR"))}
 	if not collider.has_meta("defense_structure_id"):
 		return {"handled": false}
 	var structure_id := str(collider.get_meta("defense_structure_id"))
 	if structure_id == "training_wall":
 		return defense.try_repair(structure_id)
 	return workstations.try_repair_structure(structure_id)
+
+
+## The coaster car the aim hit, or the nearest one within BOARD_REACH of the
+## hit point (its parked body sits on top of a rail piece).
+const BOARD_REACH := 1.6
+
+
+func _coaster_car_near(point: Vector3, collider: Object) -> String:
+	if collider != null and collider.has_meta("station_instance_id"):
+		var hit_id := str(collider.get_meta("station_instance_id"))
+		if str(workstations.station(hit_id).get("entity_id", "")) == CoasterRails.CAR:
+			return hit_id
+	var best_id := ""
+	var best_distance := BOARD_REACH
+	for station_id: String in _station_visuals:
+		if str(workstations.station(station_id).get("entity_id", "")) != CoasterRails.CAR:
+			continue
+		var body: Node3D = _station_visuals[station_id]
+		if body == null or not is_instance_valid(body):
+			continue
+		var rig: Node3D = body.get_node_or_null("CartRig")
+		var car_point := rig.global_position if rig != null else body.global_position
+		var distance := car_point.distance_to(point)
+		if distance < best_distance:
+			best_distance = distance
+			best_id = station_id
+	return best_id
 
 
 ## Fire damage callback: a raider standing in a burning cell takes damage.

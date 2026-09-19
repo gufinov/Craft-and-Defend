@@ -56,3 +56,7 @@ Sandbox: `--coaster-sandbox` (`START_COASTER_SANDBOX.cmd`) now parks a coaster c
 - Repairing a coaster car with Shift is not possible (Shift boards). No car panel, no cart inventory, no hauling.
 - Hero armour is a cosmetic toggle in the pause menu, not earned from iron or the inventory.
 - The ride is not saved: a save mid-ride reloads with the player beside the parked car.
+
+## Boarding fix (owner playtest 2026-09-20)
+
+Shift aimed at the car "attacked" (the held-item use animation plays for any interaction result) and did not board: the aim ray usually lands on the rail piece or the ground under the car, whose station is not the car. Now Shift boards the nearest coaster car within 1.6 m of the hit point (`GameSession._coaster_car_near`) and **right-click on the car boards it too** (the car is a `station_type` of its own; `OPEN_STATION` on it boards instead of opening a panel). `--coaster-sandbox --coaster-sandbox-board-check` prints both paths.
