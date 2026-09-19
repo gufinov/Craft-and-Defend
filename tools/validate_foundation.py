@@ -14,7 +14,9 @@ NAVIGATION_SCENARIOS = {"corridor_detour", "trench", "two_step_stair", "bridge_r
 # P4G asset attribute sheet (docs/P4G_CORE_AND_LIGHTS.md): every core and light
 # source carries a value, a role, its light, its mounting rule and its space.
 ATTRIBUTE_ENTITIES = {"core_of_power", "enemy_core", "torch", "wall_lantern", "post_lantern", "campfire", "light_block_blue", "light_block_red"}
-ATTRIBUTE_ROLES = {"core", "light", "decor"}
+ATTRIBUTE_ROLES = {"core", "light", "decor", "rail"}
+# Coaster rails side project (docs/COASTER_RAILS.md): track pieces and the cart.
+COASTER_TOOLS = {"loop"}
 ATTRIBUTE_MOUNTS = {"ground", "wall", "ceiling", "any_solid_top", "any_solid_top_or_wall", "block"}
 
 
@@ -260,6 +262,17 @@ def validate_bundle(bundle):
                               and numeric_vector(part.get("size", []), positive=True)
                               for part in parts), "invalid entity visual")
         require("linear" not in entity or (entity["linear"] is True and len(entity["occupied_offsets"]) == 1), "linear entities are 1x1")
+        # Coaster rails: a slope rises exactly one cell over its single cell and
+        # is never `linear` (its rotation is its rise direction); the loop tool
+        # is a 1x1 floating piece (no support) with its own drag tool; a cart
+        # carries a positive rail speed and mounts on rails only.
+        require("slope" not in entity or (entity["slope"] == 1 and len(entity["occupied_offsets"]) == 1 and "linear" not in entity), "slope rails are 1x1, rise 1 and are not linear: " + entity["id"])
+        require("coaster_tool" not in entity or (entity["coaster_tool"] in COASTER_TOOLS and len(entity["occupied_offsets"]) == 1 and entity["support_offsets"] == [] and "linear" not in entity), "invalid coaster tool entity: " + entity["id"])
+        require(("slope" in entity) + ("coaster_tool" in entity) <= 1, "an entity is a slope or a coaster tool, not both: " + entity["id"])
+        cart = entity.get("cart")
+        require(cart is None or (isinstance(cart, dict) and set(cart) == {"rail_speed"} and type(cart["rail_speed"]) in (int, float)
+                                 and not isinstance(cart["rail_speed"], bool) and cart["rail_speed"] > 0
+                                 and entity.get("mount", {}).get("allowed") == ["rail_mount"]), "invalid cart entity: " + entity["id"])
         station_type = entity.get("station_type")
         require(station_type is None or station_type == entity["id"] or station_type == "siege" and entity.get("siege") is not None, "invalid station type")
         socket_ids = set()

@@ -25,6 +25,8 @@ const REASON_TEXT := {
 	"PROTECTED": "The bottom bedrock layer is protected.",
 	"NO_TARGET": "No editable block is targeted.",
 	"DRAG_PLACED": "Blocks placed.",
+	"LINE_PLACED": "Pieces laid in a line.",
+	"COASTER_PLACED": "Coaster track laid.",
 	"BLUEPRINT_STAMPED": "Blueprint built.",
 	"UNKNOWN_BLUEPRINT": "That blueprint is not in the catalogue.",
 	"DRAG_CANCELLED": "Build cancelled; nothing was placed.",
@@ -68,6 +70,8 @@ var clock: DayNightClock
 var defense: DefenseService
 var core_defense: CoreDefenseService
 var siege_defense: SiegeDefenseService
+## Coaster rails side project: present only while a mine cart is placed.
+var coaster_carts: CoasterCartService
 var open_data: Dictionary
 var world_ready := false
 var saving := false
@@ -211,6 +215,8 @@ func _process(delta: float) -> void:
 		core_defense.advance(delta, simulation_paused or saving)
 	if siege_defense != null:
 		siege_defense.advance(delta, simulation_paused or saving)
+	if coaster_carts != null:
+		coaster_carts.advance(delta, simulation_paused or saving)
 		fire_service.advance(delta, simulation_paused or saving)
 	if not simulation_paused:
 		_melee_cooldown = maxf(0.0, _melee_cooldown - delta)
@@ -599,12 +605,12 @@ func _on_station_changed(result: Dictionary) -> void:
 		core_defense.notify_core_station_changed(details)
 	if details.has("station"):
 		_spawn_station_visual(details.station)
-		if str(details.station.get("entity_id", "")) == "rail":
+		if CoasterRails.is_track_id(str(details.station.get("entity_id", ""))):
 			_refresh_rail_neighbours(details.station.get("anchor", Vector3i.ZERO))
 	elif details.has("instance_id") and (details.has("returned_item") or bool(details.get("destroyed", false))):
 		_remove_station_visual(str(details.instance_id))
 		var released: Array = details.get("occupied_cells", [])
-		if str(details.get("entity_id", "")) == "rail" and released.size() > 0 and released[0] is Vector3i:
+		if CoasterRails.is_track_id(str(details.get("entity_id", ""))) and released.size() > 0 and released[0] is Vector3i:
 			_refresh_rail_neighbours(released[0])
 	elif details.has("instance_id") and details.has("integrity"):
 		_update_station_visual(str(details.instance_id), int(details.integrity), int(details.get("max_integrity", 1)))
@@ -662,6 +668,12 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_wrap_siege_turret(body, definition)
 	elif entity_id == "rail":
 		_build_rail_visual(body, _rail_neighbour_mask(anchor))
+	elif entity_id == CoasterRails.SLOPE:
+		_build_rail_slope_visual(body)
+	elif entity_id == CoasterRails.LOOP:
+		_build_rail_loop_visual(body, record)
+	elif entity_id == "mine_cart":
+		_build_mine_cart_visual(body)
 	elif entity_id == "core_of_power":
 		_build_core_of_power_visual(body, registry.entity_attributes(entity_id))
 	elif entity_id == "enemy_core":
@@ -685,6 +697,13 @@ func _spawn_station_visual(record: Dictionary) -> void:
 	_station_visual_materials[instance_id] = material
 	if siege_defense != null and not definition.get("siege", {}).is_empty():
 		siege_defense.register_visual(instance_id, body)
+	if entity_id == "mine_cart":
+		if coaster_carts == null:
+			coaster_carts = CoasterCartService.new()
+			coaster_carts.name = "CoasterCartService"
+			coaster_carts.initialize(workstations)
+			add_child(coaster_carts)
+		coaster_carts.register_cart(instance_id, body)
 	if record.has("integrity"):
 		_update_station_visual(instance_id, int(record.integrity), int(definition.get("defense", {}).get("max_integrity", 1)))
 
@@ -1061,24 +1080,43 @@ func _build_cannon_visual(parent: Node3D) -> void:
 ## Rail neighbours as a bit mask: 1 +x, 2 -x, 4 +z, 8 -z (world axes; the
 ## rail body is never rotated for its shape).
 func _rail_neighbour_mask(anchor: Vector3i) -> int:
+	var station_id := workstations.station_at_cell(anchor)
+	if station_id.is_empty():
+		return 0
+	return _track_arm_mask(workstations.station(station_id))
+
+
+## Arms of a flat-looking track piece from its CoasterRails joints: a joint
+## on the same level or one level down (a slope climbing up to this piece)
+## in direction d sets d's bit.
+func _track_arm_mask(record: Dictionary) -> int:
 	var mask := 0
-	var sides := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
-	for index in range(sides.size()):
-		var neighbour := workstations.station_at_cell(anchor + sides[index])
-		if not neighbour.is_empty() and str(workstations.station(neighbour).get("entity_id", "")) == "rail":
+	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	for joined: Vector3i in CoasterRails.connected_cells(record, CoasterRails.track_records(workstations.stations)):
+		var offset := joined - anchor
+		if offset.y > 0:
+			continue
+		var index := CoasterRails.HORIZONTAL.find(Vector3i(offset.x, 0, offset.z))
+		if index >= 0:
 			mask |= 1 << index
 	return mask
 
 
-## Rebuilds the rail visuals around `anchor` so corners, T's and crossroads
-## re-shape when a neighbouring rail is laid or removed.
+## Rebuilds the track visuals around `anchor` (the 3x3x3 neighbourhood, so
+## slopes and loop pieces one level up or down re-shape too) when a piece is
+## laid or removed.
 func _refresh_rail_neighbours(anchor: Vector3i) -> void:
-	for side in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
-		var neighbour := workstations.station_at_cell(anchor + side)
-		if neighbour.is_empty() or str(workstations.station(neighbour).get("entity_id", "")) != "rail":
-			continue
-		_remove_station_visual(neighbour)
-		_spawn_station_visual(workstations.station(neighbour))
+	for dx in [-1, 0, 1]:
+		for dy in [-1, 0, 1]:
+			for dz in [-1, 0, 1]:
+				var offset := Vector3i(dx, dy, dz)
+				if offset == Vector3i.ZERO:
+					continue
+				var neighbour := workstations.station_at_cell(anchor + offset)
+				if neighbour.is_empty() or not CoasterRails.is_track_id(str(workstations.station(neighbour).get("entity_id", ""))):
+					continue
+				_remove_station_visual(neighbour)
+				_spawn_station_visual(workstations.station(neighbour))
 
 
 ## Rail block: stone corner posts with gold studs, an oak deck and iron rails
@@ -1130,6 +1168,113 @@ func _build_rail_visual(parent: Node3D, mask: int = 0) -> void:
 		_add_mesh_box(undo, Vector3(0.54, 0.10, 0.54), Vector3(0.0, 0.0, 0.0), iron)
 	elif not along_x or not along_z:
 		_add_mesh_box(undo, Vector3(0.62, 0.06, 0.10) if along_x else Vector3(0.10, 0.06, 0.62), Vector3(0.0, -0.11, 0.0), iron)
+
+
+## Coaster rails side project: a rail block climbing one cell toward its
+## front (-z): oak deck and two iron rails inclined 45 degrees with ties, stone
+## corner posts with gold studs at the low end and taller trestle posts at the
+## high end. The low end meets a flat rail's top; the high end tops out one
+## cell higher at the front edge.
+func _build_rail_slope_visual(parent: Node3D) -> void:
+	var incline := _add_collision_box(parent, Vector3(0.90, 0.30, 1.30), Vector3(0.0, 0.55, 0.0))
+	incline.rotation.x = PI / 4.0
+	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
+	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")
+	var iron := _visual_material(Color("8a939b"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	for x in [-0.38, 0.38]:
+		_add_mesh_box(parent, Vector3(0.22, 0.56, 0.22), Vector3(x, -0.22, 0.38), stone)
+		_add_stud(parent, Vector3(x, 0.02, 0.38), gold, Vector3.ZERO)
+		_add_mesh_box(parent, Vector3(0.22, 1.56, 0.22), Vector3(x, 0.28, -0.38), stone)
+		_add_stud(parent, Vector3(x, 1.02, -0.38), gold, Vector3.ZERO)
+	var deck := _add_mesh_box(parent, Vector3(0.96, 0.14, 1.36), Vector3(0.0, 0.40, 0.0), oak)
+	deck.rotation.x = PI / 4.0
+	for x in [-0.22, 0.22]:
+		var rail := _add_mesh_box(parent, Vector3(0.10, 0.10, 1.42), Vector3(x, 0.55, 0.0), iron)
+		rail.rotation.x = PI / 4.0
+	var climb := Vector3(0.0, 0.7071, -0.7071)
+	var under := Vector3(0.0, -0.7071, -0.7071)
+	for t in [-0.45, -0.15, 0.15, 0.45]:
+		var tie := _add_mesh_box(parent, Vector3(0.60, 0.06, 0.10), Vector3(0.0, 0.55, 0.0) + climb * t + under * 0.08, iron)
+		tie.rotation.x = PI / 4.0
+
+
+## Coaster rails side project: a loop piece draws a short pair of rails from
+## its centre toward every track piece it joins (CoasterRails joints), pitched
+## to the joint's direction, so a ring of pieces reads as a polygonal loop.
+## A piece whose joints all lie flat is drawn as an ordinary rail block.
+func _build_rail_loop_visual(parent: Node3D, record: Dictionary) -> void:
+	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	var joined := CoasterRails.connected_cells(record, CoasterRails.track_records(workstations.stations))
+	var flat := true
+	for cell: Vector3i in joined:
+		if cell.y != anchor.y:
+			flat = false
+	if flat:
+		_build_rail_visual(parent, _track_arm_mask(record))
+		return
+	_add_collision_box(parent, Vector3(0.70, 0.70, 0.70), Vector3.ZERO)
+	var iron := _visual_material(Color("8a939b"))
+	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	var across := Vector3(Vector3i(1, 0, 0) if CoasterRails.loop_plane_axis(int(record.get("rotation_quarters", 0))).x == 0 else Vector3i(0, 0, 1))
+	# The body may carry a placement rotation; undo it so world-axis arms line up.
+	var undo := Node3D.new()
+	undo.name = "LoopArms"
+	undo.rotation.y = -parent.rotation.y
+	parent.add_child(undo)
+	_add_mesh_box(undo, Vector3(0.20, 0.20, 0.20), Vector3.ZERO, iron)
+	_add_stud(undo, Vector3(0.0, 0.12, 0.0), gold, Vector3.ZERO)
+	for cell: Vector3i in joined:
+		var direction := Vector3(cell - anchor)
+		var length := direction.length() * 0.5
+		direction = direction.normalized()
+		var side := direction.cross(Vector3.UP)
+		if side.length() < 0.01:
+			side = across
+		side = side.normalized()
+		var arm := Node3D.new()
+		arm.basis = Basis.looking_at(direction, side)
+		undo.add_child(arm)
+		for offset in [-0.22, 0.22]:
+			_add_mesh_box(arm, Vector3(0.10, 0.10, length), Vector3(0.0, offset, -length * 0.5), iron)
+		_add_mesh_box(arm, Vector3(0.08, 0.60, 0.10), Vector3(0.0, 0.0, -length * 0.55), oak)
+
+
+## Coaster rails side project: an oak-and-iron mine cart on four wheels under
+## a "CartRig" node that CoasterCartService moves along the track. The rig's
+## origin is the wheel contact point; the model faces -z.
+func _build_mine_cart_visual(parent: Node3D) -> void:
+	_add_collision_box(parent, Vector3(0.90, 0.90, 0.90), Vector3(0.0, -0.30, 0.0))
+	var rig := Node3D.new()
+	rig.name = "CartRig"
+	# The body centre sits 1.5 over the rail cell floor; the rail top is 0.55.
+	rig.position = Vector3(0.0, -0.95, 0.0)
+	parent.add_child(rig)
+	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
+	var iron := _visual_material(Color("7b838c"))
+	var dark_iron := _visual_material(Color("2f353b"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	var ore := _visual_material(Color("8f969d"), "res://assets/blocks/iron_ore.svg")
+	for x in [-0.26, 0.26]:
+		for z in [-0.28, 0.28]:
+			_add_mesh_cylinder(rig, 0.12, 0.08, Vector3(x, 0.12, z), Vector3(0.0, 0.0, PI / 2.0), dark_iron, "CartWheel")
+	_add_mesh_box(rig, Vector3(0.60, 0.08, 0.72), Vector3(0.0, 0.22, 0.0), dark_iron)
+	_add_mesh_box(rig, Vector3(0.56, 0.08, 0.76), Vector3(0.0, 0.30, 0.0), oak)
+	for x in [-0.33, 0.33]:
+		var wall := _add_mesh_box(rig, Vector3(0.06, 0.42, 0.80), Vector3(x, 0.52, 0.0), oak)
+		wall.rotation.z = -0.12 if x > 0.0 else 0.12
+	for z in [-0.40, 0.40]:
+		var end_wall := _add_mesh_box(rig, Vector3(0.74, 0.42, 0.06), Vector3(0.0, 0.52, z), oak)
+		end_wall.rotation.x = 0.12 if z > 0.0 else -0.12
+	_add_mesh_box(rig, Vector3(0.82, 0.06, 0.92), Vector3(0.0, 0.72, 0.0), iron)
+	_add_mesh_box(rig, Vector3(0.82, 0.06, 0.92), Vector3(0.0, 0.40, 0.0), iron)
+	for x in [-0.42, 0.42]:
+		for z in [-0.30, 0.30]:
+			_add_stud(rig, Vector3(x, 0.72, z), gold, Vector3(0.0, 0.0, PI / 2.0))
+	for lump in [Vector3(-0.14, 0.62, -0.16), Vector3(0.12, 0.66, 0.10), Vector3(0.02, 0.60, -0.02)]:
+		var stone := _add_mesh_box(rig, Vector3(0.22, 0.22, 0.22), lump, ore)
+		stone.rotation = Vector3(0.4, 0.6, 0.2)
 
 
 ## Kettle on rails from the owner's reference art: an iron trolley riding the
@@ -1738,13 +1883,14 @@ func _add_mesh_cone(parent: Node3D, radius: float, height: float, offset: Vector
 	return mesh_instance
 
 
-func _add_collision_box(parent: Node3D, size: Vector3, offset: Vector3) -> void:
+func _add_collision_box(parent: Node3D, size: Vector3, offset: Vector3) -> CollisionShape3D:
 	var collision := CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	box.size = size
 	collision.shape = box
 	collision.position = offset
 	parent.add_child(collision)
+	return collision
 
 
 func _add_mesh_box(parent: Node3D, size: Vector3, offset: Vector3, material: Material) -> MeshInstance3D:
@@ -1800,6 +1946,8 @@ func _update_placement_preview() -> void:
 		_hide_placement_preview()
 		return
 	if interaction.drag_active():
+		# Coaster rails side project: X / C resize a loop while its drag is active.
+		interaction.coaster_loop_keys(Input.is_key_pressed(KEY_X), Input.is_key_pressed(KEY_C))
 		_update_drag_preview(interaction.update_drag_place(player.camera.global_position, -player.camera.global_basis.z, Input.is_action_pressed("interact")))
 		return
 	var preview := interaction.placement_preview_from_view(player.camera.global_position, -player.camera.global_basis.z)
@@ -1913,6 +2061,11 @@ func _remove_station_visual(instance_id: String) -> void:
 	body.queue_free()
 	if siege_defense != null:
 		siege_defense.unregister_visual(instance_id)
+	if coaster_carts != null:
+		coaster_carts.unregister_cart(instance_id)
+		if coaster_carts.cart_count() == 0:
+			coaster_carts.queue_free()
+			coaster_carts = null
 	_station_visuals.erase(instance_id)
 	_station_visual_materials.erase(instance_id)
 

@@ -67,7 +67,9 @@ func _rotation_facing_away(wall_side: Vector3i) -> int:
 	return 3
 
 
-func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, player_aabb: AABB, rotation_quarters: int = 0) -> Dictionary:
+## `extra` (coaster rails side project): additional JSON-safe record fields,
+## e.g. a loop piece's `coaster_joints`; never overrides the standard fields.
+func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, player_aabb: AABB, rotation_quarters: int = 0, extra: Dictionary = {}) -> Dictionary:
 	var definition := registry.entity(entity_id)
 	if definition.is_empty():
 		return _result(false, "UNKNOWN_ENTITY")
@@ -94,6 +96,9 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		return _result(false, consumed.get("reason", "INVENTORY_COMMIT_FAILED"))
 	_next_instance += 1
 	var record := {"instance_id": instance_id, "entity_id": entity_id, "anchor": anchor, "rotation_quarters": posmod(rotation_quarters, 4)}
+	for extra_key: String in extra.keys():
+		if not record.has(extra_key):
+			record[extra_key] = extra[extra_key]
 	if entity_id == "furnace":
 		record["furnace_slots"] = _empty_furnace_slots()
 		record["furnace_fuel_operations"] = 0
