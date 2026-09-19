@@ -250,7 +250,15 @@ func _level_ground(anchor: Vector3i, width: int, depth: int) -> void:
 				app.session.world.set_cell(anchor + Vector3i(x, y, z), 0)
 
 
+## Motion, press and release go in one frame: a frame between press and
+## release let the real OS pointer leaving the window send MOUSE_EXIT to the
+## hovered button, which cancels `pressed` (the flaky run seen after the
+## coaster merge).
 func _click_at(global_position: Vector2, shift: bool) -> void:
+	var motion := InputEventMouseMotion.new()
+	motion.position = global_position
+	motion.global_position = global_position
+	get_viewport().push_input(motion)
 	for pressed in [true, false]:
 		var event := InputEventMouseButton.new()
 		event.button_index = MOUSE_BUTTON_LEFT
@@ -259,7 +267,7 @@ func _click_at(global_position: Vector2, shift: bool) -> void:
 		event.position = global_position
 		event.global_position = global_position
 		get_viewport().push_input(event)
-		await get_tree().process_frame
+	await get_tree().process_frame
 	await _settle_frames(2)
 
 

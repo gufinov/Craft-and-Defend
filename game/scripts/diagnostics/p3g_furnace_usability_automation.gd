@@ -303,7 +303,14 @@ func _run_visual() -> void:
 	_record("T98_FURNACE_AND_CATAPULT_PRESENTATION", modal_ok and catapult.get("ok", false) and catapult_ok and furnace_fits and workbench_ok and workbench_fits, "rendered evidence shows the auto-load/progress controls and the revised placed Catapult, and the crafting modal (furnace and workbench, with a selection message showing) ends inside the 720-unit canvas", {"modal_path": modal_path, "workbench_path": workbench_path, "catapult_path": catapult_path, "size": get_viewport().get_visible_rect().size, "furnace_button_bottom": furnace_button_bottom, "furnace_message_bottom": furnace_message_bottom, "workbench_button_bottom": workbench_button_bottom, "workbench_message_bottom": workbench_message_bottom})
 
 
+## Motion, press and release in one frame (see the weapon-panel suite): a
+## frame between press and release let the real pointer leaving the window
+## cancel the button press.
 func _click_at(global_position: Vector2, shift: bool) -> void:
+	var motion := InputEventMouseMotion.new()
+	motion.position = global_position
+	motion.global_position = global_position
+	get_viewport().push_input(motion)
 	for pressed in [true, false]:
 		var event := InputEventMouseButton.new()
 		event.button_index = MOUSE_BUTTON_LEFT
@@ -312,7 +319,7 @@ func _click_at(global_position: Vector2, shift: bool) -> void:
 		event.position = global_position
 		event.global_position = global_position
 		get_viewport().push_input(event)
-		await get_tree().process_frame
+	await get_tree().process_frame
 	await _settle_frames(2)
 
 
