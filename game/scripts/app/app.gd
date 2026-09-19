@@ -1821,12 +1821,23 @@ func _on_siege_ammo_slot_pressed() -> void:
 	if session == null or _crafting_station_type != "siege":
 		return
 	if _cursor_holds_item():
-		crafting_message.text = "Place the held stack first."
+		_load_siege_ammo_from_cursor(false)
 		return
 	if _crafting_selected_inventory_item.is_empty():
 		crafting_message.text = "Select a munition tile in the inventory, then click the Ammunition slot to load 1 (Shift+Click 5)."
 		return
 	_load_siege_ammo(_crafting_selected_inventory_item, 1)
+
+
+## The held (cursor) stack goes into the weapon; refusals keep it held.
+func _load_siege_ammo_from_cursor(one: bool) -> void:
+	var result := session.workstations.siege_load_from_cursor(_crafting_station_id, one)
+	if result.get("ok", false):
+		var details: Dictionary = result.get("details", {})
+		crafting_message.text = "Loaded %d %s — %d / %d in the weapon." % [int(details.get("moved", 0)), session.registry.display_name(str(details.get("item_id", ""))), int(details.get("ammo", 0)), _siege_capacity()]
+	else:
+		crafting_message.text = _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
+	_refresh_crafting_panel()
 
 
 func _on_siege_unload_pressed() -> void:
@@ -1885,7 +1896,8 @@ func _on_siege_stack_gesture(source_kind: String, source_index: int, mouse_butto
 		return
 	if source_kind == "siege_ammo":
 		if cursor_has_item:
-			crafting_message.text = "Place the held stack first."
+			# A picked-up stack loads into the weapon: right-click one, else all.
+			_load_siege_ammo_from_cursor(mouse_button == MOUSE_BUTTON_RIGHT)
 			return
 		if shift_pressed and mouse_button == MOUSE_BUTTON_LEFT and not _crafting_selected_inventory_item.is_empty():
 			_load_siege_ammo(_crafting_selected_inventory_item, 5)
@@ -1937,12 +1949,22 @@ func _withdraw_from_chest(item_id: String, amount: int) -> void:
 
 
 ## Plain click on a chest tile: with a selected inventory item it stores one;
+func _deposit_cursor_to_chest(one: bool) -> void:
+	var result := session.workstations.container_deposit_from_cursor(_crafting_station_id, one)
+	if result.get("ok", false):
+		var details: Dictionary = result.get("details", {})
+		crafting_message.text = "Stored %d %s in the chest." % [int(details.get("moved", 0)), session.registry.display_name(str(details.get("item_id", "")))]
+	else:
+		crafting_message.text = _stack_reason_text(str(result.get("reason", "MOVE_FAILED")))
+	_refresh_crafting_panel()
+
+
 ## otherwise it takes one of whatever the tile holds.
 func _on_chest_slot_pressed(index: int) -> void:
 	if session == null or _crafting_station_type != "chest":
 		return
 	if _cursor_holds_item():
-		crafting_message.text = "Place the held stack first."
+		_deposit_cursor_to_chest(false)
 		return
 	if not _crafting_selected_inventory_item.is_empty():
 		_deposit_to_chest(_crafting_selected_inventory_item, 1)
@@ -1978,7 +2000,7 @@ func _on_chest_stack_gesture(source_kind: String, source_index: int, mouse_butto
 		return
 	if source_kind == "chest":
 		if cursor_has_item:
-			crafting_message.text = "Place the held stack first."
+			_deposit_cursor_to_chest(mouse_button == MOUSE_BUTTON_RIGHT)
 			return
 		var stack := _chest_stack(source_index)
 		var item_id := str(stack.get("item_id", ""))

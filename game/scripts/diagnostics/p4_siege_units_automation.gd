@@ -168,7 +168,21 @@ func _run_gate() -> void:
 	var unloaded := ws.siege_unload(ballista_id)
 	siege.advance(1.0 / 30.0, false)
 	var bolt_after_unload := bolt != null and bolt.visible
-	_record("T134_BALLISTA_PRESENTATION", ballista.get("ok", false) and slider != null and bolt_loaded and strand_length > 0.8 and strand_length < 2.5 and unloaded.get("ok", false) and not bolt_after_unload, "the remodelled ballista shows a drawn slider with a bolt while loaded, strings spanning from tips to nock, and hides the bolt once unloaded", {"placed": ballista.get("reason"), "slider": slider != null, "bolt_loaded": bolt_loaded, "strand": strand_length, "unloaded": unloaded.get("reason"), "bolt_after_unload": bolt_after_unload, "started": started.get("reason")})
+	# A stack picked up on the cursor (the inventory click gesture) loads too.
+	var inventory := app.session.inventory
+	var bolt_slot := -1
+	for index in range(F0Inventory.SLOT_COUNT):
+		if str(inventory.slots[index].get("item_id", "")) == "ballista_bolt":
+			bolt_slot = index
+			break
+	var picked := inventory.cursor_pick_slot(bolt_slot) if bolt_slot >= 0 else {"ok": false}
+	var held_before := int(inventory.cursor_stack.get("count", 0))
+	var cursor_one := ws.siege_load_from_cursor(ballista_id, true)
+	var cursor_rest := ws.siege_load_from_cursor(ballista_id, false)
+	var cursor_ammo := int(ws.siege_status(ballista_id).get("details", {}).get("ammo", -1))
+	var cursor_empty := str(inventory.cursor_stack.get("item_id", "")).is_empty()
+	var cursor_ok: bool = picked.get("ok", false) and held_before == 8 and cursor_one.get("ok", false) and int(cursor_one.get("details", {}).get("moved", 0)) == 1 and cursor_rest.get("ok", false) and cursor_ammo == 8 and cursor_empty
+	_record("T134_BALLISTA_PRESENTATION", ballista.get("ok", false) and slider != null and bolt_loaded and strand_length > 0.8 and strand_length < 2.5 and unloaded.get("ok", false) and not bolt_after_unload and cursor_ok, "the remodelled ballista shows a drawn slider with a bolt while loaded, strings spanning from tips to nock, hides the bolt once unloaded, and a stack held on the cursor loads one (right-click) then the rest", {"placed": ballista.get("reason"), "slider": slider != null, "bolt_loaded": bolt_loaded, "strand": strand_length, "unloaded": unloaded.get("reason"), "bolt_after_unload": bolt_after_unload, "started": started.get("reason"), "cursor": {"picked": picked.get("reason"), "held": held_before, "one": cursor_one.get("reason"), "rest": cursor_rest.get("reason"), "ammo": cursor_ammo, "empty": cursor_empty}})
 
 	# T135 wave drill: a farther spawn line and several raiders (one brute);
 	# splash damages every raider in radius, the nearest one is targeted, and

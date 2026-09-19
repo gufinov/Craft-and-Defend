@@ -727,6 +727,37 @@ func siege_load(instance_id: String, item_id: String, amount: int) -> Dictionary
 	return result
 
 
+## Loads the cursor stack (a stack picked up from an inventory tile) into the
+## weapon: the whole stack, or one with `one`. Refusals leave the stack held.
+func siege_load_from_cursor(instance_id: String, one: bool = false) -> Dictionary:
+	var item_id := str(inventory.cursor_stack.get("item_id", ""))
+	var held_count := int(inventory.cursor_stack.get("count", 0))
+	if item_id.is_empty() or held_count <= 0:
+		return _result(false, "CURSOR_EMPTY")
+	var status := siege_status(instance_id)
+	if not status.get("ok", false):
+		return status
+	var details: Dictionary = status.get("details", {})
+	var allowed: Array = details.get("definition", {}).get("ammo_items", [details.get("definition", {}).get("ammo_item", "")])
+	if item_id not in allowed:
+		return _result(false, "WRONG_AMMUNITION", {"item_id": item_id})
+	var loaded := int(details.get("ammo", 0))
+	if loaded > 0 and str(details.get("ammo_item", "")) != item_id:
+		return _result(false, "AMMO_TYPE_LOADED", {"loaded": str(details.get("ammo_item", ""))})
+	var room := int(details.get("capacity", 1)) - loaded
+	var moved := mini(1 if one else held_count, room)
+	if moved <= 0:
+		return _result(false, "WEAPON_FULL")
+	var consumed := inventory.cursor_consume(moved)
+	if not consumed.get("ok", false):
+		return consumed
+	stations[instance_id]["siege_ammo_item"] = item_id
+	stations[instance_id]["siege_ammo"] = loaded + moved
+	var result := _result(true, "AMMO_LOADED", {"instance_id": instance_id, "item_id": item_id, "moved": moved, "ammo": loaded + moved, "from_cursor": true})
+	station_changed.emit(result)
+	return result
+
+
 ## Returns the loaded munitions to the inventory (all-or-nothing).
 func siege_unload(instance_id: String) -> Dictionary:
 	var status := siege_status(instance_id)
@@ -819,6 +850,34 @@ func is_container(instance_id: String) -> bool:
 
 ## Moves `amount` of `item_id` from the inventory into the chest (merging
 ## into matching stacks, then empty slots). Moves what fits.
+## Stores the cursor stack (whole, or one with `one`) in the container.
+func container_deposit_from_cursor(instance_id: String, one: bool = false) -> Dictionary:
+	if not is_container(instance_id):
+		return _result(false, "NOT_CONTAINER")
+	var item_id := str(inventory.cursor_stack.get("item_id", ""))
+	var held_count := int(inventory.cursor_stack.get("count", 0))
+	if item_id.is_empty() or held_count <= 0:
+		return _result(false, "CURSOR_EMPTY")
+	var slots: Array = stations[instance_id].container_slots
+	var room := 0
+	var max_stack := registry.max_stack(item_id)
+	for stack in slots:
+		if str(stack.get("item_id", "")) == item_id:
+			room += max_stack - int(stack.get("count", 0))
+		elif str(stack.get("item_id", "")).is_empty():
+			room += max_stack
+	var moved := mini(1 if one else held_count, room)
+	if moved <= 0:
+		return _result(false, "CONTAINER_FULL")
+	var consumed := inventory.cursor_consume(moved)
+	if not consumed.get("ok", false):
+		return consumed
+	_container_add(slots, item_id, moved, max_stack)
+	var result := _result(true, "DEPOSITED", {"instance_id": instance_id, "item_id": item_id, "moved": moved, "container_slots": container_slots(instance_id), "from_cursor": true})
+	station_changed.emit(result)
+	return result
+
+
 func container_deposit(instance_id: String, item_id: String, amount: int) -> Dictionary:
 	if not is_container(instance_id):
 		return _result(false, "NOT_CONTAINER")
