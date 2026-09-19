@@ -60,6 +60,16 @@ const STEP_FLOOR_PROBE := 0.08
 
 var camera: Camera3D
 var collision_shape: CollisionShape3D
+## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): the hero model shown
+## only in third person (V), with a chase camera behind and above it. The
+## first-person view and its held item are unchanged.
+const THIRD_PERSON_DISTANCE := 3.5
+const THIRD_PERSON_HEIGHT := 0.6
+const THIRD_PERSON_SHOULDER := 0.45
+var hero: HeroModel
+var third_person := false
+var _eye_height := 1.6
+var _walk_previous := Vector3.ZERO
 var interaction: InteractionService
 var primary_action: Callable
 var active := false
@@ -85,6 +95,10 @@ func _ready() -> void:
 	camera.position.y = 1.6
 	camera.current = true
 	add_child(camera)
+	hero = HeroModel.new()
+	hero.name = "Hero"
+	hero.visible = false
+	add_child(hero)
 	set_physics_process(false)
 
 
@@ -106,6 +120,39 @@ func deactivate() -> void:
 func configure_input(sensitivity: float, inverted: bool) -> void:
 	mouse_sensitivity = clampf(sensitivity, SettingsStore.MIN_MOUSE_SENSITIVITY, SettingsStore.MAX_MOUSE_SENSITIVITY)
 	invert_y = inverted
+
+
+## V: first person <-> chase camera 3.5 m behind and 0.6 m above the eye,
+## looking along the same aim; the hero model is visible only in third person.
+func set_third_person(enabled: bool) -> void:
+	third_person = enabled
+	hero.visible = enabled
+	_place_camera(_eye_height)
+
+
+func set_hero_armored(armored: bool) -> void:
+	hero.set_armored(armored)
+
+
+## Where aim rays start: the camera in first person; in third person the eye
+## point on the camera's ray (the camera sits 3.5 m behind it), so reach and
+## targets match first person.
+func view_origin() -> Vector3:
+	if not third_person:
+		return camera.global_position
+	return camera.global_position - camera.global_basis.z * THIRD_PERSON_DISTANCE
+
+
+func _place_camera(eye_height: float) -> void:
+	_eye_height = eye_height
+	camera.rotation.x = look_pitch
+	if not third_person:
+		camera.position = Vector3(0.0, eye_height, 0.0)
+		return
+	# Behind the eye along the camera's own backward axis, over the shoulder,
+	# a little higher: the ray through the eye stays the aim ray.
+	var eye := Vector3(THIRD_PERSON_SHOULDER, eye_height, 0.0)
+	camera.position = eye + camera.basis.z * THIRD_PERSON_DISTANCE + Vector3(0.0, THIRD_PERSON_HEIGHT, 0.0)
 
 
 func _physics_process(delta: float) -> void:
@@ -130,9 +177,9 @@ func _physics_process(delta: float) -> void:
 		speed = SPRINT_SPEED
 	elif Input.is_action_pressed("crouch"):
 		speed = CROUCH_SPEED
-		camera.position.y = 1.15
+		_place_camera(1.15)
 	else:
-		camera.position.y = 1.6
+		_place_camera(1.6)
 	velocity.x = direction.x * speed
 	velocity.z = direction.z * speed
 	var normal_floor_snap := floor_snap_length
@@ -141,6 +188,10 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	floor_snap_length = normal_floor_snap
 	_position_inside_world()
+	if hero != null and hero.visible:
+		var travelled := Vector3(global_position.x - _walk_previous.x, 0.0, global_position.z - _walk_previous.z).length()
+		hero.animate_walk(delta, travelled > 0.002, travelled)
+	_walk_previous = global_position
 
 
 func _try_step_up(horizontal_motion: Vector3) -> bool:
@@ -173,24 +224,24 @@ func _unhandled_input(event: InputEvent) -> void:
 		_primary_repeat_timer = PRIMARY_REPEAT_SECONDS
 		_perform_primary()
 	elif event.is_action_pressed("secondary") and interaction != null:
-		var pressed := interaction.secondary_press_from_view(camera.global_position, -camera.global_basis.z)
+		var pressed := interaction.secondary_press_from_view(view_origin(), -camera.global_basis.z)
 		if str(pressed.get("reason", "")) != "DRAG_STARTED":
 			_report(pressed)
 	elif event.is_action_released("secondary") and interaction != null and interaction.drag_active():
-		_report(interaction.secondary_release_from_view(camera.global_position, -camera.global_basis.z))
+		_report(interaction.secondary_release_from_view(view_origin(), -camera.global_basis.z))
 	elif event.is_action_pressed("interact") and interaction != null and interaction.drag_active():
 		pass  # Shift while dragging switches the plan to vertical; no interact.
 	elif event.is_action_pressed("interact") and interaction != null:
-		_report(interaction.interact_from_view(camera.global_position, -camera.global_basis.z))
+		_report(interaction.interact_from_view(view_origin(), -camera.global_basis.z))
 
 
 func _perform_primary() -> void:
 	if primary_action.is_valid():
-		var primary_result: Dictionary = primary_action.call(camera.global_position, -camera.global_basis.z)
+		var primary_result: Dictionary = primary_action.call(view_origin(), -camera.global_basis.z)
 		if primary_result.get("handled", false):
 			_report(primary_result)
 			return
-	_report(interaction.break_from_view(camera.global_position, -camera.global_basis.z))
+	_report(interaction.break_from_view(view_origin(), -camera.global_basis.z))
 
 
 func get_body_aabb() -> AABB:
@@ -201,7 +252,7 @@ func apply_mouse_look(relative: Vector2) -> void:
 	rotate_y(-relative.x * mouse_sensitivity)
 	var vertical_direction := -1.0 if invert_y else 1.0
 	look_pitch = clampf(look_pitch - relative.y * mouse_sensitivity * vertical_direction, -1.5, 1.5)
-	camera.rotation.x = look_pitch
+	_place_camera(_eye_height)
 
 
 func snapshot() -> Dictionary:

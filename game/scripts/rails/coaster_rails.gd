@@ -26,6 +26,8 @@ extends RefCounted
 const FLAT := "rail"
 const SLOPE := "rail_slope"
 const LOOP := "rail_loop"
+## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): the rideable car.
+const CAR := "coaster_car"
 const TRACK_IDS: Array[String] = [FLAT, SLOPE, LOOP]
 const HORIZONTAL: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
 

@@ -94,6 +94,9 @@ const VIEW_DISTANCE_OPTIONS: Array[int] = [64, 128, 192, 256, 320]
 const DEFAULT_VIEW_DISTANCE := 128
 var view_distance := DEFAULT_VIEW_DISTANCE
 var vsync_enabled := DEFAULT_VSYNC_ENABLED
+## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): the pause-menu
+## "Hero: Armour on/off" toggle, [hero] armored in settings.cfg.
+var hero_armored := false
 
 
 func _init(data_root: String) -> void:
@@ -126,6 +129,7 @@ func load_and_apply() -> Dictionary:
 		if VIEW_DISTANCE_OPTIONS.has(candidate_view):
 			view_distance = candidate_view
 		vsync_enabled = bool(config.get_value("graphics", "vsync_enabled", DEFAULT_VSYNC_ENABLED))
+		hero_armored = bool(config.get_value("hero", "armored", false))
 		if window_mode not in ["windowed", "fullscreen"]:
 			window_mode = DEFAULT_WINDOW_MODE
 		if not _bindings_are_safe():
@@ -245,6 +249,16 @@ func set_graphics_preferences(candidate_msaa_3d: int, candidate_vsync_enabled: b
 		_apply_non_display_settings()
 		return {"ok": false, "reason": "SAVE_FAILED", "error": save_error}
 	return {"ok": true, "reason": "OK", "msaa_3d": msaa_3d, "vsync_enabled": vsync_enabled, "view_distance": view_distance}
+
+
+func set_hero_armored(armored: bool) -> Dictionary:
+	var previous := hero_armored
+	hero_armored = armored
+	var save_error := _save()
+	if save_error != OK:
+		hero_armored = previous
+		return {"ok": false, "reason": "SAVE_FAILED", "error": save_error}
+	return {"ok": true, "reason": "OK", "hero_armored": hero_armored}
 
 
 func begin_display_preview(candidate_mode: String, candidate_resolution: Vector2i) -> Dictionary:
@@ -463,4 +477,5 @@ func _save() -> Error:
 	config.set_value("graphics", "msaa_3d", msaa_3d)
 	config.set_value("graphics", "view_distance", view_distance)
 	config.set_value("graphics", "vsync_enabled", vsync_enabled)
+	config.set_value("hero", "armored", hero_armored)
 	return config.save(_settings_path)

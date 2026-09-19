@@ -27,6 +27,9 @@ const REASON_TEXT := {
 	"DRAG_PLACED": "Blocks placed.",
 	"LINE_PLACED": "Pieces laid in a line.",
 	"COASTER_PLACED": "Coaster track laid.",
+	"COASTER_BOARDED": "Boarded the coaster car — 1-9 sets the speed, Shift or Escape leaves.",
+	"COASTER_LEFT": "Left the coaster car.",
+	"ALREADY_RIDING": "Already riding.",
 	"BLUEPRINT_STAMPED": "Blueprint built.",
 	"UNKNOWN_BLUEPRINT": "That blueprint is not in the catalogue.",
 	"DRAG_CANCELLED": "Build cancelled; nothing was placed.",
@@ -72,6 +75,10 @@ var core_defense: CoreDefenseService
 var siege_defense: SiegeDefenseService
 ## Coaster rails side project: present only while a mine cart is placed.
 var coaster_carts: CoasterCartService
+## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): the ride state and
+## camera; hero_armored mirrors the pause-menu toggle (settings.cfg).
+var coaster_ride: CoasterRide
+var hero_armored := false
 var open_data: Dictionary
 var world_ready := false
 var saving := false
@@ -139,6 +146,12 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	player = PlayerController.new()
 	player.name = "Player"
 	add_child(player)
+	player.set_hero_armored(hero_armored)
+	coaster_ride = CoasterRide.new()
+	coaster_ride.name = "CoasterRide"
+	add_child(coaster_ride)
+	coaster_ride.initialize(player)
+	coaster_ride.set_armored(hero_armored)
 	_held_item_view = HeldItemView.new(registry)
 	_held_item_view.name = "HeldItemView"
 	player.camera.add_child(_held_item_view)
@@ -207,7 +220,7 @@ func initialize(session_data: Dictionary) -> Dictionary:
 
 func _process(delta: float) -> void:
 	if _held_item_view != null:
-		_held_item_view.set_gameplay_visible(world_ready and not simulation_paused and not saving)
+		_held_item_view.set_gameplay_visible(world_ready and not simulation_paused and not saving and not player.third_person and not is_riding())
 	_update_placement_preview()
 	if defense != null:
 		defense.advance(delta, simulation_paused or saving)
@@ -217,6 +230,9 @@ func _process(delta: float) -> void:
 		siege_defense.advance(delta, simulation_paused or saving)
 	if coaster_carts != null:
 		coaster_carts.advance(delta, simulation_paused or saving)
+	if coaster_ride != null:
+		coaster_ride.advance(delta)
+	if fire_service != null:
 		fire_service.advance(delta, simulation_paused or saving)
 	if not simulation_paused:
 		_melee_cooldown = maxf(0.0, _melee_cooldown - delta)
@@ -458,7 +474,68 @@ func pause_game(paused: bool) -> void:
 		player.deactivate()
 	else:
 		simulation_paused = false
-		player.activate(not DisplayServer.get_name().contains("headless"))
+		if is_riding():
+			# The rider stays seated: the body stays parked, only the pointer returns.
+			if not DisplayServer.get_name().contains("headless"):
+				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		else:
+			player.activate(not DisplayServer.get_name().contains("headless"))
+
+
+# --- Coaster car and hero (docs/COASTER_CAR_AND_HERO.md). ---------------------
+
+
+func is_riding() -> bool:
+	return coaster_ride != null and coaster_ride.is_riding()
+
+
+## Shift on a parked coaster car: seat the player and start the ride.
+func board_coaster_car(instance_id: String) -> Dictionary:
+	if coaster_ride == null or coaster_carts == null or not world_ready:
+		return {"ok": false, "reason": "NO_CAR"}
+	var body: Node3D = _station_visuals.get(instance_id)
+	var result := coaster_ride.board(instance_id, body, coaster_carts, not DisplayServer.get_name().contains("headless"))
+	if result.get("ok", false):
+		_hide_placement_preview()
+		_emit_hud()
+	return result
+
+
+## Shift or Escape while riding: park the car, stand beside it.
+func leave_coaster_car() -> Dictionary:
+	if not is_riding():
+		return {"ok": false, "reason": "NOT_RIDING"}
+	var result := coaster_ride.leave(not simulation_paused and not saving, not DisplayServer.get_name().contains("headless"))
+	_emit_hud()
+	return result
+
+
+## Number keys while riding: 1..9 cells per second.
+func set_ride_speed(level: int) -> Dictionary:
+	if not is_riding():
+		return {"ok": false, "reason": "NOT_RIDING"}
+	var result := coaster_ride.set_speed_level(level)
+	_emit_hud()
+	_on_interaction_feedback("Coaster speed %d / %d" % [coaster_ride.speed_level, CoasterRide.MAX_SPEED_LEVEL])
+	return result
+
+
+## V on foot: first person <-> chase camera with the hero model visible.
+func toggle_third_person() -> bool:
+	if player == null or is_riding():
+		return player != null and player.third_person
+	player.set_third_person(not player.third_person)
+	_on_interaction_feedback("Third person: %s (V toggles)" % ("on" if player.third_person else "off"))
+	return player.third_person
+
+
+## Pause-menu "Hero: Armour on/off" (persisted by the app in settings.cfg).
+func set_hero_armored(armored: bool) -> void:
+	hero_armored = armored
+	if player != null:
+		player.set_hero_armored(armored)
+	if coaster_ride != null:
+		coaster_ride.set_armored(armored)
 
 
 func snapshot() -> Dictionary:
@@ -472,9 +549,19 @@ func snapshot() -> Dictionary:
 		"core_defense": core_defense.snapshot(),
 		"blueprints": {"stamps": interaction.stamps_snapshot()} if interaction != null else {"stamps": []},
 		"clock": clock.snapshot(),
-		"player": player.snapshot(),
+		"player": _player_snapshot(),
 		"session_id": open_data.get("session_id", ""),
 	}
+
+
+## While riding the saved player stands beside the car (the ride itself is
+## not persisted: on load the player is on foot and the car is parked).
+func _player_snapshot() -> Dictionary:
+	var data := player.snapshot()
+	if is_riding():
+		var landing := coaster_ride.dismount_position()
+		data["position"] = [landing.x, landing.y, landing.z]
+	return data
 
 
 func _on_inventory_changed(data: Dictionary) -> void:
@@ -491,6 +578,9 @@ func _emit_hud() -> void:
 	var selected_text := "Empty" if selected.is_empty() else registry.display_name(selected)
 	var cycle_text := "" if clock.cycle_enabled else " · cycle paused"
 	var health_text := "HP %d/%d   |   " % [player.health, PlayerController.MAX_HEALTH] if player != null else ""
+	if is_riding():
+		hud_changed.emit("%s%s   |   %s · %s%s" % [health_text, coaster_ride.hud_text(), clock.period_label(), clock.time_label(), cycle_text])
+		return
 	hud_changed.emit("%sSlot %d: %s   |   %s · %s%s" % [health_text, inventory.selected_hotbar + 1, selected_text, clock.period_label(), clock.time_label(), cycle_text])
 
 
@@ -500,6 +590,8 @@ func _on_player_health_changed(_health: int, _max_health: int) -> void:
 
 ## Death: back to the core (or home) with full health after a short pause.
 func _on_player_died() -> void:
+	if is_riding():
+		leave_coaster_car()
 	_on_interaction_feedback("You fell. You wake at your core.")
 	var respawn := WorldAdapter.SPAWN_FEET
 	for record: Dictionary in workstations.stations.values():
@@ -576,6 +668,24 @@ func _on_boundary_feedback(message: String) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not world_ready or simulation_paused or saving:
+		return
+	if is_riding():
+		# Coaster car: the number keys set the speed (never the hotbar) and
+		# Shift leaves; everything else is swallowed while seated.
+		if event.is_action_pressed("interact"):
+			_on_interaction_feedback(str(leave_coaster_car().get("reason", "NOT_RIDING")))
+			get_viewport().set_input_as_handled()
+			return
+		for index in range(F0Inventory.HOTBAR_COUNT):
+			if event.is_action_pressed("hotbar_%d" % (index + 1)):
+				set_ride_speed(index + 1)
+				get_viewport().set_input_as_handled()
+				return
+		return
+	if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_V or event.keycode == KEY_V):
+		# Coaster car and hero: V toggles the chase camera (raw key, like X / C).
+		toggle_third_person()
+		get_viewport().set_input_as_handled()
 		return
 	var rotation_direction := 1 if event.is_action_pressed("rotate_build_clockwise") else -1 if event.is_action_pressed("rotate_build_counterclockwise") else 0
 	if rotation_direction != 0:
@@ -680,6 +790,8 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_build_rail_loop_visual(body, record)
 	elif entity_id == "mine_cart":
 		_build_mine_cart_visual(body)
+	elif entity_id == CoasterRails.CAR:
+		_build_coaster_car_visual(body)
 	elif entity_id == "core_of_power":
 		_build_core_of_power_visual(body, registry.entity_attributes(entity_id))
 	elif entity_id == "enemy_core":
@@ -703,13 +815,14 @@ func _spawn_station_visual(record: Dictionary) -> void:
 	_station_visual_materials[instance_id] = material
 	if siege_defense != null and not definition.get("siege", {}).is_empty():
 		siege_defense.register_visual(instance_id, body)
-	if entity_id == "mine_cart":
+	if entity_id == "mine_cart" or entity_id == CoasterRails.CAR:
 		if coaster_carts == null:
 			coaster_carts = CoasterCartService.new()
 			coaster_carts.name = "CoasterCartService"
 			coaster_carts.initialize(workstations)
 			add_child(coaster_carts)
-		coaster_carts.register_cart(instance_id, body)
+		# A coaster car waits, parked, for a rider (docs/COASTER_CAR_AND_HERO.md).
+		coaster_carts.register_cart(instance_id, body, entity_id == CoasterRails.CAR)
 	if record.has("integrity"):
 		_update_station_visual(instance_id, int(record.integrity), int(definition.get("defense", {}).get("max_integrity", 1)))
 
@@ -1281,6 +1394,73 @@ func _build_mine_cart_visual(parent: Node3D) -> void:
 	for lump in [Vector3(-0.14, 0.62, -0.16), Vector3(0.12, 0.66, 0.10), Vector3(0.02, 0.60, -0.02)]:
 		var stone := _add_mesh_box(rig, Vector3(0.22, 0.22, 0.22), lump, ore)
 		stone.rotation = Vector3(0.4, 0.6, 0.2)
+
+
+## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md), from the owner's
+## coaster_car.webp: a grey stone-framed wooden ride car with gold studs, a
+## blue banner with a gold diamond on the stone nose, a gold spike, four
+## gold-hub wheels and a gold safety bar, under a "CartRig" node that
+## CoasterCartService moves along the track (rig origin at the wheel contact
+## point; the model faces -z). The rig's "Seat" node is where the riding hero
+## sits, in the cavity between the bar and the high seat back.
+func _build_coaster_car_visual(parent: Node3D) -> void:
+	_add_collision_box(parent, Vector3(0.90, 0.90, 0.90), Vector3(0.0, -0.30, 0.0))
+	var rig := Node3D.new()
+	rig.name = "CartRig"
+	rig.position = Vector3(0.0, -0.95, 0.0)
+	parent.add_child(rig)
+	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
+	var oak_dark := _visual_material(Color("7d4a20"), "res://assets/blocks/planks.svg")
+	var stone := _visual_material(Color("8c9298"), "res://assets/blocks/castle_stone.svg")
+	var stone_dark := _visual_material(Color("5d646b"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	var banner := _visual_material(Color("2a58c8"), "", Color("1d3f96"))
+	# Wheels: stone discs with gold hubs.
+	for x in [-0.31, 0.31]:
+		for z in [-0.28, 0.30]:
+			_add_mesh_cylinder(rig, 0.14, 0.08, Vector3(x, 0.14, z), Vector3(0.0, 0.0, PI / 2.0), stone_dark, "CarWheel")
+			_add_mesh_cylinder(rig, 0.06, 0.10, Vector3(x, 0.14, z), Vector3(0.0, 0.0, PI / 2.0), gold, "CarHub")
+	# Chassis and floor.
+	_add_mesh_box(rig, Vector3(0.62, 0.08, 0.90), Vector3(0.0, 0.24, 0.0), stone_dark)
+	_add_mesh_box(rig, Vector3(0.58, 0.06, 0.78), Vector3(0.0, 0.31, 0.04), oak)
+	# Wooden body: side walls, a high seat back framed in stone.
+	for x in [-0.30, 0.30]:
+		_add_mesh_box(rig, Vector3(0.06, 0.34, 0.60), Vector3(x, 0.50, 0.06), oak, "CarSide")
+		_add_mesh_box(rig, Vector3(0.09, 0.08, 0.66), Vector3(x, 0.69, 0.06), stone, "CarSideRail")
+		_add_mesh_box(rig, Vector3(0.12, 0.50, 0.12), Vector3(x * 1.08, 0.60, 0.38), stone, "CarRearPost")
+		_add_mesh_box(rig, Vector3(0.12, 0.40, 0.12), Vector3(x * 1.08, 0.50, -0.22), stone, "CarFrontPost")
+		_add_stud(rig, Vector3(x * 1.30, 0.66, 0.38), gold, Vector3(0.0, 0.0, PI / 2.0))
+		_add_stud(rig, Vector3(x * 1.26, 0.56, -0.22), gold, Vector3(0.0, 0.0, PI / 2.0))
+		_add_stud(rig, Vector3(x * 1.20, 0.52, 0.08), gold, Vector3(0.0, 0.0, PI / 2.0))
+	_add_mesh_box(rig, Vector3(0.60, 0.50, 0.06), Vector3(0.0, 0.62, 0.38), oak_dark, "CarSeatBack")
+	_add_mesh_box(rig, Vector3(0.70, 0.10, 0.12), Vector3(0.0, 0.90, 0.38), stone, "CarBackFrame")
+	_add_stud(rig, Vector3(0.0, 0.90, 0.45), gold, Vector3(PI / 2.0, 0.0, 0.0))
+	# The seat cavity: a bench and the rider's seat node.
+	_add_mesh_box(rig, Vector3(0.48, 0.08, 0.30), Vector3(0.0, 0.40, 0.18), oak_dark, "CarBench")
+	var seat := Node3D.new()
+	seat.name = "Seat"
+	seat.position = Vector3(0.0, 0.44, 0.14)
+	rig.add_child(seat)
+	# Gold safety bar on stone brackets across the front of the cavity.
+	for x in [-0.27, 0.27]:
+		_add_mesh_box(rig, Vector3(0.06, 0.18, 0.06), Vector3(x, 0.72, -0.14), stone_dark)
+	_add_mesh_cylinder(rig, 0.03, 0.58, Vector3(0.0, 0.80, -0.14), Vector3(0.0, 0.0, PI / 2.0), gold, "CarBar")
+	# Stone nose sloping down to the front, with the blue banner and gold spike.
+	var nose := _add_mesh_box(rig, Vector3(0.60, 0.34, 0.34), Vector3(0.0, 0.46, -0.50), stone, "CarNose")
+	nose.rotation.x = 0.55
+	_add_mesh_box(rig, Vector3(0.54, 0.16, 0.22), Vector3(0.0, 0.30, -0.66), stone, "CarNoseLip")
+	var banner_plate := _add_mesh_box(rig, Vector3(0.36, 0.26, 0.03), Vector3(0.0, 0.54, -0.66), banner, "CarBanner")
+	banner_plate.rotation.x = 0.55
+	for offset in [Vector3(-0.19, 0.54, -0.66), Vector3(0.19, 0.54, -0.66)]:
+		var edge := _add_mesh_box(rig, Vector3(0.03, 0.28, 0.035), offset, gold)
+		edge.rotation.x = 0.55
+	var top_edge := _add_mesh_box(rig, Vector3(0.40, 0.03, 0.035), Vector3(0.0, 0.66, -0.59), gold)
+	top_edge.rotation.x = 0.55
+	var diamond := _add_mesh_box(rig, Vector3(0.13, 0.13, 0.05), Vector3(0.0, 0.52, -0.685), gold)
+	diamond.name = "CarBannerDiamond"
+	diamond.rotation = Vector3(0.55, 0.0, PI / 4.0)
+	var spike := _add_mesh_cone(rig, 0.07, 0.24, Vector3(0.0, 0.30, -0.86), Vector3(-PI / 2.0, 0.0, 0.0), gold)
+	spike.name = "CarSpike"
 
 
 ## Kettle on rails from the owner's reference art: an iron trolley riding the
@@ -1899,8 +2079,10 @@ func _add_collision_box(parent: Node3D, size: Vector3, offset: Vector3) -> Colli
 	return collision
 
 
-func _add_mesh_box(parent: Node3D, size: Vector3, offset: Vector3, material: Material) -> MeshInstance3D:
+func _add_mesh_box(parent: Node3D, size: Vector3, offset: Vector3, material: Material, node_name: String = "") -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
+	if not node_name.is_empty():
+		mesh_instance.name = node_name
 	var mesh := BoxMesh.new()
 	mesh.size = size
 	mesh_instance.mesh = mesh
@@ -1954,9 +2136,9 @@ func _update_placement_preview() -> void:
 	if interaction.drag_active():
 		# Coaster rails side project: X / C resize a loop while its drag is active.
 		interaction.coaster_loop_keys(Input.is_key_pressed(KEY_X), Input.is_key_pressed(KEY_C))
-		_update_drag_preview(interaction.update_drag_place(player.camera.global_position, -player.camera.global_basis.z, Input.is_action_pressed("interact")))
+		_update_drag_preview(interaction.update_drag_place(player.view_origin(), -player.camera.global_basis.z, Input.is_action_pressed("interact")))
 		return
-	var preview := interaction.placement_preview_from_view(player.camera.global_position, -player.camera.global_basis.z)
+	var preview := interaction.placement_preview_from_view(player.view_origin(), -player.camera.global_basis.z)
 	if not preview.get("visible", false):
 		_hide_placement_preview()
 		return
@@ -2064,6 +2246,8 @@ func _remove_station_visual(instance_id: String) -> void:
 	if not _station_visuals.has(instance_id):
 		return
 	var body: Node = _station_visuals[instance_id]
+	if is_riding() and coaster_ride.car_id == instance_id:
+		_on_interaction_feedback(str(leave_coaster_car().get("reason", "COASTER_LEFT")))
 	body.queue_free()
 	if siege_defense != null:
 		siege_defense.unregister_visual(instance_id)
@@ -2109,7 +2293,16 @@ func _defense_interact(origin: Vector3, direction: Vector3) -> Dictionary:
 	if hit.is_empty():
 		return {"handled": false}
 	var collider: Object = hit.get("collider")
-	if collider == null or not collider.has_meta("defense_structure_id"):
+	if collider == null:
+		return {"handled": false}
+	# Coaster car and hero: Shift on a coaster car boards it (repair of a car
+	# is not offered; dismantle and re-place it instead).
+	if collider.has_meta("station_instance_id"):
+		var station_id := str(collider.get_meta("station_instance_id"))
+		if str(workstations.station(station_id).get("entity_id", "")) == CoasterRails.CAR:
+			var boarded := board_coaster_car(station_id)
+			return {"handled": true, "ok": bool(boarded.get("ok", false)), "reason": str(boarded.get("reason", "NO_CAR"))}
+	if not collider.has_meta("defense_structure_id"):
 		return {"handled": false}
 	var structure_id := str(collider.get_meta("defense_structure_id"))
 	if structure_id == "training_wall":

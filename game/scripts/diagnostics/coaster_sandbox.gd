@@ -3,12 +3,13 @@ extends Node
 
 ## Owner test sandbox for the coaster rails side project (`--coaster-sandbox`):
 ## starts a new game, levels a plate beside the spawn, lays a premade loop
-## and a slope run with mine carts, and keeps the pack topped up with rails,
-## carts, kettles, blocks and tools so nothing has to be mined.
+## with a parked coaster car and a slope run with a mine cart, and keeps the
+## pack topped up with rails, carts, cars, kettles, blocks and tools so nothing
+## has to be mined.
 
 const TOP_UP_SECONDS := 1.0
 ## Hotbar order, then the rest of the pack.
-const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "mine_cart", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone"]
+const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "mine_cart", "coaster_car", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone"]
 
 var app: CraftAndDefendApp
 var _top_up_left := 0.0
@@ -27,7 +28,7 @@ func run(application: CraftAndDefendApp) -> void:
 	await get_tree().process_frame
 	_stock_pack(true)
 	_lay_demo()
-	app.session.navigation_changed.emit("COASTER SANDBOX  ·  infinite stock  ·  loop ahead, slope run to the right")
+	app.session.navigation_changed.emit("COASTER SANDBOX  ·  infinite stock  ·  loop ahead (Shift on the car to ride, 1-9 speed), slope run to the right, V third person")
 	print("COASTER_SANDBOX_READY")
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-shot"):
 		var player := app.session.player
@@ -90,8 +91,10 @@ func _lay_demo() -> void:
 	interaction.set_drag_end(origin + Vector3i(3, 0, 0))
 	interaction.set_coaster_loop(true)
 	var loop := interaction.commit_drag_place()
-	var loop_cart := ws.try_place("mine_cart", origin + Vector3i(1, 1, 0), world.query_cell, AABB(), 0)
-	print("COASTER_SANDBOX loop %s cart %s" % [loop.get("reason"), loop_cart.get("reason")])
+	# A coaster car parked at the start of the lead-in, ready to board (Shift);
+	# the mine cart rides the slope run (docs/COASTER_CAR_AND_HERO.md).
+	var loop_car := ws.try_place("coaster_car", origin + Vector3i(0, 1, 0), world.query_cell, AABB(), 0)
+	print("COASTER_SANDBOX loop %s car %s" % [loop.get("reason"), loop_car.get("reason")])
 	app.session.inventory.select_hotbar(0)
 	# Slope run: rails, slope, two-block step with rails on top, then down again.
 	var step := Vector3i(2, 1, 34)

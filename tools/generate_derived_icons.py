@@ -34,6 +34,8 @@ DERIVED = [
     "light_block_blue", "light_block_red",
     # Coaster rails side project (docs/COASTER_RAILS.md): drawn placeholders.
     "rail_slope", "rail_loop", "mine_cart",
+    # Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): owner art.
+    "coaster_car",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -52,6 +54,7 @@ OWNER_ICONS = {
     "campfire": "campfire.webp",
     "light_block_blue": "light_block_blue.webp",
     "light_block_red": "light_block_red.webp",
+    "coaster_car": "coaster_car.webp",
 }
 # Renders delivered on an opaque black backdrop: the backdrop is keyed out by a
 # flood fill from the corners (dark iron inside the object is not connected to
@@ -269,6 +272,7 @@ BUILDERS = {
     "post_lantern": lambda: owner_icon("post_lantern"), "campfire": lambda: owner_icon("campfire"),
     "light_block_blue": lambda: owner_icon("light_block_blue"), "light_block_red": lambda: owner_icon("light_block_red"),
     "rail_slope": icon_rail_slope, "rail_loop": icon_rail_loop, "mine_cart": icon_mine_cart,
+    "coaster_car": lambda: owner_icon("coaster_car"),
 }
 
 

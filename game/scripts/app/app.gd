@@ -38,6 +38,8 @@ var session: GameSession
 
 var menu_panel: Control
 var pause_panel: Control
+## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): pause-menu toggle.
+var hero_armor_button: Button
 var keybind_panel: Control
 var settings_panel: Control
 var inventory_panel: Control
@@ -303,6 +305,11 @@ func _ready() -> void:
 		var coaster_rails_automation := CoasterRailsAutomation.new()
 		add_child(coaster_rails_automation)
 		coaster_rails_automation.call_deferred("run", self, coaster_rails_mode)
+	var coaster_car_mode := _argument_value("--coaster-car-automation=")
+	if not coaster_car_mode.is_empty():
+		var coaster_car_automation := CoasterCarAutomation.new()
+		add_child(coaster_car_automation)
+		coaster_car_automation.call_deferred("run", self, coaster_car_mode)
 
 
 func _input(event: InputEvent) -> void:
@@ -470,6 +477,8 @@ func _build_pause(canvas: CanvasLayer) -> void:
 	pause_box.add_child(_button("Resume", _resume_game))
 	pause_box.add_child(_button("Settings", _show_settings))
 	pause_box.add_child(_button("Keybinds", _show_keybinds))
+	hero_armor_button = _button("Hero: Armour off", _toggle_hero_armor)
+	pause_box.add_child(hero_armor_button)
 	pause_box.add_child(_button("Start Defense Drill", _start_defense_drill))
 	pause_box.add_child(_button("Start Attack from the Enemy Base (far)", _start_far_attack))
 	pause_box.add_child(_button("Start Drill (NEAR): single raider", _start_core_defense_prototype))
@@ -1275,6 +1284,8 @@ func _open_session(continue_existing: bool) -> void:
 		return
 	session = GameSession.new()
 	session.settings_view_distance = settings.view_distance
+	session.hero_armored = settings.hero_armored
+	_refresh_hero_armor_button()
 	session.name = "GameSession"
 	add_child(session)
 	session.ready_for_play.connect(_on_session_ready)
@@ -1320,6 +1331,21 @@ func _resume_game() -> void:
 	get_tree().paused = false
 	session.pause_game(false)
 	state = AppState.PLAYING
+
+
+## Pause menu: the hero wears plate (persisted in settings.cfg as [hero] armored).
+func _toggle_hero_armor() -> void:
+	var result := settings.set_hero_armored(not settings.hero_armored)
+	if not result.get("ok", false):
+		_set_status("Hero armour could not be saved: %s" % str(result.get("reason", "UNKNOWN")))
+	_refresh_hero_armor_button()
+	if session != null:
+		session.set_hero_armored(settings.hero_armored)
+
+
+func _refresh_hero_armor_button() -> void:
+	if hero_armor_button != null and settings != null:
+		hero_armor_button.text = "Hero: Armour %s" % ("on" if settings.hero_armored else "off")
 
 
 func _start_defense_drill() -> void:
@@ -2976,6 +3002,9 @@ func _handle_escape_recovery() -> void:
 		_close_inventory()
 	elif state == AppState.CRAFTING:
 		_close_crafting()
+	elif state == AppState.PLAYING and session != null and session.is_riding():
+		# Coaster car: Escape leaves the car before it ever pauses.
+		_set_feedback(str(session.REASON_TEXT.get("COASTER_LEFT", "Left the coaster car.")) if session.leave_coaster_car().get("ok", false) else "")
 	elif state == AppState.PLAYING:
 		_pause_game()
 	elif state == AppState.PAUSED:

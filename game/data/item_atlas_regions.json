@@ -455,6 +455,15 @@
         155
       ]
     },
+    "coaster_car": {
+      "atlas": "derived",
+      "rect": [
+        778,
+        791,
+        236,
+        209
+      ]
+    },
     "gold_ore": {
       "atlas": "gold",
       "rect": [

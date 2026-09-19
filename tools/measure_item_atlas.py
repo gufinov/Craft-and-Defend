@@ -37,6 +37,7 @@ DERIVED_ORDER = [
     "core_of_power", "enemy_core", "torch", "wall_lantern", "post_lantern", "campfire",
     "light_block_blue", "light_block_red",
     "rail_slope", "rail_loop", "mine_cart",
+    "coaster_car",
 ]
 # Nominal search cells. Row heights for the item atlas follow the shipped
 # ItemIconCatalog grid; the ammunition atlas is two square halves.

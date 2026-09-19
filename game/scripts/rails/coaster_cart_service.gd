@@ -14,6 +14,12 @@ extends Node
 ## bottom row; a curved piece already ridden this pass is shunned, so the cart
 ## leaves the loop onto the exit. At a dead end it turns around and forgets
 ## what it visited. No gravity: constant speed.
+##
+## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): a cart registered
+## `parked` (the `coaster_car`) stands still until `set_parked(id, false)`;
+## `set_speed(id, cells_per_second)` overrides the entity's `rail_speed` for
+## one cart (the rider's 1-9 keys). `cart_rig(id)` / `travel_direction(id)` feed
+## the ride camera.
 
 ## Turn-score bonus for an unvisited loop piece and penalty for a visited one,
 ## in degrees of turn (a straight flat exit scores 0, a 45-degree climb 45).
@@ -27,19 +33,77 @@ var workstations: WorkstationService
 var _bodies: Dictionary = {}
 ## instance_id -> {cell, previous, target, visited, trail, up}.
 var _riders: Dictionary = {}
+## instance_id -> true while the cart must not move (a car without a rider).
+var _parked: Dictionary = {}
+## instance_id -> cells per second overriding the entity's rail_speed.
+var _speeds: Dictionary = {}
+## instance_id -> the last non-zero unit travel direction.
+var _directions: Dictionary = {}
 
 
 func initialize(station_service: WorkstationService) -> void:
 	workstations = station_service
 
 
-func register_cart(instance_id: String, body: Node3D) -> void:
+func register_cart(instance_id: String, body: Node3D, parked: bool = false) -> void:
 	_bodies[instance_id] = body
+	if parked:
+		_parked[instance_id] = true
 
 
 func unregister_cart(instance_id: String) -> void:
 	_bodies.erase(instance_id)
 	_riders.erase(instance_id)
+	_parked.erase(instance_id)
+	_speeds.erase(instance_id)
+	_directions.erase(instance_id)
+
+
+func set_parked(instance_id: String, parked: bool) -> void:
+	if parked:
+		_parked[instance_id] = true
+	else:
+		_parked.erase(instance_id)
+
+
+func is_parked(instance_id: String) -> bool:
+	return _parked.has(instance_id)
+
+
+## Overrides the entity's rail_speed for one cart (cells per second); a value
+## of zero or less restores the entity speed.
+func set_speed(instance_id: String, cells_per_second: float) -> void:
+	if cells_per_second > 0.0:
+		_speeds[instance_id] = cells_per_second
+	else:
+		_speeds.erase(instance_id)
+
+
+func speed_of(instance_id: String) -> float:
+	if _speeds.has(instance_id):
+		return float(_speeds[instance_id])
+	if workstations == null:
+		return DEFAULT_SPEED
+	var record := workstations.station(instance_id)
+	return float(workstations.registry.entity(str(record.get("entity_id", ""))).get("cart", {}).get("rail_speed", DEFAULT_SPEED))
+
+
+## The moving "CartRig" node of a registered cart, or null.
+func cart_rig(instance_id: String) -> Node3D:
+	var body: Node3D = _bodies.get(instance_id)
+	if body == null or not is_instance_valid(body):
+		return null
+	return body.get_node_or_null("CartRig")
+
+
+## The cart's last unit travel direction (world), -z of the body until it moves.
+func travel_direction(instance_id: String) -> Vector3:
+	if _directions.has(instance_id):
+		return _directions[instance_id]
+	var body: Node3D = _bodies.get(instance_id)
+	if body != null and is_instance_valid(body):
+		return -body.global_basis.z
+	return Vector3.FORWARD
 
 
 func cart_count() -> int:
@@ -67,11 +131,13 @@ func advance(delta: float, paused: bool = false) -> void:
 		if body == null or not is_instance_valid(body):
 			_bodies.erase(instance_id)
 			continue
-		var rig: Node3D = body.get_node_or_null("CartRig")
-		var record := workstations.station(instance_id)
-		if rig == null or record.is_empty():
+		if _parked.has(instance_id):
 			continue
-		_ride(instance_id, body, rig, record, tracks, delta)
+		var moving_rig: Node3D = body.get_node_or_null("CartRig")
+		var record := workstations.station(instance_id)
+		if moving_rig == null or record.is_empty():
+			continue
+		_ride(instance_id, body, moving_rig, record, tracks, delta)
 
 
 func _ride(instance_id: String, body: Node3D, rig: Node3D, record: Dictionary, tracks: Dictionary, delta: float) -> void:
@@ -88,7 +154,7 @@ func _ride(instance_id: String, body: Node3D, rig: Node3D, record: Dictionary, t
 	var target: Vector3i = rider.target
 	if target == Vector3i.MAX or not chain.has(target) or target == current:
 		target = _choose_next(chain, tracks, current, rider)
-	var speed := float(workstations.registry.entity(str(record.get("entity_id", ""))).get("cart", {}).get("rail_speed", DEFAULT_SPEED))
+	var speed := speed_of(instance_id)
 	var up: Vector3 = rider.up
 	var desired := _ride_point(tracks, target, up)
 	var travel := desired - rig.global_position
@@ -96,6 +162,7 @@ func _ride(instance_id: String, body: Node3D, rig: Node3D, record: Dictionary, t
 	rig.global_position = moved
 	if travel.length() > 0.001:
 		var forward := travel.normalized()
+		_directions[instance_id] = forward
 		var basis_up := up
 		if absf(forward.dot(basis_up)) > 0.98:
 			basis_up = Vector3.UP if absf(forward.dot(Vector3.UP)) < 0.98 else Vector3.FORWARD
