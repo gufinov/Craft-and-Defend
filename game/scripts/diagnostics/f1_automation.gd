@@ -107,6 +107,9 @@ func _test_input_contexts() -> void:
 	app._close_inventory()
 	_record("T14_INVENTORY_CLOSE", app.state == app.AppState.PLAYING and not get_tree().paused and app.session.player.active, "Tab/close returns to active play", app.state)
 
+	# T14 tests the focus-loss rules themselves, so lift the diagnostic guard
+	# that otherwise ignores host focus changes during automation.
+	app.automation_active = false
 	var print_event := InputEventKey.new()
 	print_event.pressed = true
 	print_event.physical_keycode = KEY_PRINT
@@ -122,6 +125,7 @@ func _test_input_contexts() -> void:
 	var focus_paused := app.state == app.AppState.PAUSED and get_tree().paused and not app.session.player.active
 	await get_tree().process_frame
 	_record("T14_FOCUS_LOSS", focus_paused and app.state == app.AppState.PAUSED, "focus loss pauses and focus return never auto-resumes", app.state)
+	app.automation_active = true
 
 	var before_ui := _mutation_snapshot()
 	app._show_keybinds()

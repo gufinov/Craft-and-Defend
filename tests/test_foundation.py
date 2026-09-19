@@ -189,10 +189,12 @@ class FoundationTests(unittest.TestCase):
 
     def test_half_open_bounds_at_negative_coordinates(self):
         world = self.bundle['world']
-        self.assertTrue(in_bounds([-32,-16,-64],world))
-        self.assertTrue(in_bounds([31,15,63],world))
-        self.assertFalse(in_bounds([32,15,63],world))
-        self.assertFalse(in_bounds([-33,0,0],world))
+        minimum = world['min_cell']
+        maximum = [lo + size for lo, size in zip(minimum, world['size'])]
+        self.assertTrue(in_bounds(minimum, world))
+        self.assertTrue(in_bounds([v - 1 for v in maximum], world))
+        self.assertFalse(in_bounds([maximum[0], maximum[1] - 1, maximum[2] - 1], world))
+        self.assertFalse(in_bounds([minimum[0] - 1, 0, 0], world))
 
     def test_duplicate_json_keys_rejected(self):
         with tempfile.TemporaryDirectory() as temp:

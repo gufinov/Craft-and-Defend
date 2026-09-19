@@ -144,7 +144,7 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 
 ## Performance evidence, not invented guarantees
 
-Use the 64×32×128 fixture and a scripted or documented route with at least 100 edits and a save/reload. Record median/p95 frame time, longest edit hitch, memory and save duration. Suggested initial usability targets are 60 FPS with ordinary movement and visible edit response under 100 ms on the designated test PC; these are **provisional targets**, not a tested minimum specification. Record failures and determine cause before tuning or enlarging the world.
+Use the 128×32×192 world (expanded from the 64×32×128 fixture on 2026-09-19) and a scripted or documented route with at least 100 edits and a save/reload. Record median/p95 frame time, longest edit hitch, memory and save duration. Suggested initial usability targets are 60 FPS with ordinary movement and visible edit response under 100 ms on the designated test PC; these are **provisional targets**, not a tested minimum specification. Record failures and determine cause before tuning or enlarging the world.
 
 ## Runtime test layers
 

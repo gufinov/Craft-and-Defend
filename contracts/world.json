@@ -3,14 +3,14 @@
   "generator_version": "terrain_p1_1",
   "seed": 41026,
   "min_cell": [
-    -32,
+    -64,
     -16,
-    -64
+    -96
   ],
   "size": [
-    64,
+    128,
     32,
-    128
+    192
   ],
   "chunk_size": 16,
   "sea_level": 0,

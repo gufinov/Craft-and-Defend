@@ -4,7 +4,7 @@ Two different deliverables must remain distinct: this **groundwork package** (do
 
 ## F0 — smallest useful integration experiment
 
-A native Windows build boots to a main menu, enters a finite layered 64×32×128 block world, uses ESDF movement, breaks and gathers a hand-mineable block, places it elsewhere, rejects invalid placement, pauses, allows one persistent key rebind, saves a coherent world/inventory checkpoint, quits entirely and reloads it. Run the same sequence from the exported executable with the editor closed. No crafted tools or procedural world required yet.
+A native Windows build boots to a main menu, enters a finite layered 128×32×192 block world (64×32×128 until 2026-09-19), uses ESDF movement, breaks and gathers a hand-mineable block, places it elsewhere, rejects invalid placement, pauses, allows one persistent key rebind, saves a coherent world/inventory checkpoint, quits entirely and reloads it. Run the same sequence from the exported executable with the editor closed. No crafted tools or procedural world required yet.
 
 Stop and record a clear pass/fail at F0. A menu plus a rendered cube is insufficient. The test must exercise real voxel editing, physics, state accounting, save lifecycle and export.
 

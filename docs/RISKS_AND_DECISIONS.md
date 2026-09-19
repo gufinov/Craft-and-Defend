@@ -21,7 +21,7 @@ Single player, Windows-first; menus before world; GDScript + Module candidate; f
 
 ## Proposals, not locked design
 
-64×32×128 fixture, 1-unit cells, sea-level zero, +Z friendly side, 27 inventory slots, 64 item stacks, 5-unit interaction reach, 5-second smelting, 20-minute day, static structural support, two-generation checkpoint approach and Compatibility renderer. Change these through a documented small test, not an engine rewrite.
+128×32×192 world (expanded 2026-09-19 from the 64×32×128 fixture), 1-unit cells, sea-level zero, +Z friendly side, 27 inventory slots, 64 item stacks, 5-unit interaction reach, 5-second smelting, 20-minute day, static structural support, two-generation checkpoint approach and Compatibility renderer. Change these through a documented small test, not an engine rewrite.
 
 ## Still open
 
