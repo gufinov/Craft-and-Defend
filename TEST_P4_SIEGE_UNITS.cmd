@@ -21,6 +21,13 @@ echo The diagnostic controls itself; it is not the playable game.
 if errorlevel 1 goto :phase_failed
 
 echo.
+echo Checkpointing a running wave, then restoring it in a clean process (T141).
+"%EXE%" --headless --log-file "%GATE_ROOT%\save.log" -- --f0-data-root="%GATE_ROOT%" --p4-siege-units-automation=save
+if errorlevel 1 goto :phase_failed
+"%EXE%" --headless --log-file "%GATE_ROOT%estore.log" -- --f0-data-root="%GATE_ROOT%" --p4-siege-units-automation=restore
+if errorlevel 1 goto :phase_failed
+
+echo.
 echo Rendering the five siege machines in one view.
 echo A game window may appear briefly and close itself.
 "%EXE%" --log-file "%VISUAL_ROOT%\visual.log" -- --f0-data-root="%VISUAL_ROOT%" --p4-siege-units-automation=visual

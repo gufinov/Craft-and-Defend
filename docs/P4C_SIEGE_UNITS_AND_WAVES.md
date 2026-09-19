@@ -34,7 +34,7 @@ Validator: `fire_mode` may be `dump`; a dump weapon must carry `rail_speed > 0` 
 - Every weapon picks its own target: `_target_for` → `CoreDefenseService.nearest_raider_position(muzzle, target_filter)` (filters `any` / `raider` / `brute`; `structure` engages nothing yet).
 - Fire modes: `direct` (ray; cannonball projectile when the loaded munition is `cannonball`, otherwise the bolt), `ballistic` (arc), **`dump`** (`_dump_trajectory`: target must be at least 0.5 below the lip and within `maximum_range` horizontally; the oil falls to the ground under the target).
 - **Rail riding** (`_ride_rails`): a weapon with `rail_speed` collects the connected rail cells under and beside its own rail (`_rail_chain`, 4-neighbours on one level) and moves its turret along the shortest chain path (`_rail_step`) to the cell nearest the target at `rail_speed` cells/s; with no target or no ammunition it returns home. `rail_rider_cell(id)` exposes the current cell. Occupancy never moves — the kettle's cell stays its anchor.
-- Impacts resolve where the munition lands: `damage_raiders_within(point, max(splash, 0.9))` hits every raider in the radius; fire munitions light the ground through `FireService.ignite`.
+- Impacts resolve where the munition lands: `damage_raiders_within(point, max(splash, 0.9))` hits every raider in the radius; fire munitions light the ground through `FireService.ignite`; other splash munitions tear the grass under the landing point to dirt (`_scorch_ground`).
 - `hud_suffix` lists every siege entity type present ("cannon 1/2 · kettle 1/3 …").
 
 ## Waves (`CoreDefenseService`, P4D)
@@ -42,12 +42,13 @@ Validator: `fire_mode` may be `dump`; a dump weapon must carry `rail_speed > 0` 
 - `start_prototype(options)` accepts `raiders` (wave size), `brutes` (how many are brutes: 40 health, 10 damage, 0.7× speed, purple with iron pauldrons) and `spawn_distance` (8–28 cells from the arena centre). The arena check also probes the requested spawn cell; the navigation capture widens to cover the spawn line.
 - The primary raider keeps the old fields (`raider`, `raider_health`, `try_damage_raider`); extra raiders live in `extra_raiders` with their own health, target, attack timer and phase. Each plans its own route (`_plan_extra`), breaches permitted barricades and hits the core with its own damage. A replan re-routes every raider.
 - Damage API: `try_damage_raider_node`, `damage_raiders_within`, `damage_raiders_in_cell` (fire), `nearest_raider_position(from, filter)`, `raider_nodes`, `is_raider_node`, `living_raider_count`. WON only when every raider is down; FAILED halts all of them. The sword strikes whichever raider the ray hits.
+- Far spawn lines (> 8 cells) sit on the terrain surface of their column (`_surface_cell`), the navigation capture widens vertically (18 cells) and, when the streamer has not loaded the line yet, the drill waits (`WAITING_FOR_TERRAIN`, capture retried every 0.5 s up to 40 times) instead of failing.
 - Snapshot adds `spawn_distance`, `wave_size` and `extra_raiders` (kind, health, position); restore respawns and re-plans them.
-- Pause menu: **Start Wave Drill (5 raiders + 1 brute, far spawn)** → `{"raiders": 6, "brutes": 1, "spawn_distance": 22}`; the single-raider prototype is unchanged.
+- Pause menu: **Start Wave Drill (5 raiders + 1 brute, far spawn)** → `{"raiders": 6, "brutes": 1, "spawn_distance": 22}` and **Start Siege Drill (9 raiders + 3 brutes, farthest spawn)** → `{"raiders": 12, "brutes": 3, "spawn_distance": 28}`; the single-raider prototype is unchanged.
 
 ## Acceptance
 
-- `--p4-siege-units-automation=gate`: T130 content, T131 cannon, T132 turret catapult on a tower socket, T133 rails + kettle ride + hot-oil dump, T134 ballista presentation, T135 wave drill; `visual`: T136 `p4-siege-units.png` (all five machines in one view).
+- `--p4-siege-units-automation=gate`: T130 content, T131 cannon, T132 turret catapult on a tower socket (+ scorched ground), T133 rails + kettle ride + hot-oil dump, T134 ballista presentation, T135 wave drill, T142 far spawn on natural ground; `save` / `restore`: T141 wave persistence; `visual`: T136 `p4-siege-units.png` (all five machines in one view).
 - `TEST_P4_SIEGE_UNITS.cmd` runs gate then visual on the export.
 - Updated expectations: T73/T78 (three recipe pages, search "kettle"), T66 (progression-ordered book; barricade found by search), T90 order list.
 

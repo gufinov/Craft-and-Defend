@@ -18,6 +18,10 @@ func run(application: CraftAndDefendApp, mode: String) -> void:
 			await _run_gate()
 		"visual":
 			await _run_visual()
+		"save":
+			await _run_save()
+		"restore":
+			await _run_restore()
 		_:
 			failures.append("unknown mode " + mode)
 	_write_json(app.data_root.path_join("p4_siege_units_results.json"), {"failures": failures, "records": records})
@@ -94,12 +98,15 @@ func _run_gate() -> void:
 	await get_tree().physics_frame
 	_rearm(core)
 	siege.face_target_now(turret_id, core.raider_target_position())
+	var raider_ground := Vector3i(center.x + 2, -1, center.z + 2)
+	world.set_cell(raider_ground, 1)
 	var turret_body: Node3D = siege.visual_bodies.get(turret_id)
 	var turret_arm: Node3D = turret_body.find_child("CatapultArm", true, false) if turret_body != null else null
 	var turret_shot := siege._attempt_fire(turret_id, ws.siege_status(turret_id).get("details", {}), true)
 	var turret_ammo := int(ws.siege_status(turret_id).get("details", {}).get("ammo", -1))
 	var turret_damage := CoreDefenseService.RAIDER_MAX_HEALTH - core.raider_health
-	_record("T132_TURRET_CATAPULT", tower.get("ok", false) and turret.get("ok", false) and turret_mount == "light_siege" and turret_arm != null and turret_shot.get("ok", false) and turret_ammo == 3 and turret_damage == 9, "the turret catapult mounts on a tower platform socket, shares the catapult arm animation and lobs stone shot for 9", {"tower": tower.get("reason"), "turret": turret.get("reason"), "mount": turret_mount, "arm": turret_arm != null, "shot": turret_shot.get("reason"), "ammo": turret_ammo, "damage": turret_damage})
+	var scorched := int(world.query_cell(raider_ground).get("voxel_id", -1)) == 2
+	_record("T132_TURRET_CATAPULT", tower.get("ok", false) and turret.get("ok", false) and turret_mount == "light_siege" and turret_arm != null and turret_shot.get("ok", false) and turret_ammo == 3 and turret_damage == 9 and scorched, "the turret catapult mounts on a tower platform socket, shares the catapult arm animation, lobs stone shot for 9 and the impact tears the grass under the raider to dirt", {"tower": tower.get("reason"), "turret": turret.get("reason"), "mount": turret_mount, "arm": turret_arm != null, "shot": turret_shot.get("reason"), "ammo": turret_ammo, "damage": turret_damage, "scorched": scorched})
 
 	# T133 rails and kettle: rails chain along a wall top; a kettle mounts only
 	# on a rail, rides the chain to the raider at the wall foot, and dumps hot
@@ -191,6 +198,39 @@ func _run_gate() -> void:
 	var snapshot := core.snapshot()
 	_record("T135_WAVE_DRILL", wave.get("ok", false) and int(wave.get("spawn_distance", 0)) == 20 and wave_count == 4 and brutes == 1 and far_spawns == 4 and nearest_is_last and brute_only.is_finite() and splash_hits >= 2 and still_active and killed == 4 and core.state == CoreDefenseService.WON and int(snapshot.get("wave_size", 0)) == 4, "a wave drill spawns four raiders (one brute) twenty cells out; splash damages every raider in radius; the nearest raider is targeted; the drill is won only once the whole wave is down", {"wave": wave.get("reason"), "count": wave_count, "brutes": brutes, "far_spawns": far_spawns, "nearest_is_last": nearest_is_last, "brute_only": brute_only.is_finite(), "splash_hits": splash_hits, "still_active": still_active, "killed": killed, "state": core.state})
 
+	# T142 far spawn on natural ground: the farthest wave line (28 cells) lies
+	# outside the flat clearing; raiders spawn on the terrain surface there and
+	# still find a route (or a permitted breach) toward the core.
+	core.clear_for_other_mode()
+	var far := core.start_prototype({"raiders": 3, "brutes": 0, "spawn_distance": 28})
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	# The far line may sit on terrain the streamer is still loading; the
+	# service retries its capture every half second.
+	var waited := 0
+	while core.last_route_reason == "WAITING_FOR_TERRAIN" and waited < 600:
+		await get_tree().process_frame
+		waited += 1
+	var far_count := core.living_raider_count()
+	var routed := 0
+	var reasons: Array[String] = []
+	reasons.append(core.last_route_reason)
+	if core.last_route_reason in ["OK", "ATTACK_OBSTRUCTION"]:
+		routed += 1
+	for entry in core.extra_raiders:
+		reasons.append(str(entry.route_reason))
+		if str(entry.route_reason) in ["OK", "ATTACK_OBSTRUCTION"]:
+			routed += 1
+	var on_surface := true
+	for node in core.raider_nodes():
+		var feet := node.feet_cell()
+		var below := int(world.query_cell(feet + Vector3i.DOWN).get("voxel_id", 0))
+		var at := int(world.query_cell(feet).get("voxel_id", 0))
+		if below == 0 or at != 0:
+			on_surface = false
+		node.active = false
+	_record("T142_FAR_SPAWN_NATURAL_GROUND", far.get("ok", false) and int(far.get("spawn_distance", 0)) == 28 and far_count == 3 and on_surface and routed == 3 and core.state == CoreDefenseService.ROUTING, "a 28-cell wave line over natural terrain spawns every raider on the surface and each one routes toward the core", {"far": far.get("reason"), "count": far_count, "on_surface": on_surface, "routed": routed, "reasons": reasons, "state": core.state, "waited_frames": waited})
+
 
 ## Rendered evidence: the five machines (ballista, catapult, turret catapult on
 ## a tower platform, cannon, kettle on a rail-topped wall) in one 1280x720 view.
@@ -244,6 +284,50 @@ func _run_visual() -> void:
 		if body != null:
 			mesh_parts += body.find_children("*", "MeshInstance3D", true, false).size()
 	_record("T136_SIEGE_UNITS_RENDERED", all_placed and error == OK and image.get_size() == Vector2i(1280, 720) and mesh_parts >= 40, "the ballista, catapult, turret catapult on its tower, cannon and kettle on a rail-topped wall render as distinct multi-part machines in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "placed": all_placed, "mesh_parts": mesh_parts, "rails": rails_ok})
+
+
+## T141 wave persistence: a running wave (three raiders, one brute, two of
+## them damaged) checkpoints and a clean-process Continue rebuilds every raider
+## with its kind and health.
+func _run_save() -> void:
+	app._on_start_pressed()
+	if not await _wait_ready():
+		return
+	app.session.player.deactivate()
+	var core := app.session.core_defense
+	var wave := core.start_prototype({"raiders": 3, "brutes": 1, "spawn_distance": 14})
+	if not wave.get("ok", false):
+		_record("T141_WAVE_CHECKPOINT_SAVE", false, "the wave drill starts before checkpointing", wave)
+		return
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	for node in core.raider_nodes():
+		node.active = false
+	core.raider_health = 11
+	var brute_hit := {"ok": false}
+	for node in core.raider_nodes():
+		if node.kind == BasicRaider.KIND_BRUTE:
+			brute_hit = core.try_damage_raider_node(node, 15, "test")
+	var saved := await app.saves.save_session(app.session)
+	_record("T141_WAVE_CHECKPOINT_SAVE", saved.get("ok", false) and core.living_raider_count() == 3 and brute_hit.get("ok", false), "one atomic checkpoint stores the wave: three raiders, the lead at 11, the brute at 25", {"save": saved.get("reason"), "core": core.snapshot()})
+
+
+func _run_restore() -> void:
+	app._on_continue_pressed()
+	if not await _wait_ready():
+		return
+	app.session.player.deactivate()
+	var core := app.session.core_defense
+	var kinds: Array[String] = []
+	var brute_health := -1
+	for node in core.raider_nodes():
+		kinds.append(node.kind)
+	for entry in core.extra_raiders:
+		if str(entry.kind) == BasicRaider.KIND_BRUTE:
+			brute_health = int(entry.health)
+	kinds.sort()
+	var restored: bool = core.is_active() and core.living_raider_count() == 3 and core.raider_health == 11 and brute_health == 25 and kinds == ["brute", "raider", "raider"] and core.wave_size == 3 and core.spawn_distance == 14
+	_record("T141_WAVE_CHECKPOINT_RESTORE", restored, "a clean-process Continue rebuilds the wave: three living raiders (one brute at 25), the lead raider at 11, wave size and spawn distance intact", {"core": core.snapshot(), "kinds": kinds, "brute_health": brute_health})
 
 
 ## Fixture placements queue deferred replans that can stop the drill (the

@@ -164,7 +164,7 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	siege_defense = SiegeDefenseService.new()
 	siege_defense.name = "SiegeDefenseService"
 	add_child(siege_defense)
-	siege_defense.initialize(workstations, core_defense, fire_service)
+	siege_defense.initialize(workstations, core_defense, fire_service, world)
 	siege_defense.feedback.connect(_on_interaction_feedback)
 	siege_defense.state_changed.connect(_on_defense_state_changed)
 	interaction = InteractionService.new(world, inventory, player.get_body_aabb, registry, workstations, _raycast_station, _defense_interact)

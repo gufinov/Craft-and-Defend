@@ -65,6 +65,10 @@ var _core_material: StandardMaterial3D
 var _pending_restore: Dictionary = {}
 var _replan_queued := false
 var _pending_brutes := 0
+var _capture_reason := "OK"
+var _capture_retries := 0
+const CAPTURE_RETRY_LIMIT := 40
+const CAPTURE_RETRY_SECONDS := 0.5
 
 
 func initialize(world_adapter: WorldAdapter, content_registry: ContentRegistry, station_service: WorkstationService, saved: Dictionary = {}) -> void:
@@ -422,7 +426,11 @@ func _begin_attack() -> void:
 		var kind := BasicRaider.KIND_BRUTE if brutes_left > 0 else BasicRaider.KIND_RAIDER
 		if brutes_left > 0:
 			brutes_left -= 1
-		var entry := _spawn_extra_raider(_start_position() + _wave_offset(index), kind)
+		var offset := _wave_offset(index)
+		var column := _start_cell() + Vector3i(int(offset.x), 0, int(offset.z))
+		var surface := _surface_cell(column) if spawn_distance > SPAWN_DISTANCE else column
+		var spawn_cell := surface if surface != Vector3i.MAX else _start_cell()
+		var entry := _spawn_extra_raider(Vector3(spawn_cell) + Vector3(0.5, 0.9, 0.5), kind)
 		_plan_extra(entry)
 	if wave_size > 1:
 		feedback.emit("A wave of %d entered from %d cells out with the strategic core as its destination." % [wave_size, spawn_distance])
@@ -521,8 +529,17 @@ func _plan_from_raider() -> void:
 		return
 	_capture_navigation()
 	if navigation_snapshot == null:
+		# Far wave lines can reach terrain the streamer has not loaded yet;
+		# wait for it a few times before giving up.
+		if _capture_reason == "UNLOADED" and _capture_retries < CAPTURE_RETRY_LIMIT:
+			_capture_retries += 1
+			last_route_reason = "WAITING_FOR_TERRAIN"
+			get_tree().create_timer(CAPTURE_RETRY_SECONDS).timeout.connect(_queue_replan)
+			_emit_state()
+			return
 		_fail("NAVIGATION_CAPTURE_FAILED")
 		return
+	_capture_retries = 0
 	var start := raider.feet_cell()
 	var capability := _basic_raider_capability()
 	var planner := LocalGridPathfinder.new()
@@ -606,8 +623,11 @@ func _basic_raider_capability() -> Dictionary:
 func _capture_navigation() -> void:
 	navigation_snapshot = NavigationSnapshot.new()
 	var half_width := 5 if spawn_distance <= SPAWN_DISTANCE else 7
-	var region := AABB(Vector3(arena_center + Vector3i(-half_width, -2, -spawn_distance - 2)), Vector3(half_width * 2 + 1, 5, spawn_distance + 9))
+	var depth := 2 if spawn_distance <= SPAWN_DISTANCE else 8
+	var height := 5 if spawn_distance <= SPAWN_DISTANCE else 18
+	var region := AABB(Vector3(arena_center + Vector3i(-half_width, -depth, -spawn_distance - 2)), Vector3(half_width * 2 + 1, height, spawn_distance + 9))
 	var result := navigation_snapshot.capture(region, _query_navigation_cell, world.revision + navigation_revision)
+	_capture_reason = str(result.get("reason", "OK"))
 	if not result.get("ok", false):
 		navigation_snapshot = null
 
@@ -684,7 +704,9 @@ func _find_available_arena(distance: int = SPAWN_DISTANCE) -> Dictionary:
 
 
 func _arena_is_available(center: Vector3i, distance: int = SPAWN_DISTANCE) -> bool:
-	for cell: Vector3i in [center + Vector3i(0, 0, -8), center + Vector3i(0, 0, -distance), center + Vector3i(0, 0, 4), center + Vector3i(0, 0, 5)]:
+	if distance > SPAWN_DISTANCE and _surface_cell(center + Vector3i(0, 0, -distance)) == Vector3i.MAX:
+		return false
+	for cell: Vector3i in [center + Vector3i(0, 0, -8), center + Vector3i(0, 0, 4), center + Vector3i(0, 0, 5)]:
 		var floor_query := world.query_cell(cell + Vector3i.DOWN)
 		var feet_query := world.query_cell(cell)
 		var head_query := world.query_cell(cell + Vector3i.UP)
@@ -781,8 +803,32 @@ func _start_position() -> Vector3:
 	return Vector3(_start_cell()) + Vector3(0.5, 0.9, 0.5)
 
 
+## The spawn cell sits on the terrain surface of the spawn column: far spawn
+## lines cross natural ground outside the flat clearing.
 func _start_cell() -> Vector3i:
-	return arena_center + Vector3i(0, 0, -spawn_distance)
+	var column := arena_center + Vector3i(0, 0, -spawn_distance)
+	if spawn_distance <= SPAWN_DISTANCE:
+		return column
+	var surface := _surface_cell(column)
+	return surface if surface != Vector3i.MAX else column
+
+
+## First air cell with two clear cells above a solid cell in the column
+## (searching from +10 down to -10 around the arena level), or Vector3i.MAX.
+func _surface_cell(column: Vector3i) -> Vector3i:
+	for y in range(column.y + 10, column.y - 10, -1):
+		var cell := Vector3i(column.x, y, column.z)
+		var floor_query := world.query_cell(cell + Vector3i.DOWN)
+		if str(floor_query.get("state", "UNLOADED")) != "LOADED":
+			continue
+		if int(floor_query.get("voxel_id", 0)) == 0:
+			continue
+		var feet := world.query_cell(cell)
+		var head := world.query_cell(cell + Vector3i.UP)
+		if str(feet.get("state", "")) == "LOADED" and int(feet.get("voxel_id", 0)) == 0 and str(head.get("state", "")) == "LOADED" and int(head.get("voxel_id", 0)) == 0:
+			return cell
+		return Vector3i.MAX
+	return Vector3i.MAX
 
 
 func _core_approach_cell() -> Vector3i:

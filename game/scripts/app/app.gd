@@ -444,6 +444,7 @@ func _build_pause(canvas: CanvasLayer) -> void:
 	pause_box.add_child(_button("Start Defense Drill", _start_defense_drill))
 	pause_box.add_child(_button("Start Core Defense Prototype", _start_core_defense_prototype))
 	pause_box.add_child(_button("Start Wave Drill (5 raiders + 1 brute, far spawn)", _start_wave_drill))
+	pause_box.add_child(_button("Start Siege Drill (9 raiders + 3 brutes, farthest spawn)", _start_siege_drill))
 	pause_box.add_child(_button("Save and Exit to Menu", _save_and_exit_to_menu))
 	pause_box.add_child(_button("Save and Quit", _save_and_quit))
 
@@ -1288,6 +1289,14 @@ func _start_wave_drill() -> void:
 	if state != AppState.PAUSED or session == null:
 		return
 	var result := session.start_core_defense_prototype({"raiders": 6, "brutes": 1, "spawn_distance": 22})
+	if result.get("ok", false):
+		_resume_game()
+
+
+func _start_siege_drill() -> void:
+	if state != AppState.PAUSED or session == null:
+		return
+	var result := session.start_core_defense_prototype({"raiders": 12, "brutes": 3, "spawn_distance": 28})
 	if result.get("ok", false):
 		_resume_game()
 

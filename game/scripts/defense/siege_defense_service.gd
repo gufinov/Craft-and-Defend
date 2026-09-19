@@ -25,6 +25,7 @@ const RAIL_STEPS: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vect
 var workstations: WorkstationService
 var core_defense: CoreDefenseService
 var fire: FireService
+var world: WorldAdapter
 var visual_bodies: Dictionary = {}
 var _blocked_reported: Dictionary = {}
 var _reload_timers: Dictionary = {}
@@ -37,10 +38,11 @@ var _rail_riders: Dictionary = {}
 const RELOAD_POLL_SECONDS := 1.0
 
 
-func initialize(station_service: WorkstationService, core_service: CoreDefenseService, fire_service: FireService = null) -> void:
+func initialize(station_service: WorkstationService, core_service: CoreDefenseService, fire_service: FireService = null, world_adapter: WorldAdapter = null) -> void:
 	workstations = station_service
 	core_defense = core_service
 	fire = fire_service
+	world = world_adapter
 
 
 func register_visual(instance_id: String, body: CollisionObject3D) -> void:
@@ -373,7 +375,24 @@ func _resolve_impact(impact: Dictionary) -> Dictionary:
 		var lit := fire.ignite(Vector3i(floori(point.x), floori(point.y), floori(point.z)), munition, radius)
 		if lit > 0:
 			feedback.emit("Flame shot burst: %d cells ablaze." % lit)
+	elif radius > 0.0:
+		_scorch_ground(point)
 	return result
+
+
+## World effect of a heavy impact: the grass under the landing point is torn
+## to dirt (the first solid cell at or below the impact).
+func _scorch_ground(point: Vector3) -> void:
+	if world == null:
+		return
+	var probe := Vector3i(floori(point.x), floori(point.y), floori(point.z))
+	for _step in range(4):
+		var query := world.query_cell(probe)
+		if query.get("state") == "LOADED" and int(query.get("voxel_id", 0)) != 0:
+			if int(query.get("voxel_id", 0)) == WorldAdapter.BLOCK_NAMES.find("grass"):
+				world.set_cell(probe, WorldAdapter.BLOCK_NAMES.find("dirt"))
+			return
+		probe += Vector3i(0, -1, 0)
 
 
 func _resolve_due_impacts(delta: float) -> void:
