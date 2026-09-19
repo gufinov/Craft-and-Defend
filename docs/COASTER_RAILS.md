@@ -65,3 +65,7 @@ A Node that `GameSession` adds only when the first `mine_cart` is placed and fre
 - Kettles climb slopes but do not route through vertical or diagonal loop joints (their junction rule keeps stepping "straight" by offset).
 - No gravity, momentum or speed change; no ore hauling, no cart inventory, no right-click panel for the cart.
 - Placeholder icons and box-part models; no owner art yet. Pressing X / C outside a loop drag does nothing and they cannot be rebound.
+
+## Owner sandbox
+
+`START_COASTER_SANDBOX.cmd` (this worktree) launches the export with `--coaster-sandbox` (`CoasterSandbox`): a new game, a stone plate beside the spawn with a premade lead-in + radius-3 loop and a slope run over a two-block step (a mine cart on each), and a pack that refills every second with rails, slopes, loops, carts, kettles, castle stone, planks, picks, sword, shot, torches and chests — nothing to mine. Its saves go to `artifacts\coaster-sandbox` so ordinary saves are untouched.

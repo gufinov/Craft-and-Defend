@@ -292,6 +292,11 @@ func _ready() -> void:
 		var p4_resources_automation := P4ResourcesAutomation.new()
 		add_child(p4_resources_automation)
 		p4_resources_automation.call_deferred("run", self, p4_resources_mode)
+	if OS.get_cmdline_user_args().has("--coaster-sandbox"):
+		# Owner sandbox: premade coaster track + infinite stock (not a diagnostic).
+		var coaster_sandbox := CoasterSandbox.new()
+		add_child(coaster_sandbox)
+		coaster_sandbox.call_deferred("run", self)
 	var coaster_rails_mode := _argument_value("--coaster-rails-automation=")
 	if not coaster_rails_mode.is_empty():
 		var coaster_rails_automation := CoasterRailsAutomation.new()
