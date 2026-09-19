@@ -16,6 +16,10 @@ var route_index := 0
 var active := false
 var kind := KIND_RAIDER
 var move_speed := MOVE_SPEED
+## Set by die(): the body topples, stays a few seconds, then frees itself.
+var dead := false
+var _death_tween: Tween
+const CORPSE_SECONDS := 6.0
 
 
 func _ready() -> void:
@@ -55,6 +59,37 @@ func configure(raider_kind: String) -> void:
 	kind = raider_kind
 
 
+## Diagnostics re-arm a defeated raider: cancel the fall and stand it up.
+func revive() -> void:
+	if _death_tween != null and _death_tween.is_valid():
+		_death_tween.kill()
+	_death_tween = null
+	dead = false
+	rotation.z = 0.0
+	for child in get_children():
+		if child is CollisionShape3D:
+			child.set_deferred("disabled", false)
+
+
+## Death: stop, topple sideways, sink slightly, then remove the body.
+func die() -> void:
+	if dead:
+		return
+	dead = true
+	active = false
+	velocity = Vector3.ZERO
+	for child in get_children():
+		if child is CollisionShape3D:
+			child.set_deferred("disabled", true)
+	_death_tween = create_tween()
+	var tween := _death_tween
+	tween.set_parallel(true)
+	tween.tween_property(self, "rotation:z", PI / 2.0, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_property(self, "position:y", position.y - 0.45, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.chain().tween_interval(CORPSE_SECONDS)
+	tween.chain().tween_callback(queue_free)
+
+
 func set_route(cells: Array) -> void:
 	route.clear()
 	for value in cells:
@@ -73,8 +108,17 @@ func feet_cell() -> Vector3i:
 
 
 func _physics_process(delta: float) -> void:
+	if dead:
+		return
 	if not active or route_index >= route.size():
-		velocity = Vector3.ZERO
+		# Idle bodies still settle onto the ground (restored or shoved raiders).
+		velocity.x = 0.0
+		velocity.z = 0.0
+		if is_on_floor():
+			velocity.y = 0.0
+		else:
+			velocity.y -= GRAVITY * delta
+			move_and_slide()
 		return
 	var target_cell := route[route_index]
 	var target := Vector3(target_cell) + Vector3(0.5, 0.9, 0.5)

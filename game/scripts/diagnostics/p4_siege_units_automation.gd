@@ -66,6 +66,8 @@ func _run_gate() -> void:
 	_level_ground(center + Vector3i(-8, 0, -8), 17, 17)
 	core.raider.global_position = Vector3(center + Vector3i(2, 0, 2)) + Vector3(0.5, 0.9, 0.5)
 	core.raider_health = CoreDefenseService.RAIDER_MAX_HEALTH
+	if is_instance_valid(core.raider):
+		core.raider.revive()
 	core.state = CoreDefenseService.ROUTING
 	app.session.inventory.try_transaction({}, {"cannon": 1, "turret_catapult": 1, "tower_platform": 1, "rail": 8, "kettle": 2, "ballista": 1, "castle_stone": 32})
 
@@ -91,6 +93,8 @@ func _run_gate() -> void:
 	# T132 turret catapult: mounts on a tower platform's light_siege socket,
 	# lobs stone shot with the shared arm animation nodes.
 	core.raider_health = CoreDefenseService.RAIDER_MAX_HEALTH
+	if is_instance_valid(core.raider):
+		core.raider.revive()
 	var tower := ws.try_place("tower_platform", center + Vector3i(4, 0, -6), world.query_cell, AABB(), 0)
 	var turret := ws.try_place("turret_catapult", center + Vector3i(4, 1, -6), world.query_cell, AABB(), 0)
 	var turret_id := str(turret.get("details", {}).get("station", {}).get("instance_id", ""))
@@ -127,6 +131,8 @@ func _run_gate() -> void:
 	ws.siege_set_stance(cannon_id, "hold")
 	ws.siege_set_stance(turret_id, "hold")
 	core.raider_health = CoreDefenseService.RAIDER_MAX_HEALTH
+	if is_instance_valid(core.raider):
+		core.raider.revive()
 	core.raider.global_position = Vector3(wall_base + Vector3i(5, 0, 1)) + Vector3(0.5, 0.9, 0.5)
 	var far_before_ride := siege.trajectory_result(kettle_id, core.raider_target_position())
 	var health_before_oil := core.raider_health
@@ -230,6 +236,51 @@ func _run_gate() -> void:
 			on_surface = false
 		node.active = false
 	_record("T142_FAR_SPAWN_NATURAL_GROUND", far.get("ok", false) and int(far.get("spawn_distance", 0)) == 28 and far_count == 3 and on_surface and routed == 3 and core.state == CoreDefenseService.ROUTING, "a 28-cell wave line over natural terrain spawns every raider on the surface and each one routes toward the core", {"far": far.get("reason"), "count": far_count, "on_surface": on_surface, "routed": routed, "reasons": reasons, "state": core.state, "waited_frames": waited})
+
+	# T143 the enemy never gives up: walled in, the raider probes (ROUTING,
+	# NO_PERMITTED_ROUTE) instead of failing the drill and re-plans once a gap
+	# opens; a chest plugging the only gap is a breachable obstruction that the
+	# raider attacks and destroys before continuing.
+	core.clear_for_other_mode()
+	for station_id: String in ws.stations.keys().duplicate():
+		if ws.defense_status(station_id).get("ok", false):
+			ws.try_damage(station_id, 9999)
+	_level_ground(center + Vector3i(-8, 0, -10), 17, 19)
+	var wall_z := center.z - 3
+	for x in range(-7, 8):
+		for y in range(3):
+			world.set_cell(Vector3i(center.x + x, y, wall_z), 8)
+	var walled := core.start_prototype()
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var probing := core.last_route_reason
+	var still_routing := core.state == CoreDefenseService.ROUTING
+	# Open a 2-wide gap at x 0..1, plug it with a chest and cap the gap so the
+	# chest cannot be climbed over.
+	for x in range(2):
+		for y in range(2):
+			world.set_cell(Vector3i(center.x + x, y, wall_z), 0)
+	app.session.inventory.try_transaction({}, {"chest": 1})
+	var plug := ws.try_place("chest", Vector3i(center.x, 0, wall_z), world.query_cell, AABB(), 0)
+	var plug_id := str(plug.get("details", {}).get("station", {}).get("instance_id", ""))
+	var waited_stall := 0
+	while core.last_route_reason != "ATTACK_OBSTRUCTION" and waited_stall < 240:
+		await get_tree().process_frame
+		waited_stall += 1
+	var breach_reason := core.last_route_reason
+	var breach_target := core.active_target_id
+	core.raider.active = false
+	core._on_raider_route_finished()
+	var attacking := core.state == CoreDefenseService.ATTACKING_STRUCTURE
+	for _hit in range(5):
+		if ws.station(plug_id).is_empty():
+			break
+		core._attack_structure()
+	var chest_gone := ws.station(plug_id).is_empty()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var route_after := core.last_route_reason
+	_record("T143_ENEMY_NEVER_GIVES_UP", walled.get("ok", false) and probing == "NO_PERMITTED_ROUTE" and still_routing and plug.get("ok", false) and breach_reason == "ATTACK_OBSTRUCTION" and breach_target == plug_id and attacking and chest_gone and route_after == "OK", "a walled-in raider keeps probing instead of failing the drill, re-plans on its own once a gap opens, attacks the chest plugging the gap as a breachable obstruction, destroys it and routes on to the core", {"walled": walled.get("reason"), "probing": probing, "still_routing": still_routing, "plug": plug.get("reason"), "breach_reason": breach_reason, "breach_target": breach_target, "attacking": attacking, "chest_gone": chest_gone, "route_after": route_after, "waited": waited_stall})
 
 
 ## Rendered evidence: the five machines (ballista, catapult, turret catapult on

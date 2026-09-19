@@ -104,6 +104,8 @@ func _run_phase1() -> void:
 	# won drill is inactive, then re-arm its raider. This prevents placement-driven
 	# navigation replans from coupling these weapon tests to the UI fixture.
 	core.raider_health = CoreDefenseService.RAIDER_MAX_HEALTH
+	if is_instance_valid(core.raider):
+		core.raider.revive()
 	core.raider.active = false
 	var center := core.arena_center
 	core.raider.global_position = Vector3(center + Vector3i(0, 0, 8)) + Vector3(0.5, 0.9, 0.5)
@@ -180,6 +182,8 @@ func _run_phase1() -> void:
 	# supply radius auto-reloads an empty weapon; one outside does not.
 	var ws := app.session.workstations
 	core.raider_health = CoreDefenseService.RAIDER_MAX_HEALTH
+	if is_instance_valid(core.raider):
+		core.raider.revive()
 	core.state = CoreDefenseService.ROUTING
 	core.raider.active = false
 	core.raider.global_position = Vector3(center + Vector3i(0, 0, 8)) + Vector3(0.5, 0.9, 0.5)
@@ -221,6 +225,8 @@ func _run_phase1() -> void:
 	app.session.world.set_cell(plank_cell, 5)
 	core.raider.global_position = Vector3(center + Vector3i(0, 0, 9)) + Vector3(0.5, 0.9, 0.5)
 	core.raider_health = CoreDefenseService.RAIDER_MAX_HEALTH
+	if is_instance_valid(core.raider):
+		core.raider.revive()
 	core.state = CoreDefenseService.ROUTING
 	siege.face_target_now(catapult_id, core.raider_target_position())
 	var flame_fire := siege._attempt_fire(catapult_id, ws.siege_status(catapult_id).get("details", {}), true)

@@ -66,6 +66,8 @@ var _pending_restore: Dictionary = {}
 var _replan_queued := false
 var _pending_brutes := 0
 var _capture_reason := "OK"
+var _stall_retry_pending := false
+const STALL_RETRY_SECONDS := 2.0
 var _capture_retries := 0
 const CAPTURE_RETRY_LIMIT := 40
 const CAPTURE_RETRY_SECONDS := 0.5
@@ -132,7 +134,7 @@ func restore_after_world_ready() -> Dictionary:
 	_build_core_visual()
 	if state in [ROUTING, ATTACKING_STRUCTURE, ATTACKING_CORE] and raider_health > 0 and core_integrity > 0:
 		var saved_position := _vector3_from_array(saved.get("raider_position", []), _start_position())
-		_spawn_raider(saved_position)
+		_spawn_raider(_settled_position(saved_position))
 		_plan_from_raider()
 	if state in [ROUTING, ATTACKING_STRUCTURE, ATTACKING_CORE] and core_integrity > 0:
 		var saved_extras: Variant = saved.get("extra_raiders", [])
@@ -140,7 +142,7 @@ func restore_after_world_ready() -> Dictionary:
 			for value in saved_extras:
 				if not value is Dictionary or int(value.get("health", 0)) <= 0:
 					continue
-				var entry := _spawn_extra_raider(_vector3_from_array(value.get("position", []), _start_position()), str(value.get("kind", BasicRaider.KIND_RAIDER)))
+				var entry := _spawn_extra_raider(_settled_position(_vector3_from_array(value.get("position", []), _start_position())), str(value.get("kind", BasicRaider.KIND_RAIDER)))
 				entry.health = clampi(int(value.get("health", entry.max_health)), 1, int(entry.max_health))
 				_plan_extra(entry)
 	_emit_state()
@@ -214,6 +216,9 @@ func _advance_extras(delta: float) -> void:
 		entry.attack_timer = float(entry.attack_timer) - delta
 		if float(entry.attack_timer) > 0.0:
 			continue
+		if phase == "stalled":
+			_plan_extra(entry)
+			continue
 		entry.attack_timer = float(entry.attack_timer) + raider_attack_interval
 		if phase == "attacking_core":
 			_extra_attacks_core(entry)
@@ -285,7 +290,7 @@ func try_damage_raider(amount: int, source: String = "player") -> Dictionary:
 	var before := raider_health
 	raider_health = maxi(0, raider_health - amount)
 	if raider_health <= 0:
-		raider.active = false
+		raider.die()
 		if living_raider_count() == 0:
 			state = WON
 			feedback.emit("Defense won: %s defeated the %s." % [source.replace("_", " ").capitalize(), "raider" if wave_size <= 1 else "last raider"])
@@ -309,7 +314,7 @@ func try_damage_raider_node(node: Node, amount: int, source: String = "player") 
 		var before := int(entry.health)
 		entry.health = maxi(0, int(entry.health) - amount)
 		if int(entry.health) <= 0:
-			entry.node.active = false
+			entry.node.die()
 			if living_raider_count() == 0:
 				state = WON
 				feedback.emit("Defense won: %s defeated the last raider." % source.replace("_", " ").capitalize())
@@ -347,10 +352,10 @@ func damage_raiders_in_cell(cell: Vector3i, amount: int, source: String = "fire"
 ## Every living raider body, primary first.
 func raider_nodes() -> Array[BasicRaider]:
 	var nodes: Array[BasicRaider] = []
-	if is_active() and is_instance_valid(raider) and raider_health > 0:
+	if is_active() and is_instance_valid(raider) and raider_health > 0 and not raider.dead:
 		nodes.append(raider)
 	for entry in extra_raiders:
-		if int(entry.health) > 0 and is_instance_valid(entry.node) and is_active():
+		if int(entry.health) > 0 and is_instance_valid(entry.node) and not entry.node.dead and is_active():
 			nodes.append(entry.node)
 	return nodes
 
@@ -401,6 +406,8 @@ func hud_text() -> String:
 		WARNING:
 			return "⚠ CORE SETUP · raider in %d · build across the field-side approach · core %d/%d" % [ceili(warning_remaining), core_integrity, core_max_integrity]
 		ROUTING:
+			if last_route_reason in ["NO_PERMITTED_ROUTE", "NO_PERMITTED_BREACH", "NO_APPROACH_ROUTE"]:
+				return "RAIDERS PROBING FOR A WAY IN · %d/%d left · no route they can breach yet · core %d/%d" % [living_raider_count(), wave_size, core_integrity, core_max_integrity]
 			if wave_size > 1:
 				return "WAVE ROUTING TO CORE · %d/%d raiders left · lead HP %d/%d · core %d/%d" % [living_raider_count(), wave_size, raider_health, raider_max_health, core_integrity, core_max_integrity]
 			return "RAIDER ROUTING TO CORE · HP %d/%d · open path preferred · core %d/%d" % [raider_health, raider_max_health, core_integrity, core_max_integrity]
@@ -419,6 +426,19 @@ func hud_text() -> String:
 
 func _begin_attack() -> void:
 	state = ROUTING
+	# Bodies only enter once the terrain under the spawn line is loaded and
+	# captured; a body spawned over unloaded ground falls through it.
+	_capture_navigation()
+	if navigation_snapshot == null:
+		if _capture_reason == "UNLOADED" and _capture_retries < CAPTURE_RETRY_LIMIT:
+			_capture_retries += 1
+			last_route_reason = "WAITING_FOR_TERRAIN"
+			get_tree().create_timer(CAPTURE_RETRY_SECONDS).timeout.connect(_begin_attack)
+			_emit_state()
+			return
+		_fail("NAVIGATION_CAPTURE_FAILED")
+		return
+	_capture_retries = 0
 	_spawn_raider(_start_position())
 	_plan_from_raider()
 	var brutes_left := _pending_brutes
@@ -496,18 +516,25 @@ func _plan_extra(entry: Dictionary) -> void:
 		var action: Dictionary = plan.get("action", {})
 		var instance_id := str(action.get("source_id", ""))
 		if str(action.get("source", "")) != "entity" or not workstations.defense_status(instance_id).get("ok", false):
-			node.active = false
+			_stall_extra(entry)
 			return
 		var route := planner.find_route(navigation_snapshot, start, action.get("from", start), capability)
 		if not route.get("ok", false):
-			node.active = false
+			_stall_extra(entry)
 			return
 		entry.target_type = "structure"
 		entry.target_id = instance_id
 		entry.target_cell = action.get("cell", Vector3i.ZERO)
 		node.set_route(route.get("path", []))
 		return
-	node.active = false
+	_stall_extra(entry)
+
+
+func _stall_extra(entry: Dictionary) -> void:
+	entry.phase = "stalled"
+	entry.attack_timer = STALL_RETRY_SECONDS
+	if is_instance_valid(entry.node):
+		entry.node.active = false
 
 
 func _on_extra_route_finished(node: BasicRaider) -> void:
@@ -557,12 +584,12 @@ func _plan_from_raider() -> void:
 		var action: Dictionary = plan.get("action", {})
 		var instance_id := str(action.get("source_id", ""))
 		if str(action.get("source", "")) != "entity" or not workstations.defense_status(instance_id).get("ok", false):
-			_fail("NO_PERMITTED_BREACH")
+			_stall("NO_PERMITTED_BREACH")
 			return
 		var approach: Vector3i = action.get("from", start)
 		var route := planner.find_route(navigation_snapshot, start, approach, capability)
 		if not route.get("ok", false):
-			_fail("NO_APPROACH_ROUTE")
+			_stall("NO_APPROACH_ROUTE")
 			return
 		active_target_type = "structure"
 		active_target_id = instance_id
@@ -571,7 +598,27 @@ func _plan_from_raider() -> void:
 		raider.set_route(route.get("path", []))
 		_emit_state()
 		return
-	_fail("NO_PERMITTED_ROUTE")
+	_stall("NO_PERMITTED_ROUTE")
+
+
+## No permitted route right now (walled in, or blocked by something the
+## raider cannot breach): the drill keeps running and the raider re-plans
+## every STALL_RETRY_SECONDS — the world changes when the player builds,
+## machines burn or barricades fall. The enemy never gives up.
+func _stall(reason: String) -> void:
+	last_route_reason = reason
+	if is_instance_valid(raider):
+		raider.active = false
+	if not _stall_retry_pending:
+		_stall_retry_pending = true
+		get_tree().create_timer(STALL_RETRY_SECONDS).timeout.connect(_retry_after_stall)
+	_emit_state()
+
+
+func _retry_after_stall() -> void:
+	_stall_retry_pending = false
+	if is_active() and core_integrity > 0:
+		_queue_replan()
 
 
 func _on_raider_route_finished() -> void:
@@ -811,6 +858,16 @@ func _start_cell() -> Vector3i:
 		return column
 	var surface := _surface_cell(column)
 	return surface if surface != Vector3i.MAX else column
+
+
+## A restored body must stand on the ground of its column, never inside it
+## (terrain under a saved position can differ once the world reloads).
+func _settled_position(saved_position: Vector3) -> Vector3:
+	var column := Vector3i(floori(saved_position.x), floori(saved_position.y - 0.5), floori(saved_position.z))
+	var surface := _surface_cell(column)
+	if surface == Vector3i.MAX:
+		return saved_position
+	return Vector3(surface) + Vector3(0.5, 0.9, 0.5)
 
 
 ## The ground cell of a column: scanning upward from 10 below the arena
