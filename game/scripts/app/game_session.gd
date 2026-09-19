@@ -359,6 +359,12 @@ func select_hotbar(index: int) -> Dictionary:
 	if result.get("ok", false):
 		var item_id := str(result.get("item_id", ""))
 		_on_interaction_feedback("Selected slot %d%s" % [index + 1, " — " + registry.display_name(item_id) if not item_id.is_empty() else " — empty"])
+		# Coaster pieces carry their controls on screen (owner could not find
+		# the loop gesture without them).
+		if item_id == CoasterRails.LOOP:
+			_on_interaction_feedback("RAIL LOOP: aim at the ground, HOLD Right Mouse and drag sideways for the lead-in, then HOLD Shift — the loop appears; X smaller, C bigger; let go of Right Mouse to lay it")
+		elif item_id == CoasterRails.SLOPE:
+			_on_interaction_feedback("RAIL SLOPE: the arrow end climbs one block — W / R turns it; put a Rail on the block it climbs to")
 	return result
 
 
