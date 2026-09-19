@@ -24,7 +24,7 @@ echo.
 echo Checkpointing a running wave, then restoring it in a clean process (T141).
 "%EXE%" --headless --log-file "%GATE_ROOT%\save.log" -- --f0-data-root="%GATE_ROOT%" --p4-siege-units-automation=save
 if errorlevel 1 goto :phase_failed
-"%EXE%" --headless --log-file "%GATE_ROOT%estore.log" -- --f0-data-root="%GATE_ROOT%" --p4-siege-units-automation=restore
+"%EXE%" --headless --log-file "%GATE_ROOT%\restore.log" -- --f0-data-root="%GATE_ROOT%" --p4-siege-units-automation=restore
 if errorlevel 1 goto :phase_failed
 
 echo.
