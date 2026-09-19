@@ -58,6 +58,24 @@
       "implemented_in_foundation": true
     },
     {
+      "id": "build",
+      "key": "B",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "rotate_build_clockwise",
+      "key": "W",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "rotate_build_counterclockwise",
+      "key": "R",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
       "id": "pause",
       "key": "Escape",
       "context": "system",
@@ -132,6 +150,12 @@
     {
       "id": "secondary",
       "key": "MouseRight",
+      "context": "gameplay",
+      "implemented_in_foundation": true
+    },
+    {
+      "id": "capture_screenshot",
+      "key": "F2",
       "context": "gameplay",
       "implemented_in_foundation": true
     }

@@ -14,4 +14,9 @@ Use original placeholder materials initially. A future asset entry records path,
 
 F0 creates its plain cube models and colors in project-owned GDScript. The Godot/Voxel Tools binaries remain external tools/build inputs and are not committed. No voxelgame code, textures, models, sounds or other demo assets were copied into F0.
 
+F2 adds nine original project-authored SVG block textures recorded in
+[`game/assets/ATTRIBUTION.md`](../game/assets/ATTRIBUTION.md). MinionClash M01 was
+inspected as a local interaction/layout reference; no source code, branding or
+assets were copied into Craft-and-Defend.
+
 Tony has not selected a project source/content license. The public repository's visibility does not by itself grant a permissive license. Do not add MIT/CC0 to original game code/art without his choice. This is an implementation ledger, not a completed distribution audit; audit the actual engine build and final package before release.

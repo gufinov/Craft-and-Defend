@@ -1,6 +1,6 @@
 # Research verification and source register
 
-Verified 2026-09-10. This is a focused verification of the supplied research, not another Deep Research run. [The original report](research/ORIGINAL_REPORT.md) is preserved unchanged; its internal citation tokens are not portable source links. Use the direct sources below for implementation decisions.
+Verified 2026-09-10; navigation sources refreshed 2026-09-13. This is a focused verification of the supplied research, not another Deep Research run. [The original report](research/ORIGINAL_REPORT.md) is preserved unchanged; its internal citation tokens are not portable source links. Use the direct sources below for implementation decisions.
 
 | ID | Primary source | Verified fact / relevance | Limit |
 |---|---|---|---|
@@ -11,7 +11,7 @@ Verified 2026-09-10. This is a focused verification of the supplied research, no
 | S05 | [Pinned save tracker API](https://github.com/Zylann/godot_voxel/blob/595f52ee4e23203a865eeb981f115909f7aa92f4/doc/source/api/VoxelSaveCompletionTracker.md) | `is_complete`, `is_aborted`, task-count methods | No documented completion signal; not a cross-file transaction |
 | S06 | [Streams](https://voxel-tools.readthedocs.io/en/latest/streams/) | Chunk persistence, asynchronous lifecycle and session/stream reuse hazards | Safe teardown and coherent game-state snapshot need testing |
 | S07 | [SQLite stream API](https://voxel-tools.readthedocs.io/en/latest/api/VoxelStreamSQLite/) | Single database; directories must exist; exported saves need writable paths | Does not serialize this game's inventory or workstations |
-| S08 | [Navigation](https://voxel-tools.readthedocs.io/en/latest/navigation/) | Dynamic voxel navigation remains a special problem; available helper is experimental | No army-scale guarantee |
+| S08 | [Voxel Tools navigation](https://voxel-tools.readthedocs.io/en/latest/navigation/) | Dynamic voxel navigation remains a special problem; the helper is explicitly experimental and has no general dynamic-voxel solution | Current documentation; no army-scale guarantee |
 | S09 | [Godot license](https://godotengine.org/license/) | MIT engine, game-content ownership retained; notices apply | Project/asset licensing remains separate |
 | S10 | [Pinned Voxel Tools license](https://github.com/Zylann/godot_voxel/blob/595f52ee4e23203a865eeb981f115909f7aa92f4/LICENSE.md) | MIT, copyright Marc Gilleron | Preserve notice for redistribution/copying |
 | S11 | [Windows export, Godot 4.6](https://docs.godotengine.org/en/4.6/tutorials/export/exporting_for_windows.html) | Native Windows export path | Module template still needs correct pairing |
@@ -19,6 +19,8 @@ Verified 2026-09-10. This is a focused verification of the supplied research, no
 | S13 | [Pause processing, Godot 4.6](https://docs.godotengine.org/en/4.6/tutorials/scripting/pausing_games.html) | Scene-tree pause and process modes support gameplay/UI separation | Choose timer/save-coordinator behavior explicitly |
 | S14 | [voxelgame](https://github.com/Zylann/voxelgame) | Practical voxel examples, including blocky_game | Reference only; no source copied or compatible commit pinned here |
 | S15 | [solar_system_demo](https://github.com/Zylann/solar_system_demo) | Editable voxel game example with persistence/menu patterns | Audit dependencies/assets before reuse; not a Foundation dependency |
+| S16 | [Pinned v1.6 `VoxelAStarGrid3D` API](https://raw.githubusercontent.com/Zylann/godot_voxel/v1.6/doc/source/api/VoxelAStarGrid3D.md) | Terrain/region binding, sync/async search and visited-position diagnostics for a 1×2 voxel character; docs warn regions around 50+ voxels become expensive | Terrain voxels only; no placed-entity or attack semantics |
+| S17 | [Godot 4.6 navigation meshes](https://docs.godotengine.org/en/4.6/tutorials/navigation/navigation_using_navigationmeshes.html) | Navigation meshes parse selected geometry and runtime rebaking has synchronization/cost constraints | Visuals/collision are not automatically navigation data; not selected for P2 |
 
 ## What we adopt
 
@@ -26,7 +28,7 @@ The selected architecture follows the report: Windows-first standalone, Godot/Vo
 
 ## Corrections and open evidence
 
-The report's 1.6 pairing is still available but not latest. Repo emptiness was verified before bootstrap. Day/night is required in full Foundation. Save completion alone does not establish inventory/terrain checkpoint atomicity, and the tracker does not cover subsequent or independent unload-triggered tasks. The report's hybrid navigation suggestion is a hypothesis for a later spike, not an approved algorithm.
+The report's 1.6 pairing is still available but not latest. Repo emptiness was verified before bootstrap. Day/night is required in full Foundation. Save completion alone does not establish inventory/terrain checkpoint atomicity, and the tracker does not cover subsequent or independent unload-triggered tasks. P2 verified that the pinned experimental A* is fast on the bounded terrain-only fixture but blind to placed entities and capability-specific attacks. A project-owned bounded local snapshot/grid planner is therefore the P3 correctness candidate; the report's hybrid navigation suggestion remains a hypothesis, not an approved algorithm.
 
 Do not copy current upstream master examples blindly into a pinned older module. Inspect their engine/API versions and choose a compatible immutable commit before importing code. Keep a minimal source ledger of copied paths, revision and license. Latest online docs are useful discovery; pinned source/classes determine actual APIs.
 

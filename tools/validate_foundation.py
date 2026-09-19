@@ -9,6 +9,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_SHA = "f238c37f3f9509b2a152e632503b7a4e16ab8fd4377dcc32122717e30c13cebd"
+ITEM_CATEGORIES = {"resource", "building", "tool", "station", "food"}
+NAVIGATION_SCENARIOS = {"corridor_detour", "trench", "two_step_stair", "bridge_removal", "two_cell_tunnel", "capability_blocked_wall"}
 
 
 class ValidationError(ValueError):
@@ -39,6 +41,12 @@ def integer(value, minimum=0):
 def vector(value, positive=False):
     return (isinstance(value, list) and len(value) == 3
             and all(type(v) is int and (not positive or v > 0) for v in value))
+
+
+def numeric_vector(value, positive=False):
+    return (isinstance(value, list) and len(value) == 3
+            and all(type(v) in (int, float) and not isinstance(v, bool)
+                    and (not positive or v > 0) for v in value))
 
 
 def index(rows, field, label):
@@ -115,6 +123,27 @@ def validate_bundle(bundle):
     items = index(content["items"], "id", "items")
     entities = index(content["entities"], "id", "entities")
     index(content["recipes"], "id", "recipes")
+    balance = content.get("balance")
+    require(isinstance(balance, dict), "missing balance catalogue")
+    furnace_balance = balance.get("furnace", {})
+    require(furnace_balance.get("fuel_item") in items
+            and integer(furnace_balance.get("operations_per_fuel"), 1), "invalid furnace balance")
+    require(any(recipe.get("station") == "furnace"
+                and recipe.get("inputs", {}).get(furnace_balance["fuel_item"]) == 1
+                for recipe in content["recipes"]), "furnace fuel must be an explicit recipe input")
+    harvesting_balance = balance.get("harvesting", {})
+    require(integer(harvesting_balance.get("maximum_connected_trunk_blocks"), 1), "invalid harvesting balance")
+    for section_name, integer_fields, number_fields in (
+        ("practice_defense", ("wall_integrity", "repair_amount", "raider_health", "raider_damage", "ballista_damage", "ballista_starting_bolts"),
+         ("warning_seconds", "raider_attack_interval_seconds", "ballista_interval_seconds", "ballista_maximum_range")),
+        ("core_defense", ("core_integrity", "raider_health", "raider_damage"),
+         ("warning_seconds", "raider_attack_interval_seconds")),
+    ):
+        section = balance.get(section_name, {})
+        require(isinstance(section, dict)
+                and all(integer(section.get(field), 1) for field in integer_fields)
+                and all(type(section.get(field)) in (int, float) and section[field] > 0 for field in number_fields),
+                f"invalid {section_name} balance")
     require(numeric[0]["id"] == "air" and not numeric[0]["solid"], "air must be non-solid ID 0")
     for group in (blocks, items, entities):
         require(all(isinstance(k, str) and re.fullmatch(r"[a-z][a-z0-9_]*", k) for k in group),
@@ -127,6 +156,7 @@ def validate_bundle(bundle):
         require(not block["protected"] or block["drop"] is None, "protected block cannot drop")
     for item in items.values():
         require(integer(item["max_stack"], 1), "invalid stack size")
+        require(item.get("category") in ITEM_CATEGORIES, "invalid item category")
         require(not ("places_block" in item and "places_entity" in item), "ambiguous placeable item")
         if "places_block" in item:
             target = numeric.get(item["places_block"])
@@ -135,15 +165,62 @@ def validate_bundle(bundle):
             require(item["places_entity"] in entities, "unknown placeable entity")
         if "pick_tier" in item:
             require(integer(item["pick_tier"], 1) and item["max_stack"] == 1, "invalid tool")
+        if "tool_kind" in item:
+            require(item["tool_kind"] == "axe" and item["max_stack"] == 1, "invalid specialized tool")
+        weapon = item.get("weapon")
+        if weapon is not None:
+            require(isinstance(weapon, dict) and weapon.get("kind") == "melee"
+                    and integer(weapon.get("damage"), 1)
+                    and type(weapon.get("range")) in (int, float) and weapon["range"] > 0
+                    and type(weapon.get("cooldown_seconds")) in (int, float) and weapon["cooldown_seconds"] > 0
+                    and item["max_stack"] == 1, "invalid weapon")
+    mount_types = {socket.get("type") for entity in entities.values()
+                   for socket in entity.get("mount_sockets", [])
+                   if isinstance(socket, dict) and isinstance(socket.get("type"), str)}
     for entity in entities.values():
         offsets = entity["occupied_offsets"]
         require(offsets and all(vector(v) for v in offsets + entity["support_offsets"]), "invalid entity offsets")
         require(len({tuple(v) for v in offsets}) == len(offsets), "duplicate occupied offset")
         require([0, 0, 0] in offsets, "entity anchor must be occupied")
         require(not ({tuple(v) for v in offsets} & {tuple(v) for v in entity["support_offsets"]}), "support overlaps entity")
+        visual = entity.get("visual", {})
+        require(isinstance(visual, dict) and re.fullmatch(r"[a-fA-F0-9]{6}", visual.get("color", "")), "invalid entity visual")
+        parts = visual.get("parts", [])
+        require(parts and all(isinstance(part, dict)
+                              and numeric_vector(part.get("offset", []))
+                              and numeric_vector(part.get("size", []), positive=True)
+                              for part in parts), "invalid entity visual")
+        station_type = entity.get("station_type")
+        require(station_type is None or station_type == entity["id"], "invalid station type")
+        socket_ids = set()
+        for socket in entity.get("mount_sockets", []):
+            require(isinstance(socket, dict) and re.fullmatch(r"[a-z][a-z0-9_]*", socket.get("id", ""))
+                    and socket["id"] not in socket_ids and re.fullmatch(r"[a-z][a-z0-9_]*", socket.get("type", ""))
+                    and numeric_vector(socket.get("offset", [])), "invalid mount socket")
+            socket_ids.add(socket["id"])
+        mount = entity.get("mount")
+        if mount is not None:
+            allowed = mount.get("allowed", []) if isinstance(mount, dict) else []
+            require(isinstance(allowed, list) and allowed and all(isinstance(value, str) for value in allowed)
+                    and len(set(allowed)) == len(allowed)
+                    and all(value == "ground" or value in mount_types for value in allowed), "invalid entity mount")
+        siege = entity.get("siege")
+        if siege is not None:
+            require(isinstance(siege, dict) and siege.get("fire_mode") in ("direct", "ballistic")
+                    and integer(siege.get("damage"), 1)
+                    and type(siege.get("minimum_range")) in (int, float) and siege["minimum_range"] >= 0
+                    and type(siege.get("maximum_range")) in (int, float) and siege["maximum_range"] > siege["minimum_range"]
+                    and type(siege.get("cooldown_seconds")) in (int, float) and siege["cooldown_seconds"] > 0
+                    and integer(siege.get("starting_ammo"), 1)
+                    and siege.get("ammo_item") in items
+                    and numeric_vector(siege.get("muzzle_offset", [])), "invalid siege definition")
+            if siege["fire_mode"] == "ballistic":
+                require(type(siege.get("arc_height")) in (int, float) and siege["arc_height"] > 0,
+                        "invalid siege arc")
     for recipe in content["recipes"]:
         require(recipe["station"] == "hand" or recipe["station"] in entities, "unknown recipe station")
         require(type(recipe["duration_seconds"]) in (int, float) and recipe["duration_seconds"] >= 0, "invalid recipe time")
+        require("recipe_book_order" not in recipe or integer(recipe["recipe_book_order"]), "invalid recipe book order")
         for field in ("inputs", "outputs"):
             require(recipe[field], "recipe cannot have empty inputs or outputs")
             require(all(i in items and integer(n, 1) for i, n in recipe[field].items()), "invalid recipe item/count")
@@ -156,6 +233,25 @@ def validate_bundle(bundle):
     require(world["min_cell"][1] < world["sea_level"] < world["min_cell"][1] + world["size"][1], "world needs depth above and below sea level")
     require(len(world["spawn_feet"]) == 3 and in_bounds(world["spawn_feet"], world), "spawn outside bounds")
     require(world["interaction_reach"] > 0 and world["day_length_seconds"] > 0, "invalid world timing/reach")
+    require(world["generator_version"] in ("flat_fixture_1", "terrain_p1_1"), "unsupported generator version")
+    if world["generator_version"] == "terrain_p1_1":
+        terrain = world.get("terrain", {})
+        require(type(terrain.get("min_surface_y")) is int and type(terrain.get("max_surface_y")) is int and terrain["min_surface_y"] < terrain["max_surface_y"], "invalid terrain height range")
+        require(world["min_cell"][1] < terrain["min_surface_y"] and terrain["max_surface_y"] + 7 < world["min_cell"][1] + world["size"][1], "terrain lacks vertical headroom")
+        clearing_center = terrain.get("safe_clearing_center", [])
+        clearing_half_size = terrain.get("safe_clearing_half_size", [])
+        require(isinstance(clearing_center, list) and len(clearing_center) == 2 and all(type(v) is int for v in clearing_center), "invalid safe clearing")
+        require(isinstance(clearing_half_size, list) and len(clearing_half_size) == 2 and all(type(v) is int and v > 0 for v in clearing_half_size), "invalid safe clearing")
+        require(integer(terrain.get("safe_clearing_blend"), 1) and integer(terrain.get("tree_grid_size"), 5), "invalid terrain spacing")
+        require(integer(terrain.get("tree_chance_percent"), 0) and terrain["tree_chance_percent"] <= 100, "invalid tree chance")
+        for key in ("coal_cluster_per_thousand", "iron_cluster_per_thousand"):
+            require(integer(terrain.get(key), 0) and terrain[key] <= 1000, "invalid ore frequency")
+        landmark_ids = set()
+        for landmark in world.get("landmarks", []):
+            require(landmark.get("id") and landmark["id"] not in landmark_ids, "invalid or duplicate landmark")
+            landmark_ids.add(landmark["id"])
+            require(vector(landmark.get("cell", [])) and in_bounds(landmark["cell"], world), "landmark outside bounds")
+            require(integer(landmark.get("safe_radius"), 1), "invalid landmark radius")
     cursor = world["min_cell"][1]
     for layer in world["layers"]:
         require(layer["min_y"] == cursor and layer["max_y_exclusive"] > cursor, "layers gap or overlap")
@@ -172,8 +268,8 @@ def validate_bundle(bundle):
 
     actions = index(keys["actions"], "id", "actions")
     defaults = {"move_forward": "E", "move_backward": "D", "strafe_left": "S", "strafe_right": "F",
-                "sprint": "A", "crouch": "Z", "jump": "Space", "interact": "Shift", "inventory": "Tab", "pause": "Escape",
-                "reload": "G", "primary": "MouseLeft", "secondary": "MouseRight"}
+                "sprint": "A", "crouch": "Z", "jump": "Space", "interact": "Shift", "inventory": "Tab", "build": "B", "rotate_build_clockwise": "W", "rotate_build_counterclockwise": "R", "pause": "Escape",
+                "reload": "G", "primary": "MouseLeft", "secondary": "MouseRight", "capture_screenshot": "F2"}
     defaults.update({f"hotbar_{i}": str(i) for i in range(1, 10)})
     require(keys["escape_recovery"] is True and keys["keyboard_mode"] == "physical_qwerty", "unsafe input recovery/default mode")
     for action, key in defaults.items():
@@ -197,6 +293,39 @@ def validate_bundle(bundle):
 def validate_repo(root=ROOT):
     bundle = load_bundle(root)
     validate_bundle(bundle)
+    runtime_content = read_json(root / "game" / "data" / "content.json")
+    require(runtime_content == bundle["content"],
+            "runtime content registry differs from canonical contracts/content.json")
+    runtime_world = read_json(root / "game" / "data" / "world.json")
+    require(runtime_world == bundle["world"],
+            "runtime world configuration differs from canonical contracts/world.json")
+    navigation = read_json(root / "contracts" / "navigation_spike.json")
+    runtime_navigation = read_json(root / "game" / "data" / "navigation_spike.json")
+    require(runtime_navigation == navigation,
+            "runtime navigation spike differs from canonical contracts/navigation_spike.json")
+    require(navigation.get("schema_version") == 1 and navigation.get("status") == "p2_spike_only",
+            "invalid navigation spike header")
+    agent = navigation.get("agent", {})
+    require(agent.get("size_cells") == [1, 2, 1] and agent.get("max_step_up") == 1
+            and agent.get("max_drop_down") == 1 and agent.get("cardinal_movement_only") is True,
+            "invalid navigation spike agent")
+    materials = index(navigation.get("materials", []), "id", "navigation materials")
+    require(set(materials) >= {"dirt", "planks", "stone", "castle_stone", "bedrock"},
+            "missing navigation material")
+    require(all(integer(row.get("integrity"), 0) and isinstance(row.get("tags"), list)
+                and row["tags"] and type(row.get("protected")) is bool for row in materials.values()),
+            "invalid navigation material")
+    capabilities = index(navigation.get("capabilities", []), "id", "navigation capabilities")
+    require(set(capabilities) == {"basic_raider", "siege_breaker_candidate"},
+            "invalid navigation capability set")
+    for capability in capabilities.values():
+        require(capability.get("damage_per_hit") and all(isinstance(tag, str) and integer(value, 1)
+                for tag, value in capability["damage_per_hit"].items()), "invalid navigation damage capability")
+    benchmark = navigation.get("benchmark", {})
+    require(benchmark.get("region_size_cells") == [13, 5, 13]
+            and integer(benchmark.get("iterations"), 1)
+            and set(benchmark.get("scenarios", [])) == NAVIGATION_SCENARIOS,
+            "invalid navigation benchmark")
     versions = read_json(root / "tools/versions.json")
     require(versions["edition"] == "module" and versions["precision"] == "single", "unexpected engine edition/precision")
     assets = index(versions["assets"], "name", "release assets")
@@ -221,7 +350,8 @@ def validate_repo(root=ROOT):
             require(dest.exists(), f"broken local link: {path.name}: {target}")
             links += 1
     return {"blocks": len(bundle["content"]["blocks"]), "items": len(bundle["content"]["items"]),
-            "recipes": len(bundle["content"]["recipes"]), "placement_cases": len(bundle["placement_cases"]["cases"]), "local_links": links}
+            "recipes": len(bundle["content"]["recipes"]), "placement_cases": len(bundle["placement_cases"]["cases"]),
+            "navigation_scenarios": len(benchmark["scenarios"]), "local_links": links}
 
 
 if __name__ == "__main__":

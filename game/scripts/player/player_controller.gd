@@ -9,10 +9,17 @@ const SPRINT_SPEED := 8.0
 const CROUCH_SPEED := 2.5
 const JUMP_VELOCITY := 5.0
 const GRAVITY := 14.0
+const MAX_STEP_HEIGHT := 0.55
+## Holding the primary button repeats the strike at this interval (owner
+## request 2026-09-18: hold to harvest). Melee keeps its own cooldown.
+const PRIMARY_REPEAT_SECONDS := 0.28
+var _primary_repeat_timer := 0.0
+const STEP_FLOOR_PROBE := 0.08
 
 var camera: Camera3D
 var collision_shape: CollisionShape3D
 var interaction: InteractionService
+var primary_action: Callable
 var active := false
 var look_pitch := 0.0
 var mouse_sensitivity := SettingsStore.DEFAULT_MOUSE_SENSITIVITY
@@ -41,6 +48,7 @@ func _ready() -> void:
 
 func activate(capture_pointer: bool = true) -> void:
 	active = true
+	reset_physics_interpolation()
 	set_physics_process(true)
 	if capture_pointer:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -61,6 +69,13 @@ func configure_input(sensitivity: float, inverted: bool) -> void:
 func _physics_process(delta: float) -> void:
 	if not active:
 		return
+	if Input.is_action_pressed("primary") and interaction != null and not interaction.drag_active():
+		_primary_repeat_timer -= delta
+		if _primary_repeat_timer <= 0.0:
+			_primary_repeat_timer = PRIMARY_REPEAT_SECONDS
+			_perform_primary()
+	else:
+		_primary_repeat_timer = 0.0
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
 	elif Input.is_action_just_pressed("jump"):
@@ -78,8 +93,30 @@ func _physics_process(delta: float) -> void:
 		camera.position.y = 1.6
 	velocity.x = direction.x * speed
 	velocity.z = direction.z * speed
+	var normal_floor_snap := floor_snap_length
+	if _try_step_up(Vector3(velocity.x, 0.0, velocity.z) * delta):
+		floor_snap_length = MAX_STEP_HEIGHT + STEP_FLOOR_PROBE
 	move_and_slide()
+	floor_snap_length = normal_floor_snap
 	_position_inside_world()
+
+
+func _try_step_up(horizontal_motion: Vector3) -> bool:
+	if not is_on_floor() or velocity.y > 0.0 or horizontal_motion.length_squared() <= 0.000001:
+		return false
+	if not test_move(global_transform, horizontal_motion):
+		return false
+	var upward_motion := Vector3.UP * MAX_STEP_HEIGHT
+	if test_move(global_transform, upward_motion):
+		return false
+	var raised_transform := global_transform.translated(upward_motion)
+	if test_move(raised_transform, horizontal_motion):
+		return false
+	var advanced_transform := raised_transform.translated(horizontal_motion)
+	if not test_move(advanced_transform, Vector3.DOWN * (MAX_STEP_HEIGHT + STEP_FLOOR_PROBE)):
+		return false
+	global_position += upward_motion
+	return true
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -87,10 +124,31 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		apply_mouse_look(event.relative)
+	elif event.is_action_pressed("primary") and interaction != null and interaction.drag_active():
+		# P3J: a left-press while a right-drag is held cancels it; nothing is built.
+		_report(interaction.cancel_drag_place())
 	elif event.is_action_pressed("primary") and interaction != null:
-		_report(interaction.break_from_view(camera.global_position, -camera.global_basis.z))
+		_primary_repeat_timer = PRIMARY_REPEAT_SECONDS
+		_perform_primary()
 	elif event.is_action_pressed("secondary") and interaction != null:
-		_report(interaction.place_from_view(camera.global_position, -camera.global_basis.z))
+		var pressed := interaction.secondary_press_from_view(camera.global_position, -camera.global_basis.z)
+		if str(pressed.get("reason", "")) != "DRAG_STARTED":
+			_report(pressed)
+	elif event.is_action_released("secondary") and interaction != null and interaction.drag_active():
+		_report(interaction.secondary_release_from_view(camera.global_position, -camera.global_basis.z))
+	elif event.is_action_pressed("interact") and interaction != null and interaction.drag_active():
+		pass  # Shift while dragging switches the plan to vertical; no interact.
+	elif event.is_action_pressed("interact") and interaction != null:
+		_report(interaction.interact_from_view(camera.global_position, -camera.global_basis.z))
+
+
+func _perform_primary() -> void:
+	if primary_action.is_valid():
+		var primary_result: Dictionary = primary_action.call(camera.global_position, -camera.global_basis.z)
+		if primary_result.get("handled", false):
+			_report(primary_result)
+			return
+	_report(interaction.break_from_view(camera.global_position, -camera.global_basis.z))
 
 
 func get_body_aabb() -> AABB:
@@ -121,6 +179,7 @@ func restore(data: Dictionary) -> bool:
 	look_pitch = clampf(float(data.get("pitch", 0.0)), -1.5, 1.5)
 	if camera != null:
 		camera.rotation.x = look_pitch
+	reset_physics_interpolation()
 	return true
 
 

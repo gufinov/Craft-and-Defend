@@ -1,6 +1,6 @@
 # Coding-agent handoff
 
-> **Checkpoint update (2026-09-11):** This was the original F0 commission and is retained for provenance. F0 and F1 are owner-accepted after physical Windows testing. F1 passed T13–T18, the full F0 regression, corrected ultrawide fullscreen fill and corrected multi-monitor Windowed placement. Use [current status](STATUS.md), [roadmap](ROADMAP.md), [F0 evidence](evidence/F0_WINDOWS_INTEGRATION.md) and [F1 evidence](evidence/F1_INTERACTION_HARDENING.md) for current truth. Do not repeat F0/F1 or begin F2 without owner direction. The historical instructions below are not a fresh commission.
+> **Checkpoint update (2026-09-19):** This file is the original F0 commission, retained for provenance only. Current truth lives in [STATUS.md](STATUS.md); direction and locked decisions in [DESIGN_DIRECTION_2026-09-18.md](DESIGN_DIRECTION_2026-09-18.md); the next cards in [BACKLOG.md](BACKLOG.md). The historical instructions below are not a fresh commission.
 
 You are implementing Craft-and-Defend, an independent first-person voxel survival fortress game. This repo already contains the supervisory foundation. **Do not restart Deep Research or rewrite the groundwork before implementing the next gate.**
 

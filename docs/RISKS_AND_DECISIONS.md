@@ -8,7 +8,7 @@
 | K04 | Runtime key input/pause ownership | Player cannot exit or actions leak through menus | F0/F1 Windows input tests |
 | K05 | Progression has hidden resource/station deadlock | Cannot reach intended tools | Static reachability + actual empty-inventory playthrough |
 | K06 | Multi-cell/support semantics | Orphaned entities and duplicate refunds | Synthetic footprint tests, then real workstation tests |
-| K07 | Mutable terrain navigation | Enemies stuck or costly global recomputation | P2 single-agent geometry benchmark before raids |
+| K07 | Mutable terrain/entity navigation | Enemies stuck or costly global recomputation | P2 bounded comparison PASS: local correctness candidate plus pinned terrain benchmark; P3 one physical attacker before scaling |
 | K08 | World size/performance unknown | Unusable frame time or saves | Fixed small fixture measurements, then controlled scaling |
 | K09 | Reference code drift/license mixing | API mismatch or improper redistribution | Immutable compatible commits and per-file provenance |
 | K10 | Exploration versus wave pressure unsettled | Frustrating off-screen destruction | P3 warned-wave/excursion playtest |

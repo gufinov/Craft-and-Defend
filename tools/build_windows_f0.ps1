@@ -6,6 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$gitSafeDirectory = $repositoryRoot.Replace('\', '/')
 
 function Find-PinnedToolRoot {
     $cursor = [System.IO.DirectoryInfo]::new($repositoryRoot)
@@ -47,6 +48,8 @@ $buildRoot = Join-Path $repositoryRoot 'builds\CraftAndDefend'
 $buildExe = Join-Path $buildRoot 'CraftAndDefend.exe'
 $buildPck = Join-Path $buildRoot 'CraftAndDefend.pck'
 $manifestPath = Join-Path $buildRoot 'build_manifest.json'
+$portableLauncherSource = Join-Path $repositoryRoot 'tools\portable\START_GAME.cmd'
+$portableReadmeSource = Join-Path $repositoryRoot 'tools\portable\README.txt'
 $logPath = Join-Path $repositoryRoot 'artifacts\windows_export.log'
 New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 New-Item -ItemType Directory -Path (Split-Path -Parent $logPath) -Force | Out-Null
@@ -74,14 +77,18 @@ $pckHash = (Get-FileHash -LiteralPath $buildPck -Algorithm SHA256).Hash.ToLowerI
 $sourceCommit = $null
 $gameTree = $null
 if ((Test-Path -LiteralPath (Join-Path $repositoryRoot '.git')) -and (Get-Command git -ErrorAction SilentlyContinue)) {
-    $sourceCommit = (& git -C $repositoryRoot rev-parse HEAD 2>$null | Select-Object -First 1)
-    if ($sourceCommit -notmatch '^[0-9a-fA-F]{40}$') {
-        $sourceCommit = $null
-    }
-    $gameTree = (& git -C $repositoryRoot rev-parse HEAD:game 2>$null | Select-Object -First 1)
-    if ($gameTree -notmatch '^[0-9a-fA-F]{40}$') {
-        $gameTree = $null
-    }
+	$sourceOutput = @(& git -c "safe.directory=$gitSafeDirectory" -C $repositoryRoot rev-parse HEAD 2>&1)
+	$sourceExitCode = $LASTEXITCODE
+	$sourceCommit = ($sourceOutput | Select-Object -First 1)
+	if ($sourceExitCode -ne 0 -or $sourceCommit -notmatch '^[0-9a-fA-F]{40}$') {
+		throw "Windows export completed, but source-commit provenance could not be resolved: $sourceCommit"
+	}
+	$gameTreeOutput = @(& git -c "safe.directory=$gitSafeDirectory" -C $repositoryRoot rev-parse HEAD:game 2>&1)
+	$gameTreeExitCode = $LASTEXITCODE
+	$gameTree = ($gameTreeOutput | Select-Object -First 1)
+	if ($gameTreeExitCode -ne 0 -or $gameTree -notmatch '^[0-9a-fA-F]{40}$') {
+		throw "Windows export completed, but game-tree provenance could not be resolved: $gameTree"
+	}
 }
 $engineVersion = (& $GodotExe --version | Select-Object -First 1)
 $manifest = [ordered]@{
@@ -96,7 +103,10 @@ $manifest = [ordered]@{
 $temporaryManifest = "$manifestPath.tmp"
 [System.IO.File]::WriteAllText($temporaryManifest, ($manifest | ConvertTo-Json) + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
 Move-Item -LiteralPath $temporaryManifest -Destination $manifestPath -Force
+Copy-Item -LiteralPath $portableLauncherSource -Destination (Join-Path $buildRoot 'START_GAME.cmd') -Force
+Copy-Item -LiteralPath $portableReadmeSource -Destination (Join-Path $buildRoot 'README.txt') -Force
 Write-Output "Windows export PASS: $buildExe"
 Write-Output "Executable SHA-256: $exeHash"
 Write-Output "PCK SHA-256: $pckHash"
 Write-Output "Build manifest: $manifestPath"
+Write-Output "Portable launcher: $(Join-Path $buildRoot 'START_GAME.cmd')"

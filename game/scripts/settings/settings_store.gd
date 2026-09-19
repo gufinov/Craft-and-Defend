@@ -8,34 +8,42 @@ const DEFAULT_MOUSE_SENSITIVITY := 0.0025
 const DEFAULT_MASTER_VOLUME := 1.0
 const DEFAULT_WINDOW_MODE := "windowed"
 const DEFAULT_RESOLUTION := Vector2i(1280, 720)
+const DEFAULT_MSAA_3D := 2
+const DEFAULT_VSYNC_ENABLED := true
 
 const BINDING_ACTIONS: Array[String] = [
 	"move_forward", "move_backward", "strafe_left", "strafe_right",
-	"sprint", "crouch", "jump", "interact", "inventory", "pause",
+	"sprint", "crouch", "jump", "interact", "inventory", "build", "pause",
+	"rotate_build_clockwise", "rotate_build_counterclockwise",
 	"hotbar_1", "hotbar_2", "hotbar_3", "hotbar_4", "hotbar_5",
 	"hotbar_6", "hotbar_7", "hotbar_8", "hotbar_9", "primary", "secondary",
+	"capture_screenshot",
 ]
 
 const ACTION_LABELS := {
 	"move_forward": "Move Forward", "move_backward": "Move Backward",
 	"strafe_left": "Strafe Left", "strafe_right": "Strafe Right",
 	"sprint": "Sprint", "crouch": "Crouch", "jump": "Jump",
-	"interact": "Interact", "inventory": "Inventory", "pause": "Pause",
+	"interact": "Interact", "inventory": "Inventory", "build": "Build / Hand Crafting", "pause": "Pause",
+	"rotate_build_clockwise": "Rotate Build Preview Clockwise",
+	"rotate_build_counterclockwise": "Rotate Build Preview Counterclockwise",
 	"hotbar_1": "Hotbar 1", "hotbar_2": "Hotbar 2", "hotbar_3": "Hotbar 3",
 	"hotbar_4": "Hotbar 4", "hotbar_5": "Hotbar 5", "hotbar_6": "Hotbar 6",
 	"hotbar_7": "Hotbar 7", "hotbar_8": "Hotbar 8", "hotbar_9": "Hotbar 9",
 	"primary": "Break / Primary", "secondary": "Place / Secondary",
+	"capture_screenshot": "Capture Screenshot",
 }
 
 const ACTION_CONTEXTS := {
 	"move_forward": "gameplay", "move_backward": "gameplay",
 	"strafe_left": "gameplay", "strafe_right": "gameplay",
 	"sprint": "gameplay", "crouch": "gameplay", "jump": "gameplay",
-	"interact": "gameplay", "inventory": "gameplay", "pause": "system",
+	"interact": "gameplay", "inventory": "gameplay", "build": "gameplay", "rotate_build_clockwise": "gameplay", "rotate_build_counterclockwise": "gameplay", "pause": "system",
 	"hotbar_1": "gameplay", "hotbar_2": "gameplay", "hotbar_3": "gameplay",
 	"hotbar_4": "gameplay", "hotbar_5": "gameplay", "hotbar_6": "gameplay",
 	"hotbar_7": "gameplay", "hotbar_8": "gameplay", "hotbar_9": "gameplay",
 	"primary": "gameplay", "secondary": "gameplay",
+	"capture_screenshot": "gameplay",
 }
 
 const DEFAULT_BINDINGS := {
@@ -48,6 +56,9 @@ const DEFAULT_BINDINGS := {
 	"jump": {"kind": "key", "code": KEY_SPACE},
 	"interact": {"kind": "key", "code": KEY_SHIFT},
 	"inventory": {"kind": "key", "code": KEY_TAB},
+	"build": {"kind": "key", "code": KEY_B},
+	"rotate_build_clockwise": {"kind": "key", "code": KEY_W},
+	"rotate_build_counterclockwise": {"kind": "key", "code": KEY_R},
 	"pause": {"kind": "key", "code": KEY_ESCAPE},
 	"hotbar_1": {"kind": "key", "code": KEY_1},
 	"hotbar_2": {"kind": "key", "code": KEY_2},
@@ -60,6 +71,7 @@ const DEFAULT_BINDINGS := {
 	"hotbar_9": {"kind": "key", "code": KEY_9},
 	"primary": {"kind": "mouse", "code": MOUSE_BUTTON_LEFT},
 	"secondary": {"kind": "mouse", "code": MOUSE_BUTTON_RIGHT},
+	"capture_screenshot": {"kind": "key", "code": KEY_F2},
 }
 
 const RESOLUTION_OPTIONS: Array[Vector2i] = [
@@ -75,6 +87,8 @@ var invert_y := false
 var master_volume := DEFAULT_MASTER_VOLUME
 var window_mode := DEFAULT_WINDOW_MODE
 var resolution := DEFAULT_RESOLUTION
+var msaa_3d := DEFAULT_MSAA_3D
+var vsync_enabled := DEFAULT_VSYNC_ENABLED
 
 
 func _init(data_root: String) -> void:
@@ -102,6 +116,8 @@ func load_and_apply() -> Dictionary:
 		var candidate_resolution := Vector2i(width, height)
 		if RESOLUTION_OPTIONS.has(candidate_resolution):
 			resolution = candidate_resolution
+		msaa_3d = clampi(int(config.get_value("graphics", "msaa_3d", DEFAULT_MSAA_3D)), 0, 3)
+		vsync_enabled = bool(config.get_value("graphics", "vsync_enabled", DEFAULT_VSYNC_ENABLED))
 		if window_mode not in ["windowed", "fullscreen"]:
 			window_mode = DEFAULT_WINDOW_MODE
 		if not _bindings_are_safe():
@@ -157,6 +173,31 @@ func reset_defaults() -> Dictionary:
 	return {"ok": true, "reason": "OK"}
 
 
+func reset_action(action: String) -> Dictionary:
+	if not DEFAULT_BINDINGS.has(action):
+		return {"ok": false, "reason": "UNKNOWN_ACTION"}
+	var previous: Dictionary = _bindings[action].duplicate(true)
+	var candidate: Dictionary = DEFAULT_BINDINGS[action].duplicate(true)
+	for other_action in BINDING_ACTIONS:
+		if other_action == action or not _contexts_overlap(action, other_action):
+			continue
+		var other: Dictionary = _bindings[other_action]
+		if other.kind == candidate.kind and int(other.code) == int(candidate.code):
+			return {"ok": false, "reason": "CONFLICT", "conflict": other_action}
+	_bindings[action] = candidate
+	_apply_binding(action, candidate)
+	var save_error := _save()
+	if save_error != OK:
+		_bindings[action] = previous
+		_apply_binding(action, previous)
+		return {"ok": false, "reason": "SAVE_FAILED", "error": save_error}
+	return {"ok": true, "reason": "OK", "action": action}
+
+
+func is_default_binding(action: String) -> bool:
+	return _bindings.get(action, {}) == DEFAULT_BINDINGS.get(action, {})
+
+
 func set_input_audio_preferences(sensitivity: float, inverted: bool, volume: float) -> Dictionary:
 	if sensitivity < MIN_MOUSE_SENSITIVITY or sensitivity > MAX_MOUSE_SENSITIVITY:
 		return {"ok": false, "reason": "INVALID_SENSITIVITY"}
@@ -175,6 +216,22 @@ func set_input_audio_preferences(sensitivity: float, inverted: bool, volume: flo
 		_apply_non_display_settings()
 		return {"ok": false, "reason": "SAVE_FAILED", "error": save_error}
 	return {"ok": true, "reason": "OK"}
+
+
+func set_graphics_preferences(candidate_msaa_3d: int, candidate_vsync_enabled: bool) -> Dictionary:
+	if candidate_msaa_3d < 0 or candidate_msaa_3d > 3:
+		return {"ok": false, "reason": "INVALID_MSAA"}
+	var previous := {"msaa_3d": msaa_3d, "vsync_enabled": vsync_enabled}
+	msaa_3d = candidate_msaa_3d
+	vsync_enabled = candidate_vsync_enabled
+	_apply_non_display_settings()
+	var save_error := _save()
+	if save_error != OK:
+		msaa_3d = int(previous.msaa_3d)
+		vsync_enabled = bool(previous.vsync_enabled)
+		_apply_non_display_settings()
+		return {"ok": false, "reason": "SAVE_FAILED", "error": save_error}
+	return {"ok": true, "reason": "OK", "msaa_3d": msaa_3d, "vsync_enabled": vsync_enabled}
 
 
 func begin_display_preview(candidate_mode: String, candidate_resolution: Vector2i) -> Dictionary:
@@ -337,6 +394,8 @@ func _apply_non_display_settings() -> void:
 	if AudioServer.get_bus_count() > 0:
 		AudioServer.set_bus_mute(0, master_volume <= 0.0)
 		AudioServer.set_bus_volume_db(0, linear_to_db(maxf(master_volume, 0.0001)))
+	if not DisplayServer.get_name().contains("headless"):
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync_enabled else DisplayServer.VSYNC_DISABLED)
 
 
 func _apply_display(mode: String, target_resolution: Vector2i) -> void:
@@ -350,6 +409,14 @@ func _apply_display(mode: String, target_resolution: Vector2i) -> void:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 		DisplayServer.window_set_current_screen(target_screen)
 		DisplayServer.window_set_size(target_resolution)
+		# Owner playtest 2026-09-18: a windowed size equal to the monitor put the
+		# decorated frame under the taskbar and hid the hotbar. Shrink the client
+		# area so the whole decorated window fits the screen's usable rectangle.
+		var usable_rect := DisplayServer.screen_get_usable_rect(target_screen)
+		var decoration := DisplayServer.window_get_size_with_decorations() - DisplayServer.window_get_size()
+		var fitted := Vector2i(mini(target_resolution.x, usable_rect.size.x - decoration.x), mini(target_resolution.y, usable_rect.size.y - decoration.y))
+		if fitted != target_resolution and fitted.x > 0 and fitted.y > 0:
+			DisplayServer.window_set_size(fitted)
 		_center_window_on_screen(target_screen)
 
 
@@ -380,4 +447,6 @@ func _save() -> Error:
 	config.set_value("display", "window_mode", window_mode)
 	config.set_value("display", "width", resolution.x)
 	config.set_value("display", "height", resolution.y)
+	config.set_value("graphics", "msaa_3d", msaa_3d)
+	config.set_value("graphics", "vsync_enabled", vsync_enabled)
 	return config.save(_settings_path)

@@ -23,6 +23,10 @@ class FoundationTests(unittest.TestCase):
         validate_bundle(self.bundle)
         self.assertIn('iron_pick', reachable_items(self.bundle['content'], self.bundle['world']))
 
+    def test_invalid_furnace_fuel_ratio_rejected(self):
+        self.bundle['content']['balance']['furnace']['operations_per_fuel'] = 0
+        self.rejects('invalid furnace balance')
+
     def test_duplicate_voxel_identity_rejected(self):
         self.bundle['content']['blocks'][1]['voxel_id'] = 0
         self.rejects('duplicate voxel_id')
@@ -38,6 +42,14 @@ class FoundationTests(unittest.TestCase):
     def test_boolean_is_not_quantity(self):
         self.bundle['content']['recipes'][0]['inputs']['log'] = True
         self.rejects('invalid recipe item/count')
+
+    def test_boolean_is_not_recipe_book_order(self):
+        self.bundle['content']['recipes'][0]['recipe_book_order'] = True
+        self.rejects('invalid recipe book order')
+
+    def test_unknown_item_category_rejected(self):
+        self.bundle['content']['items'][0]['category'] = 'mystery'
+        self.rejects('invalid item category')
 
     def test_progression_deadlock_rejected(self):
         self.bundle['content']['recipes'][2]['station'] = 'workbench'
@@ -63,6 +75,46 @@ class FoundationTests(unittest.TestCase):
         self.bundle['world']['layers'][1]['min_y'] += 1
         self.rejects('layers gap')
 
+    def test_invalid_p1_height_range_rejected(self):
+        self.bundle['world']['terrain']['max_surface_y'] = self.bundle['world']['terrain']['min_surface_y']
+        self.rejects('invalid terrain height range')
+
+    def test_unknown_generator_rejected(self):
+        self.bundle['world']['generator_version'] = 'terrain_future_unknown'
+        self.rejects('unsupported generator version')
+
+    def test_invalid_entity_visual_rejected(self):
+        entity = next(e for e in self.bundle['content']['entities'] if e['id'] == 'stone_stair')
+        entity['visual']['parts'][0]['size'][1] = 0
+        self.rejects('invalid entity visual')
+
+    def test_stair_uses_two_half_block_steps(self):
+        entity = next(e for e in self.bundle['content']['entities'] if e['id'] == 'stone_stair')
+        parts = entity['visual']['parts']
+        self.assertEqual(len(parts), 2)
+        self.assertEqual([part['size'][2] for part in parts], [0.5, 0.5])
+        self.assertEqual([part['size'][1] for part in parts], [0.5, 1.0])
+
+    def test_duplicate_mount_socket_rejected(self):
+        entity = next(e for e in self.bundle['content']['entities'] if e['id'] == 'tower_platform')
+        entity['mount_sockets'].append(copy.deepcopy(entity['mount_sockets'][0]))
+        self.rejects('invalid mount socket')
+
+    def test_unknown_siege_mount_rejected(self):
+        entity = next(e for e in self.bundle['content']['entities'] if e['id'] == 'ballista')
+        entity['mount']['allowed'] = ['imaginary_socket']
+        self.rejects('invalid entity mount')
+
+    def test_invalid_siege_range_rejected(self):
+        entity = next(e for e in self.bundle['content']['entities'] if e['id'] == 'catapult')
+        entity['siege']['maximum_range'] = entity['siege']['minimum_range']
+        self.rejects('invalid siege definition')
+
+    def test_invalid_weapon_damage_rejected(self):
+        item = next(i for i in self.bundle['content']['items'] if i['id'] == 'iron_sword')
+        item['weapon']['damage'] = 0
+        self.rejects('invalid weapon')
+
     def test_multicell_overlap_cannot_claim_success(self):
         case = next(c for c in self.bundle['placement_cases']['cases'] if c['id'] == 'multicell_partial_overlap')
         case['expected'] = 'OK'
@@ -81,6 +133,100 @@ class FoundationTests(unittest.TestCase):
             path.write_text('{"seed":1,"seed":2}', encoding='utf-8')
             with self.assertRaisesRegex(ValidationError, 'duplicate JSON key'):
                 read_json(path)
+
+    def test_navigation_spike_is_bounded_and_capability_specific(self):
+        root = Path(__file__).resolve().parents[1]
+        navigation = read_json(root / 'contracts' / 'navigation_spike.json')
+        runtime = read_json(root / 'game' / 'data' / 'navigation_spike.json')
+        self.assertEqual(navigation, runtime)
+        self.assertEqual(navigation['agent']['size_cells'], [1, 2, 1])
+        self.assertEqual(navigation['benchmark']['region_size_cells'], [13, 5, 13])
+        capabilities = {row['id']: row for row in navigation['capabilities']}
+        self.assertIn('wood', capabilities['basic_raider']['damage_per_hit'])
+        self.assertNotIn('stone', capabilities['basic_raider']['damage_per_hit'])
+        self.assertIn('fortification', capabilities['siege_breaker_candidate']['damage_per_hit'])
+
+    def test_navigation_spike_has_one_click_visual_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        launcher = (root / 'VIEW_NAVIGATION_SPIKE.cmd').read_text(encoding='utf-8')
+        self.assertIn('start_game.ps1" -PrepareOnly', launcher)
+        run_line = next(line for line in launcher.splitlines() if '--p2-navigation-automation=visual' in line)
+        self.assertRegex(
+            run_line,
+            r'CraftAndDefend\.exe" --log-file .* -- --f0-data-root=.* --p2-navigation-automation=visual$',
+        )
+        self.assertIn('if not exist "%DIAGNOSTIC_IMAGE%"', launcher)
+        self.assertIn('Review: %DIAGNOSTIC_LOG%', launcher)
+        self.assertIn('P2_DIAGNOSTIC_NO_OPEN', launcher)
+        self.assertIn('p2-navigation-spike.png', launcher)
+
+    def test_p3c_has_one_click_exported_gameplay_and_visual_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        launcher = (root / 'TEST_P3C_PLAYER_DEFENSE.cmd').read_text(encoding='utf-8')
+        self.assertIn('start_game.ps1" -PrepareOnly', launcher)
+        self.assertIn('--p3c-player-defense-automation=phase1', launcher)
+        self.assertIn('--p3c-player-defense-automation=save', launcher)
+        self.assertIn('--p3c-player-defense-automation=restore', launcher)
+        self.assertIn('--p3c-player-defense-automation=visual', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3c-visual-catalog.png"', launcher)
+        self.assertIn('P3C_DIAGNOSTIC_NO_OPEN', launcher)
+
+    def test_p3d_has_one_click_exported_gameplay_and_visual_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        launcher = (root / 'TEST_P3D_USABILITY.cmd').read_text(encoding='utf-8')
+        self.assertIn('start_game.ps1" -PrepareOnly', launcher)
+        self.assertIn('--p3d-usability-automation=phase1', launcher)
+        self.assertIn('--p3d-usability-automation=visual', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3d-held-axe-iron-marker.png"', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3d-held-block-placement-ghost.png"', launcher)
+        self.assertIn('P3D_DIAGNOSTIC_NO_OPEN', launcher)
+
+    def test_p3e_has_one_click_exported_container_and_visual_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        launcher = (root / 'TEST_P3E_FURNACE.cmd').read_text(encoding='utf-8')
+        self.assertIn('start_game.ps1" -PrepareOnly', launcher)
+        self.assertIn('--p3e-container-automation=gate', launcher)
+        self.assertIn('--p3e-container-automation=visual', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3e-furnace-container.png"', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3e-world-and-held-identity.png"', launcher)
+        self.assertIn('P3E_DIAGNOSTIC_NO_OPEN', launcher)
+
+    def test_p3f_has_one_click_exported_order_and_visual_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        launcher = (root / 'TEST_P3F_PRESENTATION.cmd').read_text(encoding='utf-8')
+        self.assertIn('start_game.ps1" -PrepareOnly', launcher)
+        self.assertIn('--p3f-presentation-automation=gate', launcher)
+        self.assertIn('--p3f-presentation-automation=visual', launcher)
+        self.assertIn('p3h2-held-scale-and-swing.png', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3f-held-item-contact-sheet.png"', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3f-workbench-page-1.png"', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3f-workbench-page-2.png"', launcher)
+        self.assertIn('P3F_DIAGNOSTIC_NO_OPEN', launcher)
+
+    def test_p3g_has_one_click_furnace_usability_and_visual_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        launcher = (root / 'TEST_P3G_FURNACE_USABILITY.cmd').read_text(encoding='utf-8')
+        self.assertIn('start_game.ps1" -PrepareOnly', launcher)
+        self.assertIn('--p3g-furnace-usability-automation=gate', launcher)
+        self.assertIn('--p3g-furnace-usability-automation=visual', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3g-furnace-autoload-progress.png"', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3g-catapult-world-model.png"', launcher)
+        self.assertIn('P3G_DIAGNOSTIC_NO_OPEN', launcher)
+
+    def test_p3h_has_one_click_balance_and_controls_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        launcher = (root / 'TEST_P3H_BALANCE_CONTROLS.cmd').read_text(encoding='utf-8')
+        self.assertIn('start_game.ps1" -PrepareOnly', launcher)
+        self.assertIn('--p3h-balance-controls-automation=gate', launcher)
+        self.assertIn('--p3h-balance-controls-automation=visual', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3h-furnace-fuel-ratio.png"', launcher)
+        self.assertIn('if not exist "%VISUAL_ROOT%\\p3h-directional-controls.png"', launcher)
+        self.assertIn('P3H_DIAGNOSTIC_NO_OPEN', launcher)
+
+    def test_invalid_specialized_tool_kind_is_rejected(self):
+        axe = next(item for item in self.bundle['content']['items'] if item['id'] == 'wood_axe')
+        axe['tool_kind'] = 'chainsaw'
+        self.rejects('invalid specialized tool')
 
 
 class ArchiveTests(unittest.TestCase):

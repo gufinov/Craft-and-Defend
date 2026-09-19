@@ -2,16 +2,20 @@
 
 First-person voxel survival and fortress building: **from forest to fortress**. Gather, dig, craft, build, automate, and eventually withstand a wizard-led final siege.
 
-**Status: F1 interaction hardening is owner accepted on `main`.** The playable slice remains intentionally limited to the native shell, finite editable voxel world, ESDF controller, dirt break/place loop, complete keybind editor, settings, inventory overlay, coherent checkpoints, restart/Continue, and portable Windows export. Craft-and-Defend is a working label, formerly discussed as Block Castle Siege; final branding is open.
+**Status (2026-09-19): baseline on `main`.** Playable Windows slice with ESDF first-person movement, finite editable voxel world with hills/trees/ore, hand/Workbench crafting, auto-running Furnace, Tab inventory, castle kit, right-drag wall building (Shift to build up), stamped castle blueprints (service level), a core-defense drill with one raider, and siege weapons that turn, throw and reload. Everything on `main` is owner-playtested unless `docs/STATUS.md` says otherwise. Craft-and-Defend is a working label; final branding is open.
+
+**New here?** Read, in order: [AGENTS.md](AGENTS.md) → [docs/STATUS.md](docs/STATUS.md) (what is true right now) → [docs/DESIGN_DIRECTION_2026-09-18.md](docs/DESIGN_DIRECTION_2026-09-18.md) (where the game is going and which decisions are locked) → [docs/BACKLOG.md](docs/BACKLOG.md) (the next cards) → [docs/INDEX.md](docs/INDEX.md). Then double-click `START_GAME.cmd`. Every milestone has a contract in `docs/` and an evidence record in `docs/evidence/`; every runtime test has a `TEST_*.cmd` runner.
 
 ## Start here
 
 1. Read [AGENTS.md](AGENTS.md) and [the handoff](docs/CODING_AGENT_HANDOFF.md).
 2. Review [current status](docs/STATUS.md), [engine decision](docs/ENGINE_DECISION.md), and [prototype scope](docs/PROTOTYPE_SCOPE.md).
 3. Double-click `START_GAME.cmd` for the local playable slice, or follow [Windows setup](docs/WINDOWS_SETUP.md) to reproduce the toolchain and export.
-4. Review [F0 evidence](docs/evidence/F0_WINDOWS_INTEGRATION.md), [F1 evidence](docs/evidence/F1_INTERACTION_HARDENING.md), and the [launcher recovery](docs/evidence/F1_LAUNCHER_RECOVERY.md) before promoting another milestone.
+4. Review the newest evidence records listed in [the documentation index](docs/INDEX.md) before promoting another milestone.
 
-Proven F0/F1 stack: **Godot 4.6 custom build + Zylann Voxel Tools 1.6 Module edition + GDScript**, Windows x86-64, offline single player. Exact release archives and publisher-reported SHA-256 values are in [tools/versions.json](tools/versions.json). The evidence records identify the locally verified hashes and runtime results. This is not a general performance or durability guarantee.
+The exported portable folder is `builds\CraftAndDefend`. Keep its EXE, PCK, `START_GAME.cmd` and manifest together; double-click its `START_GAME.cmd` on a Windows PC. It does not need the repository or Godot Editor. Saves and settings are in `%APPDATA%\CraftAndDefend`; F2 in-game screenshots are in `%APPDATA%\CraftAndDefend\screenshots`.
+
+Proven candidate stack: **Godot 4.6 custom build + Zylann Voxel Tools 1.6 Module edition + GDScript**, Windows x86-64, offline single player. Exact release archives and publisher-reported SHA-256 values are in [tools/versions.json](tools/versions.json). The evidence records identify the locally verified hashes and runtime results. This is not a general performance or durability guarantee.
 
 | Location | Purpose |
 |---|---|
@@ -32,4 +36,6 @@ python -m unittest discover -s tests -v
 
 These validate documentation links and starter data invariants. Windows runtime/export evidence is separate in `docs/evidence/`.
 
-Local convention: `D:\CODEX\Craft_and_Defend\main` is canonical; commissioned implementation belongs under `D:\CODEX\Craft_and_Defend\worktrees`. F0 and F1 are owner accepted on `main`. No unreviewed milestone goes directly into `main`.
+Double-click `TEST_P3D_USABILITY.cmd` to run the matching exported crafting, held-item, axe, iron-marker and rendered-placement gates. It controls and closes the diagnostic itself, then opens two evidence images; use `START_GAME.cmd` for normal play.
+
+Local convention: `D:\CODEX\Craft_and_Defend\main` is canonical and is where the owner plays; implementation branches live in worktrees under `D:\CODEX\Craft_and_Defend\worktrees` (`git worktree add -b feature/<name> ../worktrees/<name> main`). No unreviewed milestone goes directly into `main`; the owner authorises each merge. Developer tooling: the pinned editor runs any diagnostic headless (`godot --headless --path game -- --f0-data-root=<dir> --<suite>=<mode>`; run `godot --headless --path game --import` once in a fresh worktree), and `tools\start_game.ps1 -PrepareOnly` exports a provenance-matched build for the `TEST_*.cmd` runners.

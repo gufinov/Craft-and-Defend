@@ -1,51 +1,490 @@
 class_name F0Inventory
 extends RefCounted
+## Foundation inventory. The historical class name remains so F0/F1 diagnostics
+## continue to exercise the same runtime object after the F2 expansion.
 
 signal changed(snapshot: Dictionary)
 
-const MAX_DIRT := 64
+const SLOT_COUNT := 27
+const HOTBAR_COUNT := 9
+const MAX_DIRT := SLOT_COUNT * 64
+const CARRIED_CATEGORY_ORDER: Array[String] = ["resource", "building", "tool", "station", "food"]
 
-var dirt := 0
+var registry: ContentRegistry
+var slots: Array[Dictionary] = []
+var selected_hotbar := 0
 var revision := 0
+var reservations: Dictionary = {}
+var cursor_stack: Dictionary = {"item_id": "", "count": 0}
+var dirt: int:
+	get:
+		return count("dirt")
+
+
+func _init(content_registry: ContentRegistry = null) -> void:
+	registry = content_registry if content_registry != null else ContentRegistry.new()
+	for _index in range(SLOT_COUNT):
+		slots.append(_empty_slot())
+
+
+func count(item_id: String) -> int:
+	return count_in(slots, item_id)
+
+
+func active_item_id() -> String:
+	if selected_hotbar < 0 or selected_hotbar >= HOTBAR_COUNT:
+		return ""
+	return str(slots[selected_hotbar].get("item_id", ""))
+
+
+func active_pick_tier() -> int:
+	return int(registry.item(active_item_id()).get("pick_tier", 0))
+
+
+func select_hotbar(index: int) -> Dictionary:
+	if index < 0 or index >= HOTBAR_COUNT:
+		return {"ok": false, "reason": "INVALID_HOTBAR_SLOT"}
+	selected_hotbar = index
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "OK", "slot": index, "item_id": active_item_id()}
+
+
+func swap_slots(first: int, second: int) -> Dictionary:
+	if first < 0 or second < 0 or first >= SLOT_COUNT or second >= SLOT_COUNT:
+		return {"ok": false, "reason": "INVALID_SLOT"}
+	if first == second:
+		return {"ok": true, "reason": "UNCHANGED"}
+	var held := slots[first]
+	slots[first] = slots[second]
+	slots[second] = held
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "OK", "revision": revision}
+
+
+func quick_move_between_sections(source_index: int) -> Dictionary:
+	if source_index < 0 or source_index >= SLOT_COUNT:
+		return {"ok": false, "reason": "INVALID_SLOT"}
+	var source: Dictionary = slots[source_index]
+	var item_id := str(source.get("item_id", ""))
+	var remaining := int(source.get("count", 0))
+	if item_id.is_empty() or remaining <= 0:
+		return {"ok": false, "reason": "EMPTY_SLOT"}
+	var first_target := HOTBAR_COUNT if source_index < HOTBAR_COUNT else 0
+	var target_end := SLOT_COUNT if source_index < HOTBAR_COUNT else HOTBAR_COUNT
+	var candidate: Array[Dictionary] = slots.duplicate(true)
+	var maximum := registry.max_stack(item_id)
+	for target_index in range(first_target, target_end):
+		if target_index == source_index or str(candidate[target_index].get("item_id", "")) != item_id:
+			continue
+		var room := maximum - int(candidate[target_index].get("count", 0))
+		var moved := mini(remaining, maxi(0, room))
+		if moved > 0:
+			candidate[target_index]["count"] = int(candidate[target_index].get("count", 0)) + moved
+			remaining -= moved
+		if remaining <= 0:
+			break
+	for target_index in range(first_target, target_end):
+		if remaining <= 0:
+			break
+		if not str(candidate[target_index].get("item_id", "")).is_empty():
+			continue
+		var moved := mini(remaining, maximum)
+		candidate[target_index] = {"item_id": item_id, "count": moved}
+		remaining -= moved
+	var moved_total := int(source.get("count", 0)) - remaining
+	if moved_total <= 0:
+		return {"ok": false, "reason": "INVENTORY_FULL"}
+	candidate[source_index] = {"item_id": item_id, "count": remaining} if remaining > 0 else _empty_slot()
+	slots = candidate
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "QUICK_MOVED", "item_id": item_id, "count": moved_total, "revision": revision}
+
+
+func take_from_slot(index: int, amount: int) -> Dictionary:
+	if index < 0 or index >= SLOT_COUNT or amount <= 0:
+		return {"ok": false, "reason": "INVALID_SLOT"}
+	var source: Dictionary = slots[index]
+	var item_id := str(source.get("item_id", ""))
+	var source_count := int(source.get("count", 0))
+	if item_id.is_empty() or source_count < amount:
+		return {"ok": false, "reason": "INSUFFICIENT_INPUT"}
+	var remaining := source_count - amount
+	slots[index] = {"item_id": item_id, "count": remaining} if remaining > 0 else _empty_slot()
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "OK", "item_id": item_id, "count": amount, "revision": revision}
+
+
+func add_to_slot(index: int, item_id: String, amount: int) -> Dictionary:
+	if index < 0 or index >= SLOT_COUNT or item_id.is_empty() or amount <= 0:
+		return {"ok": false, "reason": "INVALID_SLOT"}
+	var target: Dictionary = slots[index]
+	var target_id := str(target.get("item_id", ""))
+	if not target_id.is_empty() and target_id != item_id:
+		return {"ok": false, "reason": "SLOT_OCCUPIED"}
+	if int(target.get("count", 0)) + amount > registry.max_stack(item_id):
+		return {"ok": false, "reason": "STACK_FULL"}
+	slots[index] = {"item_id": item_id, "count": int(target.get("count", 0)) + amount}
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "OK", "item_id": item_id, "count": amount, "revision": revision}
+
+
+func cursor_pick_slot(index: int, half: bool = false) -> Dictionary:
+	if index < 0 or index >= SLOT_COUNT:
+		return {"ok": false, "reason": "INVALID_SLOT"}
+	if not str(cursor_stack.get("item_id", "")).is_empty():
+		return {"ok": false, "reason": "CURSOR_OCCUPIED"}
+	var source: Dictionary = slots[index]
+	var item_id := str(source.get("item_id", ""))
+	var source_count := int(source.get("count", 0))
+	if item_id.is_empty() or source_count <= 0:
+		return {"ok": false, "reason": "EMPTY_SLOT"}
+	var amount := ceili(float(source_count) / 2.0) if half else source_count
+	cursor_stack = {"item_id": item_id, "count": amount}
+	var remaining := source_count - amount
+	slots[index] = {"item_id": item_id, "count": remaining} if remaining > 0 else _empty_slot()
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "CURSOR_PICKED", "item_id": item_id, "count": amount, "revision": revision}
+
+
+func cursor_receive(item_id: String, amount: int) -> Dictionary:
+	if item_id.is_empty() or amount <= 0 or registry.max_stack(item_id) < amount:
+		return {"ok": false, "reason": "INVALID_TRANSACTION"}
+	if not str(cursor_stack.get("item_id", "")).is_empty():
+		return {"ok": false, "reason": "CURSOR_OCCUPIED"}
+	cursor_stack = {"item_id": item_id, "count": amount}
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "CURSOR_PICKED", "item_id": item_id, "count": amount, "revision": revision}
+
+
+func cursor_deposit_slot(index: int, one: bool = false) -> Dictionary:
+	if index < 0 or index >= SLOT_COUNT:
+		return {"ok": false, "reason": "INVALID_SLOT"}
+	var item_id := str(cursor_stack.get("item_id", ""))
+	var held_count := int(cursor_stack.get("count", 0))
+	if item_id.is_empty() or held_count <= 0:
+		return {"ok": false, "reason": "CURSOR_EMPTY"}
+	var target: Dictionary = slots[index]
+	var target_id := str(target.get("item_id", ""))
+	if not target_id.is_empty() and target_id != item_id:
+		if one:
+			return {"ok": false, "reason": "SLOT_OCCUPIED"}
+		var held := cursor_stack
+		cursor_stack = target.duplicate(true)
+		slots[index] = held.duplicate(true)
+		revision += 1
+		changed.emit(snapshot())
+		return {"ok": true, "reason": "CURSOR_SWAPPED", "revision": revision}
+	var maximum := registry.max_stack(item_id)
+	var room := maximum - int(target.get("count", 0))
+	if room <= 0:
+		return {"ok": false, "reason": "STACK_FULL"}
+	var moved := mini(1 if one else held_count, room)
+	slots[index] = {"item_id": item_id, "count": int(target.get("count", 0)) + moved}
+	_cursor_consume_unchecked(moved)
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "CURSOR_DEPOSITED", "item_id": item_id, "count": moved, "revision": revision}
+
+
+func cursor_consume(amount: int) -> Dictionary:
+	var item_id := str(cursor_stack.get("item_id", ""))
+	var held_count := int(cursor_stack.get("count", 0))
+	if amount <= 0 or item_id.is_empty() or held_count < amount:
+		return {"ok": false, "reason": "CURSOR_EMPTY"}
+	_cursor_consume_unchecked(amount)
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "CURSOR_CONSUMED", "item_id": item_id, "count": amount, "revision": revision}
+
+
+func return_cursor_to_inventory() -> Dictionary:
+	var item_id := str(cursor_stack.get("item_id", ""))
+	var held_count := int(cursor_stack.get("count", 0))
+	if item_id.is_empty() or held_count <= 0:
+		return {"ok": true, "reason": "UNCHANGED", "revision": revision}
+	var candidate: Array[Dictionary] = slots.duplicate(true)
+	var added := _add_to_slots(candidate, {item_id: held_count})
+	if not added.get("ok", false):
+		return added
+	slots = candidate
+	cursor_stack = _empty_slot()
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "CURSOR_RETURNED", "item_id": item_id, "count": held_count, "revision": revision}
+
+
+func sort_carried_by_type() -> Dictionary:
+	var before := slots.duplicate(true)
+	var occupied: Array[Dictionary] = []
+	for index in range(HOTBAR_COUNT, SLOT_COUNT):
+		if not str(slots[index].get("item_id", "")).is_empty():
+			occupied.append(slots[index].duplicate(true))
+	occupied.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var a_id := str(a.get("item_id", ""))
+		var b_id := str(b.get("item_id", ""))
+		var a_rank := CARRIED_CATEGORY_ORDER.find(registry.item_category(a_id))
+		var b_rank := CARRIED_CATEGORY_ORDER.find(registry.item_category(b_id))
+		if a_rank < 0:
+			a_rank = CARRIED_CATEGORY_ORDER.size()
+		if b_rank < 0:
+			b_rank = CARRIED_CATEGORY_ORDER.size()
+		return a_id < b_id if a_rank == b_rank else a_rank < b_rank
+	)
+	for offset in range(SLOT_COUNT - HOTBAR_COUNT):
+		slots[HOTBAR_COUNT + offset] = occupied[offset] if offset < occupied.size() else _empty_slot()
+	if slots == before:
+		return {"ok": true, "reason": "UNCHANGED", "revision": revision}
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "OK", "revision": revision, "sorted_slots": occupied.size()}
+
+
+func can_transaction(removals: Dictionary, additions: Dictionary) -> bool:
+	return _simulate(removals, additions).get("ok", false)
+
+
+func try_transaction(removals: Dictionary, additions: Dictionary) -> Dictionary:
+	var simulated := _simulate(removals, additions)
+	if not simulated.get("ok", false):
+		return simulated
+	slots = simulated.slots
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "OK", "revision": revision}
+
+
+func try_reserve_and_remove(token: String, removals: Dictionary, outputs: Dictionary) -> Dictionary:
+	if token.is_empty() or reservations.has(token):
+		return {"ok": false, "reason": "DUPLICATE_RESERVATION"}
+	var candidate := _remove_from_copy(slots.duplicate(true), removals)
+	if not candidate.get("ok", false):
+		return candidate
+	var capacity_probe: Array[Dictionary] = candidate.slots.duplicate(true)
+	for reserved: Dictionary in reservations.values():
+		if not _add_to_slots(capacity_probe, reserved).get("ok", false):
+			return {"ok": false, "reason": "INVENTORY_FULL"}
+	if not _add_to_slots(capacity_probe, outputs).get("ok", false):
+		return {"ok": false, "reason": "INVENTORY_FULL"}
+	slots = candidate.slots
+	reservations[token] = _normalized_counts(outputs)
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "OK", "reservation": token, "revision": revision}
+
+
+func commit_reservation(token: String) -> Dictionary:
+	if not reservations.has(token):
+		return {"ok": false, "reason": "NO_RESERVATION"}
+	var outputs: Dictionary = reservations[token]
+	var candidate: Array[Dictionary] = slots.duplicate(true)
+	if not _add_to_slots(candidate, outputs).get("ok", false):
+		return {"ok": false, "reason": "RESERVED_OUTPUT_BLOCKED"}
+	reservations.erase(token)
+	slots = candidate
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "OK", "revision": revision, "outputs": outputs.duplicate(true)}
+
+
+func claim_reservation(token: String) -> Dictionary:
+	if not reservations.has(token):
+		return {"ok": false, "reason": "NO_RESERVATION"}
+	var outputs: Dictionary = reservations[token]
+	reservations.erase(token)
+	revision += 1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "OK", "revision": revision, "outputs": outputs.duplicate(true)}
 
 
 func can_add_dirt(amount: int) -> bool:
-	return amount > 0 and dirt + amount <= MAX_DIRT
+	return amount > 0 and can_transaction({}, {"dirt": amount})
 
 
 func can_remove_dirt(amount: int) -> bool:
-	return amount > 0 and dirt >= amount
+	return amount > 0 and count("dirt") >= amount
 
 
 func add_dirt(amount: int) -> bool:
-	if not can_add_dirt(amount):
-		return false
-	dirt += amount
-	revision += 1
-	changed.emit(snapshot())
-	return true
+	return amount > 0 and try_transaction({}, {"dirt": amount}).get("ok", false)
 
 
 func remove_dirt(amount: int) -> bool:
-	if not can_remove_dirt(amount):
-		return false
-	dirt -= amount
-	revision += 1
-	changed.emit(snapshot())
-	return true
+	return amount > 0 and try_transaction({"dirt": amount}, {}).get("ok", false)
 
 
 func restore(data: Dictionary) -> bool:
-	var restored_dirt := int(data.get("dirt", -1))
 	var restored_revision := int(data.get("revision", -1))
-	if restored_dirt < 0 or restored_dirt > MAX_DIRT or restored_revision < 0:
+	if restored_revision < 0:
 		return false
-	dirt = restored_dirt
+	var candidate: Array[Dictionary] = []
+	if data.get("slots") is Array:
+		var raw_slots: Array = data.slots
+		if raw_slots.size() != SLOT_COUNT:
+			return false
+		for value in raw_slots:
+			if not value is Dictionary:
+				return false
+			var slot := _validated_slot(value)
+			if slot.is_empty() and (not str(value.get("item_id", "")).is_empty() or int(value.get("count", 0)) != 0):
+				return false
+			candidate.append(slot if not slot.is_empty() else _empty_slot())
+	else:
+		for _index in range(SLOT_COUNT):
+			candidate.append(_empty_slot())
+		var legacy_dirt := int(data.get("dirt", -1))
+		if legacy_dirt < 0:
+			return false
+		if legacy_dirt > 0 and not _add_to_slots(candidate, {"dirt": legacy_dirt}).get("ok", false):
+			return false
+	var restored_hotbar := int(data.get("selected_hotbar", 0))
+	if restored_hotbar < 0 or restored_hotbar >= HOTBAR_COUNT:
+		return false
+	var restored_reservations: Dictionary = {}
+	var raw_reservations: Variant = data.get("reservations", {})
+	if not raw_reservations is Dictionary:
+		return false
+	for token: String in raw_reservations:
+		var counts := _validate_counts(raw_reservations[token])
+		if not counts.get("ok", false):
+			return false
+		restored_reservations[token] = counts.counts
+	var probe: Array[Dictionary] = candidate.duplicate(true)
+	for reserved: Dictionary in restored_reservations.values():
+		if not _add_to_slots(probe, reserved).get("ok", false):
+			return false
+	var raw_cursor: Variant = data.get("cursor_stack", _empty_slot())
+	if not raw_cursor is Dictionary:
+		return false
+	var restored_cursor := _validated_slot(raw_cursor)
+	if restored_cursor.is_empty() and (not str(raw_cursor.get("item_id", "")).is_empty() or int(raw_cursor.get("count", 0)) != 0):
+		return false
+	slots = candidate
+	reservations = restored_reservations
+	cursor_stack = restored_cursor if not restored_cursor.is_empty() else _empty_slot()
+	selected_hotbar = restored_hotbar
 	revision = restored_revision
 	changed.emit(snapshot())
 	return true
 
 
 func snapshot() -> Dictionary:
-	return {"dirt": dirt, "revision": revision}
+	return {"slots": slots.duplicate(true), "selected_hotbar": selected_hotbar, "reservations": reservations.duplicate(true), "cursor_stack": cursor_stack.duplicate(true), "revision": revision, "dirt": dirt}
 
+
+func _simulate(removals: Dictionary, additions: Dictionary) -> Dictionary:
+	var removed := _remove_from_copy(slots.duplicate(true), removals)
+	if not removed.get("ok", false):
+		return removed
+	var candidate: Array[Dictionary] = removed.slots
+	var added := _add_to_slots(candidate, additions)
+	if not added.get("ok", false):
+		return added
+	var capacity_probe: Array[Dictionary] = candidate.duplicate(true)
+	for reserved: Dictionary in reservations.values():
+		if not _add_to_slots(capacity_probe, reserved).get("ok", false):
+			return {"ok": false, "reason": "INVENTORY_FULL"}
+	return {"ok": true, "reason": "OK", "slots": candidate}
+
+
+func _remove_from_copy(candidate: Array[Dictionary], removals: Dictionary) -> Dictionary:
+	var validated := _validate_counts(removals)
+	if not validated.get("ok", false):
+		return validated
+	for item_id: String in validated.counts:
+		var remaining := int(validated.counts[item_id])
+		if count_in(candidate, item_id) < remaining:
+			return {"ok": false, "reason": "INSUFFICIENT_INPUT", "item_id": item_id}
+		for index in range(candidate.size() - 1, -1, -1):
+			if str(candidate[index].item_id) != item_id:
+				continue
+			var taken := mini(remaining, int(candidate[index].count))
+			candidate[index].count = int(candidate[index].count) - taken
+			remaining -= taken
+			if int(candidate[index].count) == 0:
+				candidate[index] = _empty_slot()
+			if remaining == 0:
+				break
+	return {"ok": true, "reason": "OK", "slots": candidate}
+
+
+func _add_to_slots(candidate: Array[Dictionary], additions: Dictionary) -> Dictionary:
+	var validated := _validate_counts(additions)
+	if not validated.get("ok", false):
+		return validated
+	for item_id: String in validated.counts:
+		var remaining := int(validated.counts[item_id])
+		var maximum := registry.max_stack(item_id)
+		for index in range(candidate.size()):
+			if str(candidate[index].item_id) != item_id or int(candidate[index].count) >= maximum:
+				continue
+			var inserted := mini(remaining, maximum - int(candidate[index].count))
+			candidate[index].count = int(candidate[index].count) + inserted
+			remaining -= inserted
+			if remaining == 0:
+				break
+		while remaining > 0:
+			var empty_index := _first_empty(candidate)
+			if empty_index < 0:
+				return {"ok": false, "reason": "INVENTORY_FULL", "item_id": item_id}
+			var inserted := mini(remaining, maximum)
+			candidate[empty_index] = {"item_id": item_id, "count": inserted}
+			remaining -= inserted
+	return {"ok": true, "reason": "OK", "slots": candidate}
+
+
+func _validate_counts(value: Variant) -> Dictionary:
+	if not value is Dictionary:
+		return {"ok": false, "reason": "INVALID_TRANSACTION"}
+	var clean: Dictionary = {}
+	for key: Variant in value:
+		var item_id := str(key)
+		var quantity_value: Variant = value[key]
+		if typeof(quantity_value) not in [TYPE_INT, TYPE_FLOAT] or float(int(quantity_value)) != float(quantity_value) or int(quantity_value) <= 0 or registry.max_stack(item_id) <= 0:
+			return {"ok": false, "reason": "INVALID_TRANSACTION", "item_id": item_id}
+		clean[item_id] = int(quantity_value)
+	return {"ok": true, "reason": "OK", "counts": clean}
+
+
+func _normalized_counts(value: Dictionary) -> Dictionary:
+	return _validate_counts(value).get("counts", {}).duplicate(true)
+
+
+func _validated_slot(value: Dictionary) -> Dictionary:
+	var item_id := str(value.get("item_id", ""))
+	var quantity := int(value.get("count", 0))
+	if item_id.is_empty() and quantity == 0:
+		return _empty_slot()
+	var maximum := registry.max_stack(item_id)
+	if maximum <= 0 or quantity <= 0 or quantity > maximum:
+		return {}
+	return {"item_id": item_id, "count": quantity}
+
+
+static func count_in(candidate: Array[Dictionary], item_id: String) -> int:
+	var total := 0
+	for slot in candidate:
+		if str(slot.get("item_id", "")) == item_id:
+			total += int(slot.get("count", 0))
+	return total
+
+
+static func _first_empty(candidate: Array[Dictionary]) -> int:
+	for index in range(candidate.size()):
+		if str(candidate[index].get("item_id", "")).is_empty():
+			return index
+	return -1
+
+
+static func _empty_slot() -> Dictionary:
+	return {"item_id": "", "count": 0}
+
+
+func _cursor_consume_unchecked(amount: int) -> void:
+	var remaining := int(cursor_stack.get("count", 0)) - amount
+	cursor_stack = {"item_id": str(cursor_stack.get("item_id", "")), "count": remaining} if remaining > 0 else _empty_slot()

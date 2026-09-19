@@ -10,12 +10,13 @@ $buildExe = Join-Path $buildRoot 'CraftAndDefend.exe'
 $buildPck = Join-Path $buildRoot 'CraftAndDefend.pck'
 $manifestPath = Join-Path $buildRoot 'build_manifest.json'
 $gitMarker = Join-Path $repositoryRoot '.git'
+$gitSafeDirectory = $repositoryRoot.Replace('\', '/')
 
 function Get-GameTree {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         return $null
     }
-    $value = (& git -C $repositoryRoot rev-parse HEAD:game 2>$null | Select-Object -First 1)
+    $value = (& git -c "safe.directory=$gitSafeDirectory" -C $repositoryRoot rev-parse HEAD:game 2>$null | Select-Object -First 1)
     if ($value -notmatch '^[0-9a-fA-F]{40}$') {
         return $null
     }
@@ -23,7 +24,7 @@ function Get-GameTree {
 }
 
 function Test-GameTreeClean {
-    $changes = (& git -C $repositoryRoot status --porcelain -- game 2>$null)
+    $changes = (& git -c "safe.directory=$gitSafeDirectory" -C $repositoryRoot status --porcelain -- game 2>$null)
     return -not $changes
 }
 

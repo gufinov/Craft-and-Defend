@@ -76,8 +76,19 @@ func _run_phase1() -> void:
 	_record("T05_PLACE_CONSUME", place_one.get("ok", false) and app.session.inventory.dirt == 0 and int(app.session.world.query_cell(Vector3i(1, 0, 38)).get("voxel_id", -1)) == 2, "one dirt placed and one consumed", place_one)
 	var break_two := app.session.interaction.break_from_view(Vector3(2.5, 2.0, 38.5), Vector3.DOWN)
 	_record("T05_EXACT_ACCOUNTING", break_two.get("ok", false) and app.session.inventory.dirt == 1, "second break leaves exactly one dirt", break_two)
+	var side_target := Vector3i(2, 0, 38)
+	var side_place := app.session.interaction.try_place_dirt(side_target)
+	var side_placed: bool = side_place.get("ok", false) \
+		and int(app.session.world.query_cell(side_target).get("voxel_id", -1)) == 2 \
+		and int(app.session.world.query_cell(side_target + Vector3i.DOWN).get("voxel_id", -1)) == 0 \
+		and app.session.inventory.dirt == 0
+	var side_cleanup := app.session.interaction.try_break_cell(side_target)
+	_record("T05_SIDE_FACE_PLACE", side_placed and side_cleanup.get("ok", false) and app.session.inventory.dirt == 1, "a block attaches to the side face of another block with air below and preserves exact accounting", {"place": side_place, "cleanup": side_cleanup})
 
 	var before_invalid := _mutation_snapshot()
+	var unsupported := app.session.interaction.try_place_dirt(Vector3i(5, 5, 38))
+	var after_unsupported := _mutation_snapshot()
+	_record("T06_UNSUPPORTED_FLOATING", unsupported.get("reason") == "UNSUPPORTED" and before_invalid == after_unsupported, "a truly floating block with no neighboring solid face is still rejected without mutation", unsupported)
 	var outside := app.session.interaction.try_place_dirt(Vector3i(32, 0, 0))
 	var after_outside := _mutation_snapshot()
 	_record("T06_OUTSIDE_BOUNDS", outside.get("reason") == "OUT_OF_BOUNDS" and before_invalid == after_outside, "reject without mutation", outside)

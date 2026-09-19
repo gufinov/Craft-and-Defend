@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "alpha_threshold": 128,
+  "atlases": {
+    "item": {
+      "file": "item_atlas_p3h2.png",
+      "size": [
+        1536,
+        1024
+      ]
+    },
+    "ammunition": {
+      "file": "ammunition_atlas_p3h3.png",
+      "size": [
+        1774,
+        887
+      ]
+    }
+  },
+  "regions": {
+    "dirt": {
+      "atlas": "item",
+      "rect": [
+        58,
+        45,
+        146,
+        164
+      ]
+    },
+    "stone": {
+      "atlas": "item",
+      "rect": [
+        309,
+        44,
+        144,
+        166
+      ]
+    },
+    "log": {
+      "atlas": "item",
+      "rect": [
+        567,
+        43,
+        150,
+        167
+      ]
+    },
+    "planks": {
+      "atlas": "item",
+      "rect": [
+        813,
+        51,
+        164,
+        156
+      ]
+    },
+    "castle_stone": {
+      "atlas": "item",
+      "rect": [
+        1080,
+        45,
+        146,
+        165
+      ]
+    },
+    "stick": {
+      "atlas": "item",
+      "rect": [
+        1320,
+        54,
+        165,
+        154
+      ]
+    },
+    "coal": {
+      "atlas": "item",
+      "rect": [
+        49,
+        299,
+        158,
+        153
+      ]
+    },
+    "iron_ore": {
+      "atlas": "item",
+      "rect": [
+        304,
+        300,
+        158,
+        153
+      ]
+    },
+    "iron_ingot": {
+      "atlas": "item",
+      "rect": [
+        552,
+        312,
+        167,
+        134
+      ]
+    },
+    "wood_pick": {
+      "atlas": "item",
+      "rect": [
+        837,
+        287,
+        135,
+        173
+      ]
+    },
+    "stone_pick": {
+      "atlas": "item",
+      "rect": [
+        1094,
+        287,
+        136,
+        173
+      ]
+    },
+    "iron_pick": {
+      "atlas": "item",
+      "rect": [
+        1347,
+        288,
+        139,
+        172
+      ]
+    },
+    "workbench": {
+      "atlas": "item",
+      "rect": [
+        47,
+        526,
+        163,
+        161
+      ]
+    },
+    "furnace": {
+      "atlas": "item",
+      "rect": [
+        306,
+        524,
+        154,
+        163
+      ]
+    },
+    "stone_stair": {
+      "atlas": "item",
+      "rect": [
+        561,
+        527,
+        151,
+        160
+      ]
+    },
+    "wall_walk_slab": {
+      "atlas": "item",
+      "rect": [
+        804,
+        553,
+        178,
+        133
+      ]
+    },
+    "parapet_merlon": {
+      "atlas": "item",
+      "rect": [
+        1076,
+        528,
+        158,
+        166
+      ]
+    },
+    "tower_platform": {
+      "atlas": "item",
+      "rect": [
+        1321,
+        517,
+        165,
+        177
+      ]
+    },
+    "gate_frame": {
+      "atlas": "item",
+      "rect": [
+        47,
+        754,
+        172,
+        180
+      ]
+    },
+    "wood_barricade": {
+      "atlas": "item",
+      "rect": [
+        298,
+        774,
+        173,
+        161
+      ]
+    },
+    "iron_sword": {
+      "atlas": "item",
+      "rect": [
+        559,
+        761,
+        141,
+        169
+      ]
+    },
+    "wood_axe": {
+      "atlas": "item",
+      "rect": [
+        815,
+        765,
+        138,
+        163
+      ]
+    },
+    "ballista": {
+      "atlas": "item",
+      "rect": [
+        1053,
+        775,
+        181,
+        161
+      ]
+    },
+    "catapult": {
+      "atlas": "item",
+      "rect": [
+        1308,
+        763,
+        179,
+        180
+      ]
+    },
+    "ballista_bolt": {
+      "atlas": "ammunition",
+      "rect": [
+        154,
+        98,
+        785,
+        698
+      ]
+    },
+    "stone_shot": {
+      "atlas": "ammunition",
+      "rect": [
+        1128,
+        244,
+        465,
+        460
+      ]
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # Persistence and recovery design
 
-**Status: proposed; Windows failure/restart tests required before claiming reliability.** Voxel streaming does not make player inventory and a separate metadata file an atomic save. This is the first major integration risk.
+**Status: F3 implementation gate PASS; owner playtest/promotion pending.** The coordinator publishes terrain, player, full inventory/hotbar and workstation/job state in one checkpoint. Independent A/B slots, interrupted publication recovery, invalid-save refusal, legacy-layout copy migration, mid-job restart and injected denied-write/full-disk behavior pass in the provenance-matched Windows export.
 
 ## Ownership and format
 
@@ -10,20 +10,22 @@ Use a dedicated custom Godot user-data directory such as `CraftAndDefend` and sa
 |---|---|
 | Voxel edits | VoxelStreamSQLite database, fresh stream per active session |
 | Slot identity/config | Versioned metadata: slot ID, schema, seed, generator version, bounds, content version |
-| Gameplay snapshot | Player transform, inventory/hotbar, equipment, entities/workstations, jobs, clock, snapshot revision |
+| Gameplay snapshot | Player transform, inventory/hotbar, equipment, entities/workstations, jobs, simulation clock phase/day/cycle-enabled state, snapshot revision |
 | Settings | ConfigFile/equivalent outside slots: bindings, audio, video, sensitivity |
 
 Store explicit schema and content versions. Keep block numeric IDs stable; never reorder them across existing saves. Unknown/newer schema or missing content produces a readable refusal, not an empty replacement world. A migration copies the slot and reports a new version; it does not mutate the sole original copy.
 
+P1 adds generator identity without rewriting the save schema. A new snapshot records `world.generator_version = terrain_p1_1` and `world.seed = 41026`. A checkpoint created before these optional fields existed resolves specifically to `flat_fixture_1`; this prevents untouched chunks beside its SQLite edit overlay from regenerating as hills. A recognized P1 checkpoint reuses its saved seed. Any unknown generator version returns `UNSUPPORTED_GENERATOR_VERSION` before terrain opens. The additive leaves block is ID 10; all prior numeric IDs and content version remain stable.
+
 ## Minimum coherent checkpoint approach to prove
 
-For the tiny Foundation world, favor simplicity over storage efficiency: keep a working session database separate from the last published checkpoint. A committed checkpoint directory contains **both** voxel data and gameplay state with one manifest. Load copies/opens an appropriate working copy so continuous chunk saves do not mutate the last good checkpoint. Keep two completed checkpoints; clean old generations only after the new one is validated.
+For the tiny Foundation world, favor simplicity over storage efficiency: keep a working session database separate from the last published checkpoint. A committed checkpoint directory contains **both** voxel data and gameplay state with one manifest. Load copies/opens an appropriate working copy so continuous chunk saves do not mutate the last good checkpoint. F3 keeps two completed checkpoints and prunes older generations only after the new pointer is published.
 
 Saving freezes gameplay mutations, workstations, clock and viewer movement, captures one state revision, drains terrain saves, then obtains a verified consistent database snapshot. Write to a new temporary checkpoint directory, validate metadata/database compatibility, and only then publish a manifest/pointer to that completed directory. Returning to menu/quit proceeds after the coherent checkpoint is complete. Pending generations are ignored/reported on restart.
 
 **The exact safe database snapshot/close barrier is an F0 investigation, not an assumed API.** Do not copy an open SQLite database with ordinary file copy, ignore possible journal/WAL companions, or assume a node being freed means all asynchronous I/O is finished. Use a supported consistent backup or verified stream-close/drain approach; document source evidence and force-stop tests. If that cannot be made reliable cheaply, propose a different save design before extending gameplay.
 
-This checkpoint plan introduces bounded disk overhead for the tiny world. Record measured size and save latency; it is not a final large-world storage architecture. No promise of power-loss durability is made merely because rename succeeds. The practical Foundation requirement is reliable normal saves and preserving the prior complete checkpoint on interrupted saves.
+This checkpoint plan introduces bounded disk overhead for the tiny world. The final provenance-matched export measured 23,229–23,652 bytes per checkpoint and 45–66 ms per F3 save on the recorded test machine; this is not a final large-world storage architecture. No promise of power-loss durability is made merely because rename succeeds. The practical Foundation requirement is reliable normal saves and preserving the prior complete checkpoint on interrupted saves.
 
 ## Voxel-specific hazards
 
@@ -35,7 +37,7 @@ The [stream documentation](https://voxel-tools.readthedocs.io/en/latest/streams/
 
 Show Saving with a responsive progress/status surface; block repeated save/load requests. On error/timeout, keep the session recoverable and the previous completed checkpoint intact. Offer Retry or return to the paused session. A forced discard/quit must explicitly say unsaved progress will be lost; never mark a failed save successful. Window-close/Alt-F4 uses the same coordinator as Quit; the editor Stop button is a force-kill, not a normal save test.
 
-Furnace inputs/fuel are consumed once when a job starts. Save job identity, reserved output, remaining simulation time and completion status so reload neither duplicates output nor consumes inputs twice. No offline catch-up in Foundation. Settings changes do not need a world save and must survive a restart independently.
+Each placed Furnace owns persistent Raw Input, Fuel and Output stacks plus an integer residual fuel-operation count. A job consumes one compatible input and one fuel operation exactly once when it starts; when none is stored, one Coal is converted into the catalogue-defined three operations and one is immediately spent. Save the residual count, job identity, remaining simulation time, completion status and all three station stacks so reload neither duplicates output nor consumes inputs twice. Saves written before the residual field default to zero; out-of-range residual values are refused. Completion appends exactly one result to the station Output stack, where it remains until explicitly collected. Legacy in-progress jobs with inventory reservations are converted by claiming the one reserved result into Furnace Output. Cursor-held inventory stacks are also part of the coherent snapshot and are returned before a panel closes; no offline catch-up exists in Foundation. Global input/audio/display settings persist independently; World Settings deliberately mutate the active slot and persist through its next coherent world checkpoint.
 
 ## Required evidence
 
