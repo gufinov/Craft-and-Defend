@@ -488,10 +488,10 @@ func _ride_rails(instance_id: String, details: Dictionary, target: Vector3, delt
 		goal = patrol_goal
 	var speed := float(details.get("definition", {}).get("rail_speed", 2.0))
 	var body: Node3D = turret.get_parent()
-	var desired_global := Vector3(current) + Vector3(0.5, 1.5, 0.5)
+	var desired_global := _rail_point(current)
 	if goal != current:
 		var next := _rail_step(chain, current, goal)
-		desired_global = Vector3(next) + Vector3(0.5, 1.5, 0.5)
+		desired_global = _rail_point(next)
 		var position := turret.global_position
 		var moved := position.move_toward(desired_global, speed * delta)
 		turret.global_position = moved
@@ -520,12 +520,31 @@ func _ride_rails(instance_id: String, details: Dictionary, target: Vector3, delt
 			turret.rotation.y = rotate_toward(turret.rotation.y, wrapf(desired - body_yaw, -PI, PI), TURN_RATE * delta)
 
 
+## Where the kettle's turret sits over the rail cell `cell`: 1.5 above the
+## cell floor on a flat rail (unchanged), half a cell higher on a slope
+## (coaster side project) so it climbs with the track.
+func _rail_point(cell: Vector3i) -> Vector3:
+	var point := Vector3(cell) + Vector3(0.5, 1.5, 0.5)
+	var station_id := workstations.station_at_cell(cell)
+	if not station_id.is_empty() and str(workstations.station(station_id).get("entity_id", "")) == CoasterRails.SLOPE:
+		point.y += 0.5
+	return point
+
+
 func _chain_degree(chain: Dictionary, cell: Vector3i) -> int:
-	var degree := 0
-	for offset: Vector3i in RAIL_STEPS:
-		if chain.has(cell + offset):
-			degree += 1
-	return degree
+	return _chain_neighbours(chain, cell).size()
+
+
+## Cells joined to `cell` in a chain from `_rail_chain` (CoasterRails.chain:
+## {cell: Array[Vector3i]}); for flat rails these are its 4-neighbours.
+func _chain_neighbours(chain: Dictionary, cell: Vector3i) -> Array[Vector3i]:
+	var joined: Array[Vector3i] = []
+	var value: Variant = chain.get(cell)
+	if value is Array:
+		for next in value:
+			if next is Vector3i:
+				joined.append(next)
+	return joined
 
 
 ## The rail direction at `cell`: the axis along which it has chain neighbours.
@@ -548,9 +567,8 @@ func _chain_end_farthest(chain: Dictionary, from: Vector3i) -> Vector3i:
 		index += 1
 		if int(distance[cell]) > int(distance[farthest]):
 			farthest = cell
-		for offset: Vector3i in RAIL_STEPS:
-			var next: Vector3i = cell + offset
-			if chain.has(next) and not distance.has(next):
+		for next: Vector3i in _chain_neighbours(chain, cell):
+			if not distance.has(next):
 				distance[next] = int(distance[cell]) + 1
 				queue.append(next)
 	return farthest
@@ -562,28 +580,12 @@ func rail_rider_cell(instance_id: String) -> Vector3i:
 	return rider.get("cell", Vector3i(0, -9999, 0))
 
 
-## Connected rail cells reachable from `start` through 4-neighbours on the
-## same level: {cell: true}.
+## Connected track cells reachable from `start`: {cell: joined cells}. Flat
+## rails join their 4-neighbours on the same level exactly as before; the
+## coaster side project (CoasterRails) adds slopes (one level up or down) and
+## loop pieces to the same chain.
 func _rail_chain(start: Vector3i) -> Dictionary:
-	var rails: Dictionary = {}
-	for record_id: String in workstations.stations.keys():
-		var record: Dictionary = workstations.stations[record_id]
-		if str(record.get("entity_id", "")) == "rail":
-			rails[record.get("anchor", Vector3i.ZERO)] = true
-	var chain: Dictionary = {}
-	if not rails.has(start):
-		chain[start] = true
-		return chain
-	var frontier: Array[Vector3i] = [start]
-	chain[start] = true
-	while not frontier.is_empty():
-		var cell: Vector3i = frontier.pop_back()
-		for offset: Vector3i in RAIL_STEPS:
-			var next: Vector3i = cell + offset
-			if rails.has(next) and not chain.has(next):
-				chain[next] = true
-				frontier.append(next)
-	return chain
+	return CoasterRails.chain(workstations.stations, start)
 
 
 ## Next chain cell on the shortest path from `from` to `goal` (BFS).
@@ -602,11 +604,11 @@ func _rail_step(chain: Dictionary, from: Vector3i, goal: Vector3i) -> Vector3i:
 			break
 		var came: Vector3i = arrival[cell]
 		var junction := _chain_degree(chain, cell) >= 3
-		for offset: Vector3i in RAIL_STEPS:
+		for next: Vector3i in _chain_neighbours(chain, cell):
+			var offset := next - cell
 			if junction and came != Vector3i.ZERO and offset != came:
 				continue
-			var next: Vector3i = cell + offset
-			if chain.has(next) and not parents.has(next):
+			if not parents.has(next):
 				parents[next] = cell
 				arrival[next] = offset
 				queue.append(next)

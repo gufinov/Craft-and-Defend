@@ -32,6 +32,8 @@ DERIVED = [
     # P4G core and light sources (owner art, 2026-09-19).
     "core_of_power", "enemy_core", "torch", "wall_lantern", "post_lantern", "campfire",
     "light_block_blue", "light_block_red",
+    # Coaster rails side project (docs/COASTER_RAILS.md): drawn placeholders.
+    "rail_slope", "rail_loop", "mine_cart",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -220,6 +222,44 @@ def icon_rail() -> Image.Image:
     return canvas
 
 
+def icon_rail_slope() -> Image.Image:
+    """The rail icon leaning 45 degrees: rails rising to the right on ties."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    for step in range(5):
+        x = 44 + step * 36
+        y = 196 - step * 36
+        draw.rectangle([x, y - 10, x + 30, y + 10], fill=(139, 82, 38, 255))
+    for offset in (-22, 22):
+        draw.line([(40 + offset, 214 + offset), (216 + offset, 38 + offset)], fill=(110, 118, 126, 255), width=18)
+    return canvas
+
+
+def icon_rail_loop() -> Image.Image:
+    """A vertical loop: two concentric rail rings on a short lead-in."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    draw.rectangle([16, 196, 240, 214], fill=(110, 118, 126, 255))
+    draw.ellipse([56, 30, 200, 174], outline=(110, 118, 126, 255), width=14)
+    draw.ellipse([78, 52, 178, 152], outline=(139, 82, 38, 255), width=8)
+    for x in (40, 96, 152, 208):
+        draw.rectangle([x, 186, x + 18, 224], fill=(139, 82, 38, 255))
+    return canvas
+
+
+def icon_mine_cart() -> Image.Image:
+    """An oak cart with iron bands on two wheels, seen from the side."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    draw.polygon([(44, 80), (212, 80), (188, 186), (68, 186)], fill=(139, 82, 38, 255), outline=(70, 40, 18, 255))
+    draw.rectangle([40, 74, 216, 92], fill=(110, 118, 126, 255))
+    draw.rectangle([60, 130, 196, 142], fill=(110, 118, 126, 255))
+    for x in (84, 172):
+        draw.ellipse([x - 26, 176, x + 26, 228], fill=(58, 62, 68, 255), outline=(30, 32, 36, 255), width=5)
+        draw.ellipse([x - 8, 194, x + 8, 210], fill=(226, 170, 44, 255))
+    return canvas
+
+
 BUILDERS = {
     "flame_shot": icon_flame_shot, "chest": icon_chest, "cannon": icon_cannon, "cannonball": icon_cannonball,
     "turret_catapult": icon_turret_catapult, "hot_oil": icon_hot_oil, "kettle": icon_kettle, "rail": icon_rail,
@@ -228,6 +268,7 @@ BUILDERS = {
     "torch": lambda: owner_icon("torch"), "wall_lantern": lambda: owner_icon("wall_lantern"),
     "post_lantern": lambda: owner_icon("post_lantern"), "campfire": lambda: owner_icon("campfire"),
     "light_block_blue": lambda: owner_icon("light_block_blue"), "light_block_red": lambda: owner_icon("light_block_red"),
+    "rail_slope": icon_rail_slope, "rail_loop": icon_rail_loop, "mine_cart": icon_mine_cart,
 }
 
 

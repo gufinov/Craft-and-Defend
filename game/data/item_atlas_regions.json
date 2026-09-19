@@ -20,7 +20,7 @@
       "file": "derived_atlas_p4.png",
       "size": [
         1536,
-        768
+        1024
       ]
     },
     "gold": {
@@ -426,6 +426,33 @@
         522,
         230,
         236
+      ]
+    },
+    "rail_slope": {
+      "atlas": "derived",
+      "rect": [
+        12,
+        778,
+        233,
+        233
+      ]
+    },
+    "rail_loop": {
+      "atlas": "derived",
+      "rect": [
+        272,
+        798,
+        225,
+        145
+      ]
+    },
+    "mine_cart": {
+      "atlas": "derived",
+      "rect": [
+        552,
+        842,
+        177,
+        155
       ]
     },
     "gold_ore": {

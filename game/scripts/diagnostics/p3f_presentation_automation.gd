@@ -8,6 +8,7 @@ const EXPECTED_WORKBENCH_ORDER: Array[String] = [
 	"iron_pick", "iron_sword", "ballista_bolt", "stone_shot", "flame_shot", "cannonball", "ballista", "catapult",
 	"turret_catapult", "turret_catapult_mk2", "cannon", "rail", "kettle", "chest",
 	"torch", "wall_lantern", "post_lantern", "campfire", "light_block_blue", "light_block_red", "core_of_power",
+	"rail_slope", "rail_loop", "mine_cart",
 ]
 const VISUAL_ITEMS: Array[String] = [
 	"wood_pick", "iron_sword", "wood_axe", "stick",
@@ -220,7 +221,7 @@ func _run_visual() -> void:
 	await _settle_frames(8)
 	var page_two_path := app.data_root.path_join("p3f-workbench-page-2.png")
 	var page_two_ok := await _save_viewport(page_two_path)
-	_record("T103_ATLAS_CARD_ALIGNMENT", placed.get("ok", false) and page_one_ok and page_two_ok and app.crafting_recipe_page_label.text == "Page 2 / 3", "both rendered Workbench pages keep each icon entirely inside its own recipe card with complete bottom-row tools and no neighboring fragments", {"page_one_path": page_one_path, "page_two_path": page_two_path, "page": app.crafting_recipe_page_label.text, "size": get_viewport().get_visible_rect().size})
+	_record("T103_ATLAS_CARD_ALIGNMENT", placed.get("ok", false) and page_one_ok and page_two_ok and app.crafting_recipe_page_label.text == "Page 2 / 4", "both rendered Workbench pages keep each icon entirely inside its own recipe card with complete bottom-row tools and no neighboring fragments", {"page_one_path": page_one_path, "page_two_path": page_two_path, "page": app.crafting_recipe_page_label.text, "size": get_viewport().get_visible_rect().size})
 
 	app._close_crafting()
 	app.session.inventory.try_transaction({}, {"gate_frame": 1, "wall_walk_slab": 1})

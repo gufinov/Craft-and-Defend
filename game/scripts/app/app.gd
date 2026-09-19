@@ -292,6 +292,11 @@ func _ready() -> void:
 		var p4_resources_automation := P4ResourcesAutomation.new()
 		add_child(p4_resources_automation)
 		p4_resources_automation.call_deferred("run", self, p4_resources_mode)
+	var coaster_rails_mode := _argument_value("--coaster-rails-automation=")
+	if not coaster_rails_mode.is_empty():
+		var coaster_rails_automation := CoasterRailsAutomation.new()
+		add_child(coaster_rails_automation)
+		coaster_rails_automation.call_deferred("run", self, coaster_rails_mode)
 
 
 func _input(event: InputEvent) -> void:

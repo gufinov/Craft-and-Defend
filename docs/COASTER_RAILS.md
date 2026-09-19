@@ -1,0 +1,67 @@
+# Coaster rails — side project (slopes, the loop drag tool, the mine cart)
+
+Owner idea (2026-09-19, verbatim intent): rails that climb 45 degrees so mine carts can go up mountains, and a "roller coaster" option — click-and-drag with keys held draws interesting shapes (a loop first; a DNA strand or corkscrew later): equip a loop rail, drag out the straight lead-in, hold Shift to start a loop, X / C make it smaller / bigger while the ghost re-sizes, release lays the loop with a trailing flat exit. Later the same rails may carry mine carts hauling ore.
+
+This is a **modular side feature**: every new file carries a `coaster` name (`game/scripts/rails/coaster_rails.gd`, `game/scripts/rails/coaster_cart_service.gd`, `game/scripts/diagnostics/coaster_rails_automation.gd`, `TEST_COASTER_RAILS.cmd`, this contract and its evidence). The core game touches it in a handful of clearly commented lines; nothing in the core depends on it beyond the `CoasterRails.chain` call that reproduces the P4C rail chain for flat rails.
+
+## Pieces (content)
+
+| Entity | Item stack | Footprint | Support | Mount socket | Recipe (Workbench) | Attributes |
+|---|---|---|---|---|---|---|
+| `rail_slope` | 32 | 1×1, `"slope": 1` | the cell below | `rail_mount` | 1 iron ingot + 2 planks → 4 (order 204) | value 4, role `rail`, mount `any_solid_top`, space 1×1×1 |
+| `rail_loop` | 64 | 1×1, `"coaster_tool": "loop"` | **none** (`support_offsets: []`, pieces float) | `rail_mount` | 3 iron ingot + 4 planks → 2 (order 205) | value 6, role `rail`, mount `any_solid_top` |
+| `mine_cart` | 2 | 1×1, `"cart": {"rail_speed": 3.0}` | the cell below | mounts on `rail_mount` only | 2 iron ingot + 3 planks → 1 (order 206) | value 10, role `rail` |
+
+All three carry `navigation` / `defense` blocks like the P4C rail (wood, breachable, 30 / 30 / 24 integrity) so raiders treat them like rails. `rail_slope` is **not** `linear` (its rotation is its rise direction, turned with W / R): at rotation 0 it rises toward its front (−z); rotation 1 toward +x, 2 toward +z, 3 toward −x — the same turn as the body yaw and `EntityFootprintService.rotate_offset`. The Workbench book is now 38 recipes = four pages.
+
+Validator (`tools/validate_foundation.py`): `attributes.role` may be `rail`; `slope` must be `1` on a 1×1 non-linear entity; `coaster_tool` must be `loop` on a 1×1 non-linear entity with no support; an entity is a slope or a tool, never both; `cart` holds exactly a positive `rail_speed` and the entity mounts on `rail_mount` only.
+
+Icons: drawn placeholders in `tools/generate_derived_icons.py` (`icon_rail_slope`, `icon_rail_loop`, `icon_mine_cart`) appended to `DERIVED` / `DERIVED_ORDER`; `derived_atlas_p4.png` grew to four rows.
+
+## Chain model (`CoasterRails`, `game/scripts/rails/coaster_rails.gd`)
+
+Every placed track piece (`rail`, `rail_slope`, `rail_loop`) lists the cells it offers a joint to (`connections(record)`); two pieces are joined only when **each lists the other's anchor** (mutual rule). `chain(stations, start)` returns `{cell: Array[Vector3i] joined cells}` for the connected track; `connected_cells`, `track_records`, `ride_point`, `loop_offsets` support the visuals, the cart and the drag tool.
+
+- **Flat `rail`**: its four same-level neighbours, plus the cell diagonally below in each direction (so a slope climbing up to it can join). Flat-only chains are exactly the P4C 4-neighbour chains — `SiegeDefenseService._rail_chain` now calls `CoasterRails.chain`, and `_rail_step` / `_chain_degree` / `_chain_end_farthest` read the joined cells from the chain instead of stepping fixed offsets, so kettles ride flat chains as before (T133 / T154 / T155 PASS) and additionally climb slopes (their turret sits half a cell higher over a slope, `_rail_point`).
+- **`rail_slope`** at `a` rising toward `h`: low end → `a − h` (a flat rail) or `a − h − UP` (a same-direction slope one lower); high end → `a + h + UP` (a flat rail one up and one forward, or the next slope). A wall-top rail never joins a rail on the ground beside the wall (the lower one only lists cells one level *down*).
+- **`rail_loop`**: its four same-level neighbours (so a lead-in joins ordinary rails) plus the joints recorded in its station record by the drag tool — `coaster_joints`, a JSON-safe list of `[dx, dy, dz]` offsets to the previous and next cell of the drawn path (`WorkstationService.try_place(..., extra)` merges them; `restore` keeps unknown fields, so saves round-trip). A loop piece placed by hand (no recorded joints) falls back to the eight in-plane neighbours of its rotation's vertical plane. Recorded joints are necessary because a loop's risers sit directly above its lead-in and exit cells, which pure adjacency would wrongly join.
+
+## Loop drag tool (`InteractionService` mode `coaster_loop`)
+
+Held item `rail_loop` → right-press starts the drag (`begin_coaster_loop_at`), like an entity line. Keys while dragging:
+
+| Input | Effect |
+|---|---|
+| move the aim | stretches the flat lead-in along the dominant axis at the anchor's height (`set_drag_end`) |
+| **Shift** (the Interact action) | adds the loop and **latches** it; while held the lead-in is frozen so dragging up does not stretch it |
+| **X** / **C** | loop radius −1 / +1 within **2..6** (default **3**); one step per key press (edge-triggered) |
+| release right mouse | commits every validated ghost cell (`COASTER_PLACED`); left press cancels as for any drag |
+
+X and C are read as raw keys (`Input.is_key_pressed(KEY_X / KEY_C)`) by `GameSession._update_placement_preview` and handed to `interaction.coaster_loop_keys(x, c)` each frame; the service edge-triggers them. They are deliberately **not** InputMap actions: they only act during a loop drag, the keybind fixture / editor stay untouched, and X / C are unbound in the default map. Diagnostics drive `set_coaster_loop`, `resize_coaster_loop` and `coaster_loop_keys` directly.
+
+Geometry: the loop is the ordered cells of a midpoint circle of the chosen radius in the vertical plane of the line (`CoasterRails.loop_offsets`), starting one cell past the lead-in with its bottom row at the lead-in's height, then a two-cell flat exit after the bottom row. Cell counts: radius 2 → 12 loop cells, 3 → 16, 4 → 24, 5 → 28, 6 → 32; a 4-cell lead-in with the default loop is 22 pieces. Every cell is validated with `WorkstationService.preview_placement` (air, loaded, not occupied, not the player); loop pieces need no support, so a coaster floats — accepted for the side project. The ghost reuses the P3J drag preview (green / amber / red cubes). `drag_state()` gains `loop`, `loop_radius`, `loop_cells`.
+
+## Visuals (`GameSession`)
+
+- `_build_rail_slope_visual`: oak deck and two iron rails inclined 45° between the low end (flat-rail top, +0.05) and the high end (+1.05 at the front edge), four ties, stone corner posts with gold studs at the low end and taller trestle posts at the high end; a tilted collision box.
+- `_build_rail_loop_visual`: a piece whose joints all lie flat is drawn as the owner's rail block (`_build_rail_visual` with the arm mask from `_track_arm_mask`); otherwise a hub with a short pair of rails and a tie toward every joined cell, pitched to the joint's direction, so the ring reads as a polygonal loop. Shapes derive from the joints, not stored tangents.
+- `_build_mine_cart_visual`: an oak-and-iron cart on four wheels under a `CartRig` node that the cart service moves; the model faces −z.
+- `_rail_neighbour_mask` now follows the chain joints (a slope's high end puts an arm on the rail above it); `_refresh_rail_neighbours` rebuilds every track piece in the 3×3×3 neighbourhood of a laid or removed piece.
+
+## The cart (`CoasterCartService`, `game/scripts/rails/coaster_cart_service.gd`)
+
+A Node that `GameSession` adds only when the first `mine_cart` is placed and frees when the last one goes; `advance(delta, paused)` runs from `GameSession._process` beside the siege service. Each cart rides the chain under its own cell at `cart.rail_speed` cells/s (no gravity, constant speed) and turns around at each end. Traversal: pick the joined cell with the smallest turn from the arrival direction, never the cell it came from; a *curved* loop piece (a `rail_loop` with a joint on another level) that is unvisited and within a 90° turn wins over a flat continuation (so the cart climbs into the loop instead of running straight through the shared bottom row), while a curved piece already ridden this pass is shunned (so it leaves onto the exit); at a dead end it turns and forgets what it visited. The cart's up vector is the curvature normal on loop pieces (it leans in and hangs upside down over the top) and straight up elsewhere; the collision shapes ride along so dismantling aims at the cart. `rider_cell(id)` / `trail(id)` for diagnostics. The kettle's `_ride_rails` is not touched.
+
+## Tests
+
+`--coaster-rails-automation=gate` (headless): **T160** content, icons, recipes; **T161** slope chain joins two levels (six cells, control pair stays apart), the kettle router steps up through the slope, a cart rides to the top and back; **T162** loop drag ghost (4-cell lead-in; Shift → radius 3, 16 loop cells, 22 cells, frozen lead-in; X → 2 / 18; C to the limit 6 / 38; held key resizes once), commit lays 22 pieces as one chain, a curved piece draws `LoopArms` and the lead-in `RailArms`, a cart rides over the loop's top before taking the exit and returns home. `=visual` (windowed): **T163** `coaster-rails.png`. `TEST_COASTER_RAILS.cmd` runs both against the export. Regressions kept: P4 siege units gate (T133 / T154 / T155 kettles), P3D phase1, P3K gate, P3F gate + visual, P3C phase1 + visual (`EXPECTED_WORKBENCH_ORDER` and the "Page n / 4" labels updated).
+
+## Limits — what is NOT done
+
+- No corkscrew / DNA strand / helix; only the vertical loop. No lateral offset: the loop shares its bottom row with the entry and exit, so it is a circle of cells, not a true self-crossing loop.
+- Top-row loop pieces whose joints all lie flat draw as ordinary rail blocks (rails on top), so the cart hangs under a "floor" of rail blocks over the top.
+- The lead-in and exit are `rail_loop` pieces (one item, as the owner described), not ordinary `rail` items.
+- Slopes are placed one at a time with W / R for the rise direction; no slope drag. A slope needs support below; loop pieces never do (floating coasters are accepted).
+- Kettles climb slopes but do not route through vertical or diagonal loop joints (their junction rule keeps stepping "straight" by offset).
+- No gravity, momentum or speed change; no ore hauling, no cart inventory, no right-click panel for the cart.
+- Placeholder icons and box-part models; no owner art yet. Pressing X / C outside a loop drag does nothing and they cannot be rebound.
