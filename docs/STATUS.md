@@ -1,4 +1,22 @@
-# Current checkpoint — 2026-09-18 (playtest round 4)
+# Current checkpoint — 2026-09-19 (baseline merged to `main`)
+
+**STATUS:** **BASELINE. Owner authorised merging `feature/p3d-tools-world-feedback` to `main` on 2026-09-19.** Everything from F2 through P4a-1 (see the checkpoints below) is on `main` and pushed. The core-defense drill works as a baseline and needs more work later (owner statement); it is not being polished further before the next milestones. Claude is the implementing agent; a new developer can start from `main` with the README's reading order.
+
+**DONE (since the previous checkpoint):** catapult modelled from the owner reference with a 2×4 footprint (`5bb8ac9`); siege motion — turntable facing, throw, wind-back, loaded stone, bucket muzzle (`ca7599f`, T118); diagnostics ignore focus-loss pauses (`098ceb1`); README and handoff refreshed for new developers.
+
+**EXPECT:** `main\START_GAME.cmd` rebuilds the export once (provenance) and opens the playable slice described in the README.
+
+**TEST:** Exported at `ca7599f` (PCK `903ddc26…`): `TEST_P3C` (T72–T78, T118) and `TEST_P3G` (T93–T98, T107, T114, T115) PASS; earlier the same day `TEST_P3D`, `TEST_P3F`, `TEST_P3K`, `TEST_P3E`, `TEST_P3H` PASS on their respective builds. Static PASS. Owner playtested P3H.4–P3J and the catapult; core-defense drill confirmed working as a baseline.
+
+**LIMITATIONS/FAILURES:** Held items are still 2D billboards (3D proposal in the design direction §10). Blueprints have no player entry point yet (P3K slice 2). Siege supply, weapon panel and fire are cards (P4a-2..4). Ballista has no draw/release animation. The 2-cell ammo trough is not yet part of the siege footprint.
+
+**NEXT:** P3K slice 2 (Blueprints in the B menu) or P4a-2 weapon panel — owner's choice; then P4a-3 supply/auto-reload, P4a-4 flame shot and fire, 3D held items.
+
+**GIT/REPRODUCIBILITY:** `main` = merge of `feature/p3d-tools-world-feedback` (`ca7599f` + doc refresh), pushed to `origin/main`. Superseded worktrees removed (branches kept). Engine `4.6.stable.custom_build.89cea1439`, Voxel Tools 1.6.0 Module; EXE SHA-256 `4ac128729e86108904e6d038d161322404d42d71892b1cc0dca751039aa7e4b2`.
+
+---
+
+## Previous checkpoint — 2026-09-18 (playtest round 4)
 
 **STATUS:** **ROUND-5 PLAYTEST CORRECTIONS — CANDIDATE PASS ON THE EXPORT (PCK `9935113a…`, commit `bcbd6c6`); OWNER RE-PLAYTEST PENDING.** Round 5: axe back to north-east, hand lower and further left, Tab-inventory message moved into the header, hold-to-repeat strikes. Owner confirmed the rest of round 4. Open design question recorded: held items are 2D billboards of the icon art while placed machines are 3D; proposal to make held items 3D box-part models is in the design direction. Axe mirrored toward the crosshair (per-item mirror, no art regeneration); held blocks smaller and above the hotbar; Shift-held drag builds upward; square hotbar tiles with a bottom margin; item captions without slot numbers; windowed frame fitted inside the usable screen (the real cause of the clipped hotbar); P3K stamp registry, save envelope and socket snapping. Work split between the integrator and a subagent (hotbar/captions), reviewed and export-verified. No merge to `main`, no release.
 
