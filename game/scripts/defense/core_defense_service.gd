@@ -813,21 +813,24 @@ func _start_cell() -> Vector3i:
 	return surface if surface != Vector3i.MAX else column
 
 
-## First air cell with two clear cells above a solid cell in the column
-## (searching from +10 down to -10 around the arena level), or Vector3i.MAX.
+## The ground cell of a column: scanning upward from 10 below the arena
+## level, the first air cell (with a clear head cell) above a solid cell.
+## Scanning upward finds the ground under a tree canopy rather than its top.
+## Vector3i.MAX when the column is unloaded or has no such cell.
 func _surface_cell(column: Vector3i) -> Vector3i:
-	for y in range(column.y + 10, column.y - 10, -1):
+	for y in range(column.y - 10, column.y + 12):
 		var cell := Vector3i(column.x, y, column.z)
 		var floor_query := world.query_cell(cell + Vector3i.DOWN)
 		if str(floor_query.get("state", "UNLOADED")) != "LOADED":
-			continue
+			return Vector3i.MAX
 		if int(floor_query.get("voxel_id", 0)) == 0:
 			continue
 		var feet := world.query_cell(cell)
 		var head := world.query_cell(cell + Vector3i.UP)
-		if str(feet.get("state", "")) == "LOADED" and int(feet.get("voxel_id", 0)) == 0 and str(head.get("state", "")) == "LOADED" and int(head.get("voxel_id", 0)) == 0:
+		if str(feet.get("state", "")) != "LOADED" or str(head.get("state", "")) != "LOADED":
+			return Vector3i.MAX
+		if int(feet.get("voxel_id", 0)) == 0 and int(head.get("voxel_id", 0)) == 0:
 			return cell
-		return Vector3i.MAX
 	return Vector3i.MAX
 
 
