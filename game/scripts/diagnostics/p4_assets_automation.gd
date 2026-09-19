@@ -115,6 +115,9 @@ func _run_gate() -> void:
 		"light_block_blue": origin + Vector3i(6, 0, 6),
 		"light_block_red": origin + Vector3i(8, 0, 6),
 	}
+	# The wall lantern is wall-mounted (owner 2026-09-19): a castle-stone post
+	# beside its cell.
+	world.set_cell(origin + Vector3i(1, 0, 6), 8)
 	var placements: Dictionary = {}
 	var placement_reasons: Dictionary = {}
 	var light_problems: Array[String] = []
@@ -169,7 +172,7 @@ func _run_gate() -> void:
 	var lantern_body: Node3D = app.session._station_visuals.get(str(placements.get("wall_lantern", "")))
 	var lantern_light: OmniLight3D = lantern_body.find_child(GameSession.ENTITY_LIGHT_NAME, true, false) if lantern_body != null else null
 	var lantern_steady := lantern_light != null and is_equal_approx(lantern_light.light_energy, float(registry.entity_attributes("wall_lantern").get("light", {}).get("energy", 0.0)))
-	_record("T149_ASSET_PLACEMENT_AND_LIGHT", placements.size() == 8 and light_problems.is_empty() and core_cells_ok and column_only and core_integrity == 240 and enemy_integrity == 400 and torch_integrity == 4 and not floating_torch.get("ok", false) and str(floating_torch.get("reason", "")) == "UNSUPPORTED" and stacked_torch.get("ok", false) and flickers and lantern_steady, "all eight entities place on levelled ground with one EntityLight OmniLight3D of the attribute colour and range each; the core occupies its 3×3 base and centre column only; defense_status reports 240 / 400 / 4; a torch over air is UNSUPPORTED and a torch on a light block places; the torch light flickers while the lantern holds steady", {"placements": placement_reasons, "light_problems": light_problems, "mesh_counts": mesh_counts, "core_cells_ok": core_cells_ok, "column_only": column_only, "core_integrity": core_integrity, "enemy_integrity": enemy_integrity, "torch_integrity": torch_integrity, "floating_torch": floating_torch.get("reason"), "stacked_torch": stacked_torch.get("reason"), "torch_energies": energies, "lantern_steady": lantern_steady})
+	_record("T149_ASSET_PLACEMENT_AND_LIGHT", placements.size() == 8 and light_problems.is_empty() and core_cells_ok and column_only and core_integrity == 240 and enemy_integrity == 400 and torch_integrity == 4 and not floating_torch.get("ok", false) and str(floating_torch.get("reason", "")) in ["UNSUPPORTED", "INVALID_MOUNT"] and stacked_torch.get("ok", false) and flickers and lantern_steady, "all eight entities place on levelled ground with one EntityLight OmniLight3D of the attribute colour and range each; the core occupies its 3×3 base and centre column only; defense_status reports 240 / 400 / 4; a torch over air is refused and a torch on a light block places; the torch light flickers while the lantern holds steady", {"placements": placement_reasons, "light_problems": light_problems, "mesh_counts": mesh_counts, "core_cells_ok": core_cells_ok, "column_only": column_only, "core_integrity": core_integrity, "enemy_integrity": enemy_integrity, "torch_integrity": torch_integrity, "floating_torch": floating_torch.get("reason"), "stacked_torch": stacked_torch.get("reason"), "torch_energies": energies, "lantern_steady": lantern_steady})
 
 
 ## Rendered evidence: both cores, the campfire, the post and wall lanterns,
@@ -190,7 +193,7 @@ func _run_visual() -> void:
 		"enemy_core": ws.try_place("enemy_core", origin + Vector3i(10, 0, 4), world.query_cell, AABB(), 0),
 		"campfire": ws.try_place("campfire", origin + Vector3i(5, 0, 5), world.query_cell, AABB(), 0),
 		"post_lantern": ws.try_place("post_lantern", origin + Vector3i(4, 0, 1), world.query_cell, AABB(), 0),
-		"wall_lantern": ws.try_place("wall_lantern", origin + Vector3i(6, 0, 1), world.query_cell, AABB(), 0),
+		"wall_lantern": _place_wall_lantern(ws, world, origin + Vector3i(6, 0, 1)),
 		"torch": ws.try_place("torch", origin + Vector3i(8, 0, 1), world.query_cell, AABB(), 0),
 		"light_block_blue": ws.try_place("light_block_blue", origin + Vector3i(2, 0, 1), world.query_cell, AABB(), 0),
 		"light_block_red": ws.try_place("light_block_red", origin + Vector3i(10, 0, 1), world.query_cell, AABB(), 0),
@@ -261,3 +264,8 @@ func _write_json(path: String, value: Variant) -> void:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:
 		file.store_string(JSON.stringify(value, "  ") + "\n")
+
+
+func _place_wall_lantern(ws: WorkstationService, world: WorldAdapter, cell: Vector3i) -> Dictionary:
+	world.set_cell(cell + Vector3i(0, 0, 1), 8)
+	return ws.try_place("wall_lantern", cell, world.query_cell, AABB(), 0)

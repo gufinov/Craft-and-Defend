@@ -57,6 +57,13 @@ Owner direction (2026-09-19): "randomize the world generation and ensure ore is 
 - **Soft separation**: raiders push apart within 0.85 m (`BasicRaider._separation`) so they no longer share a cell; waves form loosely — orcs lead, brutes hold the middle rows, trolls hang back (`_wave_offset(index, kind)`).
 - **Recipe staging**: clicking a recipe fills the grid with what you carry and puts **red placeholders** for the missing ingredients (`_craft_grid_ghosts`); the message lists them; the card hover shows only name and status.
 
+## Round-5 owner notes: wall mounts, rail shapes, sidestep, recipes
+
+- **Wall mounting** (`WorkstationService._wall_side` / `_rotation_facing_away`): an entity whose `mount.allowed` includes `wall` hangs on the side of a solid block when it has no ground (wall lantern: wall only; torch: ground or wall); the record's rotation turns the bracket toward the wall, support-below is waived for wall mounts. Small 1×1 pieces with a `ground` mount stand on any solid top, entity or voxel.
+- **Rail shapes**: a rail's visual is derived from its rail neighbours (`_rail_neighbour_mask`: straight, 90° corner, T, crossroads) and neighbours re-shape when a rail is laid or removed. Kettles ride corners as one track; at a junction (three or four neighbours) `_rail_step` only continues straight — a rider never turns onto a branch.
+- **Sidestep** (`CoreDefenseService._sidestep`): a stuck raider first backs up one cell and steps two cells sideways (whichever side is walkable), then re-plans from there; a second stuck in a row re-plans immediately.
+- **Recipes fit the grid**: workbench recipes are limited to 9 inputs by the validator (mk2 5/2/2, cannon 4/3/2, core 7/2 castle stone/gold).
+
 ## Acceptance
 
 T151 (far attack from the enemy base), T152 (placed core defended) in `--p4-siege-units-automation=gate`; world tests T137/T138 follow the new bands; F0 T03/T06 follow the bounds; the P1 visual shows a lake beside the clearing.

@@ -1321,6 +1321,9 @@ func _validate_mount(definition: Dictionary, anchor: Vector3i, rotation_quarters
 			support_owners[owner] = true
 	if terrain_supports == support_offsets.size() and allowed.has("ground"):
 		return _result(true, "OK", {"mount": "ground"})
+	if allowed.has("ground") and allowed.size() <= 2 and not allowed.has("light_siege") and not allowed.has("rail_mount") and terrain_supports + support_owners.size() >= 1 and support_offsets.size() == 1:
+		# Small 1x1 pieces (torches, lights) stand on any solid top, entity or voxel.
+		return _result(true, "OK", {"mount": "ground"})
 	if terrain_supports == 0 and support_owners.size() == 1:
 		var owner_id := str(support_owners.keys()[0])
 		var owner_record: Dictionary = stations.get(owner_id, {})
