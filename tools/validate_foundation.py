@@ -191,7 +191,7 @@ def validate_bundle(bundle):
                               and numeric_vector(part.get("size", []), positive=True)
                               for part in parts), "invalid entity visual")
         station_type = entity.get("station_type")
-        require(station_type is None or station_type == entity["id"], "invalid station type")
+        require(station_type is None or station_type == entity["id"] or station_type == "siege" and entity.get("siege") is not None, "invalid station type")
         socket_ids = set()
         for socket in entity.get("mount_sockets", []):
             require(isinstance(socket, dict) and re.fullmatch(r"[a-z][a-z0-9_]*", socket.get("id", ""))
