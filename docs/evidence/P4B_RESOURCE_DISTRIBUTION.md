@@ -1,6 +1,6 @@
 # Evidence — P4b-1 resource distribution and gold — 2026-09-19
 
-STATUS: PASS (candidate, editor-headless only) — static validation, unit tests and the new `--p4-resources-automation=gate` (T119–T122) pass on the pinned editor build; P1, F2, F3, P3F and P3G regression gates pass. No provenance-matched export and no `TEST_P4_RESOURCES.cmd` run yet (integrator exports). No owner playtest.
+STATUS: PASS (candidate, editor-headless only) — static validation, unit tests and the new `--p4-resources-automation=gate` (T137–T140) pass on the pinned editor build; P1, F2, F3, P3F and P3G regression gates pass. No provenance-matched export and no `TEST_P4_RESOURCES.cmd` run yet (integrator exports). No owner playtest.
 
 DONE: Implemented [the P4b contract](../P4B_RESOURCE_DISTRIBUTION.md) on branch `feature/p4-resources` (worktree `D:\CODEX\Craft_and_Defend\worktrees\p4-resources`): `terrain.ores` table in `world.json` replacing the two P1 magic numbers; table-driven, thread-safe `P1TerrainGenerator._ore_at` (`compile_ores`, cumulative roll bands, per-row depth band and cluster size) that reproduces the P1 coal/iron layout exactly and adds gold from depth 12; `gold_ore` block 11 with placeholder SVG and Godot import; `gold_ore`/`gold_ingot` items, `gold_ingot` furnace recipe and progression goal; derived gold icon atlas (`tools/make_gold_atlas_p4.py`, `gold` atlas key in `measure_item_atlas.py` and `ItemIconCatalog`); `validate_ores` rule plus 11 unit tests; `P4ResourcesAutomation` and `TEST_P4_RESOURCES.cmd`; docs.
 
@@ -13,10 +13,10 @@ TEST:
 | Static | `python tools/validate_foundation.py` | PASS: 12 blocks, 28 items, 22 recipes, 148 links | PASS | terminal |
 | Unit | `python -m unittest discover -s tests` | 60 tests OK (11 new ore/gold tests) | PASS | terminal |
 | Parse | `--check-only` on generator, adapter, icon catalog, diagnostic, app | no errors | PASS | terminal |
-| T119 | depth bands, rarity order, determinism | 10,519 cells sampled: coal 397 (shallowest depth 3), iron 121 (6), gold 11 (12); 0 band violations; same-seed identical, other seed differs | PASS | `artifacts/dev-res-p4-gate/run.log` |
-| T120 | P1 coal/iron layout preserved, gold additive | 24,439 cells vs P1 reference formula: 0 mismatches; 26 gold cells, 0 over former ore or above depth 12 | PASS | same |
-| T121 | gold mining with the right pick | 4 generated gold cells loaded near the clearing; `(-6, -15, 38)`: Stone Pick `WRONG_TOOL`, Iron Pick `OK` drops `gold_ore` ×1, cell now air; content, texture and icons registered | PASS | same |
-| T122 | gold smelting | 2 Gold Ore + 1 Coal auto-start `gold_ingot` (8.0 s); after 2 durations Output = Gold Ingot ×2, input 0, idle; collected 2 | PASS | same |
+| T137 | depth bands, rarity order, determinism | 10,519 cells sampled: coal 397 (shallowest depth 3), iron 121 (6), gold 11 (12); 0 band violations; same-seed identical, other seed differs | PASS | `artifacts/dev-res-p4-gate/run.log` |
+| T138 | P1 coal/iron layout preserved, gold additive | 24,439 cells vs P1 reference formula: 0 mismatches; 26 gold cells, 0 over former ore or above depth 12 | PASS | same |
+| T139 | gold mining with the right pick | 4 generated gold cells loaded near the clearing; `(-6, -15, 38)`: Stone Pick `WRONG_TOOL`, Iron Pick `OK` drops `gold_ore` ×1, cell now air; content, texture and icons registered | PASS | same |
+| T140 | gold smelting | 2 Gold Ore + 1 Coal auto-start `gold_ingot` (8.0 s); after 2 durations Output = Gold Ingot ×2, input 0, idle; collected 2 | PASS | same |
 | T37–T39 | P1 phase1 regression | PASS (T38: coal 702, iron 237 samples unchanged from the P1 formula) | PASS | `artifacts/dev-res-p1-phase1/run.log` |
 | T40 | P1 phase2 (restart continue) | PASS | PASS | `artifacts/dev-res-p1-phase1/run-phase2.log` |
 | T19–T22 | F2 gate (starter coal/iron route) | PASS | PASS | `artifacts/dev-res-f2-gate/run.log` |

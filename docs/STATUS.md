@@ -1,6 +1,6 @@
 # Current checkpoint — 2026-09-19 (baseline merged to `main`)
 
-> **Open branch (not merged): `feature/p4-resources` — P4b-1 resource distribution and gold, CANDIDATE 2026-09-19.** Data-driven ore table, `gold_ore` block 11 + gold ingot chain, T119–T122 PASS editor-headless; not exported, F0 T08 pre-existing failure noted. See [P4b contract](P4B_RESOURCE_DISTRIBUTION.md), [evidence](evidence/P4B_RESOURCE_DISTRIBUTION.md) and the backlog card.
+> **Open branch (not merged): `feature/p4-resources` — P4b-1 resource distribution and gold, CANDIDATE 2026-09-19.** Data-driven ore table, `gold_ore` block 11 + gold ingot chain, T137–T140 PASS editor-headless; not exported, F0 T08 pre-existing failure noted. See [P4b contract](P4B_RESOURCE_DISTRIBUTION.md), [evidence](evidence/P4B_RESOURCE_DISTRIBUTION.md) and the backlog card.
 
 **STATUS:** **BASELINE. Owner authorised merging `feature/p3d-tools-world-feedback` to `main` on 2026-09-19.** Everything from F2 through P4a-1 (see the checkpoints below) is on `main` and pushed. The core-defense drill works as a baseline and needs more work later (owner statement); it is not being polished further before the next milestones. Claude is the implementing agent; a new developer can start from `main` with the README's reading order.
 

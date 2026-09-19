@@ -20,11 +20,11 @@ Semantics, as implemented in `P1TerrainGenerator._ore_at`:
 - Outside a row's depth band its band is skipped and the cell falls through to later rows, then to stone. That is why a roll in [0, 18) at depth 3–5 is stone, not coal: the P1 layout behaved the same way.
 - Fixed starter veins (`_starter_resource_at`, the coal and iron patches beside the clearing) and the flat safe clearing keep priority over the table, exactly as before.
 
-Block ids are stable strings; the generator resolves them through `WorldAdapter.BLOCK_NAMES` once in `_init` (`compile_ores`) into an immutable `Array[Dictionary]` that worker threads only read. There is no shared mutable state and no global random stream. Two generators with the same seed and table are cell-for-cell identical (T119); a different seed differs.
+Block ids are stable strings; the generator resolves them through `WorldAdapter.BLOCK_NAMES` once in `_init` (`compile_ores`) into an immutable `Array[Dictionary]` that worker threads only read. There is no shared mutable state and no global random stream. Two generators with the same seed and table are cell-for-cell identical (T137); a different seed differs.
 
 ### Why `terrain_p1_1` is kept
 
-The table above reproduces the shipped P1 coal/iron layout **cell for cell**: iron was `roll < 18` from depth 6, coal was `18 ≤ roll < 55` from depth 3, cluster size 2, same hash. T120 compares the new generator against a re-implementation of the old formula over 24,439 sampled stone-band cells and finds zero mismatches; gold only appears where P1 produced stone at depth ≥ 12. Existing `terrain_p1_1` saves therefore keep their coal, iron, trees and heights. The only visible change in an existing save is **additive**: untouched chunks (VoxelStreamSQLite stores only edited blocks) now show gold ore deep down where there was stone. Decision: no `generator_version` bump; `WorldAdapter.resolve_generation` and `docs/PERSISTENCE.md` are unchanged. Any future row that changes coal or iron bands, cluster sizes or the hash **must** bump the version and be routed in `resolve_generation`.
+The table above reproduces the shipped P1 coal/iron layout **cell for cell**: iron was `roll < 18` from depth 6, coal was `18 ≤ roll < 55` from depth 3, cluster size 2, same hash. T138 compares the new generator against a re-implementation of the old formula over 24,439 sampled stone-band cells and finds zero mismatches; gold only appears where P1 produced stone at depth ≥ 12. Existing `terrain_p1_1` saves therefore keep their coal, iron, trees and heights. The only visible change in an existing save is **additive**: untouched chunks (VoxelStreamSQLite stores only edited blocks) now show gold ore deep down where there was stone. Decision: no `generator_version` bump; `WorldAdapter.resolve_generation` and `docs/PERSISTENCE.md` are unchanged. Any future row that changes coal or iron bands, cluster sizes or the hash **must** bump the version and be routed in `resolve_generation`.
 
 ## Gold chain
 
@@ -42,7 +42,7 @@ Display names come from `ContentRegistry.display_name` ("Gold Ore", "Gold Ingot"
 ## Validation
 
 - `tools/validate_foundation.py → validate_ores`: nonempty table; every block exists, is solid, unprotected and droppable; no duplicate block; `3 ≤ min_depth ≤ max_depth ≤ world height`; `1 ≤ cluster_per_thousand < 1000`, sum < 1000; `1 ≤ cluster_size ≤ 8`. Unit tests in `tests/test_foundation.py` (`test_ore_*`, band preservation, gold reachability).
-- Runtime gate `--p4-resources-automation=gate` (`P4ResourcesAutomation`, `TEST_P4_RESOURCES.cmd`): T119 depth bands and rarity order, T120 P1 layout preservation, T121 gold mining (Stone Pick refused, Iron Pick drops one Gold Ore from a *generated* gold cell near the clearing), T122 gold smelting. See [evidence](evidence/P4B_RESOURCE_DISTRIBUTION.md).
+- Runtime gate `--p4-resources-automation=gate` (`P4ResourcesAutomation`, `TEST_P4_RESOURCES.cmd`): T137 depth bands and rarity order, T138 P1 layout preservation, T139 gold mining (Stone Pick refused, Iron Pick drops one Gold Ore from a *generated* gold cell near the clearing), T140 gold smelting. See [evidence](evidence/P4B_RESOURCE_DISTRIBUTION.md).
 
 ## Boundaries
 

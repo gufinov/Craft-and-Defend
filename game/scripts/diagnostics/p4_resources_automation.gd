@@ -1,7 +1,7 @@
 class_name P4ResourcesAutomation
 extends Node
 
-## P4b-1 resource distribution and gold chain gate (T119–T122).
+## P4b-1 resource distribution and gold chain gate (T137–T140).
 ## See docs/P4B_RESOURCE_DISTRIBUTION.md for the contract under test.
 
 const GOLD_ORE := P1TerrainGenerator.GOLD_ORE
@@ -44,7 +44,7 @@ func _run_gate() -> void:
 	_test_gold_smelting()
 
 
-## T119: sampled columns across the world obey the depth bands and rarity order
+## T137: sampled columns across the world obey the depth bands and rarity order
 ## of the ore table, deterministically per seed.
 func _test_depth_bands() -> void:
 	var config := _read_json("res://data/world.json")
@@ -91,12 +91,12 @@ func _test_depth_bands() -> void:
 	var table_ok := table.size() == 3 and int(table[0]["band_start"]) == 0 and int(table[0]["band_end"]) == 18 \
 		and int(table[1]["band_start"]) == 18 and int(table[1]["band_end"]) == 55 \
 		and int(table[2]["voxel_id"]) == GOLD_ORE and int(table[2]["band_end"]) < 1000
-	_record("T119_ORE_DEPTH_BANDS", deterministic and differs_by_seed and band_violations == 0 and coal_shallow and iron_band and gold_band and rarity_order and table_ok,
+	_record("T137_ORE_DEPTH_BANDS", deterministic and differs_by_seed and band_violations == 0 and coal_shallow and iron_band and gold_band and rarity_order and table_ok,
 		"sampled columns show coal above depth 6, iron only from depth 6, gold only from depth 12, gold rarer than iron rarer than coal, identical per seed and different for another seed",
 		{"sampled": sampled, "coal": coal, "iron": iron, "gold": gold, "shallowest": shallowest, "deepest": deepest, "band_violations": band_violations, "deterministic": deterministic, "differs_by_seed": differs_by_seed, "table": table})
 
 
-## T120: the table reproduces the terrain_p1_1 coal/iron layout cell for cell
+## T138: the table reproduces the terrain_p1_1 coal/iron layout cell for cell
 ## (iron roll [0,18) from depth 6, coal roll [18,55) from depth 3) and only adds
 ## gold where P1 produced stone, so existing saves keep their generator version.
 func _test_p1_layout_preserved() -> void:
@@ -119,7 +119,7 @@ func _test_p1_layout_preserved() -> void:
 						gold_over_ore += 1
 				elif actual != reference:
 					mismatches += 1
-	_record("T120_P1_LAYOUT_PRESERVED", compared > 0 and mismatches == 0 and gold_over_ore == 0 and gold_cells > 0,
+	_record("T138_P1_LAYOUT_PRESERVED", compared > 0 and mismatches == 0 and gold_over_ore == 0 and gold_cells > 0,
 		"every non-gold cell matches the P1 reference formula and gold only replaces stone at depth 12 or deeper",
 		{"compared": compared, "mismatches": mismatches, "gold_cells": gold_cells, "gold_over_ore": gold_over_ore})
 
@@ -146,7 +146,7 @@ func _p1_reference_voxel(generator: P1TerrainGenerator, x: int, y: int, z: int, 
 	return STONE
 
 
-## T121: gold ore refuses the Stone Pick, yields one Gold Ore item to the Iron
+## T139: gold ore refuses the Stone Pick, yields one Gold Ore item to the Iron
 ## Pick, and the loaded terrain around the clearing really contains gold.
 func _test_gold_mining() -> void:
 	var inventory := app.session.inventory
@@ -186,13 +186,13 @@ func _test_gold_mining() -> void:
 		and ResourceLoader.exists("res://assets/blocks/gold_ore.svg")
 	var icons_ok := ItemIconCatalog.is_measured("gold_ore") and ItemIconCatalog.is_measured("gold_ingot") \
 		and ItemIconCatalog.atlas_key_for("gold_ore") == "gold" and ItemIconCatalog.texture_for("gold_ingot") != null
-	_record("T121_GOLD_MINING", int(before_query.get("voxel_id", 0)) == GOLD_ORE and str(wrong_tool.get("reason", "")) == "WRONG_TOOL" and mined.get("ok", false) \
+	_record("T139_GOLD_MINING", int(before_query.get("voxel_id", 0)) == GOLD_ORE and str(wrong_tool.get("reason", "")) == "WRONG_TOOL" and mined.get("ok", false) \
 		and gold_after == gold_before + 1 and int(after_query.get("voxel_id", -1)) == AIR and content_ok and icons_ok and loaded_cells > 0,
 		"a Gold Ore cell refuses the Stone Pick, breaks under the Iron Pick into one Gold Ore item, and the block, item, texture and icons are registered",
 		{"target": [target.x, target.y, target.z], "used_generated_cell": used_generated, "generated_gold_near_clearing": generated_gold.size(), "loaded_cells_scanned": loaded_cells, "wrong_tool": wrong_tool, "mined": mined, "content_ok": content_ok, "icons_ok": icons_ok})
 
 
-## T122: a Furnace turns Gold Ore + Coal into Gold Ingots through the ordinary
+## T140: a Furnace turns Gold Ore + Coal into Gold Ingots through the ordinary
 ## auto-processing path, one item per recipe duration.
 func _test_gold_smelting() -> void:
 	var inventory := F0Inventory.new(app.session.registry)
@@ -220,7 +220,7 @@ func _test_gold_smelting() -> void:
 		and int(halfway.get("output", {}).get("count", 0)) == 0 \
 		and str(finished.get("output", {}).get("item_id", "")) == "gold_ingot" and int(finished.get("output", {}).get("count", 0)) == 2 \
 		and int(finished.get("input", {}).get("count", 0)) == 0 and idle and bool(collected.get("ok", false)) and inventory.count("gold_ingot") == 2
-	_record("T122_GOLD_SMELTING", ok, "two Gold Ore and one Coal auto-start the gold_ingot recipe and yield two collectable Gold Ingots after two recipe durations",
+	_record("T140_GOLD_SMELTING", ok, "two Gold Ore and one Coal auto-start the gold_ingot recipe and yield two collectable Gold Ingots after two recipe durations",
 		{"placed": placed.get("ok", false), "started": started, "halfway": halfway, "finished": finished, "idle": idle, "collected": collected, "recipe_ok": recipe_ok, "duration": duration})
 
 

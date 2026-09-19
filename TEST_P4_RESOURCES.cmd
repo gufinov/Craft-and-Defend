@@ -13,7 +13,7 @@ set "EXE=%~dp0builds\CraftAndDefend\CraftAndDefend.exe"
 mkdir "%GATE_ROOT%" 2>nul
 
 echo.
-echo Running ore depth-band, P1 layout preservation, gold mining and gold smelting checks (T119-T122).
+echo Running ore depth-band, P1 layout preservation, gold mining and gold smelting checks (T137-T140).
 echo The diagnostic controls itself; it is not the playable game.
 "%EXE%" --headless --log-file "%GATE_ROOT%\gate.log" -- --f0-data-root="%GATE_ROOT%" --p4-resources-automation=gate
 if errorlevel 1 goto :phase_failed
