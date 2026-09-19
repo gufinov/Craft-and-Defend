@@ -496,9 +496,16 @@ func board_coaster_car(instance_id: String) -> Dictionary:
 	var body: Node3D = _station_visuals.get(instance_id)
 	var result := coaster_ride.board(instance_id, body, coaster_carts, not DisplayServer.get_name().contains("headless"))
 	if result.get("ok", false):
+		_boarded_frame = Engine.get_process_frames()
 		_hide_placement_preview()
 		_emit_hud()
 	return result
+
+
+## Frame of the last boarding: the Shift press that boarded also reaches this
+## node's _unhandled_input, which must not read it as "leave" (owner playtest
+## 2026-09-20: "I get in and out simultaneously").
+var _boarded_frame := -1
 
 
 ## Shift or Escape while riding: park the car, stand beside it.
@@ -673,7 +680,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Coaster car: the number keys set the speed (never the hotbar) and
 		# Shift leaves; everything else is swallowed while seated.
 		if event.is_action_pressed("interact"):
-			_on_interaction_feedback(str(leave_coaster_car().get("reason", "NOT_RIDING")))
+			if Engine.get_process_frames() != _boarded_frame:
+				_on_interaction_feedback(str(leave_coaster_car().get("reason", "NOT_RIDING")))
 			get_viewport().set_input_as_handled()
 			return
 		for index in range(F0Inventory.HOTBAR_COUNT):
@@ -2295,19 +2303,27 @@ func _defense_interact(origin: Vector3, direction: Vector3) -> Dictionary:
 	var query := PhysicsRayQueryParameters3D.create(origin, origin + direction.normalized() * 5.0, 1)
 	query.exclude = [player.get_rid()]
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	# Coaster car and hero: Shift on a coaster car boards it (repair of a car
+	# is not offered; dismantle and re-place it instead). Owner 2026-09-20:
+	# the aim often lands on the rail or the ground under the car, so a car
+	# standing within reach of the hit point counts too; a car parked up in
+	# a loop has nothing behind it to hit, so the aim line itself is sampled.
+	var car_id := ""
+	if hit.is_empty():
+		for metres in range(1, 6):
+			car_id = _coaster_car_near(origin + direction.normalized() * float(metres), null)
+			if not car_id.is_empty():
+				break
+	else:
+		car_id = _coaster_car_near(hit.get("position", origin), hit.get("collider"))
+	if not car_id.is_empty():
+		var boarded := board_coaster_car(car_id)
+		return {"handled": true, "ok": bool(boarded.get("ok", false)), "reason": str(boarded.get("reason", "NO_CAR"))}
 	if hit.is_empty():
 		return {"handled": false}
 	var collider: Object = hit.get("collider")
 	if collider == null:
 		return {"handled": false}
-	# Coaster car and hero: Shift on a coaster car boards it (repair of a car
-	# is not offered; dismantle and re-place it instead). Owner 2026-09-20:
-	# the aim often lands on the rail or the ground under the car, so a car
-	# standing within reach of the hit point counts too.
-	var car_id := _coaster_car_near(hit.get("position", origin), collider)
-	if not car_id.is_empty():
-		var boarded := board_coaster_car(car_id)
-		return {"handled": true, "ok": bool(boarded.get("ok", false)), "reason": str(boarded.get("reason", "NO_CAR"))}
 	if not collider.has_meta("defense_structure_id"):
 		return {"handled": false}
 	var structure_id := str(collider.get_meta("defense_structure_id"))

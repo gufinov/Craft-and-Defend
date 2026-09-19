@@ -41,6 +41,32 @@ func run(application: CraftAndDefendApp) -> void:
 		app.session.leave_coaster_car()
 		var second := app.session.interaction.secondary_press_from_view(from, (Vector3(car_cell) + Vector3(0.5, 0.2, 0.5) - from).normalized())
 		print("COASTER_SANDBOX board via right-click: %s riding=%s" % [second.get("reason"), app.session.is_riding()])
+		app.session.leave_coaster_car()
+		await get_tree().process_frame
+		# A real Shift key press must board and stay boarded (the same press
+		# reaches the session's input handler, which must not leave again).
+		var player := app.session.player
+		player.global_position = from - Vector3(0.0, 1.6, 0.0)
+		player.rotation = Vector3.ZERO
+		player.look_pitch = -0.6
+		player.apply_mouse_look(Vector2.ZERO)
+		await get_tree().process_frame
+		var aim: Vector3 = -player.camera.global_basis.z
+		print("COASTER_SANDBOX aim %s from %s" % [aim, player.view_origin()])
+		var press := InputEventKey.new()
+		press.keycode = KEY_SHIFT
+		press.physical_keycode = KEY_SHIFT
+		press.pressed = true
+		Input.parse_input_event(press)
+		await get_tree().process_frame
+		var release := InputEventKey.new()
+		release.keycode = KEY_SHIFT
+		release.physical_keycode = KEY_SHIFT
+		release.pressed = false
+		Input.parse_input_event(release)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		print("COASTER_SANDBOX board via real Shift press: riding=%s" % app.session.is_riding())
 		get_tree().quit(0)
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-shot"):
 		var player := app.session.player

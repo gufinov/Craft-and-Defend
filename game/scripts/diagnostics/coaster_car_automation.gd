@@ -109,6 +109,9 @@ func _run_gate() -> void:
 	session._unhandled_input(_action_event("hotbar_5"))
 	var key_speed := ride.speed_level == 5 and session.inventory.selected_hotbar == slot_before
 	var rig_before_leave := rig.global_position
+	# The leave press must come in a later frame than the boarding press
+	# (the guard that stops one Shift from boarding and leaving at once).
+	session._boarded_frame = -1
 	session._unhandled_input(_action_event("interact"))
 	session.simulation_paused = true
 	var left := not session.is_riding() and player.active and player.camera.current and not ride.ride_camera().current and carts.is_parked(car_id) and ride.seated_hero() == null
@@ -118,6 +121,36 @@ func _run_gate() -> void:
 	for _frame in range(30):
 		carts.advance(1.0 / 30.0, false)
 	var parked_after := rig.global_position.distance_to(rig_before_leave) < 0.001
+	# A real Shift key press from the same spot: the press must board and
+	# stay boarded (owner 2026-09-20: the same press reached the session's
+	# input handler and left again).
+	# The car parked where the ride ended (possibly up in the loop): stand
+	# 3 m south of it and look at it.
+	var key_origin := rig.global_position + Vector3(0.0, 1.6, 3.0)
+	player.global_position = key_origin - Vector3(0.0, 1.6, 0.0)
+	player.rotation = Vector3.ZERO
+	player.look_pitch = atan2(-1.6, 3.0)
+	player.apply_mouse_look(Vector2.ZERO)
+	# The key path needs a live player and an unpaused session for one frame.
+	session.simulation_paused = false
+	player.activate(false)
+	await get_tree().process_frame
+	for pressed in [true, false]:
+		var key := InputEventKey.new()
+		key.keycode = KEY_SHIFT
+		key.physical_keycode = KEY_SHIFT
+		key.pressed = pressed
+		Input.parse_input_event(key)
+		await get_tree().process_frame
+	await get_tree().process_frame
+	var key_boarded := session.is_riding()
+	if key_boarded:
+		session.leave_coaster_car()
+		await get_tree().process_frame
+	player.look_pitch = 0.0
+	player.apply_mouse_look(Vector2.ZERO)
+	player.deactivate()
+	session.simulation_paused = true
 	# The station snapshot keeps the car; the saved player stands beside it
 	# even when the save happens mid-ride.
 	var snapshot_ok := false
@@ -130,7 +163,7 @@ func _run_gate() -> void:
 		snapshot_ok = snapshot_ok and JSON.stringify(stations).contains(CAR)
 		session.leave_coaster_car()
 		player.deactivate()
-	_record("T165_COASTER_CAR_RIDE", committed.get("reason") == "COASTER_PLACED" and placed.get("ok", false) and parked_before and stayed and car_parts >= 30 and seat_ok and boarded.get("reason") == "COASTER_BOARDED" and riding_ok and hero_ok and default_speed and hud_ok and speeds_ok and key_speed and left and beside_ok and parked_after and snapshot_ok, "a coaster car placed on a loop's lead-in stays parked; Shift aimed at it boards (player parked, ride camera current, seated hero on the Seat node, speed 3/9 HUD); speed 2 then 6 move the car about 2 and 6 cells per second; the 5 key sets speed 5 without touching the hotbar; Shift leaves the player 1 m beside the parked car on the rail cell's floor; a mid-ride snapshot saves the player beside the car", {"committed": committed.get("reason"), "placed": placed.get("reason"), "parked_before": parked_before, "stayed": stayed, "car_parts": car_parts, "seat": seat_ok, "boarded": boarded.get("reason"), "riding": riding_ok, "hero": hero_ok, "default_speed": default_speed, "hud": hud_ok, "slow_cells_per_second": slow, "fast_cells_per_second": fast, "key_speed": key_speed, "left": left, "beside": beside, "beside_ok": beside_ok, "parked_after": parked_after, "snapshot": snapshot_ok})
+	_record("T165_COASTER_CAR_RIDE", committed.get("reason") == "COASTER_PLACED" and placed.get("ok", false) and parked_before and stayed and car_parts >= 30 and seat_ok and key_boarded and boarded.get("reason") == "COASTER_BOARDED" and riding_ok and hero_ok and default_speed and hud_ok and speeds_ok and key_speed and left and beside_ok and parked_after and snapshot_ok, "a coaster car placed on a loop's lead-in stays parked; Shift aimed at it boards (player parked, ride camera current, seated hero on the Seat node, speed 3/9 HUD); speed 2 then 6 move the car about 2 and 6 cells per second; the 5 key sets speed 5 without touching the hotbar; Shift leaves the player 1 m beside the parked car on the rail cell's floor; a mid-ride snapshot saves the player beside the car", {"key_boarded": key_boarded, "committed": committed.get("reason"), "placed": placed.get("reason"), "parked_before": parked_before, "stayed": stayed, "car_parts": car_parts, "seat": seat_ok, "boarded": boarded.get("reason"), "riding": riding_ok, "hero": hero_ok, "default_speed": default_speed, "hud": hud_ok, "slow_cells_per_second": slow, "fast_cells_per_second": fast, "key_speed": key_speed, "left": left, "beside": beside, "beside_ok": beside_ok, "parked_after": parked_after, "snapshot": snapshot_ok})
 
 	# T166 hero: parts, the armoured swap, the walk cycle, the seated pose,
 	# the third-person toggle and the persisted armour setting.

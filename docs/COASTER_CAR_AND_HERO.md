@@ -60,3 +60,7 @@ Sandbox: `--coaster-sandbox` (`START_COASTER_SANDBOX.cmd`) now parks a coaster c
 ## Boarding fix (owner playtest 2026-09-20)
 
 Shift aimed at the car "attacked" (the held-item use animation plays for any interaction result) and did not board: the aim ray usually lands on the rail piece or the ground under the car, whose station is not the car. Now Shift boards the nearest coaster car within 1.6 m of the hit point (`GameSession._coaster_car_near`) and **right-click on the car boards it too** (the car is a `station_type` of its own; `OPEN_STATION` on it boards instead of opening a panel). `--coaster-sandbox --coaster-sandbox-board-check` prints both paths.
+
+## Boarding fix 2 (owner playtest 2026-09-20)
+
+"I get in and out simultaneously": the Shift press that boarded also reached `GameSession._unhandled_input`, which (now riding) read it as "leave". A press in the boarding frame is ignored there (`_boarded_frame`). A car parked up in a loop has nothing behind it for the aim ray to hit, so when the ray misses, points 1–5 m along the aim are checked for a car within reach. T165 now boards through a real Shift key event as well.
