@@ -34,6 +34,8 @@ ATLASES = {
 DERIVED_ORDER = [
     "flame_shot", "chest", "cannon", "cannonball", "turret_catapult", "hot_oil",
     "kettle", "rail", "turret_catapult_mk2", "wood_axe_flipped",
+    "core_of_power", "enemy_core", "torch", "wall_lantern", "post_lantern", "campfire",
+    "light_block_blue", "light_block_red",
 ]
 # Nominal search cells. Row heights for the item atlas follow the shipped
 # ItemIconCatalog grid; the ammunition atlas is two square halves.

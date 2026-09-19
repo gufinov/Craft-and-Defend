@@ -573,6 +573,22 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_wrap_siege_turret(body, definition)
 	elif entity_id == "rail":
 		_build_rail_visual(body)
+	elif entity_id == "core_of_power":
+		_build_core_of_power_visual(body, registry.entity_attributes(entity_id))
+	elif entity_id == "enemy_core":
+		_build_enemy_core_visual(body, registry.entity_attributes(entity_id))
+	elif entity_id == "torch":
+		_build_torch_visual(body, registry.entity_attributes(entity_id))
+	elif entity_id == "wall_lantern":
+		_build_wall_lantern_visual(body, registry.entity_attributes(entity_id))
+	elif entity_id == "post_lantern":
+		_build_post_lantern_visual(body, registry.entity_attributes(entity_id))
+	elif entity_id == "campfire":
+		_build_campfire_visual(body, registry.entity_attributes(entity_id))
+	elif entity_id == "light_block_blue":
+		_build_light_block_visual(body, registry.entity_attributes(entity_id), Color("4c9dff"))
+	elif entity_id == "light_block_red":
+		_build_light_block_visual(body, registry.entity_attributes(entity_id), Color("ff3030"))
 	else:
 		_add_visual_parts(body, visual.get("parts", []), material, true)
 	add_child(body)
@@ -1108,6 +1124,433 @@ func _build_turret_catapult_mk2_visual(parent: Node3D) -> void:
 	for angle in [0.0, 1.571, 3.142, 4.712]:
 		_add_stud(bucket, Vector3(cos(angle) * 0.36, 0.08, sin(angle) * 0.36), gold, Vector3(0.0, -angle, 0.0))
 	_add_mesh_cylinder(bucket, 0.17, 0.18, Vector3(0.0, 0.10, 0.0), Vector3.ZERO, _visual_material(Color("8f969d"), "res://assets/blocks/stone.svg"), "CatapultStone")
+
+
+## P4G — Core of Power and light sources (owner art, 2026-09-19).
+##
+## Every light entity carries its light in content (`attributes.light`);
+## `_add_entity_light` turns that into one OmniLight3D named `EntityLight`.
+## Lights never go out: nothing here ever removes or dims a light except the
+## cosmetic flicker Tween on torches and campfires.
+const ENTITY_LIGHT_NAME := "EntityLight"
+const LIGHT_FLICKER_AMPLITUDE := 0.15
+const LIGHT_FLICKER_SECONDS := 0.42
+
+
+func _add_entity_light(parent: Node3D, attributes: Dictionary, offset: Vector3 = Vector3.ZERO) -> OmniLight3D:
+	var light_value: Variant = attributes.get("light", null)
+	if not light_value is Dictionary:
+		return null
+	var light_definition: Dictionary = light_value
+	var light := OmniLight3D.new()
+	light.name = ENTITY_LIGHT_NAME
+	light.light_color = Color(str(light_definition.get("color", "ffffff")))
+	light.light_energy = float(light_definition.get("energy", 1.0))
+	light.omni_range = float(light_definition.get("range", 6.0))
+	light.omni_attenuation = 1.4
+	light.shadow_enabled = false
+	light.position = offset
+	parent.add_child(light)
+	if bool(light_definition.get("flicker", false)):
+		_start_light_flicker(light)
+	return light
+
+
+## Cheap flicker: one looping Tween moves the energy ±15 % around its base
+## value with a sine ease. Bound to the light so it dies with it.
+func _start_light_flicker(light: OmniLight3D) -> void:
+	var base_energy := light.light_energy
+	var tween := get_tree().create_tween().bind_node(light).set_loops()
+	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(light, "light_energy", base_energy * (1.0 + LIGHT_FLICKER_AMPLITUDE), LIGHT_FLICKER_SECONDS)
+	tween.tween_property(light, "light_energy", base_energy * (1.0 - LIGHT_FLICKER_AMPLITUDE), LIGHT_FLICKER_SECONDS * 0.8)
+	tween.tween_property(light, "light_energy", base_energy, LIGHT_FLICKER_SECONDS * 0.6)
+
+
+## Flame tongues like FireService._show: emissive unshaded cones, largest in the
+## middle. `scale_y` stretches the tallest tongue for campfires.
+func _add_flames(parent: Node3D, offset: Vector3, radius: float, height: float, node_name: String) -> Node3D:
+	var flames := Node3D.new()
+	flames.name = node_name
+	flames.position = offset
+	parent.add_child(flames)
+	var outer := _flame_material(Color(1.0, 0.45, 0.10, 0.85), Color(1.0, 0.40, 0.08))
+	var inner := _flame_material(Color(1.0, 0.82, 0.30, 0.95), Color(1.0, 0.75, 0.20))
+	var spread := radius * 0.9
+	for index in range(3):
+		var tongue_height := height * (1.0 - index * 0.22)
+		var tongue_radius := radius * (1.0 - index * 0.2)
+		var tongue := _add_mesh_cone(flames, tongue_radius, tongue_height, Vector3(index * spread - spread, tongue_height * 0.5, index * spread * 0.6 - spread * 0.6), Vector3.ZERO, outer)
+		tongue.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var core := _add_mesh_cone(flames, radius * 0.55, height * 0.65, Vector3(0.0, height * 0.32, 0.0), Vector3.ZERO, inner)
+	core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var pulse := get_tree().create_tween().bind_node(flames).set_loops()
+	pulse.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	pulse.tween_property(flames, "scale", Vector3(0.94, 1.10, 0.94), LIGHT_FLICKER_SECONDS)
+	pulse.tween_property(flames, "scale", Vector3(1.05, 0.92, 1.05), LIGHT_FLICKER_SECONDS * 0.9)
+	pulse.tween_property(flames, "scale", Vector3.ONE, LIGHT_FLICKER_SECONDS * 0.7)
+	return flames
+
+
+func _flame_material(albedo: Color, emission: Color) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = albedo
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.emission_enabled = true
+	material.emission = emission
+	material.emission_energy_multiplier = 2.5
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	return material
+
+
+## Glowing rune material: unshaded, strongly emissive, used for rune lines,
+## gems and the light-block cores.
+func _rune_material(color: Color, energy: float = 2.2) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.emission_enabled = true
+	material.emission = color
+	material.emission_energy_multiplier = energy
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	return material
+
+
+func _add_mesh_sphere(parent: Node3D, radius: float, offset: Vector3, material: Material, node_name: String) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.name = node_name
+	var mesh := SphereMesh.new()
+	mesh.radius = radius
+	mesh.height = radius * 2.0
+	mesh.radial_segments = 16
+	mesh.rings = 8
+	mesh_instance.mesh = mesh
+	mesh_instance.position = offset
+	mesh_instance.material_override = material
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	parent.add_child(mesh_instance)
+	return mesh_instance
+
+
+## Stepped stone slab shared by both cores (3×3 footprint, centre at x=z=1):
+## a wide lower tier with rune strips on every face, a narrower upper tier,
+## four corner posts capped with gold and a glowing gem, gold corner blocks.
+func _add_core_slab(parent: Node3D, stone: Material, dark_stone: Material, gold: Material, rune: Material, gem: Material) -> void:
+	var centre := Vector3(1.0, 0.0, 1.0)
+	_add_collision_box(parent, Vector3(2.90, 0.40, 2.90), centre + Vector3(0.0, -0.30, 0.0))
+	_add_collision_box(parent, Vector3(2.10, 0.36, 2.10), centre + Vector3(0.0, 0.04, 0.0))
+	_add_mesh_box(parent, Vector3(2.90, 0.40, 2.90), centre + Vector3(0.0, -0.30, 0.0), stone)
+	_add_mesh_box(parent, Vector3(2.96, 0.08, 2.96), centre + Vector3(0.0, -0.46, 0.0), dark_stone)
+	_add_mesh_box(parent, Vector3(2.10, 0.36, 2.10), centre + Vector3(0.0, 0.04, 0.0), stone)
+	_add_mesh_box(parent, Vector3(2.16, 0.06, 2.16), centre + Vector3(0.0, -0.11, 0.0), dark_stone)
+	# Rune strips along the four lower faces and the upper tier.
+	for side in [-1.0, 1.0]:
+		for run in [-0.72, 0.0, 0.72]:
+			_add_mesh_box(parent, Vector3(0.34, 0.08, 0.03), centre + Vector3(run, -0.28, side * 1.46), rune)
+			_add_mesh_box(parent, Vector3(0.03, 0.08, 0.34), centre + Vector3(side * 1.46, -0.28, run), rune)
+		_add_mesh_box(parent, Vector3(1.40, 0.05, 0.03), centre + Vector3(0.0, 0.06, side * 1.06), rune)
+		_add_mesh_box(parent, Vector3(0.03, 0.05, 1.40), centre + Vector3(side * 1.06, 0.06, 0.0), rune)
+	# Corner posts with a gold cap and a gem; gold blocks on the lower corners.
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			var post := centre + Vector3(sx * 1.16, 0.02, sz * 1.16)
+			_add_mesh_box(parent, Vector3(0.46, 0.64, 0.46), post, dark_stone)
+			_add_mesh_box(parent, Vector3(0.50, 0.08, 0.50), post + Vector3(0.0, 0.30, 0.0), gold)
+			_add_mesh_cone(parent, 0.16, 0.30, post + Vector3(0.0, 0.48, 0.0), Vector3.ZERO, gem)
+			_add_mesh_box(parent, Vector3(0.05, 0.36, 0.05), post + Vector3(sx * 0.24, -0.06, sz * 0.24), rune)
+			_add_mesh_box(parent, Vector3(0.30, 0.22, 0.30), centre + Vector3(sx * 1.32, -0.20, sz * 1.32), gold)
+	# Gold wedges mid-face on the lower tier.
+	for side in [-1.0, 1.0]:
+		_add_mesh_box(parent, Vector3(0.28, 0.26, 0.12), centre + Vector3(0.0, -0.22, side * 1.48), gold)
+		_add_mesh_box(parent, Vector3(0.12, 0.26, 0.28), centre + Vector3(side * 1.48, -0.22, 0.0), gold)
+
+
+## Core of Power (blue): the shared slab carrying a tapering stone monolith
+## with two gold bands, a vertical rune line and diamond gems on each face,
+## capped by a stone spire; the blue light sits inside the shaft.
+func _build_core_of_power_visual(parent: Node3D, attributes: Dictionary) -> void:
+	var stone := _visual_material(Color("6a7079"), "res://assets/blocks/castle_stone.svg")
+	var dark_stone := _visual_material(Color("3e444c"), "res://assets/blocks/stone.svg")
+	var gold := _visual_material(Color("d9a134"), "", Color("e8b040"))
+	var glow := Color("4c9dff")
+	var rune := _rune_material(glow, 2.4)
+	var gem := _rune_material(Color("7fc0ff"), 2.8)
+	_add_core_slab(parent, stone, dark_stone, gold, rune, gem)
+	var centre := Vector3(1.0, 0.0, 1.0)
+	_add_collision_box(parent, Vector3(1.00, 3.10, 1.00), centre + Vector3(0.0, 1.90, 0.0))
+	# Monolith: plinth, shaft, shoulder and spire.
+	_add_mesh_box(parent, Vector3(1.16, 0.46, 1.16), centre + Vector3(0.0, 0.44, 0.0), dark_stone)
+	_add_mesh_box(parent, Vector3(0.88, 1.70, 0.88), centre + Vector3(0.0, 1.50, 0.0), stone)
+	_add_mesh_box(parent, Vector3(0.66, 0.80, 0.66), centre + Vector3(0.0, 2.72, 0.0), stone)
+	_add_mesh_cone(parent, 0.40, 0.52, centre + Vector3(0.0, 3.36, 0.0), Vector3.ZERO, dark_stone)
+	_add_mesh_box(parent, Vector3(0.96, 0.14, 0.96), centre + Vector3(0.0, 0.76, 0.0), gold)
+	_add_mesh_box(parent, Vector3(0.74, 0.12, 0.74), centre + Vector3(0.0, 2.36, 0.0), gold)
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			_add_mesh_box(parent, Vector3(0.18, 0.22, 0.18), centre + Vector3(sx * 0.46, 0.76, sz * 0.46), gold)
+			_add_mesh_box(parent, Vector3(0.14, 0.18, 0.14), centre + Vector3(sx * 0.36, 2.36, sz * 0.36), gold)
+	# Rune lines and gems on the four shaft faces.
+	for side in [-1.0, 1.0]:
+		_add_mesh_box(parent, Vector3(0.06, 1.30, 0.03), centre + Vector3(0.0, 1.50, side * 0.455), rune)
+		_add_mesh_box(parent, Vector3(0.03, 1.30, 0.06), centre + Vector3(side * 0.455, 1.50, 0.0), rune)
+		_add_mesh_box(parent, Vector3(0.30, 0.04, 0.03), centre + Vector3(0.0, 1.10, side * 0.455), rune)
+		_add_mesh_box(parent, Vector3(0.03, 0.04, 0.30), centre + Vector3(side * 0.455, 1.10, 0.0), rune)
+		_add_stud(parent, centre + Vector3(0.0, 1.92, side * 0.47), gem, Vector3(PI / 2.0, 0.0, 0.0))
+		_add_stud(parent, centre + Vector3(side * 0.47, 1.92, 0.0), gem, Vector3(0.0, 0.0, PI / 2.0))
+		_add_stud(parent, centre + Vector3(0.0, 2.72, side * 0.36), gem, Vector3(PI / 2.0, 0.0, 0.0))
+		_add_stud(parent, centre + Vector3(side * 0.36, 2.72, 0.0), gem, Vector3(0.0, 0.0, PI / 2.0))
+		_add_mesh_box(parent, Vector3(0.04, 0.60, 0.03), centre + Vector3(0.0, 2.75, side * 0.345), rune)
+		_add_mesh_box(parent, Vector3(0.03, 0.60, 0.04), centre + Vector3(side * 0.345, 2.75, 0.0), rune)
+	# Large diamond gem on the plinth front, with a gold frame.
+	var frame := _add_mesh_box(parent, Vector3(0.34, 0.34, 0.06), centre + Vector3(0.0, 0.46, 0.60), gold)
+	frame.rotation.z = PI / 4.0
+	var jewel := _add_mesh_box(parent, Vector3(0.22, 0.22, 0.08), centre + Vector3(0.0, 0.46, 0.62), gem)
+	jewel.rotation.z = PI / 4.0
+	_add_entity_light(parent, attributes, centre + Vector3(0.0, 1.80, 0.0))
+
+
+## Enemy core (red): the shared slab in black stone with bronze spikes on
+## every corner and mid-face, a red rune ring on the upper tier, a cracked
+## dark orb held above the slab by a bronze crown of shards, and a red light
+## inside the orb.
+func _build_enemy_core_visual(parent: Node3D, attributes: Dictionary) -> void:
+	var stone := _visual_material(Color("3a3236"), "res://assets/blocks/stone.svg")
+	var dark_stone := _visual_material(Color("221c20"))
+	var bronze := _visual_material(Color("8a6a3c"), "", Color("5a3f1c"))
+	var glow := Color("ff3030")
+	var rune := _rune_material(glow, 2.4)
+	var gem := _rune_material(Color("ff6a5a"), 2.8)
+	_add_core_slab(parent, stone, dark_stone, bronze, rune, gem)
+	var centre := Vector3(1.0, 0.0, 1.0)
+	_add_collision_box(parent, Vector3(1.40, 2.60, 1.40), centre + Vector3(0.0, 1.90, 0.0))
+	# Spikes on the lower tier rim.
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			_add_mesh_cone(parent, 0.14, 0.60, centre + Vector3(sx * 1.32, 0.16, sz * 1.32), Vector3.ZERO, bronze)
+	for side in [-1.0, 1.0]:
+		for run in [-0.60, 0.60]:
+			_add_mesh_cone(parent, 0.10, 0.44, centre + Vector3(run, -0.02, side * 1.36), Vector3.ZERO, bronze)
+			_add_mesh_cone(parent, 0.10, 0.44, centre + Vector3(side * 1.36, -0.02, run), Vector3.ZERO, bronze)
+	# Rune ring on the upper tier and a dark pedestal.
+	_add_mesh_torus(parent, 0.62, 0.78, centre + Vector3(0.0, 0.23, 0.0), Vector3.ZERO, rune)
+	_add_mesh_cylinder(parent, 0.40, 0.50, centre + Vector3(0.0, 0.46, 0.0), Vector3.ZERO, dark_stone, "EnemyCorePedestal")
+	_add_mesh_torus(parent, 0.30, 0.44, centre + Vector3(0.0, 0.72, 0.0), Vector3.ZERO, rune)
+	# Crown of bronze shards leaning in around the orb.
+	for index in range(6):
+		var angle := float(index) * TAU / 6.0
+		var shard := _add_mesh_cone(parent, 0.14, 1.30, centre + Vector3(cos(angle) * 0.92, 1.30, sin(angle) * 0.92), Vector3.ZERO, bronze)
+		shard.rotation = Vector3(sin(angle) * 0.34, 0.0, -cos(angle) * 0.34)
+		var shard_gem := _add_mesh_box(parent, Vector3(0.08, 0.30, 0.08), centre + Vector3(cos(angle) * 0.86, 1.10, sin(angle) * 0.86), gem)
+		shard_gem.rotation = shard.rotation
+	# The orb: dark cracked stone with a red glow seam and floating shards.
+	var orb := _add_mesh_sphere(parent, 0.64, centre + Vector3(0.0, 2.10, 0.0), _visual_material(Color("2a0f14"), "", Color("ff2020")), "EnemyCoreOrb")
+	_add_mesh_torus(orb, 0.56, 0.68, Vector3.ZERO, Vector3(PI / 2.0, 0.0, 0.0), rune)
+	_add_mesh_torus(orb, 0.56, 0.68, Vector3.ZERO, Vector3(0.0, 0.0, PI / 2.0), rune)
+	for index in range(4):
+		var angle := float(index) * TAU / 4.0 + 0.4
+		var plate := _add_mesh_box(orb, Vector3(0.36, 0.44, 0.14), Vector3(cos(angle) * 0.60, 0.10, sin(angle) * 0.60), dark_stone)
+		plate.rotation.y = -angle + PI / 2.0
+		_add_mesh_box(parent, Vector3(0.14, 0.22, 0.14), centre + Vector3(cos(angle + 0.8) * 0.95, 1.55, sin(angle + 0.8) * 0.95), dark_stone)
+	_add_mesh_cone(parent, 0.16, 0.54, centre + Vector3(0.0, 2.98, 0.0), Vector3.ZERO, bronze)
+	_add_mesh_cone(parent, 0.14, 0.40, centre + Vector3(0.0, 1.26, 0.0), Vector3(PI, 0.0, 0.0), bronze)
+	_add_entity_light(parent, attributes, centre + Vector3(0.0, 2.10, 0.0))
+
+
+## Torch: a wooden shaft wrapped in leather with an iron foot cone and iron
+## ring, an iron cage of four studded slats holding split wood, and flames.
+func _build_torch_visual(parent: Node3D, attributes: Dictionary) -> void:
+	_add_collision_box(parent, Vector3(0.30, 0.96, 0.30), Vector3(0.0, 0.0, 0.0))
+	var wood := _visual_material(Color("b0723a"), "res://assets/blocks/planks.svg")
+	var leather := _visual_material(Color("7a3428"))
+	var iron := _visual_material(Color("8b939b"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	_add_mesh_cylinder(parent, 0.055, 0.66, Vector3(0.0, -0.16, 0.0), Vector3.ZERO, wood, "TorchShaft")
+	_add_mesh_cone(parent, 0.09, 0.12, Vector3(0.0, -0.49, 0.0), Vector3(PI, 0.0, 0.0), iron)
+	_add_mesh_cylinder(parent, 0.085, 0.10, Vector3(0.0, -0.40, 0.0), Vector3.ZERO, iron, "TorchFoot")
+	_add_stud(parent, Vector3(0.0, -0.40, 0.09), gold, Vector3(PI / 2.0, 0.0, 0.0))
+	for y in [-0.30, -0.22, -0.14]:
+		var wrap := _add_mesh_cylinder(parent, 0.072, 0.05, Vector3(0.0, y, 0.0), Vector3.ZERO, leather, "TorchWrap")
+		wrap.rotation.x = 0.16
+	_add_mesh_cylinder(parent, 0.09, 0.08, Vector3(0.0, 0.02, 0.0), Vector3.ZERO, iron, "TorchRing")
+	_add_stud(parent, Vector3(0.0, 0.02, 0.095), gold, Vector3(PI / 2.0, 0.0, 0.0))
+	_add_mesh_cylinder(parent, 0.13, 0.10, Vector3(0.0, 0.16, 0.0), Vector3.ZERO, iron, "TorchCollar")
+	for angle in [0.0, PI / 2.0, PI, PI * 1.5]:
+		var slat := _add_mesh_box(parent, Vector3(0.05, 0.30, 0.04), Vector3(cos(angle) * 0.14, 0.30, sin(angle) * 0.14), iron)
+		slat.rotation.y = -angle
+		_add_stud(parent, Vector3(cos(angle) * 0.16, 0.30, sin(angle) * 0.16), gold, Vector3(0.0, -angle, PI / 2.0))
+		var billet := _add_mesh_box(parent, Vector3(0.07, 0.34, 0.07), Vector3(cos(angle + 0.785) * 0.08, 0.30, sin(angle + 0.785) * 0.08), wood)
+		billet.rotation.y = -angle
+	_add_mesh_torus(parent, 0.13, 0.17, Vector3(0.0, 0.44, 0.0), Vector3.ZERO, iron)
+	_add_flames(parent, Vector3(0.0, 0.36, 0.0), 0.11, 0.42, "TorchFlames")
+	_add_entity_light(parent, attributes, Vector3(0.0, 0.62, 0.0))
+
+
+## Iron lantern body shared by the wall and post lanterns: an iron roof with
+## a gold finial, four corner rails with gold studs, a glowing amber pane and
+## a bottom plate with a gold drop. `centre` is the pane centre.
+func _add_lantern_body(parent: Node3D, centre: Vector3, iron: Material, gold: Material, pane: Material) -> void:
+	_add_mesh_box(parent, Vector3(0.30, 0.34, 0.30), centre, pane)
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			_add_mesh_box(parent, Vector3(0.06, 0.40, 0.06), centre + Vector3(sx * 0.16, 0.0, sz * 0.16), iron)
+	for side in [-1.0, 1.0]:
+		var cross_a := _add_mesh_box(parent, Vector3(0.04, 0.42, 0.02), centre + Vector3(0.0, 0.0, side * 0.165), iron)
+		cross_a.rotation.z = 0.62
+		var cross_b := _add_mesh_box(parent, Vector3(0.04, 0.42, 0.02), centre + Vector3(0.0, 0.0, side * 0.165), iron)
+		cross_b.rotation.z = -0.62
+		var cross_c := _add_mesh_box(parent, Vector3(0.02, 0.42, 0.04), centre + Vector3(side * 0.165, 0.0, 0.0), iron)
+		cross_c.rotation.x = 0.62
+		var cross_d := _add_mesh_box(parent, Vector3(0.02, 0.42, 0.04), centre + Vector3(side * 0.165, 0.0, 0.0), iron)
+		cross_d.rotation.x = -0.62
+		_add_stud(parent, centre + Vector3(0.0, 0.0, side * 0.18), gold, Vector3(PI / 2.0, 0.0, 0.0))
+		_add_stud(parent, centre + Vector3(side * 0.18, 0.0, 0.0), gold, Vector3(0.0, 0.0, PI / 2.0))
+	_add_mesh_box(parent, Vector3(0.40, 0.08, 0.40), centre + Vector3(0.0, 0.24, 0.0), iron)
+	_add_mesh_cone(parent, 0.26, 0.16, centre + Vector3(0.0, 0.34, 0.0), Vector3.ZERO, iron)
+	_add_mesh_cylinder(parent, 0.05, 0.08, centre + Vector3(0.0, 0.44, 0.0), Vector3.ZERO, iron, "LanternNeck")
+	_add_mesh_box(parent, Vector3(0.40, 0.07, 0.40), centre + Vector3(0.0, -0.24, 0.0), iron)
+	_add_mesh_cone(parent, 0.08, 0.14, centre + Vector3(0.0, -0.33, 0.0), Vector3(PI, 0.0, 0.0), gold)
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			_add_stud(parent, centre + Vector3(sx * 0.20, 0.24, sz * 0.20), gold, Vector3.ZERO)
+
+
+## Wall lantern: an iron-capped oak post with gold studs, an arm and a brace,
+## a chain and the shared lantern body hanging from the arm. Stands on any
+## solid top; set it on a wall top or beside a wall to read as a bracket.
+func _build_wall_lantern_visual(parent: Node3D, attributes: Dictionary) -> void:
+	_add_collision_box(parent, Vector3(0.90, 0.96, 0.44), Vector3(0.02, 0.0, 0.0))
+	var oak := _visual_material(Color("a96532"), "res://assets/blocks/planks.svg")
+	var iron := _visual_material(Color("8b939b"))
+	var dark_iron := _visual_material(Color("4a5158"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	var pane := _rune_material(Color("ffb050"), 1.8)
+	_add_mesh_box(parent, Vector3(0.16, 0.86, 0.16), Vector3(-0.36, -0.02, 0.0), oak)
+	_add_mesh_box(parent, Vector3(0.22, 0.14, 0.22), Vector3(-0.36, 0.42, 0.0), iron)
+	_add_mesh_box(parent, Vector3(0.22, 0.12, 0.22), Vector3(-0.36, -0.44, 0.0), iron)
+	_add_mesh_cone(parent, 0.12, 0.10, Vector3(-0.36, -0.55, 0.0), Vector3(PI, 0.0, 0.0), dark_iron)
+	_add_stud(parent, Vector3(-0.36, 0.42, 0.12), gold, Vector3(PI / 2.0, 0.0, 0.0))
+	_add_stud(parent, Vector3(-0.36, -0.44, 0.12), gold, Vector3(PI / 2.0, 0.0, 0.0))
+	_add_mesh_box(parent, Vector3(0.20, 0.10, 0.20), Vector3(-0.36, 0.08, 0.0), iron)
+	_add_mesh_box(parent, Vector3(0.70, 0.12, 0.12), Vector3(0.0, 0.34, 0.0), oak)
+	_add_mesh_box(parent, Vector3(0.16, 0.18, 0.16), Vector3(0.30, 0.34, 0.0), iron)
+	_add_stud(parent, Vector3(0.30, 0.34, 0.09), gold, Vector3(PI / 2.0, 0.0, 0.0))
+	_add_stud(parent, Vector3(0.30, 0.44, 0.0), gold, Vector3.ZERO)
+	var brace := _add_mesh_box(parent, Vector3(0.10, 0.48, 0.10), Vector3(-0.12, 0.14, 0.0), oak)
+	brace.rotation.z = 0.78
+	_add_mesh_torus(parent, 0.03, 0.06, Vector3(0.30, 0.20, 0.0), Vector3(0.0, 0.0, 0.0), dark_iron)
+	_add_mesh_torus(parent, 0.03, 0.06, Vector3(0.30, 0.13, 0.0), Vector3(PI / 2.0, 0.0, 0.0), dark_iron)
+	_add_lantern_body(parent, Vector3(0.30, -0.16, 0.0), iron, gold, pane)
+	_add_entity_light(parent, attributes, Vector3(0.30, -0.10, 0.0))
+
+
+## Post lantern (three cells tall): an oak base ringed by iron wedges with
+## gold studs, a banded post with a gold finial, an arm with a brace and the
+## shared lantern body hanging on a chain at head height.
+func _build_post_lantern_visual(parent: Node3D, attributes: Dictionary) -> void:
+	_add_collision_box(parent, Vector3(0.84, 0.36, 0.84), Vector3(0.0, -0.32, 0.0))
+	_add_collision_box(parent, Vector3(0.26, 2.60, 0.26), Vector3(0.0, 1.10, 0.0))
+	var oak := _visual_material(Color("a96532"), "res://assets/blocks/planks.svg")
+	var dark_oak := _visual_material(Color("6b3d1f"), "res://assets/blocks/log.svg")
+	var iron := _visual_material(Color("8b939b"))
+	var dark_iron := _visual_material(Color("4a5158"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	var pane := _rune_material(Color("ffb050"), 1.8)
+	_add_mesh_box(parent, Vector3(0.80, 0.34, 0.80), Vector3(0.0, -0.33, 0.0), dark_oak)
+	for angle in [0.0, PI / 2.0, PI, PI * 1.5]:
+		var wedge := _add_mesh_box(parent, Vector3(0.28, 0.44, 0.22), Vector3(cos(angle) * 0.34, -0.26, sin(angle) * 0.34), iron)
+		wedge.rotation.y = -angle
+		_add_stud(parent, Vector3(cos(angle) * 0.46, -0.26, sin(angle) * 0.46), gold, Vector3(0.0, -angle, PI / 2.0))
+	_add_mesh_box(parent, Vector3(0.36, 0.30, 0.36), Vector3(0.0, 0.02, 0.0), iron)
+	_add_mesh_box(parent, Vector3(0.24, 2.30, 0.24), Vector3(0.0, 1.10, 0.0), oak)
+	for y in [0.70, 1.72]:
+		_add_mesh_box(parent, Vector3(0.32, 0.18, 0.32), Vector3(0.0, y, 0.0), iron)
+		for angle in [0.0, PI / 2.0, PI, PI * 1.5]:
+			_add_stud(parent, Vector3(cos(angle) * 0.17, y, sin(angle) * 0.17), gold, Vector3(0.0, -angle, PI / 2.0))
+	_add_mesh_box(parent, Vector3(0.34, 0.16, 0.34), Vector3(0.0, 2.30, 0.0), iron)
+	_add_mesh_cone(parent, 0.13, 0.20, Vector3(0.0, 2.46, 0.0), Vector3.ZERO, gold)
+	_add_mesh_box(parent, Vector3(0.80, 0.14, 0.14), Vector3(0.36, 2.06, 0.0), oak)
+	_add_mesh_box(parent, Vector3(0.18, 0.20, 0.18), Vector3(0.70, 2.06, 0.0), iron)
+	_add_stud(parent, Vector3(0.70, 2.06, 0.10), gold, Vector3(PI / 2.0, 0.0, 0.0))
+	var brace := _add_mesh_box(parent, Vector3(0.10, 0.52, 0.10), Vector3(0.30, 1.80, 0.0), oak)
+	brace.rotation.z = 0.78
+	_add_mesh_torus(parent, 0.03, 0.06, Vector3(0.70, 1.90, 0.0), Vector3.ZERO, gold)
+	_add_mesh_torus(parent, 0.03, 0.06, Vector3(0.70, 1.83, 0.0), Vector3(PI / 2.0, 0.0, 0.0), dark_iron)
+	_add_lantern_body(parent, Vector3(0.70, 1.50, 0.0), iron, gold, pane)
+	_add_entity_light(parent, attributes, Vector3(0.70, 1.56, 0.0))
+
+
+## Campfire (3×3): a ring of rough stones with four gold-banded blocks, an
+## ember bed, three crossed logs and flames; the light flickers.
+func _build_campfire_visual(parent: Node3D, attributes: Dictionary) -> void:
+	var centre := Vector3(1.0, 0.0, 1.0)
+	_add_collision_box(parent, Vector3(2.90, 0.50, 2.90), centre + Vector3(0.0, -0.25, 0.0))
+	var stone := _visual_material(Color("7d848d"), "res://assets/blocks/stone.svg")
+	var dark_stone := _visual_material(Color("4a5058"))
+	var gold := _visual_material(Color("d9a134"), "", Color("e8b040"))
+	var log_material := _visual_material(Color("8c5a2c"), "res://assets/blocks/log.svg")
+	var char_material := _visual_material(Color("2a2320"))
+	var ember := _rune_material(Color("ff5a14"), 1.6)
+	for index in range(12):
+		var angle := float(index) * TAU / 12.0
+		var spot := centre + Vector3(cos(angle) * 1.12, -0.28, sin(angle) * 1.12)
+		if index % 3 == 0:
+			var block := _add_mesh_box(parent, Vector3(0.44, 0.46, 0.50), spot + Vector3(0.0, 0.02, 0.0), gold)
+			block.rotation.y = -angle
+			_add_stud(parent, centre + Vector3(cos(angle) * 1.38, -0.24, sin(angle) * 1.38), dark_stone, Vector3(0.0, -angle, PI / 2.0))
+		else:
+			var rock := _add_mesh_box(parent, Vector3(0.52, 0.40, 0.46), spot, stone)
+			rock.rotation.y = -angle + 0.12
+			var cap := _add_mesh_box(parent, Vector3(0.40, 0.14, 0.34), spot + Vector3(0.0, 0.24, 0.0), dark_stone)
+			cap.rotation.y = -angle - 0.10
+	_add_mesh_cylinder(parent, 0.86, 0.10, centre + Vector3(0.0, -0.44, 0.0), Vector3.ZERO, ember, "CampfireEmbers")
+	for index in range(7):
+		var angle := float(index) * TAU / 7.0
+		_add_mesh_box(parent, Vector3(0.20, 0.14, 0.16), centre + Vector3(cos(angle) * 0.55, -0.36, sin(angle) * 0.55), char_material)
+	for index in range(3):
+		var angle := float(index) * TAU / 3.0 + 0.3
+		var log_piece := _add_mesh_cylinder(parent, 0.13, 1.30, centre + Vector3(cos(angle) * 0.22, -0.02, sin(angle) * 0.22), Vector3.ZERO, log_material, "CampfireLog")
+		log_piece.rotation = Vector3(0.0, -angle, 1.10)
+	_add_flames(parent, centre + Vector3(0.0, -0.10, 0.0), 0.30, 1.10, "CampfireFlames")
+	_add_entity_light(parent, attributes, centre + Vector3(0.0, 0.70, 0.0))
+
+
+## Light block: a stone frame of twelve edge bars and eight studded corners
+## around a glowing cube, with gold trim and a rune diamond on each face.
+func _build_light_block_visual(parent: Node3D, attributes: Dictionary, glow: Color) -> void:
+	_add_collision_box(parent, Vector3(1.0, 1.0, 1.0), Vector3.ZERO)
+	var stone := _visual_material(Color("5d646c"), "res://assets/blocks/castle_stone.svg")
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	var core := _rune_material(glow, 1.6)
+	var rune := _rune_material(glow.lightened(0.45), 2.4)
+	_add_mesh_box(parent, Vector3(0.92, 0.92, 0.92), Vector3.ZERO, core)
+	for axis in range(3):
+		for a in [-1.0, 1.0]:
+			for b in [-1.0, 1.0]:
+				var size := Vector3(0.16, 0.16, 0.16)
+				var offset := Vector3.ZERO
+				size[axis] = 1.0
+				offset[(axis + 1) % 3] = a * 0.42
+				offset[(axis + 2) % 3] = b * 0.42
+				_add_mesh_box(parent, size, offset, stone)
+				var trim_size := Vector3(0.05, 0.05, 0.05)
+				var trim_offset := Vector3.ZERO
+				trim_size[axis] = 0.70
+				trim_offset[(axis + 1) % 3] = a * 0.475
+				trim_offset[(axis + 2) % 3] = b * 0.34
+				_add_mesh_box(parent, trim_size, trim_offset, gold)
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			for sz in [-1.0, 1.0]:
+				_add_mesh_box(parent, Vector3(0.24, 0.24, 0.24), Vector3(sx * 0.40, sy * 0.40, sz * 0.40), stone)
+				_add_stud(parent, Vector3(sx * 0.53, sy * 0.40, sz * 0.40), gold, Vector3(0.0, 0.0, PI / 2.0))
+				_add_stud(parent, Vector3(sx * 0.40, sy * 0.40, sz * 0.53), gold, Vector3(PI / 2.0, 0.0, 0.0))
+	for side in [-1.0, 1.0]:
+		var diamond_z := _add_mesh_box(parent, Vector3(0.22, 0.22, 0.03), Vector3(0.0, 0.0, side * 0.475), rune)
+		diamond_z.rotation.z = PI / 4.0
+		var diamond_x := _add_mesh_box(parent, Vector3(0.03, 0.22, 0.22), Vector3(side * 0.475, 0.0, 0.0), rune)
+		diamond_x.rotation.x = PI / 4.0
+		var diamond_y := _add_mesh_box(parent, Vector3(0.22, 0.03, 0.22), Vector3(0.0, side * 0.475, 0.0), rune)
+		diamond_y.rotation.y = PI / 4.0
+	_add_entity_light(parent, attributes, Vector3.ZERO)
 
 
 ## A small gold diamond: a cube rotated 45 degrees about the given axis.

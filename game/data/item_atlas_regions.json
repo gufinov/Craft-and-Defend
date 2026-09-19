@@ -20,7 +20,7 @@
       "file": "derived_atlas_p4.png",
       "size": [
         1536,
-        512
+        768
       ]
     },
     "gold": {
@@ -287,10 +287,10 @@
     "cannon": {
       "atlas": "derived",
       "rect": [
-        523,
-        15,
-        234,
-        223
+        522,
+        16,
+        236,
+        224
       ]
     },
     "cannonball": {
@@ -323,28 +323,28 @@
     "kettle": {
       "atlas": "derived",
       "rect": [
-        14,
-        281,
-        231,
-        217
+        10,
+        273,
+        236,
+        222
       ]
     },
     "rail": {
       "atlas": "derived",
       "rect": [
-        267,
-        284,
-        234,
-        202
+        266,
+        282,
+        236,
+        204
       ]
     },
     "turret_catapult_mk2": {
       "atlas": "derived",
       "rect": [
-        523,
-        270,
-        234,
-        228
+        522,
+        268,
+        236,
+        231
       ]
     },
     "wood_axe_flipped": {
@@ -354,6 +354,78 @@
         302,
         138,
         163
+      ]
+    },
+    "core_of_power": {
+      "atlas": "derived",
+      "rect": [
+        1050,
+        266,
+        203,
+        236
+      ]
+    },
+    "enemy_core": {
+      "atlas": "derived",
+      "rect": [
+        1299,
+        266,
+        217,
+        236
+      ]
+    },
+    "torch": {
+      "atlas": "derived",
+      "rect": [
+        76,
+        523,
+        99,
+        235
+      ]
+    },
+    "wall_lantern": {
+      "atlas": "derived",
+      "rect": [
+        301,
+        522,
+        166,
+        236
+      ]
+    },
+    "post_lantern": {
+      "atlas": "derived",
+      "rect": [
+        571,
+        522,
+        138,
+        236
+      ]
+    },
+    "campfire": {
+      "atlas": "derived",
+      "rect": [
+        780,
+        524,
+        231,
+        234
+      ]
+    },
+    "light_block_blue": {
+      "atlas": "derived",
+      "rect": [
+        1036,
+        522,
+        231,
+        236
+      ]
+    },
+    "light_block_red": {
+      "atlas": "derived",
+      "rect": [
+        1293,
+        522,
+        230,
+        236
       ]
     },
     "gold_ore": {
