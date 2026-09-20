@@ -382,7 +382,7 @@ func select_hotbar(index: int) -> Dictionary:
 		# Coaster pieces carry their controls on screen (owner could not find
 		# the loop gesture without them).
 		if item_id == CoasterRails.LOOP:
-			_on_interaction_feedback("RAIL LOOP: aim at the ground where the entry goes, HOLD Right Mouse — the whole loop ghost appears; 4-9 (or X / C) set its size, L round / octagon, W / R turn it; let go to build it (red = does not fit)")
+			_on_interaction_feedback("RAIL LOOP: aim at the ground where the entry goes, HOLD Right Mouse — the whole loop ghost appears; 4-9 (or X / C) set its size, W / R turn it; let go to build it (red = does not fit)")
 		elif item_id == CoasterRails.SLOPE:
 			_on_interaction_feedback("RAIL SLOPE: the arrow end climbs one block — W / R turns it; put a Rail on the block it climbs to")
 	return result
@@ -721,14 +721,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		for size in range(InteractionService.LOOP_SIZE_MIN, InteractionService.LOOP_SIZE_MAX + 1):
 			if event.is_action_pressed("hotbar_%d" % size):
 				interaction.set_loop_size(size)
-				_on_interaction_feedback("Loop size %d (4-9 while the ghost shows; X / C too; L round / octagon)" % size)
+				_on_interaction_feedback("Loop size %d (4-9 while the ghost shows; X / C too)" % size)
 				get_viewport().set_input_as_handled()
 				return
-		if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_L or event.keycode == KEY_L):
-			interaction.set_loop_round(not interaction.loop_round)
-			_on_interaction_feedback("Loop shape: %s (L toggles)" % ("round" if interaction.loop_round else "octagon"))
-			get_viewport().set_input_as_handled()
-			return
 	if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_V or event.keycode == KEY_V):
 		# Coaster car and hero: V toggles the chase camera (raw key, like X / C).
 		toggle_third_person()
@@ -1410,8 +1405,10 @@ func _build_rail_slope_visual(parent: Node3D) -> void:
 	for x in [-0.38, 0.38]:
 		_add_mesh_box(parent, Vector3(0.22, 0.56, 0.22), Vector3(x, -0.22, 0.38), stone)
 		_add_stud(parent, Vector3(x, 0.02, 0.38), gold, Vector3.ZERO)
-		_add_mesh_box(parent, Vector3(0.22, 1.56, 0.22), Vector3(x, 0.28, -0.38), stone)
-		_add_stud(parent, Vector3(x, 1.02, -0.38), gold, Vector3.ZERO)
+		# High-end posts stop under the rails (owner 2026-09-20: taller posts
+		# made the ring look too low where it meets the slope).
+		_add_mesh_box(parent, Vector3(0.22, 1.36, 0.22), Vector3(x, 0.18, -0.38), stone)
+		_add_stud(parent, Vector3(x, 0.88, -0.38), gold, Vector3.ZERO)
 	var deck := _add_mesh_box(parent, Vector3(0.96, 0.14, 1.36), Vector3(0.0, 0.40, 0.0), oak)
 	deck.rotation.x = PI / 4.0
 	for x in [-0.22, 0.22]:

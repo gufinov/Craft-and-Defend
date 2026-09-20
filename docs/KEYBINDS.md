@@ -37,4 +37,4 @@ Tests: every required action responds; forward is E (not W); a changed movement 
 
 - **While riding a Coaster Car**: mouse turns the head (±110° / ±60°, no turning around); **1–9** speed; **arrow keys** outside views (↑ behind, ↓ front, ← → sides; same arrow again = seat); **Shift** / Escape leave.
 
-- **Rail Loop held**: hold Right Mouse for the whole-loop ghost; **4–9** (or X / C) set its size while the ghost shows; **L** octagon / round; **W / R** turn it; release to build.
+- **Rail Loop held**: hold Right Mouse for the whole-loop ghost; **4–9** (or X / C) set its size while the ghost shows; **W / R** turn it; release to build.

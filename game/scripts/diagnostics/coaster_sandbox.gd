@@ -202,8 +202,6 @@ func _lay_demo() -> void:
 	app.session.inventory.select_hotbar(STOCK.find("rail_loop"))
 	interaction.placement_rotation_quarters = 3
 	interaction.set_loop_size(6)
-	# `--coaster-sandbox-round` lays the round ring instead of the octagon.
-	interaction.set_loop_round(OS.get_cmdline_user_args().has("--coaster-sandbox-round"))
 	interaction.begin_coaster_loop_at(origin)
 	var loop := interaction.commit_drag_place()
 	interaction.placement_rotation_quarters = 0
