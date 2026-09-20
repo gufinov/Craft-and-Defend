@@ -477,6 +477,11 @@ func begin_coaster_loop_at(anchor: Vector3i) -> Dictionary:
 	var item := registry.item(item_id)
 	if not is_coaster_loop_item(item_id) or workstations == null:
 		return _finish(false, "NOT_PLACEABLE")
+	# Owner 2026-09-20: aimed at a loop base (a track row ending in two
+	# slopes rising outward), the loop snaps up over it at once.
+	var snapped := _snap_loop_on_base(anchor)
+	if snapped.get("handled", false):
+		return _finish(bool(snapped.get("ok", false)), str(snapped.get("reason", "LOOP_SNAP_FAILED")), snapped.get("changes", {}))
 	_drag = {"mode": "coaster_loop", "item_id": item_id, "entity_id": str(item.places_entity), "voxel_id": 0, "anchor": anchor, "end": anchor, "cells": [], "shape": "single", "loop": false, "radius": LOOP_RADIUS_DEFAULT, "loop_cells": 0, "x_down": false, "c_down": false}
 	_replan_coaster_loop()
 	return {"ok": true, "reason": "DRAG_STARTED", "anchor": anchor}
@@ -517,6 +522,74 @@ func coaster_loop_keys(x_pressed: bool, c_pressed: bool) -> void:
 
 ## Lays every validated ghost cell as a `rail_loop` piece carrying the joints
 ## the plan drew (`coaster_joints`), so the chain follows the drawn path.
+## Loop snap (owner 2026-09-20): the aimed cell (or the track under it) is a
+## flat track piece on a row that ends in a `rail_slope` at each side rising
+## outward. The arch closing the loop (CoasterRails.loop_arch_offsets) is
+## laid as `rail_loop` pieces joined in order and to the two slopes.
+## {handled: false} when the aim is not on such a base.
+func _snap_loop_on_base(anchor: Vector3i) -> Dictionary:
+	var tracks := CoasterRails.track_records(workstations.stations)
+	var base := anchor
+	if not tracks.has(base):
+		base = anchor + Vector3i.DOWN
+	if not tracks.has(base) or str(tracks[base].get("entity_id", "")) == CoasterRails.SLOPE:
+		return {"handled": false}
+	for axis: Vector3i in [Vector3i(1, 0, 0), Vector3i(0, 0, 1)]:
+		var ends: Array[Vector3i] = []
+		var found := true
+		for step: Vector3i in [-axis, axis]:
+			var cell := base
+			var end := Vector3i.MAX
+			for _walk in range(DRAG_MAX_SPAN * 2):
+				cell += step
+				if not tracks.has(cell):
+					break
+				var record: Dictionary = tracks[cell]
+				if str(record.get("entity_id", "")) == CoasterRails.SLOPE:
+					if CoasterRails.slope_high_direction(int(record.get("rotation_quarters", 0))) == step:
+						end = cell
+					break
+			if end == Vector3i.MAX:
+				found = false
+				break
+			ends.append(end)
+		if not found:
+			continue
+		var left: Vector3i = ends[0]
+		var right: Vector3i = ends[1]
+		var span := int(Vector3(right - left).dot(Vector3(axis)))
+		if span % 2 != 0:
+			return {"handled": true, "ok": false, "reason": "LOOP_BASE_ODD"}
+		var half_width := span / 2
+		var arch := CoasterRails.loop_arch_offsets(half_width)
+		if arch.is_empty():
+			return {"handled": true, "ok": false, "reason": "LOOP_BASE_TOO_SMALL"}
+		var middle := left + axis * half_width
+		var entity_id := str(registry.item(inventory.active_item_id()).places_entity)
+		if inventory.count(inventory.active_item_id()) < arch.size():
+			return {"handled": true, "ok": false, "reason": "NO_RESOURCE"}
+		var rotation := 1 if axis.x != 0 else 0
+		var cells: Array[Vector3i] = []
+		for offset: Vector2i in arch:
+			cells.append(middle + axis * offset.x + Vector3i.UP * offset.y)
+		for cell: Vector3i in cells:
+			var check := workstations.preview_placement(entity_id, cell, rotation, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB())
+			if not check.get("ok", false):
+				return {"handled": true, "ok": false, "reason": "LOOP_SNAP_BLOCKED", "changes": {"cell": cell, "why": check.get("reason")}}
+		var placed: Array[Vector3i] = []
+		for index in range(cells.size()):
+			var cell: Vector3i = cells[index]
+			var before: Vector3i = cells[index - 1] if index > 0 else left
+			var after: Vector3i = cells[index + 1] if index + 1 < cells.size() else right
+			var joints: Array = [[before.x - cell.x, before.y - cell.y, before.z - cell.z], [after.x - cell.x, after.y - cell.y, after.z - cell.z]]
+			var result := workstations.try_place(entity_id, cell, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB(), rotation, {"coaster_joints": joints})
+			if not result.get("ok", false):
+				return {"handled": true, "ok": false, "reason": str(result.get("reason", "PLACEMENT_FAILED")), "changes": {"cells": placed}}
+			placed.append(cell)
+		return {"handled": true, "ok": true, "reason": "LOOP_SNAPPED", "changes": {"cells": placed, "count": placed.size(), "radius": half_width + 1, "items": {inventory.active_item_id(): -placed.size()}}}
+	return {"handled": false}
+
+
 ## Lane Switcher (owner 2026-09-20): the held item lays four pieces at once.
 func is_lane_switch_item(item_id: String) -> bool:
 	var item := registry.item(item_id)

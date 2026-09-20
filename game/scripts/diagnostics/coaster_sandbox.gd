@@ -98,6 +98,40 @@ func run(application: CraftAndDefendApp) -> void:
 				after += 1
 		print("SWITCH_CLICK laid %d pieces" % (after - before))
 		get_tree().quit(0)
+	if OS.get_cmdline_user_args().has("--coaster-sandbox-loop-snap-check"):
+		# Rail Loop aimed at the base row snaps the arch; a cart from the
+		# base's left rail climbs the left slope, goes over and comes down.
+		var ws := app.session.workstations
+		app.session.inventory.select_hotbar(STOCK.find("rail_loop"))
+		var snapped := app.session.interaction.begin_coaster_loop_at(Vector3i(3, 2, 41))
+		var base_chain := CoasterRails.chain(ws.stations, Vector3i(3, 1, 41))
+		var top := Vector3i(3, 1, 41)
+		for cell: Vector3i in base_chain:
+			if cell.y > top.y:
+				top = cell
+		print("LOOP_SNAP %s count=%s radius=%s chain=%d top=%s" % [snapped.get("reason"), snapped.get("changes", {}).get("count"), snapped.get("changes", {}).get("radius"), base_chain.size(), top])
+		var snap_cart := ws.try_place("mine_cart", Vector3i(3, 2, 41), app.session.world.query_cell, AABB(), 0)
+		var snap_cart_id := str(snap_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+		var seen: Array[Vector3i] = []
+		for frame in range(600):
+			app.session.coaster_carts.advance(1.0 / 30.0, false)
+			var cell := app.session.coaster_carts.rider_cell(snap_cart_id)
+			if seen.is_empty() or seen[seen.size() - 1] != cell:
+				seen.append(cell)
+		print("LOOP_SNAP cart %s path %s" % [snap_cart.get("reason"), seen])
+		if DisplayServer.get_name() != "headless":
+			var player := app.session.player
+			player.deactivate()
+			player.global_position = Vector3(3.5, 3.0, 52.0)
+			player.rotation = Vector3.ZERO
+			player.look_pitch = 0.05
+			player.apply_mouse_look(Vector2.ZERO)
+			app.session.inventory.select_hotbar(STOCK.find("iron_pick"))
+			for _frame in range(90):
+				await get_tree().process_frame
+			await RenderingServer.frame_post_draw
+			get_viewport().get_texture().get_image().save_png(app.data_root.path_join("loop-snap.png"))
+		get_tree().quit(0)
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-switch-check"):
 		# The mine cart on the switcher demo rides from lane 0 through the
 		# diagonal to lane 1 and back: print its cells for 8 s.
@@ -213,7 +247,7 @@ func _lay_demo() -> void:
 	var world: WorldAdapter = app.session.world
 	var interaction: InteractionService = app.session.interaction
 	var plate := Vector3i(-14, 0, 22)
-	_level_ground(plate, 30, 20, 12)
+	_level_ground(plate, 30, 22, 14)
 	# Loop: lead-in from x=-8, loop rises over z=30.
 	var origin := Vector3i(-8, 1, 30)
 	# The loop drag reads the active item: hold Rail Loop for the lay, then
@@ -282,6 +316,14 @@ func _lay_demo() -> void:
 	for x in range(7, 11):
 		ws.try_place("rail", switch_start + Vector3i(x, 0, 1), world.query_cell, AABB(), 0)
 	var switch_cart := ws.try_place("mine_cart", switch_start + Vector3i(0, 1, 0), world.query_cell, AABB(), 0)
+	# Loop base (owner 2026-09-20): five rails between two slopes rising
+	# outward on row z=41; Rail Loop aimed at it snaps the arch up. Left as
+	# a foundation so the owner can do the snap himself.
+	var base_left := Vector3i(0, 1, 41)
+	ws.try_place("rail_slope", base_left, world.query_cell, AABB(), 3)
+	for x in range(1, 6):
+		ws.try_place("rail", base_left + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+	ws.try_place("rail_slope", base_left + Vector3i(6, 0, 0), world.query_cell, AABB(), 1)
 	print("COASTER_SANDBOX lane switcher %s, chain %d, cart %s" % [switch_laid.get("reason"), CoasterRails.chain(ws.stations, switch_start).size(), switch_cart.get("reason")])
 	print("COASTER_SANDBOX slope run %d pieces, cart %s" % [CoasterRails.chain(ws.stations, step).size(), slope_cart.get("reason")])
 

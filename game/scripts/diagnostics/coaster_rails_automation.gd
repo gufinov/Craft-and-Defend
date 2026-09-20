@@ -189,6 +189,57 @@ func _run_gate() -> void:
 	if sw_cart.get("ok", false):
 		ws.try_dismantle(sw_cart_id, world.query_cell, AABB())
 
+	# T169 loop snap (owner 2026-09-20): a base row of five rails between two
+	# slopes rising outward; Rail Loop aimed at the base raises the arch (15
+	# loop pieces, radius 4) joined to both slopes; a cart circulates the
+	# loop; a base with four rails (odd spacing) is refused.
+	var lb := Vector3i(-14, 0, 60)
+	_level_ground(lb + Vector3i(-3, 0, -2), 16, 5, 12)
+	app.session.inventory.try_transaction({}, {"rail": 12, "rail_slope": 4, "rail_loop": 40, "mine_cart": 1})
+	var lb_ok := bool(ws.try_place("rail_slope", lb, world.query_cell, AABB(), 3).get("ok", false))
+	for x in range(1, 6):
+		lb_ok = lb_ok and bool(ws.try_place("rail", lb + Vector3i(x, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+	lb_ok = lb_ok and bool(ws.try_place("rail_slope", lb + Vector3i(6, 0, 0), world.query_cell, AABB(), 1).get("ok", false))
+	var loop_item_slot := -1
+	for slot_index in range(F0Inventory.SLOT_COUNT):
+		if str(app.session.inventory.slots[slot_index].get("item_id", "")) == "rail_loop":
+			loop_item_slot = slot_index
+	if loop_item_slot >= F0Inventory.HOTBAR_COUNT:
+		app.session.inventory.swap_slots(loop_item_slot, 2)
+		loop_item_slot = 2
+	app.session.inventory.select_hotbar(loop_item_slot)
+	var loops_before := app.session.inventory.count("rail_loop")
+	var snapped := interaction.begin_coaster_loop_at(lb + Vector3i(3, 1, 0))
+	var snap_no_drag := not interaction.drag_active()
+	var snap_spent := loops_before - app.session.inventory.count("rail_loop") == 15
+	var snap_chain := CoasterRails.chain(ws.stations, lb + Vector3i(3, 0, 0))
+	var snap_top := lb + Vector3i(3, 6, 0)
+	var arch_joined := snap_chain.has(snap_top) and snap_chain.has(lb + Vector3i(-1, 1, 0)) and snap_chain.has(lb + Vector3i(7, 1, 0)) and (snap_chain.get(lb, []) as Array).has(lb + Vector3i(-1, 1, 0))
+	var snap_cart := ws.try_place("mine_cart", lb + Vector3i(3, 1, 0), world.query_cell, AABB(), 0)
+	var snap_cart_id := str(snap_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	var over_top := -1
+	var back_home := -1
+	if app.session.coaster_carts != null:
+		for frame in range(900):
+			app.session.coaster_carts.advance(1.0 / 30.0, false)
+			var cell := app.session.coaster_carts.rider_cell(snap_cart_id)
+			if over_top < 0 and cell == snap_top:
+				over_top = frame
+			if over_top >= 0 and back_home < 0 and cell == lb + Vector3i(3, 0, 0):
+				back_home = frame
+				break
+	# Odd spacing: slopes five apart (four rails between) is refused.
+	var ob := lb + Vector3i(0, 0, 3)
+	var ob_ok := bool(ws.try_place("rail_slope", ob, world.query_cell, AABB(), 3).get("ok", false))
+	for x in range(1, 5):
+		ob_ok = ob_ok and bool(ws.try_place("rail", ob + Vector3i(x, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+	ob_ok = ob_ok and bool(ws.try_place("rail_slope", ob + Vector3i(5, 0, 0), world.query_cell, AABB(), 1).get("ok", false))
+	var odd_result := interaction.begin_coaster_loop_at(ob + Vector3i(2, 1, 0))
+	var odd_refused: bool = odd_result.get("reason") == "LOOP_BASE_ODD" and not interaction.drag_active()
+	_record("T169_LOOP_SNAP", lb_ok and snapped.get("reason") == "LOOP_SNAPPED" and int(snapped.get("changes", {}).get("count", 0)) == 15 and int(snapped.get("changes", {}).get("radius", 0)) == 4 and snap_no_drag and snap_spent and snap_chain.size() == 22 and arch_joined and snap_cart.get("ok", false) and over_top > 0 and back_home > over_top and ob_ok and odd_refused, "Rail Loop aimed at a base row (five rails between two slopes rising outward) snaps a 15-piece radius-4 arch joined to both slopes without starting a drag; the 22-cell chain carries a cart from the base over the top and back; a base with four rails between the slopes is refused as odd", {"base": lb_ok, "snapped": snapped.get("reason"), "count": snapped.get("changes", {}).get("count"), "radius": snapped.get("changes", {}).get("radius"), "no_drag": snap_no_drag, "spent": snap_spent, "chain": snap_chain.size(), "arch_joined": arch_joined, "cart": snap_cart.get("reason"), "over_top": over_top, "back_home": back_home, "odd_base": ob_ok, "odd": odd_result.get("reason")})
+	if snap_cart.get("ok", false):
+		ws.try_dismantle(snap_cart_id, world.query_cell, AABB())
+
 	# T162 loop drag: the ghost lays a lead-in, Shift adds a radius-3 loop and
 	# a two-cell exit, X/C resize it within 2..6, release lays every piece as
 	# one chain, and a cart rides the loop before taking the exit.

@@ -222,7 +222,8 @@ static func switch_mid_shift(record: Dictionary) -> Vector3:
 ## circle's bottom-left cell: the bottom row first (left to right), then up
 ## the far side, over the top and down the near side. Midpoint-circle cells
 ## sorted by angle, so consecutive cells are 8-neighbours.
-static func loop_offsets(radius: int, along: Vector3i) -> Array[Vector3i]:
+## The midpoint-circle cells of `radius` around (0, 0), unordered.
+static func circle_points(radius: int) -> Array[Vector2i]:
 	radius = maxi(1, radius)
 	var points: Array[Vector2i] = []
 	var x := radius
@@ -238,6 +239,44 @@ static func loop_offsets(radius: int, along: Vector3i) -> Array[Vector3i]:
 		else:
 			x -= 1
 			error += 2 * (y - x) + 1
+	return points
+
+
+## Loop snap (owner 2026-09-20): the arch that closes a loop over a base
+## row whose ends are two slopes rising outward. `half_width` is half the
+## distance between the slopes; the arch is the upper part of a circle of
+## radius half_width + 1 whose vertical sides start at the slope tops.
+## Returns the arch cells as (x, y) offsets from the base row's midpoint
+## (y = 1 is the slope-top row), ordered from the left slope top over the
+## top to the right slope top. Empty when no circle fits.
+static func loop_arch_offsets(half_width: int) -> Array[Vector2i]:
+	var radius := half_width + 1
+	var side_extent := 0
+	for point in circle_points(radius):
+		if point.x == radius:
+			side_extent = maxi(side_extent, absi(point.y))
+	var kept: Array[Array] = []
+	for point in circle_points(radius):
+		if point.y < -side_extent:
+			continue
+		var angle := atan2(float(point.y), float(point.x))
+		if angle < -PI / 2.0:
+			angle += TAU
+		kept.append([angle, point])
+	kept.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) > float(b[0]))
+	var offsets: Array[Vector2i] = []
+	for entry in kept:
+		var point: Vector2i = entry[1]
+		# Lift so the lowest side cell (the slope top) sits one row above the base.
+		offsets.append(Vector2i(point.x, point.y + side_extent + 1))
+	if offsets.is_empty() or offsets[0] != Vector2i(-radius, 1) or offsets[offsets.size() - 1] != Vector2i(radius, 1):
+		return []
+	return offsets
+
+
+static func loop_offsets(radius: int, along: Vector3i) -> Array[Vector3i]:
+	radius = maxi(1, radius)
+	var points := circle_points(radius)
 	var bottom_left := Vector2i(radius, 0)
 	for point in points:
 		if point.y < bottom_left.y or (point.y == bottom_left.y and point.x < bottom_left.x):
