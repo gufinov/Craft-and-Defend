@@ -677,8 +677,18 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not world_ready or simulation_paused or saving:
 		return
 	if is_riding():
-		# Coaster car: the number keys set the speed (never the hotbar) and
+		# Coaster car: the mouse turns the head in the seat, the number keys
+		# set the speed (never the hotbar), V swaps seat / chase view and
 		# Shift leaves; everything else is swallowed while seated.
+		if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			coaster_ride.apply_mouse_look(event.relative)
+			get_viewport().set_input_as_handled()
+			return
+		if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_V or event.keycode == KEY_V):
+			_on_interaction_feedback("Ride view: %s (V toggles)" % ("chase" if coaster_ride.toggle_chase_view() else "seat"))
+			_emit_hud()
+			get_viewport().set_input_as_handled()
+			return
 		if event.is_action_pressed("interact"):
 			if Engine.get_process_frames() != _boarded_frame:
 				_on_interaction_feedback(str(leave_coaster_car().get("reason", "NOT_RIDING")))

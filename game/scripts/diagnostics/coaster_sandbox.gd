@@ -12,6 +12,7 @@ const TOP_UP_SECONDS := 1.0
 const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "mine_cart", "coaster_car", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone"]
 
 var app: CraftAndDefendApp
+var loop_car_id := ""
 var _top_up_left := 0.0
 
 
@@ -30,6 +31,22 @@ func run(application: CraftAndDefendApp) -> void:
 	_lay_demo()
 	app.session.navigation_changed.emit("COASTER SANDBOX  ·  infinite stock  ·  loop ahead (Shift on the car to ride, 1-9 speed), slope run to the right, V third person")
 	print("COASTER_SANDBOX_READY")
+	if OS.get_cmdline_user_args().has("--coaster-sandbox-ride-shot"):
+		# Seat-view pictures: boarding, mid-climb, head turned left.
+		var shots: Array[Dictionary] = [{"wait": 0.2, "name": "ride-start.png"}, {"wait": 2.2, "name": "ride-climb.png"}, {"wait": 1.2, "name": "ride-left.png", "yaw": Vector2(-400.0, 0.0)}]
+		app.session.board_coaster_car(str(loop_car_id))
+		app.session.set_ride_speed(4)
+		for shot in shots:
+			var until := Time.get_ticks_msec() + int(float(shot.wait) * 1000.0)
+			while Time.get_ticks_msec() < until:
+				await get_tree().process_frame
+			if shot.has("yaw"):
+				app.session.coaster_ride.apply_mouse_look(shot.yaw)
+				await get_tree().process_frame
+			await RenderingServer.frame_post_draw
+			get_viewport().get_texture().get_image().save_png(app.data_root.path_join(str(shot.name)))
+			print("COASTER_SANDBOX shot %s forward=%s" % [shot.name, app.session.coaster_ride.view_forward()])
+		get_tree().quit(0)
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-board-check"):
 		# Aim from beside the parked car at the rail piece under it: Shift must
 		# still board (owner 2026-09-20: the aim landed on the rail, not the car).
@@ -132,6 +149,7 @@ func _lay_demo() -> void:
 	# A coaster car parked at the start of the lead-in, ready to board (Shift);
 	# the mine cart rides the slope run (docs/COASTER_CAR_AND_HERO.md).
 	var loop_car := ws.try_place("coaster_car", origin + Vector3i(0, 1, 0), world.query_cell, AABB(), 0)
+	loop_car_id = str(loop_car.get("details", {}).get("station", {}).get("instance_id", ""))
 	print("COASTER_SANDBOX loop %s car %s" % [loop.get("reason"), loop_car.get("reason")])
 	app.session.inventory.select_hotbar(0)
 	# Slope run: rails, slope, two-block step with rails on top, then down again.

@@ -64,3 +64,7 @@ Shift aimed at the car "attacked" (the held-item use animation plays for any int
 ## Boarding fix 2 (owner playtest 2026-09-20)
 
 "I get in and out simultaneously": the Shift press that boarded also reached `GameSession._unhandled_input`, which (now riding) read it as "leave". A press in the boarding frame is ignored there (`_boarded_frame`). A car parked up in a loop has nothing behind it for the aim ray to hit, so when the ray misses, points 1–5 m along the aim are checked for a car within reach. T165 now boards through a real Shift key event as well.
+
+## Seat view (owner playtest 2026-09-20)
+
+"I need to be in the cart facing the correct direction and be able to look left and right without turning around." The ride is now a **first-person seat view** by default: the camera sits at the seated hero's eyes (`CoasterRide.SEAT_EYE`, just ahead of his face; near plane 0.08 so his head is not drawn), follows the car's basis through climbs and loops (eased with a quaternion slerp, `SEAT_BASIS_RATE` 6/s), and the mouse turns the head up to ±110° yaw and ±60° pitch within the seat (`apply_mouse_look`; the player's sensitivity and inversion apply). **V** while riding switches to the three-quarter chase camera and back (HUD shows which view V gives). Evidence: sandbox `--coaster-sandbox-ride-shot` writes `ride-start.png`, `ride-climb.png` (looking up the loop's climb) and `ride-left.png` (head turned left).

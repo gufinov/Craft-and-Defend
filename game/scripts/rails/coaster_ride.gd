@@ -27,6 +27,14 @@ const FORWARD_SMOOTH_RATE := 4.0
 ## Where the hero's feet sit under the seat node (legs hidden by the body).
 const SEAT_HERO_OFFSET := Vector3(0.0, -0.85, 0.0)
 const DISMOUNT_SIDE := 1.0
+## First-person seat view: the eyes in rig space (just ahead of the seated
+## hero's face so his head sits behind the near plane), how far the head can
+## turn, and how quickly the seat basis follows the car through a loop.
+const SEAT_EYE := Vector3(0.0, 1.16, -0.06)
+const SEAT_YAW_LIMIT := deg_to_rad(110.0)
+const SEAT_PITCH_LIMIT := deg_to_rad(60.0)
+const SEAT_BASIS_RATE := 6.0
+const SEAT_NEAR := 0.08
 
 var player: PlayerController
 var carts: CoasterCartService
@@ -38,6 +46,12 @@ var _hero: HeroModel
 var _smooth_forward := Vector3.FORWARD
 var _horizontal_back := Vector3.BACK
 var _third_person_before := false
+## Seat view state: chase view off by default; head yaw / pitch in seat space.
+var chase_view := false
+var seat_yaw := 0.0
+var seat_pitch := 0.0
+var _seat_basis := Basis.IDENTITY
+var _rig: Node3D
 
 
 func _ready() -> void:
@@ -64,7 +78,7 @@ func seated_hero() -> HeroModel:
 
 
 func hud_text() -> String:
-	return "RIDING · speed %d/%d · 1-9 speed · Shift leave" % [speed_level, MAX_SPEED_LEVEL]
+	return "RIDING · speed %d/%d · 1-9 speed · Shift leave · V %s" % [speed_level, MAX_SPEED_LEVEL, "seat view" if chase_view else "chase view"]
 
 
 ## Seats the player in the car `instance_id` (its visual body `body`, moved by
@@ -96,8 +110,12 @@ func board(instance_id: String, body: Node3D, cart_service: CoasterCartService, 
 	_hero.set_seated(true)
 	_smooth_forward = carts.travel_direction(car_id)
 	_update_horizontal_back()
-	_camera.global_position = _camera_target(rig.global_position)
-	_look(rig.global_position)
+	_rig = rig
+	seat_yaw = 0.0
+	seat_pitch = 0.0
+	_seat_basis = rig.global_basis.orthonormalized()
+	_camera.near = SEAT_NEAR
+	_place_camera(rig, true)
 	_camera.current = true
 	return {"ok": true, "reason": "COASTER_BOARDED", "instance_id": car_id}
 
@@ -122,7 +140,49 @@ func leave(activate_player: bool, capture_pointer: bool) -> Dictionary:
 	var left_id := car_id
 	car_id = ""
 	carts = null
+	_rig = null
 	return {"ok": true, "reason": "COASTER_LEFT", "instance_id": left_id, "position": landing}
+
+
+## Mouse look in the seat: the head turns within the yaw / pitch limits of
+## the seat basis (no turning around). Sensitivity and inversion follow the
+## player's settings.
+func apply_mouse_look(relative: Vector2) -> void:
+	if not is_riding() or chase_view or player == null:
+		return
+	var vertical_direction := -1.0 if player.invert_y else 1.0
+	seat_yaw = clampf(seat_yaw - relative.x * player.mouse_sensitivity, -SEAT_YAW_LIMIT, SEAT_YAW_LIMIT)
+	seat_pitch = clampf(seat_pitch - relative.y * player.mouse_sensitivity * vertical_direction, -SEAT_PITCH_LIMIT, SEAT_PITCH_LIMIT)
+	if _rig != null:
+		_place_camera(_rig, false)
+
+
+## V while riding: seat view <-> chase view.
+func toggle_chase_view() -> bool:
+	chase_view = not chase_view
+	if _rig != null:
+		_place_camera(_rig, true)
+	return chase_view
+
+
+## The camera's forward direction (diagnostics).
+func view_forward() -> Vector3:
+	return -_camera.global_basis.z
+
+
+## Seat view: eyes at SEAT_EYE in the smoothed seat basis, turned by the head
+## yaw / pitch. Chase view: the three-quarter camera behind the car.
+func _place_camera(rig: Node3D, snap: bool) -> void:
+	if chase_view:
+		var target := _camera_target(rig.global_position)
+		_camera.global_position = target if snap else _camera.global_position
+		_look(rig.global_position)
+		return
+	if snap:
+		_seat_basis = rig.global_basis.orthonormalized()
+	_camera.global_position = rig.global_position + _seat_basis * SEAT_EYE
+	var head := Basis.from_euler(Vector3(seat_pitch, seat_yaw, 0.0))
+	_camera.global_basis = _seat_basis * head
 
 
 ## 1..9 cells per second; feedback text for the HUD.
@@ -171,9 +231,17 @@ func advance(delta: float) -> void:
 		else:
 			_smooth_forward = forward
 	_update_horizontal_back()
-	var target := _camera_target(rig.global_position)
-	_camera.global_position = _camera.global_position.lerp(target, minf(1.0, delta * CAMERA_FOLLOW_RATE))
-	_look(rig.global_position)
+	if chase_view:
+		var target := _camera_target(rig.global_position)
+		_camera.global_position = _camera.global_position.lerp(target, minf(1.0, delta * CAMERA_FOLLOW_RATE))
+		_look(rig.global_position)
+		return
+	# The seat basis eases toward the car's basis so a loop's climb, top and
+	# dive read as one smooth turn of the head rather than per-cell jumps.
+	var rig_basis := rig.global_basis.orthonormalized()
+	var eased := Quaternion(_seat_basis).slerp(Quaternion(rig_basis), minf(1.0, delta * SEAT_BASIS_RATE))
+	_seat_basis = Basis(eased.normalized())
+	_place_camera(rig, false)
 
 
 func _update_horizontal_back() -> void:
