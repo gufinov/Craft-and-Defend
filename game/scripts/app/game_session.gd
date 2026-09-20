@@ -1458,6 +1458,10 @@ func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[
 	var body_origin := Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
 	var own_point := CoasterRails.ride_point(record)
 	var lean := CoasterRails.lean_center(record)
+	var curve: Dictionary = record.get("curve", {})
+	if not curve.is_empty():
+		# Lean straight at the curve's centre of curvature (any bank).
+		lean = own_point + TrackCurve.up_at(curve, TrackCurve.piece_t(record))
 	var round := record.has("loop_center")
 	# Odd quarters: the loop lies in the x-y plane (axis x, normal z).
 	var plane_axis := Vector3(1.0, 0.0, 0.0) if int(record.get("rotation_quarters", 0)) % 2 == 1 else Vector3(0.0, 0.0, 1.0)
@@ -1471,11 +1475,12 @@ func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[
 			# corner; the last bit of rail bridges the lift.
 			points.append(CoasterRails.slope_rail_corner(other) + Vector3.UP * float(record.get("loop_lift", 0.0)))
 			points.append(CoasterRails.slope_rail_corner(other))
-		elif record.has("helix_center") and other.has("helix_center"):
-			var own_theta := CoasterRails.helix_theta(record, own_point)
-			var other_theta := CoasterRails.helix_theta(record, CoasterRails.ride_point(other))
+		elif not curve.is_empty() and other.has("curve") and str(JSON.stringify(other.get("curve"))) == str(JSON.stringify(curve)):
+			# Same curve: follow it from this piece's t halfway to the other's.
+			var own_t := TrackCurve.piece_t(record)
+			var other_t := TrackCurve.piece_t(other)
 			for section in range(1, LOOP_ARC_SECTIONS + 1):
-				points.append(CoasterRails.helix_point(record, own_theta + (other_theta - own_theta) * 0.5 * float(section) / float(LOOP_ARC_SECTIONS)))
+				points.append(TrackCurve.point(curve, own_t + (other_t - own_t) * 0.5 * float(section) / float(LOOP_ARC_SECTIONS)))
 		elif round:
 			var other_angle := CoasterRails.arc_angle(record, CoasterRails.arc_point(record, CoasterRails.ride_point(other)))
 			var own_angle := CoasterRails.arc_angle(record, own_point)
@@ -1560,9 +1565,9 @@ func _build_loop_arc_visual(parent: Node3D, record: Dictionary, joined: Array[Ve
 func _build_rail_loop_visual(parent: Node3D, record: Dictionary) -> void:
 	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
 	var joined := CoasterRails.connected_cells(record, CoasterRails.track_records(workstations.stations))
-	# Loop-element pieces (they know their loop's centre) share one track
-	# style, top row included.
-	if CoasterRails.lean_center(record) != Vector3.INF:
+	# Curve pieces (TrackCurve) and classic loop-ring pieces share one track
+	# style.
+	if record.has("curve") or CoasterRails.lean_center(record) != Vector3.INF:
 		_build_loop_track_visual(parent, record, joined)
 		return
 	# Straight or cornered on one level: an ordinary rail. A diagonal joint

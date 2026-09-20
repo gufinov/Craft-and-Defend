@@ -291,7 +291,10 @@ func _up_at(tracks: Dictionary, cell: Vector3i, previous: Vector3i, next: Vector
 	# A loop with a known centre: lean straight at it (owner 2026-09-20: the
 	# cell-quantised curvature normal flipped on stair-step cells and rolled
 	# the rider's view); the point toward the centre is the inward normal.
-	var lean := CoasterRails.lean_center(tracks.get(cell, {}))
+	var record: Dictionary = tracks.get(cell, {})
+	if record.has("curve"):
+		return TrackCurve.up_at(record.get("curve", {}), TrackCurve.piece_t(record))
+	var lean := CoasterRails.lean_center(record)
 	if lean != Vector3.INF:
 		var toward := lean - _ride_point(tracks, cell, fallback)
 		if toward.length() > 0.05:

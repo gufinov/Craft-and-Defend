@@ -19,6 +19,10 @@ kinds: line | arc (radius, sweep, plane) | helix (radius, pitch, turns) |
 
 With that in place every piece below is a curve description plus a drag gesture.
 
+## Status
+
+**Card 1 is in** (2026-09-20): `game/scripts/rails/track_curve.gd` (`TrackCurve`: `make_*`, `point`, `tangent`, `up_at`, `nearest_t`, `cells`, `pieces`, `piece_t`). A record with `curve` + `t0`/`t1` rides the curve (`CoasterRails.ride_point`), joins only its recorded joints (`connections`), leans by `TrackCurve.up_at` (`CoasterCartService._up_at`) and draws with `GameSession._build_loop_track_visual` (same-curve neighbours are followed along the curve). The true loop is `TrackCurve.make_helix` laid by `TrackCurve.pieces`; the classic loop ring still uses `loop_center` (fine, it is the fallback). Cards 2–6 and 8 are open for agents.
+
 ## The pieces
 
 | Piece | Curve | Drag gesture | Notes |

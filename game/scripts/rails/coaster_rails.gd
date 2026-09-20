@@ -125,9 +125,9 @@ static func connections(record: Dictionary) -> Array[Vector3i]:
 						if not cells.has(anchor + joint_offset):
 							cells.append(anchor + joint_offset)
 		LOOP:
-			# A true-loop (helix) piece joins only what it recorded: its entry
-			# and exit sit on neighbouring lanes and must not short-circuit.
-			if not record.has("helix_center"):
+			# A curve piece (TrackCurve) joins only what it recorded: a loop's
+			# entry and exit sit on neighbouring lanes and must not short-circuit.
+			if not record.has("curve"):
 				for side: Vector3i in HORIZONTAL:
 					cells.append(anchor + side)
 			var recorded: Variant = record.get("coaster_joints")
@@ -202,8 +202,8 @@ static func ride_point(record: Dictionary) -> Vector3:
 		LOOP:
 			# A snapped arch piece rides on the true circle (owner 2026-09-20:
 			# the cell-centre polygon looked broken); others ride their centre.
-			if record.has("helix_center"):
-				return helix_point(record, helix_theta(record, Vector3(anchor) + Vector3(0.5, 0.55, 0.5)))
+			if record.has("curve"):
+				return TrackCurve.point(record.get("curve", {}), TrackCurve.piece_t(record))
 			if record.has("loop_center"):
 				return arc_point(record, Vector3(anchor) + Vector3(0.5, 0.5, 0.5))
 			return Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
@@ -345,43 +345,6 @@ const HELIX_MIN := 3
 const HELIX_MAX := 64
 
 
-## The helix of a true-loop piece: {center, radius, along, side}.
-static func helix_of(record: Dictionary) -> Dictionary:
-	var stored: Variant = record.get("helix_center")
-	if not (stored is Array) or (stored as Array).size() != 3:
-		return {}
-	var quarters := int(record.get("helix_quarters", 0))
-	return {"center": Vector3(float(stored[0]), float(stored[1]), float(stored[2])), "radius": float(record.get("helix_radius", 1.0)), "along": Vector3(switch_along(quarters)), "side": Vector3(switch_side(quarters))}
-
-
-## Point on the helix at `theta` (0 = the entry on the ground, TAU = the exit
-## one lane over).
-static func helix_point(record: Dictionary, theta: float) -> Vector3:
-	var helix := helix_of(record)
-	if helix.is_empty():
-		return Vector3.ZERO
-	var center: Vector3 = helix.center
-	return center + Vector3(helix.along) * sin(theta) * float(helix.radius) - Vector3.UP * cos(theta) * float(helix.radius) + Vector3(helix.side) * (theta / TAU)
-
-
-## The helix parameter nearest `point`: the angle round the circle, with the
-## lateral drift telling the entry end (0) from the exit end (TAU).
-static func helix_theta(record: Dictionary, point: Vector3) -> float:
-	var helix := helix_of(record)
-	if helix.is_empty():
-		return 0.0
-	var spoke: Vector3 = point - Vector3(helix.center)
-	var theta := atan2(spoke.dot(Vector3(helix.along)), -spoke.y)
-	if theta < 0.0:
-		theta += TAU
-	var drift := spoke.dot(Vector3(helix.side))
-	if drift - theta / TAU > 0.5:
-		theta += TAU
-	elif theta / TAU - drift > 0.5:
-		theta -= TAU
-	return clampf(theta, 0.0, TAU)
-
-
 ## How many pieces a true loop of `diameter` takes (its item price).
 static func helix_piece_count(diameter: int) -> int:
 	return (helix_layout(Vector3i.ZERO, 0, diameter).cells as Array).size()
@@ -394,36 +357,14 @@ static func helix_layout(entry: Vector3i, quarters: int, diameter: int) -> Dicti
 	var side := switch_side(quarters)
 	var radius := float(diameter) * 0.5
 	var ground := Vector3(entry) + Vector3(0.5, 0.55, 0.5)
-	var center := ground + Vector3.UP * radius
-	var probe := {"helix_center": [center.x, center.y, center.z], "helix_radius": radius, "helix_quarters": posmod(quarters, 4)}
-	var cells: Array[Vector3i] = []
-	var steps := maxi(720, diameter * 90)
-	for index in range(steps + 1):
-		var theta := TAU * float(index) / float(steps)
-		var point := helix_point(probe, theta)
-		var cell := Vector3i(floori(point.x), floori(point.y), floori(point.z))
-		if not cells.has(cell):
-			cells.append(cell)
+	var curve := TrackCurve.make_helix(ground, Vector3(along), Vector3(side), radius, 1.0, 1.0)
 	var exit := entry + side
-	var pieces: Array[Dictionary] = []
 	var loop_rotation := 1 if along.x != 0 else 0
-	for index in range(cells.size()):
-		var cell: Vector3i = cells[index]
-		var joints: Array = []
-		if index == 0:
-			joints.append(cell - along)
-		else:
-			joints.append(cells[index - 1])
-		if index + 1 < cells.size():
-			joints.append(cells[index + 1])
-		else:
-			joints.append(cell + along)
-		var theta := helix_theta(probe, Vector3(cell) + Vector3(0.5, 0.55, 0.5))
-		var lean := center + Vector3(side) * (theta / TAU)
-		var extra := probe.duplicate()
-		extra["loop_up_center"] = [lean.x, lean.y, lean.z]
-		pieces.append(_piece(cell, LOOP, loop_rotation, joints, extra))
-	return {"pieces": pieces, "cells": cells, "center": center, "radius": radius, "entry": entry, "exit": exit}
+	var pieces := TrackCurve.pieces(curve, LOOP, loop_rotation, entry - along, exit + along, {}, maxi(720, diameter * 90))
+	var cells: Array[Vector3i] = []
+	for piece: Dictionary in pieces:
+		cells.append(piece.cell)
+	return {"pieces": pieces, "cells": cells, "center": ground + Vector3.UP * radius, "radius": radius, "entry": entry, "exit": exit}
 
 
 ## Ring fit variants for the owner to compare (L cycles): how far above the
