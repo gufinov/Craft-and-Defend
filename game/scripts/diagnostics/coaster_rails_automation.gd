@@ -1613,6 +1613,10 @@ func _wait_region_loaded() -> void:
 				if app.session.world.query_cell(Vector3i(0, 0, z)).get("state") == "LOADED":
 					loaded_z.append(z)
 			print("REGION_LOADED x %s z %s" % [loaded_x, loaded_z])
+			# Collision meshes lag the voxels by a few frames; the Shift-aim
+			# checks ray-cast against them (T173 flaked once on the export).
+			for _settle in range(45):
+				await get_tree().physics_frame
 			return
 		await get_tree().process_frame
 	push_warning("coaster test region did not finish loading in 60 s")
