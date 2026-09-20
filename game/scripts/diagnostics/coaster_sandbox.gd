@@ -9,7 +9,7 @@ extends Node
 
 const TOP_UP_SECONDS := 1.0
 ## Hotbar order, then the rest of the pack.
-const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "rail_switch", "rail_bend", "rail_cross", "rail_curve", "rail_climb", "mine_cart", "coaster_car", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone"]
+const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "rail_switch", "rail_cross", "rail_curve", "rail_climb", "mine_cart", "coaster_car", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone"]
 
 var app: CraftAndDefendApp
 var loop_car_id := ""
@@ -58,26 +58,33 @@ func run(application: CraftAndDefendApp) -> void:
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-facing-check"):
 		app.session.board_coaster_car(str(loop_car_id))
 		app.session.set_ride_speed(6)
+		# A reversal is the travel direction flipping between two CONSECUTIVE
+		# frames (a cart turning back on itself); the circuit's U-turn is a
+		# legitimate 180 over many frames and never flips within one, which
+		# the old half-second sampling could not tell apart (reversals=1
+		# whenever a sample pair straddled the U-turn).
 		var previous_travel := Vector3.ZERO
 		var reversals := 0
 		for sample in range(40):
 			var until := Time.get_ticks_msec() + 500
 			while Time.get_ticks_msec() < until:
 				await get_tree().process_frame
+				var frame_travel: Vector3 = app.session.coaster_carts.travel_direction(str(loop_car_id))
+				if previous_travel.length() > 0.5 and frame_travel.length() > 0.5 and frame_travel.dot(previous_travel) < -0.5:
+					reversals += 1
+				previous_travel = frame_travel
 			var ride := app.session.coaster_ride
 			var hero := ride.seated_hero()
 			var travel: Vector3 = app.session.coaster_carts.travel_direction(str(loop_car_id))
 			var hero_forward: Vector3 = -hero.global_basis.z
 			var rig: Node3D = app.session.coaster_carts.cart_rig(str(loop_car_id))
-			if previous_travel.length() > 0.5 and travel.dot(previous_travel) < -0.5:
-				reversals += 1
-			previous_travel = travel
 			print("FACING t=%.1f cell=%s travel=%s hero=%s dot=%.2f rig_up=%s cam_from_rig=%s" % [sample * 0.5, app.session.coaster_carts.rider_cell(str(loop_car_id)), travel, hero_forward, travel.dot(hero_forward), rig.global_basis.y, (ride.ride_camera().global_position - rig.global_position)])
 		print("FACING reversals=%d" % reversals)
 		get_tree().quit(0)
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-switch-click"):
 		# A real right-click (press, a few frames, release) with Rail Switch
-		# held, aiming at clear plate: four pieces must be laid.
+		# held, aiming at clear plate: the whole smooth switch (its default
+		# 4-long, one-lane S-bend of `rail_loop` pieces) must be laid.
 		var player := app.session.player
 		app.session.inventory.select_hotbar(STOCK.find("rail_switch"))
 		player.global_position = Vector3(4.0, 1.0, 26.0)
@@ -85,10 +92,7 @@ func run(application: CraftAndDefendApp) -> void:
 		player.look_pitch = -0.6
 		player.apply_mouse_look(Vector2.ZERO)
 		await get_tree().process_frame
-		var before := 0
-		for station_id: String in app.session.workstations.stations:
-			if str(app.session.workstations.station(station_id).get("entity_id", "")) == "rail_switch":
-				before += 1
+		var before := app.session.workstations.stations.size()
 		for pressed in [true, false]:
 			var click := InputEventMouseButton.new()
 			click.button_index = MOUSE_BUTTON_RIGHT
@@ -96,12 +100,13 @@ func run(application: CraftAndDefendApp) -> void:
 			Input.parse_input_event(click)
 			for _frame in range(5):
 				await get_tree().process_frame
-			print("SWITCH_CLICK pressed=%s drag=%s state=%s" % [pressed, app.session.interaction.drag_active(), app.session.interaction.drag_state().get("mode", "")])
-		var after := 0
-		for station_id: String in app.session.workstations.stations:
-			if str(app.session.workstations.station(station_id).get("entity_id", "")) == "rail_switch":
-				after += 1
-		print("SWITCH_CLICK laid %d pieces" % (after - before))
+			var state := app.session.interaction.drag_state()
+			var states: Array[String] = []
+			for entry in state.get("cells", []):
+				states.append("%s:%s" % [entry.cell, entry.state])
+			print("SWITCH_CLICK pressed=%s drag=%s state=%s anchor=%s length=%s lanes=%s cells=%s" % [pressed, app.session.interaction.drag_active(), state.get("mode", ""), state.get("anchor"), state.get("curve_length"), state.get("curve_lanes"), states])
+		var after := app.session.workstations.stations.size()
+		print("SWITCH_CLICK laid %d pieces (expected %d)" % [after - before, CoasterRails.bend_piece_count(CoasterRails.BEND_DEFAULT_LENGTH, CoasterRails.BEND_DEFAULT_LANES)])
 		get_tree().quit(0)
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-board-check"):
 		# Aim from beside the parked car at the rail piece under it: Shift must
@@ -318,15 +323,16 @@ func _lay_mountain() -> void:
 	ws.try_place("rail", Vector3i(15, 1, lane), world.query_cell, AABB(), 0)
 	var cart := ws.try_place("mine_cart", Vector3i(-14, 2, lane), world.query_cell, AABB(), 0)
 	print("COASTER_SANDBOX mountain climb %s (%s pieces) descent %s (%s pieces) cart %s chain %d" % [up.get("reason"), up.get("changes", {}).get("count"), down.get("reason"), down.get("changes", {}).get("count"), cart.get("reason"), CoasterRails.chain(ws.stations, Vector3i(-14, 1, lane)).size()])
-	# CoasterCraft cards 2-3 (behind the loop, z 36..42): a Smooth Switch
-	# heading +x from (-12, 36) that lands one lane right (z 37) six cells on,
+	# CoasterCraft cards 2-3 (behind the loop, z 36..42): a Rail Switch (the
+	# smooth lane switcher) heading +x from (-12, 54) that lands one lane
+	# right (z 55) four cells on,
 	# and a Crossing heading +x from (-1, 39) whose two tracks swap lanes
 	# z 39 <-> z 41 over eight cells; plain rails lead in and out, a mine
 	# cart on each.
 	var bend_entry := Vector3i(-12, 1, 54)
 	# The circuit used the rail stack: top up before the lead-ins.
 	_stock_pack(false)
-	app.session.inventory.select_hotbar(STOCK.find("rail_bend"))
+	app.session.inventory.select_hotbar(STOCK.find("rail_switch"))
 	interaction.placement_rotation_quarters = 1
 	interaction.set_curve_size(CoasterRails.BEND_DEFAULT_LENGTH, CoasterRails.BEND_DEFAULT_LANES)
 	interaction.begin_curve_tool_at(bend_entry)
@@ -336,11 +342,13 @@ func _lay_mountain() -> void:
 		ws.try_place("rail", bend_entry - Vector3i(step, 0, 0), world.query_cell, AABB(), 0)
 		ws.try_place("rail", Vector3i(bend_layout.exit) + Vector3i(step, 0, 0), world.query_cell, AABB(), 0)
 	var bend_cart := ws.try_place("mine_cart", bend_entry + Vector3i(-2, 1, 0), world.query_cell, AABB(), 0)
-	print("COASTER_SANDBOX smooth switch %s (%s pieces) cart %s" % [bend.get("reason"), bend.get("changes", {}).get("count"), bend_cart.get("reason")])
+	print("COASTER_SANDBOX rail switch %s (%s pieces) cart %s" % [bend.get("reason"), bend.get("changes", {}).get("count"), bend_cart.get("reason")])
 	var cross_entry := Vector3i(-1, 1, 57)
 	app.session.inventory.select_hotbar(STOCK.find("rail_cross"))
-	interaction.set_curve_size(CoasterRails.CROSS_DEFAULT_LENGTH, CoasterRails.CROSS_DEFAULT_LANES)
+	# Size the crossing once its drag is active: with no drag, set_curve_size
+	# sizes the Rail Switch (it leaked 8 x 2 into the player's first switch).
 	interaction.begin_curve_tool_at(cross_entry)
+	interaction.set_curve_size(CoasterRails.CROSS_DEFAULT_LENGTH, CoasterRails.CROSS_DEFAULT_LANES)
 	var cross := interaction.commit_drag_place()
 	var cross_layout := CoasterRails.cross_layout(cross_entry, 1, CoasterRails.CROSS_DEFAULT_LENGTH, CoasterRails.CROSS_DEFAULT_LANES)
 	for step in range(1, 3):

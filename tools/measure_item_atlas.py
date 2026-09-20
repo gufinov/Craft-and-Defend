@@ -39,7 +39,7 @@ DERIVED_ORDER = [
     "rail_slope", "rail_loop", "mine_cart",
     "coaster_car", "rail_switch",
     "rail_climb",
-    "rail_bend", "rail_cross",
+    "rail_cross",
     "rail_curve",
 ]
 # Nominal search cells. Row heights for the item atlas follow the shipped

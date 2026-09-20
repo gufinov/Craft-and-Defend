@@ -467,10 +467,10 @@
     "rail_switch": {
       "atlas": "derived",
       "rect": [
-        1060,
-        788,
-        185,
-        217
+        1062,
+        781,
+        181,
+        231
       ]
     },
     "rail_climb": {
@@ -482,19 +482,10 @@
         197
       ]
     },
-    "rail_bend": {
-      "atlas": "derived",
-      "rect": [
-        38,
-        1037,
-        181,
-        231
-      ]
-    },
     "rail_cross": {
       "atlas": "derived",
       "rect": [
-        286,
+        30,
         1038,
         197,
         229
@@ -503,7 +494,7 @@
     "rail_curve": {
       "atlas": "derived",
       "rect": [
-        556,
+        300,
         1044,
         193,
         194

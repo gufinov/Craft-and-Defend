@@ -28,11 +28,14 @@ const SLOPE := "rail_slope"
 const LOOP := "rail_loop"
 ## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): the rideable car.
 const CAR := "coaster_car"
-## Lane Switcher (owner 2026-09-20): four `rail_switch` pieces laid at once.
-## Roles: "in" (entry, lane 0), "mid_a" (lane 0) and "mid_b" (lane 1) side
-## by side carrying the 45-degree diagonal, "out" (exit, lane 1 = one cell
-## to the RIGHT of travel). Every piece stores its joints; the entry and
-## exit also join plain rails behind / ahead.
+## The blocky lane-shift piece the loop element lays (`loop_element_layout`)
+## as its entry / exit runs. Roles: "in" (entry, lane 0), "mid_a" (lane 0)
+## and "mid_b" (lane 1) side by side carrying the 45-degree diagonal, "out"
+## (exit, lane 1 = one cell to the RIGHT of travel), "fill" (base row).
+## Every piece stores its joints; the entry and exit also join plain rails
+## behind / ahead. The Rail Switch ITEM no longer lays these: since
+## 2026-09-20 it is the smooth lane switcher (`bend_layout`, coaster_tool
+## "bend"); this entity id remains its tool identity.
 const SWITCH := "rail_switch"
 const SWITCH_MID_OFFSET := 0.25
 ## The Climb (CoasterCraft card 5): the tool item's entity id; its pieces
@@ -74,21 +77,6 @@ static func switch_along(rotation_quarters: int) -> Vector3i:
 
 static func switch_side(rotation_quarters: int) -> Vector3i:
 	return Vector3i(Vector3(switch_along(rotation_quarters)).cross(Vector3.UP).round())
-
-
-## The four cells and joints of a lane switcher anchored at `entry` with
-## rotation `quarters`: [{cell, role, joints: Array[Vector3i]}] in ride order.
-static func switch_layout(entry: Vector3i, quarters: int) -> Array[Dictionary]:
-	var along := switch_along(quarters)
-	var side := switch_side(quarters)
-	var mid_a := entry + along
-	var mid_b := mid_a + side
-	var exit := mid_b + along
-	var entry_joints: Array[Vector3i] = [mid_a]
-	var mid_a_joints: Array[Vector3i] = [entry, mid_b]
-	var mid_b_joints: Array[Vector3i] = [mid_a, exit]
-	var exit_joints: Array[Vector3i] = [mid_b]
-	return [{"cell": entry, "role": "in", "joints": entry_joints}, {"cell": mid_a, "role": "mid_a", "joints": mid_a_joints}, {"cell": mid_b, "role": "mid_b", "joints": mid_b_joints}, {"cell": exit, "role": "out", "joints": exit_joints}]
 
 
 static func loop_plane_axis(rotation_quarters: int) -> Vector3i:
@@ -601,8 +589,9 @@ static func loop_offsets(radius: int, along: Vector3i) -> Array[Vector3i]:
 
 
 # ---------------------------------------------------------------------------
-# CoasterCraft cards 2 and 3 (docs/COASTERCRAFT_TRACKS.md): the Smooth Switch
-# (`rail_bend`, coaster_tool "bend") and the Crossing (`rail_cross`, "cross").
+# CoasterCraft cards 2 and 3 (docs/COASTERCRAFT_TRACKS.md): the Rail Switch
+# (`rail_switch`, coaster_tool "bend" - the smooth lane switcher since
+# 2026-09-20) and the Crossing (`rail_cross`, "cross").
 # Both lay `rail_loop` records carrying a TrackCurve s-bend: the track leaves
 # the entry cell heading along its rotation, drifts `lanes` lanes sideways
 # (positive = to the RIGHT of travel, negative = left) with a smoothstep
@@ -624,7 +613,7 @@ static func loop_offsets(radius: int, along: Vector3i) -> Array[Vector3i]:
 const BEND_MIN_LENGTH := 3
 const BEND_MAX_LENGTH := 40
 const BEND_MAX_LANES := 6
-const BEND_DEFAULT_LENGTH := 6
+const BEND_DEFAULT_LENGTH := 4
 const BEND_DEFAULT_LANES := 1
 const CROSS_DEFAULT_LENGTH := 8
 const CROSS_DEFAULT_LANES := 2
@@ -653,7 +642,7 @@ static func bend_curve(entry: Vector3i, quarters: int, length: int, lanes: int) 
 	return TrackCurve.make_s_bend(origin, along, side, float(length), float(absi(lanes)), 0.0)
 
 
-## The Smooth Switch's pieces: {pieces, cells, entry, exit, curve}.
+## The Rail Switch's pieces: {pieces, cells, entry, exit, curve}.
 static func bend_layout(entry: Vector3i, quarters: int, length: int, lanes: int) -> Dictionary:
 	length = bend_length_clamp(length)
 	lanes = bend_lanes_clamp(lanes)
@@ -669,7 +658,7 @@ static func bend_layout(entry: Vector3i, quarters: int, length: int, lanes: int)
 	return {"pieces": pieces, "cells": cells, "entry": entry, "exit": exit, "curve": curve}
 
 
-## How many pieces a Smooth Switch of `length` / `lanes` takes (its price).
+## How many pieces a Rail Switch of `length` / `lanes` takes (its price).
 static func bend_piece_count(length: int, lanes: int) -> int:
 	return (bend_layout(Vector3i.ZERO, 0, length, lanes).cells as Array).size()
 

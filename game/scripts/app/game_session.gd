@@ -27,14 +27,12 @@ const REASON_TEXT := {
 	"DRAG_PLACED": "Blocks placed.",
 	"LINE_PLACED": "Pieces laid in a line.",
 	"COASTER_PLACED": "Coaster track laid.",
-	"SWITCH_PLACED": "Lane switcher laid: the track shifts one lane to the right.",
 	"LOOP_PLACED": "Loop built. Rails join its entry (behind) and its exit (ahead, one lane right).",
 	"LOOP_BLOCKED": "The loop does not fit here: a red cell is in the way (ground, tree, hill or block). Move, turn (W / R) or resize (4-9).",
-	"SWITCH_BLOCKED": "The lane switcher needs four free cells: entry, two side by side, exit.",
 	"CLIMB_PLACED": "Climb built. Rails join its entry (behind) and its landing (ahead, at the top).",
 	"CLIMB_BLOCKED": "The climb does not fit here: a red cell is in the way (ground, tree, hill or block). Move, turn (W / R), or hold Shift and aim past the obstacle.",
-	"BEND_PLACED": "Smooth switch laid. Rails join its entry (behind) and its exit (ahead, on the new lane).",
-	"BEND_BLOCKED": "The smooth switch does not fit here: a red cell is in the way. Move, turn (W / R) or resize (Shift-aim, X / C, 4-9).",
+	"BEND_PLACED": "Lane switcher laid: the track shifts to its new lane. Rails join its entry (behind) and its exit (ahead, on the new lane).",
+	"BEND_BLOCKED": "The lane switcher does not fit here: a red cell is in the way. Move, turn (W / R) or resize (Shift-aim, X / C, 4-9).",
 	"CROSS_PLACED": "Crossing laid: two tracks swap lanes through the middle. Rails join both entries (behind) and both exits (ahead).",
 	"CROSS_BLOCKED": "The crossing does not fit here: a red cell is in the way. Move, turn (W / R) or resize (Shift-aim, X / C, 4-9).",
 	"CURVE_PLACED": "Curve laid. Rails join its entry (behind) and its exit (ahead in the new direction); a 45 or 135 curve ends on a diagonal that only another curve continues.",
@@ -95,6 +93,8 @@ var hero_armored := false
 ## into InteractionService.auto_clear.
 var track_auto_clear := false
 var _cleared_for_track := 0
+## Lanes the last Rail Switch shifted (its BEND_PLACED report names them).
+var _bend_lanes_laid := 0
 var open_data: Dictionary
 var world_ready := false
 var saving := false
@@ -401,7 +401,7 @@ func select_hotbar(index: int) -> Dictionary:
 		elif item_id == CoasterRails.CLIMB:
 			_on_interaction_feedback("CLIMB: aim at the ground where the climb starts, HOLD Right Mouse — the whole climb ghosts (slope-in, grade, slope-out); hold Shift and aim where it should land (a hilltop, or below for a descent) to set its length and rise (or 4-9 / X / C for the rise), W / R turn it; let go to build it (red = does not fit)")
 		elif interaction != null and interaction.is_smooth_bend_item(item_id):
-			_on_interaction_feedback("SMOOTH SWITCH: aim where the entry goes, HOLD Right Mouse — the S-bend ghost appears; hold Shift and aim where the exit goes (forward = length, sideways = lanes, left or right), or 4-9 / X / C for the length; W / R turn it; let go to lay it (one item per piece, red = does not fit)")
+			_on_interaction_feedback("RAIL SWITCH: aim where the entry goes, HOLD Right Mouse — the smooth S-bend ghost appears (4 long, one lane right); hold Shift and aim where the exit goes (forward = length, sideways = lanes, left or right), or 4-9 / X / C for the length; W / R turn it; let go to lay it (one item per piece, red = does not fit)")
 		elif interaction != null and interaction.is_rail_cross_item(item_id):
 			_on_interaction_feedback("CROSSING: aim where the first entry goes, HOLD Right Mouse — two S-bends that swap lanes appear; hold Shift and aim where the first exit goes (forward = length, sideways = lanes), or 4-9 / X / C for the length; W / R turn it; let go to lay it (one item per piece, red = does not fit)")
 		elif item_id == "rail_curve":
@@ -696,6 +696,10 @@ func _update_sun_visual() -> void:
 
 func _on_interaction_feedback(message: String) -> void:
 	var friendly := str(REASON_TEXT.get(message, message if message.contains(" ") else message.replace("_", " ").capitalize()))
+	if message == "BEND_PLACED" and _bend_lanes_laid != 0:
+		# The Rail Switch's report names the shift it laid (owner 2026-09-20).
+		friendly = "Lane switcher laid: the track shifts %d lane%s to the %s. Rails join its entry (behind) and its exit (ahead, on the new lane)." % [absi(_bend_lanes_laid), "" if absi(_bend_lanes_laid) == 1 else "s", "right" if _bend_lanes_laid > 0 else "left"]
+		_bend_lanes_laid = 0
 	if _cleared_for_track > 0:
 		friendly += " Cleared %d blocks for the track." % _cleared_for_track
 		_cleared_for_track = 0
@@ -748,7 +752,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				return
 		return
 	if interaction != null and interaction.drag_active() and not interaction.curve_tool_mode().is_empty():
-		# Smooth Switch / Crossing ghost: 4-9 set the length instead of the hotbar.
+		# Rail Switch / Crossing ghost: 4-9 set the length instead of the hotbar.
 		for size in range(4, 10):
 			if event.is_action_pressed("hotbar_%d" % size):
 				interaction.set_curve_length(size)
@@ -810,6 +814,8 @@ func _on_interaction_result(result: Dictionary) -> void:
 		# Track auto-clear: the player's own report of this result (which
 		# follows) carries the count.
 		_cleared_for_track = int(changes.cleared)
+	if result.get("ok", false) and str(result.get("reason", "")) == "BEND_PLACED":
+		_bend_lanes_laid = int(changes.get("lanes", 0))
 	if result.get("ok", false) and str(result.get("reason", "")) == "OPEN_STATION":
 		var station_record: Dictionary = changes.get("station", {})
 		if str(station_record.get("entity_id", "")) == CoasterRails.CAR:

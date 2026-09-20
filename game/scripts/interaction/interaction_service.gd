@@ -175,7 +175,7 @@ func drag_active() -> bool:
 func begin_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
 	var item_id := inventory.active_item_id()
 	var item := registry.item(item_id)
-	if item.has("places_entity") and (is_linear_entity_item(item_id) or is_coaster_loop_item(item_id) or is_lane_switch_item(item_id) or is_climb_item(item_id) or is_curve_tool_item(item_id) or is_curve_item(item_id)):
+	if item.has("places_entity") and (is_linear_entity_item(item_id) or is_coaster_loop_item(item_id) or is_climb_item(item_id) or is_curve_tool_item(item_id) or is_curve_item(item_id)):
 		var anchor := placement_anchor_from_view(origin, direction)
 		if anchor == Vector3i.MAX:
 			return _finish(false, "NO_TARGET")
@@ -190,8 +190,6 @@ func begin_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
 			return begin_coaster_loop_at(anchor)
 		if is_curve_item(item_id):
 			return begin_curve_at(anchor)
-		if is_lane_switch_item(item_id):
-			return begin_lane_switch_at(anchor)
 		if is_climb_item(item_id):
 			return begin_climb_at(anchor)
 		if is_curve_tool_item(item_id):
@@ -329,13 +327,6 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 			move_blueprint(snapped.cell)
 			_drag.snapped = bool(snapped.snapped)
 		return drag_state()
-	if str(_drag.get("mode", "drag")) == "lane_switch":
-		# The four-piece ghost follows the aim; W / R turn it (replanned there).
-		var switch_anchor := placement_anchor_from_view(origin, direction, 12.0)
-		if switch_anchor != Vector3i.MAX and switch_anchor != _drag.anchor:
-			_drag.anchor = switch_anchor
-			_replan_lane_switch()
-		return drag_state()
 	if str(_drag.get("mode", "drag")) == "climb":
 		# The whole climb follows the aim; W / R and 4-9 / X / C replan it.
 		# Shift held: the entry stays put and the aim sets both the length
@@ -360,7 +351,7 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 			_drag.anchor = climb_anchor
 			_replan_climb()
 	if CURVE_TOOL_MODES.has(str(_drag.get("mode", "drag"))):
-		# Smooth Switch / Crossing (CoasterCraft cards 2-3): the ghost follows
+		# Rail Switch / Crossing (CoasterCraft cards 2-3): the ghost follows
 		# the aim; Shift held: the entry stays put and the aim's offset from it
 		# sets the length (forward) and the lanes (sideways, negative = left).
 		if vertical:
@@ -533,8 +524,6 @@ func commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 		return _commit_entity_line()
 	if mode == "loop_element":
 		return _commit_loop_element()
-	if mode == "lane_switch":
-		return _commit_lane_switch()
 	if mode == "climb":
 		return _commit_climb()
 	if CURVE_TOOL_MODES.has(mode):
@@ -890,8 +879,10 @@ func _commit_loop_element() -> Dictionary:
 
 
 # ---------------------------------------------------------------------------
-# CoasterCraft cards 2 and 3 (docs/COASTERCRAFT_TRACKS.md): the Smooth Switch
-# (`rail_bend`, coaster_tool "bend") and the Crossing (`rail_cross`, "cross").
+# CoasterCraft cards 2 and 3 (docs/COASTERCRAFT_TRACKS.md): the Rail Switch
+# (`rail_switch`, coaster_tool "bend" - the smooth lane switcher; owner
+# 2026-09-20: "the Rail Switch should be updated to be smooth", replacing the
+# four-piece blocky drag) and the Crossing (`rail_cross`, "cross").
 # A right-press with either held ghosts the whole piece at the aim as
 # `rail_loop` records riding a TrackCurve s-bend (CoasterRails.bend_layout /
 # cross_layout); W / R turn it; X / C and 4-9 set the length; Shift held
@@ -991,7 +982,7 @@ func set_curve_lanes(lanes: int) -> Dictionary:
 
 
 ## Length (3..40, pack-capped) and lanes (-6..6, never 0) of the active
-## curve tool - or of the Smooth Switch when none is active.
+## curve tool - or of the Rail Switch when none is active.
 func set_curve_size(length: int, lanes: int) -> Dictionary:
 	var mode := curve_tool_mode()
 	lanes = CoasterRails.bend_lanes_clamp(lanes, curve_lanes())
@@ -1250,74 +1241,6 @@ func _drag_floor_end(origin: Vector3, direction: Vector3) -> Dictionary:
 		return {}
 	var point := origin + direction * distance
 	return {"cell": Vector3i(floori(point.x), anchor.y, floori(point.z))}
-
-
-## Lane Switcher (owner 2026-09-20): the held item lays four pieces at once.
-func is_lane_switch_item(item_id: String) -> bool:
-	var item := registry.item(item_id)
-	if item.is_empty() or not item.has("places_entity"):
-		return false
-	return str(registry.entity(str(item.places_entity)).get("coaster_tool", "")) == "switch"
-
-
-func begin_lane_switch_at(anchor: Vector3i) -> Dictionary:
-	var item_id := inventory.active_item_id()
-	var item := registry.item(item_id)
-	if not is_lane_switch_item(item_id) or workstations == null:
-		return _finish(false, "NOT_PLACEABLE")
-	_drag = {"mode": "lane_switch", "item_id": item_id, "entity_id": str(item.places_entity), "voxel_id": 0, "anchor": anchor, "end": anchor, "cells": [], "shape": "switch", "rotation": placement_rotation_quarters}
-	_replan_lane_switch()
-	return {"ok": true, "reason": "DRAG_STARTED", "anchor": anchor}
-
-
-## The four cells (entry, two middles, exit) from the anchor along the
-## placement rotation; each validated as a `rail_switch` placement.
-func _replan_lane_switch() -> void:
-	var rotation := placement_rotation_quarters
-	_drag.rotation = rotation
-	var budget: int = inventory.count(str(_drag.item_id))
-	var entries: Array[Dictionary] = []
-	for piece: Dictionary in CoasterRails.switch_layout(_drag.anchor, rotation):
-		var cell: Vector3i = piece.cell
-		var check := workstations.preview_placement(str(_drag.entity_id), cell, rotation, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB())
-		var clear_plan := {"ok": false, "cells": []} if check.get("ok", false) else auto_clear_plan(str(_drag.entity_id), cell, rotation, str(check.get("reason", "PLACEMENT_FAILED")))
-		var state := "ok"
-		if not check.get("ok", false) and not clear_plan.get("ok", false):
-			state = "blocked"
-		elif budget <= 0:
-			state = "unaffordable"
-		else:
-			budget -= 1
-			if clear_plan.get("ok", false):
-				state = "clear"
-		entries.append({"cell": cell, "state": state, "reason": str(check.get("reason", "PLACEMENT_FAILED")), "voxel_id": 0, "item_id": str(_drag.item_id), "entity_id": str(_drag.entity_id), "joints": piece.joints, "role": str(piece.role), "clear": clear_plan.cells})
-	_drag.cells = entries
-
-
-## All four pieces or nothing: a switcher with a blocked cell is not laid.
-func _commit_lane_switch() -> Dictionary:
-	var entity_id := str(_drag.get("entity_id", ""))
-	var rotation := int(_drag.get("rotation", 0))
-	var item_id := str(_drag.get("item_id", ""))
-	var entries: Array = _drag.cells
-	_drag = {}
-	for entry in entries:
-		if str(entry.state) not in ["ok", "clear"]:
-			return _finish(false, "SWITCH_BLOCKED" if str(entry.state) == "blocked" else "NO_RESOURCE")
-	var clearing := clear_cells_for_track(_clear_cells_of(entries))
-	var cells: Array[Vector3i] = []
-	for entry in entries:
-		var cell: Vector3i = entry.cell
-		var joints: Array = []
-		for joint in entry.get("joints", []):
-			if joint is Vector3i:
-				var offset: Vector3i = joint - cell
-				joints.append([offset.x, offset.y, offset.z])
-		var result := workstations.try_place(entity_id, cell, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB(), rotation, {"coaster_joints": joints, "switch_role": str(entry.role)})
-		if not result.get("ok", false):
-			return _finish(false, str(result.get("reason", "PLACEMENT_FAILED")), {"cells": cells})
-		cells.append(cell)
-	return _finish(true, "SWITCH_PLACED", {"cells": cells, "count": cells.size(), "entity_id": entity_id, "items": {item_id: -cells.size()}, "cleared": int(clearing.cleared), "drops": clearing.drops})
 
 
 # ---------------------------------------------------------------------------
@@ -1841,8 +1764,6 @@ func _axe_log_cells(cell: Vector3i, block: Dictionary) -> Array[Vector3i]:
 
 func rotate_placement(direction: int = 1) -> int:
 	placement_rotation_quarters = posmod(placement_rotation_quarters + signi(direction), 4)
-	if not _drag.is_empty() and str(_drag.get("mode", "")) == "lane_switch":
-		_replan_lane_switch()
 	if not _drag.is_empty() and str(_drag.get("mode", "")) == "loop_element":
 		_replan_loop_element()
 	if not _drag.is_empty() and str(_drag.get("mode", "")) == "climb":
@@ -1869,7 +1790,7 @@ func secondary_press_from_view(origin: Vector3, direction: Vector3) -> Dictionar
 	if not station_id.is_empty() and not workstations.station_type(station_id).is_empty():
 		return _finish(true, "OPEN_STATION", {"instance_id": station_id, "station": workstations.station(station_id)})
 	var item := registry.item(inventory.active_item_id())
-	if item.has("places_block") or is_linear_entity_item(inventory.active_item_id()) or is_coaster_loop_item(inventory.active_item_id()) or is_lane_switch_item(inventory.active_item_id()) or is_climb_item(inventory.active_item_id()) or is_curve_tool_item(inventory.active_item_id()) or is_curve_item(inventory.active_item_id()):
+	if item.has("places_block") or is_linear_entity_item(inventory.active_item_id()) or is_coaster_loop_item(inventory.active_item_id()) or is_climb_item(inventory.active_item_id()) or is_curve_tool_item(inventory.active_item_id()) or is_curve_item(inventory.active_item_id()):
 		return begin_drag_place(origin, direction)
 	return place_from_view(origin, direction)
 

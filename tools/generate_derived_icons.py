@@ -38,8 +38,8 @@ DERIVED = [
     "coaster_car", "rail_switch",
     # CoasterCraft tracks (docs/COASTERCRAFT_TRACKS.md): the Climb tool.
     "rail_climb",
-    # CoasterCraft cards 2-3 (docs/COASTERCRAFT_TRACKS.md): drawn placeholders.
-    "rail_bend", "rail_cross",
+    # CoasterCraft card 3 (docs/COASTERCRAFT_TRACKS.md): drawn placeholder.
+    "rail_cross",
     # CoasterCraft tracks (docs/COASTERCRAFT_TRACKS.md): drawn placeholders.
     "rail_curve",
 ]
@@ -256,19 +256,6 @@ def icon_rail_loop() -> Image.Image:
     return canvas
 
 
-def icon_rail_switch() -> Image.Image:
-    """Two rails entering at the bottom left, jogging 45 degrees, leaving top right."""
-    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(canvas)
-    ties = [(70, 210), (70, 178), (128, 128), (186, 78), (186, 46)]
-    for x, y in ties:
-        draw.rectangle([x - 34, y - 7, x + 34, y + 7], fill=(139, 82, 38, 255))
-    for offset in (-20, 20):
-        x = 70 + offset
-        draw.line([(x, 236), (x, 168), (x + 116, 52), (x + 116, 20)], fill=(110, 118, 126, 255), width=14, joint="curve")
-    return canvas
-
-
 def icon_rail_climb() -> Image.Image:
     """Rails running flat, curving up a grade and levelling out on a landing."""
     canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
@@ -293,8 +280,8 @@ def _s_bend_points(x0: int, y0: int, x1: int, y1: int, steps: int = 24) -> list:
     return points
 
 
-def icon_rail_bend() -> Image.Image:
-    """Smooth Switch: two rails sweeping in one S-bend from the bottom left to the top right."""
+def icon_rail_switch() -> Image.Image:
+    """Rail Switch (the smooth lane switcher): two rails sweeping in one S-bend from the bottom left to the top right."""
     canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
     centre = _s_bend_points(72, 236, 184, 20)
@@ -363,7 +350,7 @@ BUILDERS = {
     "light_block_blue": lambda: owner_icon("light_block_blue"), "light_block_red": lambda: owner_icon("light_block_red"),
     "rail_slope": icon_rail_slope, "rail_loop": icon_rail_loop, "mine_cart": icon_mine_cart, "rail_switch": icon_rail_switch,
     "coaster_car": lambda: owner_icon("coaster_car"), "rail_climb": icon_rail_climb,
-    "rail_bend": icon_rail_bend, "rail_cross": icon_rail_cross,
+    "rail_cross": icon_rail_cross,
     "rail_curve": icon_rail_curve,
 }
 
