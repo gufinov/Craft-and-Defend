@@ -25,6 +25,8 @@ With that in place every piece below is a curve description plus a drag gesture.
 
 **Card 5 is in** (2026-09-20, `feature/coaster-climbs`): the **Climb** tool (`rail_climb`, Workbench 212) — slope-in, straight grade and slope-out as one `TrackCurve.make_climb` (an s_bend with no shift, bank 0) of `rail_loop` pieces from the entry to a landing `length` ahead and `rise` up (negative = descent); Shift-aim sets both. See [COASTER_RAILS.md — The Climb](COASTER_RAILS.md#the-climb-coastercraft-card-5-2026-09-20); T176–T178.
 
+**Card 4 is in** (2026-09-20, `feature/coaster-curves`): the **Curve** item (`rail_curve`) lays the 90° curve, the U-turn and the free curve (45 / 90 / 135 / 180 by Shift-aim, left or right, radius 2..30) as one flat, banked `make_arc` of `rail_loop` pieces; see [COASTER_RAILS.md — Flat curves](COASTER_RAILS.md#flat-curves-90-u-turn-free-curve-coastercraft-card-4-2026-09-20). Open: a plain rail cannot join a diagonal (45 / 135) end — only another curve continues it.
+
 ## The pieces
 
 | Piece | Curve | Drag gesture | Notes |
@@ -37,6 +39,11 @@ With that in place every piece below is a curve description plus a drag gesture.
 | **Free curve** | arc, any sweep | drag the far end; the sweep follows the aim direction | for gentle bends |
 | **Slope-in / slope-out** (done: the Climb) | s_bend with no shift (smoothstep height blend; concave in, convex out) | Shift-aim at the landing: distance = length, height = rise | any grade; the straight grade is the middle of the same curve |
 | **Straight climb** (done: the Climb) | the same curve | Shift-aim up and along | the mountain straight |
+| **90° curve** (done) | arc, sweep 90°, radius *R* | Shift-aim ahead-right; half the distance = R | banked: lean toward the inside |
+| **U-turn** (done) | arc, sweep 180°, radius R | Shift-aim behind: lanes apart = 2R | |
+| **Free curve** (done) | arc, 45 / 135 | Shift-aim ahead (45) or straight right (135); left mirrors | diagonal ends chain curve to curve |
+| **Slope-in / slope-out** | vertical_arc (concave into a climb; convex over a crest) | drag up: the climb angle | any grade, not only 45°; pairs with the straight climb |
+| **Straight climb** | line at a grade | Shift-drag up and along | the mountain straight |
 | **Winding snake** (switchbacks) | macro: climb + banked U-turn, repeated | drag from the foot to the summit; the tool lays N switchbacks that fit | the mountain road |
 | **Corkscrew** | helix around the travel axis (pitch = its length) | Shift + aim distance = length | the loop's cousin; riders invert sideways |
 | **Splitter (Y)** and **merge** | two arcs leaving one cell | drag the branch; Shift toggles which way the switch points | a switch state on the piece; a lever later |

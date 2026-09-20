@@ -40,6 +40,8 @@ DERIVED = [
     "rail_climb",
     # CoasterCraft cards 2-3 (docs/COASTERCRAFT_TRACKS.md): drawn placeholders.
     "rail_bend", "rail_cross",
+    # CoasterCraft tracks (docs/COASTERCRAFT_TRACKS.md): drawn placeholders.
+    "rail_curve",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -320,6 +322,24 @@ def icon_rail_cross() -> Image.Image:
     return canvas
 
 
+def icon_rail_curve() -> Image.Image:
+    """Two rails entering at the bottom, bending 90 degrees to the right on ties."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    # The arc's centre is at the top right; the rails are two concentric quarter circles.
+    center = (236, 20)
+    for radius, width in ((176, 14), (136, 14)):
+        box = [center[0] - radius, center[1] - radius, center[0] + radius, center[1] + radius]
+        draw.arc(box, 90, 180, fill=(110, 118, 126, 255), width=width)
+    import math
+    for step in range(5):
+        angle = math.radians(96 + step * 18)
+        inner = (center[0] + 120 * math.cos(angle), center[1] + 120 * math.sin(angle))
+        outer = (center[0] + 194 * math.cos(angle), center[1] + 194 * math.sin(angle))
+        draw.line([inner, outer], fill=(139, 82, 38, 255), width=16)
+    return canvas
+
+
 def icon_mine_cart() -> Image.Image:
     """An oak cart with iron bands on two wheels, seen from the side."""
     canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
@@ -344,6 +364,7 @@ BUILDERS = {
     "rail_slope": icon_rail_slope, "rail_loop": icon_rail_loop, "mine_cart": icon_mine_cart, "rail_switch": icon_rail_switch,
     "coaster_car": lambda: owner_icon("coaster_car"), "rail_climb": icon_rail_climb,
     "rail_bend": icon_rail_bend, "rail_cross": icon_rail_cross,
+    "rail_curve": icon_rail_curve,
 }
 
 

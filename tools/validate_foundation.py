@@ -16,7 +16,7 @@ NAVIGATION_SCENARIOS = {"corridor_detour", "trench", "two_step_stair", "bridge_r
 ATTRIBUTE_ENTITIES = {"core_of_power", "enemy_core", "torch", "wall_lantern", "post_lantern", "campfire", "light_block_blue", "light_block_red"}
 ATTRIBUTE_ROLES = {"core", "light", "decor", "rail"}
 # Coaster rails side project (docs/COASTER_RAILS.md): track pieces and the cart.
-COASTER_TOOLS = {"loop", "switch", "climb", "bend", "cross"}
+COASTER_TOOLS = {"loop", "switch", "climb", "bend", "cross", "curve"}
 ATTRIBUTE_MOUNTS = {"ground", "wall", "ceiling", "any_solid_top", "any_solid_top_or_wall", "block"}
 
 

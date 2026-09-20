@@ -9,6 +9,9 @@ extends Node
 ## track. Runs with `--coaster-rails-automation=gate` (headless: T160-T162, T168,
 ## T170-T171) and `--coaster-rails-automation=visual` (needs a window: T163
 ## renders `coaster-rails.png`, T172 `coaster-smooth.png`).
+## track. Runs with `--coaster-rails-automation=gate` (headless: T160-T162, T168,
+## T173-T174) and `--coaster-rails-automation=visual` (needs a window: T163
+## renders `coaster-rails.png`, T175 `coaster-curves.png`).
 
 var app: CraftAndDefendApp
 var failures: Array[String] = []
@@ -37,6 +40,7 @@ func _run_gate() -> void:
 	app._on_start_pressed()
 	if not await _wait_ready():
 		return
+	await _wait_region_loaded()
 	app.session.player.deactivate()
 	app.session.simulation_paused = true
 	var registry := app.session.registry
@@ -607,6 +611,234 @@ func _run_gate() -> void:
 	# entering on A leaves on A's exit, one entering on B on B's; the shared
 	# cell draws both tracks.
 	await _test_crossing()
+	# T173 the 90-degree curve (CoasterCraft card 4, 2026-09-20): with Curve
+	# held a press ghosts a whole flat arc of rail_loop pieces from the entry
+	# bending right; Shift-aim snaps the sweep and sets the radius (aiming
+	# left mirrors it); the pack caps the radius; release lays all pieces for
+	# one item each; both ends join plain rails; a cart rides through and back
+	# leaning into the bend; a blocked ghost lays nothing; save round-trip.
+	var cv := Vector3i(40, 0, 40)
+	_level_ground(cv + Vector3i(-8, 0, -8), 24, 26, 9)
+	app.session.inventory.try_transaction({}, {"rail": 12, "rail_curve": 40, "mine_cart": 1})
+	var curve_slot := -1
+	for slot_index in range(F0Inventory.SLOT_COUNT):
+		if str(app.session.inventory.slots[slot_index].get("item_id", "")) == "rail_curve":
+			curve_slot = slot_index
+	if curve_slot >= F0Inventory.HOTBAR_COUNT:
+		app.session.inventory.swap_slots(curve_slot, 4)
+		curve_slot = 4
+	app.session.inventory.select_hotbar(curve_slot)
+	var curve_entity: Dictionary = registry.entity("rail_curve")
+	var curve_content := str(curve_entity.get("coaster_tool", "")) == "curve" and (curve_entity.get("support_offsets", [1]) as Array).is_empty() and interaction.is_curve_item("rail_curve") and ItemIconCatalog.missing_item_ids(["rail_curve"]).is_empty()
+	var curve_recipe_ok := false
+	for recipe in registry.recipes_for("workbench"):
+		if str(recipe.get("id", "")) == "rail_curve":
+			curve_recipe_ok = int(recipe.get("recipe_book_order", -1)) == 211 and int(recipe.get("outputs", {}).get("rail_curve", 0)) == 8
+	# Travel +x (rotation 1): right of travel is +z.
+	interaction.placement_rotation_quarters = 1
+	interaction.curve_radius = 4
+	interaction.curve_sweep = 90
+	interaction.curve_left = false
+	var cv_press_origin := Vector3(cv) + Vector3(0.5, 2.0, 3.0)
+	var cv_press := interaction.secondary_press_from_view(cv_press_origin, (Vector3(cv) + Vector3(0.5, 0.0, 0.5) - cv_press_origin).normalized())
+	var cv_press_mode := str(interaction.drag_state().get("mode", ""))
+	interaction.cancel_drag_place()
+	var cv_started := interaction.begin_curve_at(cv)
+	var cv_ghost := interaction.drag_state()
+	var cv_ghost_cells: Array = cv_ghost.get("cells", [])
+	var cv_ghost_ok := not cv_ghost_cells.is_empty()
+	var cv_ghost_flat := true
+	for entry in cv_ghost_cells:
+		cv_ghost_ok = cv_ghost_ok and str(entry.state) == "ok" and str(entry.entity_id) == "rail_loop"
+		cv_ghost_flat = cv_ghost_flat and Vector3i(entry.cell).y == cv.y
+	var cv_layout := CoasterRails.curve_layout(cv, 1, 4.0, 90.0)
+	var cv_exit: Vector3i = cv_layout.exit
+	# A 90-degree bend of radius 4 to the right of +x travel exits 4 cells
+	# on (+x) and 4 to the right (+z), heading +z.
+	var cv_shape: bool = cv_exit == cv + Vector3i(4, 0, 4) and Vector3i(cv_ghost.get("curve_exit", Vector3i.ZERO)) == cv_exit and Vector3i(cv_layout.exit_cell_ahead) == cv_exit + Vector3i(0, 0, 1) and Vector3i(cv_layout.before) == cv + Vector3i(-1, 0, 0)
+	var default_count := cv_ghost_cells.size()
+	# Shift-aim (from above): 12 cells straight right of travel snaps a
+	# 135-degree bend of radius 6; 12 cells ahead-left a 90-degree LEFT bend.
+	interaction.update_drag_place(Vector3(cv) + Vector3(0.5, 6.0, 0.5 + 12.0), Vector3.DOWN, true)
+	var aimed_135 := int(interaction.drag_state().get("curve_sweep", 0)) == 135 and int(interaction.drag_state().get("curve_radius", 0)) == 6 and not bool(interaction.drag_state().get("curve_left", true))
+	interaction.update_drag_place(Vector3(cv) + Vector3(0.5 + 8.5, 6.0, 0.5 - 8.5), Vector3.DOWN, true)
+	var aimed_left := int(interaction.drag_state().get("curve_sweep", 0)) == 90 and int(interaction.drag_state().get("curve_radius", 0)) == 6 and bool(interaction.drag_state().get("curve_left", false))
+	var left_exit: Vector3i = interaction.drag_state().get("curve_exit", Vector3i.ZERO)
+	var left_mirrored := left_exit == cv + Vector3i(6, 0, -6)
+	# Straight ahead snaps 45 degrees; straight behind a U-turn.
+	interaction.update_drag_place(Vector3(cv) + Vector3(0.5 + 8.0, 6.0, 0.5), Vector3.DOWN, true)
+	var aimed_45 := int(interaction.drag_state().get("curve_sweep", 0)) == 45
+	interaction.update_drag_place(Vector3(cv) + Vector3(0.5 - 8.0, 6.0, 0.5), Vector3.DOWN, true)
+	var aimed_180 := int(interaction.drag_state().get("curve_sweep", 0)) == 180
+	# Number keys and X / C set the radius; the pack (40 curves) caps it.
+	interaction.set_curve_sweep(90, false)
+	interaction.set_curve_radius(5)
+	var five := int(interaction.drag_state().get("curve_radius", 0)) == 5
+	interaction.curve_keys(false, true)
+	interaction.curve_keys(false, false)
+	var six := int(interaction.drag_state().get("curve_radius", 0)) == 6
+	interaction.curve_keys(true, false)
+	interaction.curve_keys(false, false)
+	var five_again := int(interaction.drag_state().get("curve_radius", 0)) == 5
+	interaction.set_curve_radius(30)
+	var capped_radius := int(interaction.drag_state().get("curve_radius", 0))
+	var curves_in_pack := app.session.inventory.count("rail_curve")
+	var cv_capped_ok := capped_radius < 30 and CoasterRails.curve_piece_count(capped_radius, 90) <= curves_in_pack and CoasterRails.curve_piece_count(capped_radius + 1, 90) > curves_in_pack
+	interaction.set_curve_radius(4)
+	var cv_before := app.session.inventory.count("rail_curve")
+	var cv_laid := interaction.commit_drag_place()
+	interaction.placement_rotation_quarters = 0
+	var cv_paid := cv_before - app.session.inventory.count("rail_curve") == default_count
+	# Plain rails behind the entry (-x) and beyond the exit (+z).
+	var cv_rails := true
+	for x in range(1, 4):
+		cv_rails = cv_rails and bool(ws.try_place("rail", cv + Vector3i(-x, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+	for z in range(1, 4):
+		cv_rails = cv_rails and bool(ws.try_place("rail", cv_exit + Vector3i(0, 0, z), world.query_cell, AABB(), 0).get("ok", false))
+	var cv_chain := CoasterRails.chain(ws.stations, cv)
+	var cv_joined := cv_chain.size() == default_count + 6 and cv_chain.has(cv_exit + Vector3i(0, 0, 3)) and cv_chain.has(cv + Vector3i(-3, 0, 0)) and (cv_chain.get(cv, []) as Array).size() == 2 and (cv_chain.get(cv_exit, []) as Array).size() == 2
+	var cv_entry_record: Dictionary = ws.station(ws.station_at_cell(cv))
+	var cv_exit_record: Dictionary = ws.station(ws.station_at_cell(cv_exit))
+	var cv_ends_flush := CoasterRails.ride_point(cv_entry_record).is_equal_approx(Vector3(cv) + Vector3(0.5, 0.55, 0.5)) and CoasterRails.ride_point(cv_exit_record).is_equal_approx(Vector3(cv_exit) + Vector3(0.5, 0.55, 0.5))
+	var cv_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(cv))
+	var cv_drawn := cv_body != null and cv_body.get_node_or_null("LoopTrack") != null
+	# The mid piece leans toward the centre by about the bank (0.35).
+	var cv_center: Vector3 = cv_layout.center
+	var cv_mid_cell: Vector3i = cv_layout.cells[int(cv_layout.cells.size() / 2.0)]
+	var cv_mid_record: Dictionary = ws.station(ws.station_at_cell(cv_mid_cell))
+	var cv_mid_up := TrackCurve.up_at(cv_mid_record.get("curve", {}), TrackCurve.piece_t(cv_mid_record))
+	var cv_toward := cv_center - CoasterRails.ride_point(cv_mid_record)
+	cv_toward.y = 0.0
+	var cv_lean := cv_mid_up.y > 0.8 and cv_mid_up.dot(cv_toward.normalized()) > 0.3
+	var cv_cart := ws.try_place("mine_cart", cv + Vector3i(-3, 1, 0), world.query_cell, AABB(), 0)
+	var cv_cart_id := str(cv_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	var cv_far := -1
+	var cv_home := -1
+	var cv_rig_lean := false
+	if app.session.coaster_carts != null:
+		for frame in range(600):
+			app.session.coaster_carts.advance(1.0 / 30.0, false)
+			var cell := app.session.coaster_carts.rider_cell(cv_cart_id)
+			if cell == cv_mid_cell:
+				var cv_rig: Node3D = app.session.coaster_carts.cart_rig(cv_cart_id)
+				var rig_up: Vector3 = cv_rig.global_basis.y
+				cv_rig_lean = cv_rig_lean or (rig_up.y > 0.8 and rig_up.dot(cv_toward.normalized()) > 0.3)
+			if cv_far < 0 and cell == cv_exit + Vector3i(0, 0, 3):
+				cv_far = frame
+			if cv_far >= 0 and cv_home < 0 and cell == cv + Vector3i(-3, 0, 0):
+				cv_home = frame
+				break
+	if cv_cart.get("ok", false):
+		ws.try_dismantle(cv_cart_id, world.query_cell, AABB())
+	# Blocked: a stone block where the arc ends; nothing is laid.
+	var cv_blocked_anchor := cv + Vector3i(0, 0, 12)
+	world.set_cell(cv_blocked_anchor + Vector3i(4, 0, 4), 3)
+	app.session.inventory.select_hotbar(curve_slot)
+	interaction.placement_rotation_quarters = 1
+	interaction.begin_curve_at(cv_blocked_anchor)
+	var cv_red := 0
+	for entry in interaction.drag_state().get("cells", []):
+		if str(entry.state) == "blocked":
+			cv_red += 1
+	var cv_stations_before := ws.stations.size()
+	var cv_refused := interaction.commit_drag_place()
+	interaction.placement_rotation_quarters = 0
+	var cv_nothing_laid: bool = ws.stations.size() == cv_stations_before and cv_refused.get("reason") == "CURVE_BLOCKED"
+	var cv_saved: Variant = JSON.parse_string(JSON.stringify(ws.snapshot()))
+	var cv_restored := ws.restore(cv_saved, world.query_cell) if cv_saved is Dictionary else {"ok": false, "reason": "SNAPSHOT_NOT_JSON"}
+	var cv_restored_chain := CoasterRails.chain(ws.stations, cv)
+	var cv_round_trip: bool = cv_restored.get("ok", false) and cv_restored_chain.size() == cv_chain.size() and ws.station(ws.station_at_cell(cv_mid_cell)).has("curve") and CoasterRails.ride_point(ws.station(ws.station_at_cell(cv_exit))).is_equal_approx(Vector3(cv_exit) + Vector3(0.5, 0.55, 0.5))
+	_record("T173_CURVE_90", curve_content and curve_recipe_ok and cv_press.get("reason") == "DRAG_STARTED" and cv_press_mode == "curve" and cv_started.get("ok", false) and cv_ghost_ok and cv_ghost_flat and cv_shape and default_count >= 6 and aimed_135 and aimed_left and left_mirrored and aimed_45 and aimed_180 and five and six and five_again and cv_capped_ok and cv_laid.get("reason") == "CURVE_PLACED" and int(cv_laid.get("changes", {}).get("count", 0)) == default_count and cv_paid and cv_rails and cv_joined and cv_ends_flush and cv_drawn and cv_lean and cv_cart.get("ok", false) and cv_far > 0 and cv_home > cv_far and cv_rig_lean and cv_red > 0 and cv_nothing_laid and cv_round_trip, "rail_curve (curve tool, no support, icon, recipe 211 -> 8) is registered; with Curve held a right-press ghosts a flat 90-degree arc of rail_loop pieces bending right with radius 4 (entry heading +x exits 4 on and 4 right, heading +z); Shift-aim straight right snaps 135 degrees at half the distance, ahead-left a mirrored 90-degree LEFT bend, ahead 45, behind 180; 5 by key, C 6, X 5, 30 caps at what 40 curves pay for; release lays every piece for one item each; three rails behind and three beyond the exit chain through it with flush ends; the pieces draw the curve track and lean toward the centre by the bank; a cart rides to the far rail leaning into the bend and comes home; a stone block on the arc shows red and lays nothing; the laid curve survives a save round-trip", {"content": curve_content, "recipe": curve_recipe_ok, "press": cv_press.get("reason"), "press_mode": cv_press_mode, "started": cv_started.get("reason"), "ghost": cv_ghost_ok, "flat": cv_ghost_flat, "shape": cv_shape, "exit": cv_exit, "count": default_count, "aimed_135": aimed_135, "aimed_left": aimed_left, "left_exit": left_exit, "aimed_45": aimed_45, "aimed_180": aimed_180, "five": five, "six": six, "five_again": five_again, "capped_radius": capped_radius, "capped_ok": cv_capped_ok, "laid": cv_laid.get("reason"), "paid": cv_paid, "rails": cv_rails, "chain": cv_chain.size(), "joined": cv_joined, "flush": cv_ends_flush, "drawn": cv_drawn, "mid_up": cv_mid_up, "lean": cv_lean, "cart": cv_cart.get("reason"), "far": cv_far, "home": cv_home, "rig_lean": cv_rig_lean, "red": cv_red, "nothing_laid": cv_nothing_laid, "refused": cv_refused.get("reason"), "round_trip": cv_round_trip})
+
+	# T174 the U-turn and two 45s: a 180-degree curve of radius 3 exits on
+	# the lane 2R to the right heading back, joins rails at both ends and a
+	# cart rides through; a 45-degree curve ends on a diagonal that a second
+	# 45 continues (its entry takes the diagonal heading) into one chain that
+	# turns 90 degrees in all and joins plain rails at both ends.
+	var ut := Vector3i(-40, 0, 50)
+	_level_ground(ut + Vector3i(-6, 0, -3), 14, 12, 9)
+	app.session.inventory.try_transaction({}, {"rail": 16, "rail_curve": 64, "mine_cart": 1})
+	app.session.inventory.select_hotbar(curve_slot)
+	interaction.placement_rotation_quarters = 1
+	interaction.begin_curve_at(ut)
+	interaction.set_curve_sweep(180, false)
+	interaction.set_curve_radius(3)
+	var ut_ghost: Array = interaction.drag_state().get("cells", [])
+	var ut_ghost_ok := not ut_ghost.is_empty()
+	for entry in ut_ghost:
+		ut_ghost_ok = ut_ghost_ok and str(entry.state) == "ok"
+	var ut_laid := interaction.commit_drag_place()
+	var ut_layout := CoasterRails.curve_layout(ut, 1, 3.0, 180.0)
+	var ut_exit: Vector3i = ut_layout.exit
+	var ut_shape: bool = ut_exit == ut + Vector3i(0, 0, 6) and Vector3i(ut_layout.exit_cell_ahead) == ut_exit + Vector3i(-1, 0, 0)
+	var ut_rails := true
+	for x in range(1, 4):
+		ut_rails = ut_rails and bool(ws.try_place("rail", ut + Vector3i(-x, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+		ut_rails = ut_rails and bool(ws.try_place("rail", ut_exit + Vector3i(-x, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+	var ut_chain := CoasterRails.chain(ws.stations, ut)
+	var ut_joined := ut_chain.size() == ut_ghost.size() + 6 and ut_chain.has(ut_exit + Vector3i(-3, 0, 0)) and (ut_chain.get(ut, []) as Array).size() == 2 and (ut_chain.get(ut_exit, []) as Array).size() == 2
+	var ut_cart := ws.try_place("mine_cart", ut + Vector3i(-3, 1, 0), world.query_cell, AABB(), 0)
+	var ut_cart_id := str(ut_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	var ut_far := -1
+	var ut_home := -1
+	if app.session.coaster_carts != null:
+		for frame in range(600):
+			app.session.coaster_carts.advance(1.0 / 30.0, false)
+			var cell := app.session.coaster_carts.rider_cell(ut_cart_id)
+			if ut_far < 0 and cell == ut_exit + Vector3i(-3, 0, 0):
+				ut_far = frame
+			if ut_far >= 0 and ut_home < 0 and cell == ut + Vector3i(-3, 0, 0):
+				ut_home = frame
+				break
+	if ut_cart.get("ok", false):
+		ws.try_dismantle(ut_cart_id, world.query_cell, AABB())
+	# Two 45s: the first travelling -x bends right to a diagonal (-x, -z)
+	# end; the second, pressed on that diagonal cell, takes the diagonal
+	# heading and bends right to -z.
+	var fa := Vector3i(-42, 0, 26)
+	_level_ground(fa + Vector3i(-12, 0, -10), 18, 14, 9)
+	interaction.placement_rotation_quarters = 3
+	interaction.begin_curve_at(fa)
+	interaction.set_curve_sweep(45, false)
+	interaction.set_curve_radius(6)
+	var fa_laid := interaction.commit_drag_place()
+	var fa_layout := CoasterRails.curve_layout(fa, 3, 6.0, 45.0)
+	var fa_exit: Vector3i = fa_layout.exit
+	var fa_ahead: Vector3i = fa_layout.exit_cell_ahead
+	var fa_diagonal := fa_ahead - fa_exit == Vector3i(-1, 0, -1)
+	# A plain rail on the diagonal cell does not join (documented limit).
+	var fa_rail := ws.try_place("rail", fa_ahead, world.query_cell, AABB(), 0)
+	var fa_rail_alone := CoasterRails.chain(ws.stations, fa_ahead).size() == 1
+	if fa_rail.get("ok", false):
+		ws.try_dismantle(str(fa_rail.get("details", {}).get("station", {}).get("instance_id", "")), world.query_cell, AABB())
+	interaction.placement_rotation_quarters = 0
+	interaction.begin_curve_at(fa_ahead)
+	var fb_state := interaction.drag_state()
+	var fb_diagonal_entry := bool(fb_state.get("curve_diagonal_entry", false))
+	var fb_laid := interaction.commit_drag_place()
+	var fb_exit: Vector3i = fb_state.get("curve_exit", Vector3i.ZERO)
+	var fb_layout := CoasterRails.curve_layout(fa_ahead, 0, 6.0, 45.0, false, Vector3(-1.0, 0.0, -1.0).normalized())
+	var fb_heading: Vector3 = fb_layout.exit_heading
+	var fb_turns_to_z := fb_heading.is_equal_approx(Vector3(0.0, 0.0, -1.0)) and Vector3i(fb_layout.exit_cell_ahead) == fb_exit + Vector3i(0, 0, -1)
+	var fb_rails := true
+	for x in range(1, 4):
+		fb_rails = fb_rails and bool(ws.try_place("rail", fa + Vector3i(x, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+	for z in range(1, 4):
+		fb_rails = fb_rails and bool(ws.try_place("rail", fb_exit + Vector3i(0, 0, -z), world.query_cell, AABB(), 0).get("ok", false))
+	var fb_chain := CoasterRails.chain(ws.stations, fa)
+	var fb_joined := fb_chain.has(fa_exit) and fb_chain.has(fa_ahead) and fb_chain.has(fb_exit) and fb_chain.has(fb_exit + Vector3i(0, 0, -3)) and fb_chain.has(fa + Vector3i(3, 0, 0)) and fb_chain.size() == int(fa_laid.get("changes", {}).get("count", 0)) + int(fb_laid.get("changes", {}).get("count", 0)) + 6
+	var fb_cart := ws.try_place("mine_cart", fa + Vector3i(3, 1, 0), world.query_cell, AABB(), 0)
+	var fb_cart_id := str(fb_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	var fb_far := -1
+	if app.session.coaster_carts != null:
+		for frame in range(600):
+			app.session.coaster_carts.advance(1.0 / 30.0, false)
+			if app.session.coaster_carts.rider_cell(fb_cart_id) == fb_exit + Vector3i(0, 0, -3):
+				fb_far = frame
+				break
+	if fb_cart.get("ok", false):
+		ws.try_dismantle(fb_cart_id, world.query_cell, AABB())
+	_record("T174_UTURN_AND_45S", ut_ghost_ok and ut_laid.get("reason") == "CURVE_PLACED" and ut_shape and ut_rails and ut_joined and ut_cart.get("ok", false) and ut_far > 0 and ut_home > ut_far and fa_laid.get("reason") == "CURVE_PLACED" and fa_diagonal and fa_rail.get("ok", false) and fa_rail_alone and fb_diagonal_entry and fb_laid.get("reason") == "CURVE_PLACED" and fb_turns_to_z and fb_rails and fb_joined and fb_cart.get("ok", false) and fb_far > 0, "a 180-degree curve of radius 3 entered heading +x exits 6 cells to the right (2R) heading -x and joins three rails at each end; a cart rides to the far rail and home; a 45-degree curve of radius 6 ends on the diagonal (-x, -z) cell, which a plain rail cannot join; a Curve pressed on that cell takes the diagonal heading and its 45 bends to -z, and the two 45s with rails behind and beyond chain as one track a cart rides to the far end", {"ghost": ut_ghost_ok, "laid": ut_laid.get("reason"), "exit": ut_exit, "shape": ut_shape, "rails": ut_rails, "chain": ut_chain.size(), "joined": ut_joined, "cart": ut_cart.get("reason"), "far": ut_far, "home": ut_home, "fa_laid": fa_laid.get("reason"), "fa_exit": fa_exit, "fa_ahead": fa_ahead, "fa_diagonal": fa_diagonal, "fa_rail": fa_rail.get("reason"), "fa_rail_alone": fa_rail_alone, "fb_diagonal_entry": fb_diagonal_entry, "fb_laid": fb_laid.get("reason"), "fb_exit": fb_exit, "fb_heading": fb_heading, "fb_turns_to_z": fb_turns_to_z, "fb_rails": fb_rails, "fb_chain": fb_chain.size(), "fb_joined": fb_joined, "fb_cart": fb_cart.get("reason"), "fb_far": fb_far})
 
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on
@@ -615,6 +847,7 @@ func _run_visual() -> void:
 	app._on_start_pressed()
 	if not await _wait_ready():
 		return
+	await _wait_region_loaded()
 	var player := app.session.player
 	player.deactivate()
 	# Paused: the carts advance only by the fixed steps below, so the loop cart
@@ -1043,6 +1276,89 @@ func _render_climb() -> void:
 				climb_parts += body.find_children("*", "MeshInstance3D", true, false).size()
 	_record("T178_CLIMB_RENDERED", climb_laid.get("reason") == "CLIMB_PLACED" and climb_cart.get("ok", false) and climb_error == OK and climb_image.get_size() == Vector2i(1280, 720) and climb_parts >= 40 and climb_cart_cell.y >= climb_origin.y + 3, "a climb of length 12 / rise 6 renders with rails at both ends and a mine cart part way up, seen from the side, in one 1280x720 view", {"path": climb_path, "size": climb_image.get_size(), "error": climb_error, "laid": climb_laid.get("reason"), "cart": climb_cart.get("reason"), "parts": climb_parts, "cart_cell": climb_cart_cell})
 
+	# T175 (CoasterCraft card 4): a 90-degree curve, a U-turn and an S of two
+	# 45s render on their own plate in `coaster-curves.png`.
+	var cp := Vector3i(20, 0, 50)
+	_level_ground(cp + Vector3i(-16, 0, -8), 36, 18, 10)
+	app.session.inventory.try_transaction({}, {"rail_curve": 64, "rail": 24, "mine_cart": 1})
+	var curve_slot := -1
+	for slot_index in range(F0Inventory.SLOT_COUNT):
+		if str(app.session.inventory.slots[slot_index].get("item_id", "")) == "rail_curve":
+			curve_slot = slot_index
+	if curve_slot >= F0Inventory.HOTBAR_COUNT:
+		app.session.inventory.swap_slots(curve_slot, 4)
+		curve_slot = 4
+	app.session.inventory.select_hotbar(curve_slot)
+	interaction.creative = true
+	interaction.placement_rotation_quarters = 1
+	# The 90: entry at cp heading +x, radius 4, bending right (+z).
+	interaction.begin_curve_at(cp)
+	interaction.set_curve_sweep(90, false)
+	interaction.set_curve_radius(4)
+	var ninety := interaction.commit_drag_place()
+	var ninety_exit: Vector3i = ninety.get("changes", {}).get("exit", cp)
+	for x in range(1, 4):
+		ws.try_place("rail", cp + Vector3i(-x, 0, 0), world.query_cell, AABB(), 0)
+	for z in range(1, 3):
+		ws.try_place("rail", ninety_exit + Vector3i(0, 0, z), world.query_cell, AABB(), 0)
+	var curve_cart := ws.try_place("mine_cart", cp + Vector3i(-2, 1, 0), world.query_cell, AABB(), 0)
+	# The U-turn: 10 cells to the -x, radius 3, bending right.
+	var up := cp + Vector3i(-10, 0, 0)
+	interaction.begin_curve_at(up)
+	interaction.set_curve_sweep(180, false)
+	interaction.set_curve_radius(3)
+	var uturn := interaction.commit_drag_place()
+	var uturn_exit: Vector3i = uturn.get("changes", {}).get("exit", up)
+	for x in range(1, 3):
+		ws.try_place("rail", up + Vector3i(-x, 0, 0), world.query_cell, AABB(), 0)
+		ws.try_place("rail", uturn_exit + Vector3i(-x, 0, 0), world.query_cell, AABB(), 0)
+	# The S: a 45 right then a 45 left from the diagonal end, radius 5.
+	var sp := cp + Vector3i(0, 0, -5)
+	interaction.begin_curve_at(sp)
+	interaction.set_curve_sweep(45, false)
+	interaction.set_curve_radius(5)
+	var s_first := interaction.commit_drag_place()
+	var s_first_layout := CoasterRails.curve_layout(sp, 1, 5.0, 45.0)
+	interaction.begin_curve_at(s_first_layout.exit_cell_ahead)
+	interaction.set_curve_sweep(45, true)
+	var s_second := interaction.commit_drag_place()
+	var s_exit: Vector3i = s_second.get("changes", {}).get("exit", sp)
+	for x in range(1, 3):
+		ws.try_place("rail", sp + Vector3i(-x, 0, 0), world.query_cell, AABB(), 0)
+		ws.try_place("rail", s_exit + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+	interaction.placement_rotation_quarters = 0
+	interaction.creative = false
+	var curve_cart_id := str(curve_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	if app.session.coaster_carts != null:
+		for _frame in range(60):
+			app.session.coaster_carts.advance(1.0 / 30.0, false)
+	for _frame in range(4):
+		await get_tree().physics_frame
+	player.global_position = Vector3(cp) + Vector3(-3.0, 7.5, 17.0)
+	player.rotation = Vector3.ZERO
+	player.look_pitch = -0.36
+	player.apply_mouse_look(Vector2.ZERO)
+	for _frame in range(90):
+		await get_tree().process_frame
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+	var curve_texture := get_viewport().get_texture()
+	var curve_image := curve_texture.get_image() if curve_texture != null else null
+	var curve_path := app.data_root.path_join("coaster-curves.png")
+	if curve_image == null:
+		_record("T175_CURVES_RENDERED", false, "a 90-degree curve, a U-turn and an S of two 45s render in one 1280x720 view", {"path": curve_path, "reason": "NO_RENDERED_VIEWPORT"})
+		return
+	var curve_error := curve_image.save_png(curve_path)
+	var curve_parts := 0
+	for station_id: String in ws.stations.keys():
+		var record: Dictionary = ws.stations[station_id]
+		if str(record.get("entity_id", "")) == "rail_loop" and record.has("curve") and Vector3i(record.get("anchor", Vector3i.ZERO)).x >= cp.x - 16:
+			var body: Node3D = app.session._station_visuals.get(station_id)
+			if body != null:
+				curve_parts += body.find_children("*", "MeshInstance3D", true, false).size()
+	var curve_cart_cell := app.session.coaster_carts.rider_cell(curve_cart_id) if app.session.coaster_carts != null else Vector3i(0, -9999, 0)
+	_record("T175_CURVES_RENDERED", ninety.get("reason") == "CURVE_PLACED" and uturn.get("reason") == "CURVE_PLACED" and s_first.get("reason") == "CURVE_PLACED" and s_second.get("reason") == "CURVE_PLACED" and curve_cart.get("ok", false) and curve_error == OK and curve_image.get_size() == Vector2i(1280, 720) and curve_parts >= 60 and curve_cart_cell != cp + Vector3i(-2, 0, 0), "a radius-4 90-degree curve with a mine cart on it, a radius-3 U-turn and an S of two radius-5 45s render with rails at their ends in one 1280x720 view", {"path": curve_path, "size": curve_image.get_size(), "error": curve_error, "ninety": ninety.get("reason"), "uturn": uturn.get("reason"), "s_first": s_first.get("reason"), "s_second": s_second.get("reason"), "s_exit": s_exit, "cart": curve_cart.get("reason"), "curve_parts": curve_parts, "cart_cell": curve_cart_cell})
+
 
 func _count_entities(ws: WorkstationService, entity_id: String) -> int:
 	var count := 0
@@ -1058,6 +1374,34 @@ func _level_ground(origin: Vector3i, width: int, depth: int, height: int) -> voi
 			app.session.world.set_cell(origin + Vector3i(x, -1, z), 3)
 			for y in range(height):
 				app.session.world.set_cell(origin + Vector3i(x, y, z), 0)
+
+
+## The fixtures of every coaster test live in x -30..46, z 12..64 around the
+## spawn; terrain streams in over a few seconds, so wait until that box is
+## editable before laying anything (placements on unloaded cells fail with
+## UNLOADED and levelling silently does nothing).
+func _wait_region_loaded() -> void:
+	var deadline := Time.get_ticks_msec() + 60000
+	while Time.get_ticks_msec() < deadline:
+		var all_loaded := true
+		for x in range(-30, 47, 8):
+			for z in range(12, 65, 8):
+				for y in [-1, 6]:
+					if app.session.world.query_cell(Vector3i(x, y, z)).get("state") != "LOADED":
+						all_loaded = false
+		if all_loaded:
+			var loaded_x: Array[int] = []
+			var loaded_z: Array[int] = []
+			for x in range(-96, 97, 8):
+				if app.session.world.query_cell(Vector3i(x, 0, 40)).get("state") == "LOADED":
+					loaded_x.append(x)
+			for z in range(-64, 129, 8):
+				if app.session.world.query_cell(Vector3i(0, 0, z)).get("state") == "LOADED":
+					loaded_z.append(z)
+			print("REGION_LOADED x %s z %s" % [loaded_x, loaded_z])
+			return
+		await get_tree().process_frame
+	push_warning("coaster test region did not finish loading in 60 s")
 
 
 func _wait_ready() -> bool:

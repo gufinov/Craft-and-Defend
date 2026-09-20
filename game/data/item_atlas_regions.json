@@ -500,6 +500,15 @@
         229
       ]
     },
+    "rail_curve": {
+      "atlas": "derived",
+      "rect": [
+        556,
+        1044,
+        193,
+        194
+      ]
+    },
     "gold_ore": {
       "atlas": "gold",
       "rect": [

@@ -37,6 +37,8 @@ const REASON_TEXT := {
 	"BEND_BLOCKED": "The smooth switch does not fit here: a red cell is in the way. Move, turn (W / R) or resize (Shift-aim, X / C, 4-9).",
 	"CROSS_PLACED": "Crossing laid: two tracks swap lanes through the middle. Rails join both entries (behind) and both exits (ahead).",
 	"CROSS_BLOCKED": "The crossing does not fit here: a red cell is in the way. Move, turn (W / R) or resize (Shift-aim, X / C, 4-9).",
+	"CURVE_PLACED": "Curve laid. Rails join its entry (behind) and its exit (ahead in the new direction); a 45 or 135 curve ends on a diagonal that only another curve continues.",
+	"CURVE_BLOCKED": "The curve does not fit here: a red cell is in the way (ground, tree, hill or block). Move, turn (W / R) or resize (4-9, Shift-aim).",
 	"COASTER_BOARDED": "Boarded the coaster car — 1-9 sets the speed, Shift or Escape leaves.",
 	"COASTER_LEFT": "Left the coaster car.",
 	"ALREADY_RIDING": "Already riding.",
@@ -397,6 +399,8 @@ func select_hotbar(index: int) -> Dictionary:
 			_on_interaction_feedback("SMOOTH SWITCH: aim where the entry goes, HOLD Right Mouse — the S-bend ghost appears; hold Shift and aim where the exit goes (forward = length, sideways = lanes, left or right), or 4-9 / X / C for the length; W / R turn it; let go to lay it (one item per piece, red = does not fit)")
 		elif interaction != null and interaction.is_rail_cross_item(item_id):
 			_on_interaction_feedback("CROSSING: aim where the first entry goes, HOLD Right Mouse — two S-bends that swap lanes appear; hold Shift and aim where the first exit goes (forward = length, sideways = lanes), or 4-9 / X / C for the length; W / R turn it; let go to lay it (one item per piece, red = does not fit)")
+		elif item_id == "rail_curve":
+			_on_interaction_feedback("CURVE: aim at the ground where the entry goes, HOLD Right Mouse — the curve ghost appears (90°, radius 4, bending right); hold Shift and aim where it should go: ahead-right = 45°, right = 90°, behind-right = 135°, behind = U-turn, aim LEFT to bend left, further = wider (or 4-9 / X / C); W / R turn the entry; let go to build it (red = does not fit); one Curve per piece")
 	return result
 
 
@@ -756,6 +760,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			if event.is_action_pressed("hotbar_%d" % rise):
 				interaction.set_climb_rise(rise)
 				_on_interaction_feedback("Climb rise %d, length %d (4-9 / X / C set the rise while the ghost shows; Shift-aim at the landing for any length and rise, below the entry for a descent)" % [interaction.climb_rise, interaction.climb_length])
+	if interaction != null and interaction.drag_active() and str(interaction.drag_state().get("mode", "")) == "curve":
+		# Curve ghost: 4-9 set the radius instead of the hotbar.
+		for radius in range(4, 10):
+			if event.is_action_pressed("hotbar_%d" % radius):
+				interaction.set_curve_radius(radius)
+				_on_interaction_feedback("Curve radius %d (4-9 while the ghost shows; X / C too; Shift-aim for any size and the sweep)" % int(interaction.drag_state().get("curve_radius", radius)))
 				get_viewport().set_input_as_handled()
 				return
 	if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_V or event.keycode == KEY_V):
@@ -1499,6 +1509,14 @@ func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[
 	# Odd quarters: the loop lies in the x-y plane (axis x, normal z).
 	var plane_axis := Vector3(1.0, 0.0, 0.0) if int(record.get("rotation_quarters", 0)) % 2 == 1 else Vector3(0.0, 0.0, 1.0)
 	var across := Vector3(0.0, 0.0, 1.0) if plane_axis.x != 0.0 else Vector3(1.0, 0.0, 0.0)
+	if not curve.is_empty():
+		# Any curve (a flat bend as much as a loop): the rails spread along
+		# the curve's binormal (tangent x rider up), so a banked flat curve
+		# tilts its rails into the bend and a loop keeps its plane normal.
+		var piece_t := TrackCurve.piece_t(record)
+		var binormal := TrackCurve.tangent(curve, piece_t).cross(TrackCurve.up_at(curve, piece_t))
+		if binormal.length() > 0.05:
+			across = binormal.normalized()
 	var plane_across := plane_axis
 	for cell: Vector3i in joined:
 		var other: Dictionary = tracks.get(cell, {"anchor": cell, "entity_id": CoasterRails.FLAT})
@@ -2433,6 +2451,7 @@ func _update_placement_preview() -> void:
 	if interaction.drag_active():
 		# Coaster rails side project: X / C resize a loop while its drag is active.
 		interaction.coaster_loop_keys(Input.is_key_pressed(KEY_X), Input.is_key_pressed(KEY_C))
+		interaction.curve_keys(Input.is_key_pressed(KEY_X), Input.is_key_pressed(KEY_C))
 		_update_drag_preview(interaction.update_drag_place(player.view_origin(), -player.camera.global_basis.z, Input.is_action_pressed("interact")))
 		return
 	var preview := interaction.placement_preview_from_view(player.view_origin(), -player.camera.global_basis.z)

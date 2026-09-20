@@ -415,6 +415,94 @@ static func climb_layout(entry: Vector3i, quarters: int, length: int, rise: int)
 	for piece: Dictionary in pieces:
 		cells.append(piece.cell)
 	return {"pieces": pieces, "cells": cells, "curve": curve, "entry": entry, "landing": landing}
+# Flat curves (CoasterCraft card 4, 2026-09-20): the Curve tool lays a flat
+# arc of `rail_loop` pieces that leaves its entry heading `along` and turns
+# `sweep` degrees (45 / 90 / 135 / 180) to the RIGHT of travel (or the left,
+# mirrored) with radius `radius`. The entry is the aimed cell; the arc's
+# centre is `radius` cells to the side of the entry's ride point, so the
+# first piece rides its cell centre and joins a plain rail behind it. The
+# exit piece joins the cell ahead of it in the end tangent snapped to the
+# nearest grid direction: an axis neighbour for 90 / 180 (a plain rail joins
+# it), the DIAGONAL neighbour for 45 / 135 (only another curve can continue
+# it - the next curve's entry takes the diagonal heading automatically, see
+# `curve_end_heading`). Pieces float; the arc is banked 0.35 (make_arc's
+# default) so riders lean into the bend.
+# ---------------------------------------------------------------------------
+
+const CURVE_RADIUS_MIN := 2
+const CURVE_RADIUS_MAX := 30
+const CURVE_SWEEPS: Array[int] = [45, 90, 135, 180]
+
+
+## Snaps any turn to the nearest laid sweep (45 / 90 / 135 / 180 degrees).
+static func curve_sweep_snap(degrees: float) -> int:
+	if degrees <= 22.5:
+		return 45
+	if degrees <= 67.5:
+		return 90
+	if degrees <= 112.5:
+		return 135
+	return 180
+
+
+## The grid step a unit heading rounds to (an axis or a diagonal).
+static func heading_cell(heading: Vector3) -> Vector3i:
+	return Vector3i(roundi(heading.x), 0, roundi(heading.z))
+
+
+## The pieces of a flat curve entered at `entry` heading `along` (a unit
+## horizontal vector; an axis from the placement rotation, or a diagonal
+## when continuing a 45-degree end): {pieces, cells, curve, center, radius,
+## entry, exit, exit_heading (unit tangent at the end), exit_cell_ahead,
+## along, side}. `left` mirrors the bend to the left of travel.
+static func curve_layout(entry: Vector3i, quarters: int, radius: float, sweep: float, left: bool = false, along: Vector3 = Vector3.ZERO) -> Dictionary:
+	radius = clampf(radius, float(CURVE_RADIUS_MIN), float(CURVE_RADIUS_MAX))
+	if along.length() < 0.5:
+		along = Vector3(switch_along(quarters))
+	along = Vector3(along.x, 0.0, along.z).normalized()
+	var side := along.cross(Vector3.UP).normalized()
+	if left:
+		side = -side
+	var ground := Vector3(entry) + Vector3(0.5, 0.55, 0.5)
+	var center := ground + side * radius
+	var curve := TrackCurve.make_arc(center, along, side, radius, 0.0, sweep)
+	var steps := maxi(720, int(radius * sweep * 2.0))
+	var spans := TrackCurve.cells(curve, steps)
+	var exit: Vector3i = spans[spans.size() - 1].cell if not spans.is_empty() else entry
+	var exit_heading := TrackCurve.tangent(curve, 1.0)
+	var ahead := exit + heading_cell(exit_heading)
+	var before := entry - heading_cell(along)
+	var pieces := TrackCurve.pieces(curve, LOOP, posmod(quarters, 4), before, ahead, {}, steps)
+	var cells: Array[Vector3i] = []
+	for piece: Dictionary in pieces:
+		cells.append(piece.cell)
+	return {"pieces": pieces, "cells": cells, "curve": curve, "center": center, "radius": radius, "entry": entry, "exit": exit, "exit_heading": exit_heading, "exit_cell_ahead": ahead, "before": before, "along": along, "side": side}
+
+
+## How many pieces a curve of `radius` and `sweep` takes (its item price).
+static func curve_piece_count(radius: int, sweep: int) -> int:
+	return (curve_layout(Vector3i.ZERO, 0, float(radius), float(sweep)).cells as Array).size()
+
+
+## The heading a track continuing a curve piece into `next_cell` should
+## take: the curve's end tangent when `record` is its last piece and
+## `next_cell` is the cell it joins ahead, the reversed start tangent when it
+## is the first piece and `next_cell` lies behind it; Vector3.ZERO otherwise.
+static func curve_end_heading(record: Dictionary, next_cell: Vector3i) -> Vector3:
+	if not record.has("curve"):
+		return Vector3.ZERO
+	var curve: Dictionary = record.get("curve", {})
+	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	var offset := next_cell - anchor
+	if float(record.get("t1", 0.0)) >= 0.999:
+		var forward := TrackCurve.tangent(curve, 1.0)
+		if heading_cell(forward) == offset:
+			return forward
+	if float(record.get("t0", 1.0)) <= 0.001:
+		var backward := -TrackCurve.tangent(curve, 0.0)
+		if heading_cell(backward) == offset:
+			return backward
+	return Vector3.ZERO
 
 
 ## Ring fit variants for the owner to compare (L cycles): how far above the

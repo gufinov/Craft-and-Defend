@@ -9,7 +9,7 @@ extends Node
 
 const TOP_UP_SECONDS := 1.0
 ## Hotbar order, then the rest of the pack.
-const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "rail_switch", "rail_bend", "rail_cross", "rail_climb", "mine_cart", "coaster_car", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone"]
+const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "rail_switch", "rail_bend", "rail_cross", "rail_curve", "rail_climb", "mine_cart", "coaster_car", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone"]
 
 var app: CraftAndDefendApp
 var loop_car_id := ""
@@ -30,6 +30,7 @@ func run(application: CraftAndDefendApp) -> void:
 	_stock_pack(true)
 	_lay_demo()
 	app.session.navigation_changed.emit("COASTER SANDBOX  ·  infinite stock  ·  loop ahead (Shift on the car to ride, 1-9 speed), mountain climb behind it, V third person")
+	app.session.navigation_changed.emit("COASTER SANDBOX  ·  infinite stock  ·  loop ahead (Shift on the car to ride, 1-9 speed), a 90-degree curve and a U-turn behind it, V third person")
 	print("COASTER_SANDBOX_READY")
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-ride-shot"):
 		# Seat-view pictures: boarding, mid-climb, head turned left.
@@ -193,7 +194,7 @@ func _lay_demo() -> void:
 	var world: WorldAdapter = app.session.world
 	var interaction: InteractionService = app.session.interaction
 	var plate := Vector3i(-14, 0, 22)
-	_level_ground(plate, 30, 22, 14)
+	_level_ground(plate, 30, 40, 14)
 	# The Loop element (owner 2026-09-20): size 6, entry heading -x from
 	# (0, 30) on lane A (z=30); base row z=29 with the slopes at x=1 and x=-4;
 	# exit on lane C (z=28) heading -x. A coaster car waits on the approach.
@@ -235,6 +236,37 @@ func _lay_demo() -> void:
 		if ws.try_place("rail", cell, world.query_cell, AABB(), 0).get("ok", false):
 			laid += 1
 	print("COASTER_SANDBOX circuit %d / %d rails, chain %d" % [laid, circuit.size(), CoasterRails.chain(ws.stations, origin).size()])
+	# CoasterCraft card 4 (2026-09-20): the Curve tool's two shapes behind the
+	# loop (z 36..42): a radius-4 90-degree bend entered heading +x at
+	# (-12, 37) that exits heading +z at (-8, 41), and a radius-3 U-turn
+	# entered heading +x at (2, 36) that comes back heading -x at (2, 42);
+	# plain rails at their ends and a mine cart on each approach.
+	_stock_pack(false)
+	app.session.inventory.select_hotbar(STOCK.find("rail_curve"))
+	interaction.placement_rotation_quarters = 1
+	var bend_entry := Vector3i(-12, origin.y, 47)
+	interaction.begin_curve_at(bend_entry)
+	interaction.set_curve_sweep(90, false)
+	interaction.set_curve_radius(4)
+	var bend := interaction.commit_drag_place()
+	var bend_exit: Vector3i = bend.get("changes", {}).get("exit", bend_entry)
+	for x in [-2, -1]:
+		ws.try_place("rail", bend_entry + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+	ws.try_place("rail", bend_exit + Vector3i(0, 0, 1), world.query_cell, AABB(), 0)
+	var bend_cart := ws.try_place("mine_cart", bend_entry + Vector3i(-1, 1, 0), world.query_cell, AABB(), 0)
+	var turn_entry := Vector3i(2, origin.y, 46)
+	interaction.begin_curve_at(turn_entry)
+	interaction.set_curve_sweep(180, false)
+	interaction.set_curve_radius(3)
+	var turn := interaction.commit_drag_place()
+	var turn_exit: Vector3i = turn.get("changes", {}).get("exit", turn_entry)
+	for x in [-3, -2, -1]:
+		ws.try_place("rail", turn_entry + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+		ws.try_place("rail", turn_exit + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+	var turn_cart := ws.try_place("mine_cart", turn_entry + Vector3i(-2, 1, 0), world.query_cell, AABB(), 0)
+	interaction.placement_rotation_quarters = 0
+	app.session.inventory.select_hotbar(0)
+	print("COASTER_SANDBOX curves: 90 %s (%s pieces, cart %s), U-turn %s (%s pieces, cart %s)" % [bend.get("reason"), bend.get("changes", {}).get("count"), bend_cart.get("reason"), turn.get("reason"), turn.get("changes", {}).get("count"), turn_cart.get("reason")])
 	# Owner 2026-09-20: nothing else on the plate - the loop, its circuit and
 	# the car are the whole sandbox; build the rest yourself.
 	_lay_mountain()
@@ -280,7 +312,7 @@ func _lay_mountain() -> void:
 	# and a Crossing heading +x from (-1, 39) whose two tracks swap lanes
 	# z 39 <-> z 41 over eight cells; plain rails lead in and out, a mine
 	# cart on each.
-	var bend_entry := Vector3i(-12, 1, 36)
+	var bend_entry := Vector3i(-12, 1, 54)
 	# The circuit used the rail stack: top up before the lead-ins.
 	_stock_pack(false)
 	app.session.inventory.select_hotbar(STOCK.find("rail_bend"))
@@ -294,7 +326,7 @@ func _lay_mountain() -> void:
 		ws.try_place("rail", Vector3i(bend_layout.exit) + Vector3i(step, 0, 0), world.query_cell, AABB(), 0)
 	var bend_cart := ws.try_place("mine_cart", bend_entry + Vector3i(-2, 1, 0), world.query_cell, AABB(), 0)
 	print("COASTER_SANDBOX smooth switch %s (%s pieces) cart %s" % [bend.get("reason"), bend.get("changes", {}).get("count"), bend_cart.get("reason")])
-	var cross_entry := Vector3i(-1, 1, 39)
+	var cross_entry := Vector3i(-1, 1, 57)
 	app.session.inventory.select_hotbar(STOCK.find("rail_cross"))
 	interaction.set_curve_size(CoasterRails.CROSS_DEFAULT_LENGTH, CoasterRails.CROSS_DEFAULT_LANES)
 	interaction.begin_curve_tool_at(cross_entry)
