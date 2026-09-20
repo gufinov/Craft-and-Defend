@@ -3,9 +3,9 @@ extends Node
 
 ## Coaster rails side project (docs/COASTER_RAILS.md): slope rails that join
 ## two levels, the loop drag tool and the mine cart that rides the whole
-## track. Runs with `--coaster-rails-automation=gate` (headless: T160-T162)
-## and `--coaster-rails-automation=visual` (needs a window: T163 renders
-## `coaster-rails.png`).
+## track. Runs with `--coaster-rails-automation=gate` (headless: T160-T162, T168,
+## T170-T171) and `--coaster-rails-automation=visual` (needs a window: T163
+## renders `coaster-rails.png`, T172 `coaster-smooth.png`).
 
 var app: CraftAndDefendApp
 var failures: Array[String] = []
@@ -372,6 +372,20 @@ func _run_gate() -> void:
 	interaction.loop_true = true
 	_record("T162_LOOP_ELEMENT", started.get("ok", false) and size_four and four_ok and switch_pieces and six_count > four_count and seven == 7 and six_again == 6 and clamped == 9 and round_ok and committed.get("reason") == "LOOP_PLACED" and int(committed.get("changes", {}).get("count", 0)) == four_count and one_item and chain_ok and arc_drawn and rides_circle and loop_cart.get("ok", false) and top_reached > 0 and exit_reached > top_reached and red > 0 and nothing_laid and round_trip and helix_ok, "with Rail Loop held a press ghosts a complete size-4 loop (six switcher pieces, two slopes, the circle pieces); 6 by key adds pieces, C makes 7, X makes 6, 12 clamps to 9, every ring piece rides the true circle; release lays every piece for one item as one chain from the entry through both slopes and the circle's top to the exit two lanes over; every ring piece draws the loop track (rails, ties, spine) and leans toward the loop's centre; a cart from the approach reaches the top and then the exit; a ghost over a stone column shows red and lays nothing; the laid track survives a save round-trip; L switches to the TRUE loop: a diameter-8 helix of rail_loop pieces touching the ground only at its entry and exit one lane right, Shift-drag to 14 grows it, the pack caps the size (about 60 loops) and pays one per piece, and a cart rides the approach over the top and out on the exit lane", {"started": started.get("reason"), "size_four": size_four, "four_ok": four_ok, "entities": four_entities, "four_count": four_count, "six_count": six_count, "seven": seven, "six_again": six_again, "clamped": clamped, "round_loops": round_loops, "round_arcs": round_arcs, "committed": committed.get("reason"), "count": committed.get("changes", {}).get("count", 0), "one_item": one_item, "chain": loop_chain.size(), "chain_ok": chain_ok, "arc_drawn": arc_drawn, "rides_circle": rides_circle, "cart": loop_cart.get("reason"), "top_frame": top_reached, "exit_frame": exit_reached, "red": red, "nothing_laid": nothing_laid, "refused": refused.get("reason"), "round_trip": round_trip, "restored": restored.get("reason"), "helix_ok": helix_ok, "capped": capped, "capped_ok": capped_ok, "paid_per_piece": paid_per_piece, "helix_all_loops": helix_all_loops, "helix_ground": helix_ground, "eight_count": eight_count, "dragged": dragged, "dragged_count": dragged_count, "helix_laid": helix_laid.get("reason"), "helix_joined": helix_joined, "helix_cart": helix_cart.get("reason"), "helix_over": helix_over, "helix_out": helix_out})
 
+	# T170 Smooth Switch (CoasterCraft card 2): with Smooth Switch held a
+	# press ghosts an S-bend of rail_loop curve pieces from the entry to one
+	# lane right six cells on; Shift-aim sets length and lanes (negative =
+	# left); the pack caps the length; a blocked cell lays nothing; release
+	# lays every piece for one item each; rails join both ends at rail
+	# height; a mine cart rides through and back; save round-trip.
+	await _test_smooth_switch()
+
+	# T171 Crossing (CoasterCraft card 3): two S-bends whose lanes swap; the
+	# shared middle cells carry both curves with two joint pairs; a cart
+	# entering on A leaves on A's exit, one entering on B on B's; the shared
+	# cell draws both tracks.
+	await _test_crossing()
+
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on
 ## the track, beside a slope run climbing a step, in one 1280x720 view.
@@ -453,6 +467,294 @@ func _run_visual() -> void:
 	var cart_parts := cart_body.find_children("*", "MeshInstance3D", true, false).size() if cart_body != null else 0
 	var cart_cell := app.session.coaster_carts.rider_cell(cart_id) if app.session.coaster_carts != null else Vector3i(0, -9999, 0)
 	_record("T163_COASTER_RENDERED", committed.get("reason") == "LOOP_PLACED" and cart.get("ok", false) and slope_ok and slope_cart.get("ok", false) and error == OK and image.get_size() == Vector2i(1280, 720) and loop_parts >= 60 and cart_parts >= 18 and cart_cell.y >= origin.y + 5, "a diameter-6 true loop renders with a mine cart on it, beside a slope run climbing a step with its own cart, in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "committed": committed.get("reason"), "cart": cart.get("reason"), "slope_ok": slope_ok, "slope_cart": slope_cart.get("reason"), "loop_parts": loop_parts, "cart_parts": cart_parts, "cart_cell": cart_cell})
+	await _render_smooth_pieces()
+
+
+## T172: a Smooth Switch and a Crossing with lead-in / exit rails and a
+## mine cart on each, seen from above and behind (`coaster-smooth.png`).
+func _render_smooth_pieces() -> void:
+	var player := app.session.player
+	var ws := app.session.workstations
+	var world := app.session.world
+	var interaction := app.session.interaction
+	var plate := Vector3i(10, 0, 30)
+	_level_ground(plate, 24, 14, 9)
+	app.session.inventory.try_transaction({}, {"rail_bend": 16, "rail_cross": 32, "rail": 16, "mine_cart": 2})
+	interaction.placement_rotation_quarters = 1
+	var bend_entry := Vector3i(14, 0, 33)
+	_hotbar_slot_for("rail_bend", 4)
+	interaction.set_curve_size(6, 1)
+	interaction.begin_curve_tool_at(bend_entry)
+	var bend := interaction.commit_drag_place()
+	var bend_exit := bend_entry + Vector3i(6, 0, 1)
+	for x in range(1, 4):
+		ws.try_place("rail", bend_entry - Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+		ws.try_place("rail", bend_exit + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+	var bend_cart := ws.try_place("mine_cart", bend_entry + Vector3i(-3, 1, 0), world.query_cell, AABB(), 0)
+	var cross_entry := Vector3i(14, 0, 38)
+	_hotbar_slot_for("rail_cross", 5)
+	interaction.set_curve_size(8, 2)
+	interaction.begin_curve_tool_at(cross_entry)
+	var cross := interaction.commit_drag_place()
+	var layout := CoasterRails.cross_layout(cross_entry, 1, 8, 2)
+	for x in range(1, 4):
+		for cell: Vector3i in [Vector3i(layout.entry_a) - Vector3i(x, 0, 0), Vector3i(layout.entry_b) - Vector3i(x, 0, 0), Vector3i(layout.exit_a) + Vector3i(x, 0, 0), Vector3i(layout.exit_b) + Vector3i(x, 0, 0)]:
+			ws.try_place("rail", cell, world.query_cell, AABB(), 0)
+	var cross_cart := ws.try_place("mine_cart", Vector3i(layout.entry_b) + Vector3i(-3, 1, 0), world.query_cell, AABB(), 0)
+	interaction.placement_rotation_quarters = 0
+	var bend_cart_id := str(bend_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	var cross_cart_id := str(cross_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	if app.session.coaster_carts != null:
+		for _frame in range(150):
+			app.session.coaster_carts.advance(1.0 / 30.0, false)
+	for _frame in range(4):
+		await get_tree().physics_frame
+	player.global_position = Vector3(bend_entry) + Vector3(4.0, 7.5, 16.0)
+	player.rotation = Vector3.ZERO
+	player.look_pitch = -0.5
+	player.apply_mouse_look(Vector2.ZERO)
+	for _frame in range(90):
+		await get_tree().process_frame
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+	var texture := get_viewport().get_texture()
+	var image := texture.get_image() if texture != null else null
+	var path := app.data_root.path_join("coaster-smooth.png")
+	if image == null:
+		_record("T172_SMOOTH_RENDERED", false, "a smooth switch and a crossing render with a cart on each in one 1280x720 view", {"path": path, "reason": "NO_RENDERED_VIEWPORT"})
+		return
+	var error := image.save_png(path)
+	var track_parts := 0
+	var two_track_cells := 0
+	for station_id: String in ws.stations.keys():
+		var record: Dictionary = ws.stations[station_id]
+		if str(record.get("entity_id", "")) == "rail_loop" and Vector3i(record.get("anchor", Vector3i.ZERO)).x >= plate.x:
+			var body: Node3D = app.session._station_visuals.get(station_id)
+			if body != null:
+				track_parts += body.find_children("*", "MeshInstance3D", true, false).size()
+				if body.get_node_or_null("LoopTrackB") != null:
+					two_track_cells += 1
+	var bend_cell := app.session.coaster_carts.rider_cell(bend_cart_id) if app.session.coaster_carts != null else Vector3i(0, -9999, 0)
+	var cross_cell := app.session.coaster_carts.rider_cell(cross_cart_id) if app.session.coaster_carts != null else Vector3i(0, -9999, 0)
+	_record("T172_SMOOTH_RENDERED", bend.get("reason") == "BEND_PLACED" and cross.get("reason") == "CROSS_PLACED" and bend_cart.get("ok", false) and cross_cart.get("ok", false) and error == OK and image.get_size() == Vector2i(1280, 720) and track_parts >= 80 and two_track_cells >= 1 and bend_cell.x > bend_entry.x and cross_cell.x > cross_entry.x, "a six-long smooth switch and an eight-long two-lane crossing render with lead-in and exit rails and a mine cart riding each, the shared cells drawing both tracks, in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "bend": bend.get("reason"), "cross": cross.get("reason"), "bend_cart": bend_cart.get("reason"), "cross_cart": cross_cart.get("reason"), "track_parts": track_parts, "two_track_cells": two_track_cells, "bend_cell": bend_cell, "cross_cell": cross_cell})
+
+
+func _hotbar_slot_for(item_id: String, fallback: int) -> int:
+	var slot := -1
+	for slot_index in range(F0Inventory.SLOT_COUNT):
+		if str(app.session.inventory.slots[slot_index].get("item_id", "")) == item_id:
+			slot = slot_index
+	if slot < 0:
+		return -1
+	if slot >= F0Inventory.HOTBAR_COUNT:
+		app.session.inventory.swap_slots(slot, fallback)
+		slot = fallback
+	app.session.inventory.select_hotbar(slot)
+	return slot
+
+
+## Runs `frames` cart steps; returns {reached: {cell: frame}} for `watch`.
+func _ride_cart(cart_id: String, watch: Array[Vector3i], frames: int, stop_at: Vector3i = Vector3i.MAX) -> Dictionary:
+	var reached: Dictionary = {}
+	var visited: Dictionary = {}
+	if app.session.coaster_carts == null:
+		return {"reached": reached, "visited": visited}
+	for frame in range(frames):
+		app.session.coaster_carts.advance(1.0 / 30.0, false)
+		var cell := app.session.coaster_carts.rider_cell(cart_id)
+		visited[cell] = true
+		if watch.has(cell) and not reached.has(cell):
+			reached[cell] = frame
+		if cell == stop_at:
+			break
+	return {"reached": reached, "visited": visited}
+
+
+func _test_smooth_switch() -> void:
+	var registry := app.session.registry
+	var ws := app.session.workstations
+	var world := app.session.world
+	var interaction := app.session.interaction
+	var bend: Dictionary = registry.entity("rail_bend")
+	var bend_order := -1
+	var bend_output := 0
+	for recipe in registry.recipes_for("workbench"):
+		if str(recipe.get("id", "")) == "rail_bend":
+			bend_order = int(recipe.get("recipe_book_order", -1))
+			bend_output = int(recipe.get("outputs", {}).get("rail_bend", 0))
+	var content_ok: bool = str(bend.get("coaster_tool", "")) == "bend" and (bend.get("support_offsets", [1]) as Array).is_empty() and interaction.is_smooth_bend_item("rail_bend") and not interaction.is_linear_entity_item("rail_bend") and bend_order == 209 and bend_output == 8 and registry.max_stack("rail_bend") == 64 and ItemIconCatalog.missing_item_ids(["rail_bend"]).is_empty()
+	var bx := Vector3i(8, 0, 30)
+	_level_ground(bx + Vector3i(-4, 0, -4), 24, 12, 9)
+	app.session.inventory.try_transaction({}, {"rail": 12, "rail_bend": 24, "mine_cart": 1})
+	var placed := true
+	for x in range(1, 4):
+		placed = placed and bool(ws.try_place("rail", bx - Vector3i(x, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+	var slot := _hotbar_slot_for("rail_bend", 4)
+	interaction.placement_rotation_quarters = 1
+	interaction.creative = false
+	interaction.set_curve_size(CoasterRails.BEND_DEFAULT_LENGTH, CoasterRails.BEND_DEFAULT_LANES)
+	# The right-press path itself starts the bend drag.
+	var press_origin := Vector3(bx) + Vector3(0.5, 3.0, 0.5)
+	var press_started := interaction.secondary_press_from_view(press_origin, Vector3.DOWN)
+	var press_mode := str(interaction.drag_state().get("mode", ""))
+	interaction.cancel_drag_place()
+	var started := interaction.begin_curve_tool_at(bx)
+	var ghost := interaction.drag_state()
+	var ghost_cells: Array = ghost.get("cells", [])
+	var ghost_ok := not ghost_cells.is_empty()
+	for entry in ghost_cells:
+		ghost_ok = ghost_ok and str(entry.state) == "ok" and str(entry.entity_id) == "rail_loop" and (entry.get("extra", {}) as Dictionary).has("curve")
+	var default_exit := bx + Vector3i(6, 0, 1)
+	var default_count := ghost_cells.size()
+	var default_shape: bool = default_count == CoasterRails.bend_piece_count(6, 1) and not ghost_cells.is_empty() and Vector3i(ghost_cells[0].cell) == bx and Vector3i(ghost_cells[ghost_cells.size() - 1].cell) == default_exit and int(ghost.get("curve_length", 0)) == 6 and int(ghost.get("curve_lanes", 0)) == 1
+	# Shift-aim: 10 ahead and 3 to the LEFT of travel (+x travel: left is -z).
+	interaction.update_drag_place(Vector3(bx) + Vector3(10.5, 3.0, -2.5), Vector3.DOWN, true)
+	var sized := interaction.drag_state()
+	var sized_cells: Array = sized.get("cells", [])
+	var sized_ok: bool = int(sized.get("curve_length", 0)) == 10 and int(sized.get("curve_lanes", 0)) == -3 and not sized_cells.is_empty() and Vector3i(sized_cells[sized_cells.size() - 1].cell) == bx + Vector3i(10, 0, -3)
+	# X / C and number keys change the length only.
+	interaction.coaster_loop_keys(false, true)
+	interaction.coaster_loop_keys(false, false)
+	var eleven := int(interaction.drag_state().get("curve_length", 0))
+	interaction.coaster_loop_keys(true, false)
+	interaction.coaster_loop_keys(false, false)
+	var ten := int(interaction.drag_state().get("curve_length", 0))
+	# The pack caps the length: 24 items cannot pay a 40-long bend.
+	interaction.set_curve_length(40)
+	var capped := int(interaction.drag_state().get("curve_length", 0))
+	var in_pack := app.session.inventory.count("rail_bend")
+	var capped_ok: bool = capped < 40 and CoasterRails.bend_piece_count(capped, -3) <= in_pack and CoasterRails.bend_piece_count(capped + 1, -3) > in_pack
+	interaction.set_curve_size(6, 1)
+	# A stone block on the path: red, and release lays nothing.
+	world.set_cell(bx + Vector3i(1, 0, 0), 3)
+	interaction.cancel_drag_place()
+	interaction.begin_curve_tool_at(bx)
+	var red := 0
+	for entry in interaction.drag_state().get("cells", []):
+		if str(entry.state) == "blocked":
+			red += 1
+	var stations_before := ws.stations.size()
+	var refused := interaction.commit_drag_place()
+	var nothing_laid: bool = refused.get("reason") == "BEND_BLOCKED" and ws.stations.size() == stations_before
+	world.set_cell(bx + Vector3i(1, 0, 0), 0)
+	interaction.begin_curve_tool_at(bx)
+	var before := app.session.inventory.count("rail_bend")
+	var laid := interaction.commit_drag_place()
+	var paid: bool = before - app.session.inventory.count("rail_bend") == default_count
+	for x in range(1, 4):
+		placed = placed and bool(ws.try_place("rail", default_exit + Vector3i(x, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+	# Control: a rail beside the entry on the exit lane must not join.
+	placed = placed and bool(ws.try_place("rail", bx + Vector3i(0, 0, 1), world.query_cell, AABB(), 0).get("ok", false))
+	var chain := CoasterRails.chain(ws.stations, bx - Vector3i(3, 0, 0))
+	var chain_ok: bool = chain.size() == default_count + 6 and chain.has(default_exit + Vector3i(3, 0, 0)) and not chain.has(bx + Vector3i(0, 0, 1))
+	var entry_record: Dictionary = ws.station(ws.station_at_cell(bx))
+	var exit_record: Dictionary = ws.station(ws.station_at_cell(default_exit))
+	var entry_point := CoasterRails.ride_point(entry_record)
+	var exit_point := CoasterRails.ride_point(exit_record)
+	var rail_height: bool = entry_point.is_equal_approx(Vector3(bx) + Vector3(0.5, 0.55, 0.5)) and exit_point.is_equal_approx(Vector3(default_exit) + Vector3(0.5, 0.55, 0.5))
+	var mid_record: Dictionary = ws.station(ws.station_at_cell(bx + Vector3i(3, 0, 0)))
+	var mid_point := CoasterRails.ride_point(mid_record)
+	var mid_between: bool = not mid_record.is_empty() and mid_point.z > float(bx.z) + 0.5 and mid_point.z < float(bx.z) + 1.5 and absf(mid_point.y - 0.55) < 0.001
+	var entry_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(bx))
+	var drawn := entry_body != null and entry_body.get_node_or_null("LoopTrack") != null
+	var cart := ws.try_place("mine_cart", bx + Vector3i(-3, 1, 0), world.query_cell, AABB(), 0)
+	var cart_id := str(cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	var far_cell := default_exit + Vector3i(3, 0, 0)
+	var ride := _ride_cart(cart_id, [far_cell, bx - Vector3i(3, 0, 0)], 700)
+	var far_frame := int(ride.reached.get(far_cell, -1))
+	var rode := far_frame > 0
+	var home_frame := -1
+	if rode:
+		home_frame = int(_ride_cart(cart_id, [bx - Vector3i(3, 0, 0)], 700).reached.get(bx - Vector3i(3, 0, 0), -1))
+	if cart.get("ok", false):
+		ws.try_dismantle(cart_id, world.query_cell, AABB())
+	var saved: Variant = JSON.parse_string(JSON.stringify(ws.snapshot()))
+	var restored := ws.restore(saved, world.query_cell) if saved is Dictionary else {"ok": false, "reason": "SNAPSHOT_NOT_JSON"}
+	var restored_chain := CoasterRails.chain(ws.stations, bx - Vector3i(3, 0, 0))
+	var round_trip: bool = restored.get("ok", false) and restored_chain.size() == chain.size() and ws.station(ws.station_at_cell(bx)).has("curve")
+	interaction.placement_rotation_quarters = 0
+	_record("T170_SMOOTH_SWITCH", content_ok and placed and slot >= 0 and press_started.get("reason") == "DRAG_STARTED" and press_mode == "smooth_bend" and started.get("ok", false) and ghost_ok and default_shape and sized_ok and eleven == 11 and ten == 10 and capped_ok and red > 0 and nothing_laid and laid.get("reason") == "BEND_PLACED" and int(laid.get("changes", {}).get("count", 0)) == default_count and paid and chain_ok and rail_height and mid_between and drawn and cart.get("ok", false) and rode and home_frame > 0 and round_trip, "rail_bend (Smooth Switch, coaster_tool bend, order 209, 8 per craft, stack 64, icon) ghosts an S-bend of rail_loop curve pieces from the entry to one lane right six cells on; Shift-aim 10 ahead and 3 left sizes it (length 10, lanes -3, exit there); C / X make 11 / 10; the pack caps 40 to what 24 items pay for; a stone block on the path shows red and release lays nothing; release lays every piece for one item each; rails behind and ahead join into one chain while a rail beside the entry on the exit lane stays out; entry and exit ride at rail height and the middle rides between the lanes; the entry draws the loop track; a mine cart rides through to the far rail and back; the track survives a save round-trip", {"content_ok": content_ok, "placed": placed, "press": press_started.get("reason"), "press_mode": press_mode, "started": started.get("reason"), "ghost_ok": ghost_ok, "default_count": default_count, "default_shape": default_shape, "sized": [sized.get("curve_length"), sized.get("curve_lanes")], "sized_ok": sized_ok, "eleven": eleven, "ten": ten, "capped": capped, "capped_ok": capped_ok, "red": red, "refused": refused.get("reason"), "nothing_laid": nothing_laid, "laid": laid.get("reason"), "count": laid.get("changes", {}).get("count"), "paid": paid, "chain": chain.size(), "chain_ok": chain_ok, "entry_point": entry_point, "exit_point": exit_point, "mid_point": mid_point, "drawn": drawn, "cart": cart.get("reason"), "far_frame": far_frame, "home_frame": home_frame, "round_trip": round_trip, "restored": restored.get("reason")})
+
+
+func _test_crossing() -> void:
+	var registry := app.session.registry
+	var ws := app.session.workstations
+	var world := app.session.world
+	var interaction := app.session.interaction
+	var cross: Dictionary = registry.entity("rail_cross")
+	var cross_order := -1
+	var cross_output := 0
+	for recipe in registry.recipes_for("workbench"):
+		if str(recipe.get("id", "")) == "rail_cross":
+			cross_order = int(recipe.get("recipe_book_order", -1))
+			cross_output = int(recipe.get("outputs", {}).get("rail_cross", 0))
+	var content_ok: bool = str(cross.get("coaster_tool", "")) == "cross" and (cross.get("support_offsets", [1]) as Array).is_empty() and interaction.is_rail_cross_item("rail_cross") and cross_order == 210 and cross_output == 4 and registry.max_stack("rail_cross") == 32 and ItemIconCatalog.missing_item_ids(["rail_cross"]).is_empty()
+	var cx := Vector3i(8, 0, 42)
+	_level_ground(cx + Vector3i(-4, 0, -4), 24, 12, 9)
+	app.session.inventory.try_transaction({}, {"rail": 16, "rail_cross": 32, "mine_cart": 2})
+	var slot := _hotbar_slot_for("rail_cross", 5)
+	interaction.placement_rotation_quarters = 1
+	interaction.creative = false
+	interaction.set_curve_size(CoasterRails.CROSS_DEFAULT_LENGTH, CoasterRails.CROSS_DEFAULT_LANES)
+	var layout := CoasterRails.cross_layout(cx, 1, 8, 2)
+	var entry_a: Vector3i = layout.entry_a
+	var entry_b: Vector3i = layout.entry_b
+	var exit_a: Vector3i = layout.exit_a
+	var exit_b: Vector3i = layout.exit_b
+	var shared: Array = layout.shared
+	var lanes_swap: bool = entry_b == cx + Vector3i(0, 0, 2) and exit_a == cx + Vector3i(8, 0, 2) and exit_b == cx + Vector3i(8, 0, 0) and shared.size() >= 1
+	var placed := true
+	for x in range(1, 4):
+		for cell: Vector3i in [entry_a - Vector3i(x, 0, 0), entry_b - Vector3i(x, 0, 0), exit_a + Vector3i(x, 0, 0), exit_b + Vector3i(x, 0, 0)]:
+			placed = placed and bool(ws.try_place("rail", cell, world.query_cell, AABB(), 0).get("ok", false))
+	var press_started := interaction.secondary_press_from_view(Vector3(cx) + Vector3(0.5, 3.0, 0.5), Vector3.DOWN)
+	var press_mode := str(interaction.drag_state().get("mode", ""))
+	var ghost_cells: Array = interaction.drag_state().get("cells", [])
+	var ghost_ok: bool = ghost_cells.size() == layout.pieces.size() and not ghost_cells.is_empty()
+	var ghost_two := 0
+	for entry in ghost_cells:
+		ghost_ok = ghost_ok and str(entry.state) == "ok"
+		if entry.has("joints_b"):
+			ghost_two += 1
+	var before := app.session.inventory.count("rail_cross")
+	var laid := interaction.commit_drag_place()
+	var paid: bool = before - app.session.inventory.count("rail_cross") == ghost_cells.size()
+	interaction.placement_rotation_quarters = 0
+	var shared_cell: Vector3i = shared[0] if not shared.is_empty() else cx
+	var shared_record: Dictionary = ws.station(ws.station_at_cell(shared_cell))
+	var two_pairs: bool = CoasterRails.has_second_curve(shared_record) and (shared_record.get("coaster_joints", []) as Array).size() == 2 and (shared_record.get("coaster_joints_b", []) as Array).size() == 2 and CoasterRails.connections(shared_record).size() >= 3
+	var pair_a := CoasterRails.pair_for(shared_record, Vector3i.MAX, "a")
+	var pair_b := CoasterRails.pair_for(shared_record, Vector3i.MAX, "b")
+	var pairs_differ: bool = str(pair_a.pair) == "a" and str(pair_b.pair) == "b" and JSON.stringify(pair_a.curve) != JSON.stringify(pair_b.curve)
+	var kettle_point := app.session.siege_defense._rail_point(shared_cell)
+	var kettle_on_a: bool = kettle_point.is_equal_approx(CoasterRails.ride_point(pair_a) + Vector3(0.0, 0.95, 0.0))
+	var start_a := entry_a - Vector3i(3, 0, 0)
+	var start_b := entry_b - Vector3i(3, 0, 0)
+	var far_a := exit_a + Vector3i(3, 0, 0)
+	var far_b := exit_b + Vector3i(3, 0, 0)
+	var chain := CoasterRails.chain(ws.stations, start_a)
+	var chain_ok: bool = chain.size() == ghost_cells.size() + 12 and chain.has(far_a) and chain.has(far_b) and chain.has(start_b)
+	var cart_a := ws.try_place("mine_cart", start_a + Vector3i.UP, world.query_cell, AABB(), 0)
+	var cart_a_id := str(cart_a.get("details", {}).get("station", {}).get("instance_id", ""))
+	var ride_a := _ride_cart(cart_a_id, [far_a, far_b, shared_cell], 900, far_a)
+	var a_ok: bool = int(ride_a.reached.get(far_a, -1)) > 0 and int(ride_a.reached.get(shared_cell, -1)) > 0 and not ride_a.reached.has(far_b) and not ride_a.visited.has(exit_b) and not ride_a.visited.has(entry_b)
+	# And back home along A again.
+	var back_a := _ride_cart(cart_a_id, [start_a], 900, start_a)
+	var a_home: bool = int(back_a.reached.get(start_a, -1)) > 0 and not back_a.visited.has(start_b)
+	if cart_a.get("ok", false):
+		ws.try_dismantle(cart_a_id, world.query_cell, AABB())
+	var cart_b := ws.try_place("mine_cart", start_b + Vector3i.UP, world.query_cell, AABB(), 0)
+	var cart_b_id := str(cart_b.get("details", {}).get("station", {}).get("instance_id", ""))
+	var ride_b := _ride_cart(cart_b_id, [far_a, far_b, shared_cell], 900, far_b)
+	var b_ok: bool = int(ride_b.reached.get(far_b, -1)) > 0 and int(ride_b.reached.get(shared_cell, -1)) > 0 and not ride_b.reached.has(far_a) and not ride_b.visited.has(exit_a) and not ride_b.visited.has(entry_a)
+	if cart_b.get("ok", false):
+		ws.try_dismantle(cart_b_id, world.query_cell, AABB())
+	var shared_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(shared_cell))
+	var two_tracks: bool = shared_body != null and shared_body.get_node_or_null("LoopTrack") != null and shared_body.get_node_or_null("LoopTrackB") != null and shared_body.find_children("*", "CollisionShape3D", true, false).size() == 1
+	var saved: Variant = JSON.parse_string(JSON.stringify(ws.snapshot()))
+	var restored := ws.restore(saved, world.query_cell) if saved is Dictionary else {"ok": false, "reason": "SNAPSHOT_NOT_JSON"}
+	var round_trip: bool = restored.get("ok", false) and CoasterRails.chain(ws.stations, start_a).size() == chain.size() and CoasterRails.has_second_curve(ws.station(ws.station_at_cell(shared_cell)))
+	_record("T171_CROSSING", content_ok and slot >= 0 and lanes_swap and placed and press_started.get("reason") == "DRAG_STARTED" and press_mode == "rail_cross" and ghost_ok and ghost_two == shared.size() and laid.get("reason") == "CROSS_PLACED" and paid and two_pairs and pairs_differ and kettle_on_a and chain_ok and cart_a.get("ok", false) and a_ok and a_home and cart_b.get("ok", false) and b_ok and two_tracks and round_trip, "rail_cross (Crossing, coaster_tool cross, order 210, 4 per craft, stack 32, icon) ghosts two S-bends of one length whose lanes swap (A: lane 0 -> 2, B: lane 2 -> 0, eight cells) and lays them for one item per piece; the shared middle cell is one record with two curves and two joint pairs joining both tracks (kettles ride it as A); with rails at all four ends everything is one chain; a cart entering on A passes the shared cell and leaves on A's exit, never touching B's entry or exit, and comes home on A; a cart entering on B leaves on B's exit; the shared cell draws two track node sets over one collision box; the crossing survives a save round-trip", {"content_ok": content_ok, "lanes_swap": lanes_swap, "shared": shared, "placed": placed, "press": press_started.get("reason"), "press_mode": press_mode, "ghost_ok": ghost_ok, "ghost_count": ghost_cells.size(), "ghost_two": ghost_two, "laid": laid.get("reason"), "paid": paid, "two_pairs": two_pairs, "pairs_differ": pairs_differ, "kettle": kettle_point, "kettle_on_a": kettle_on_a, "chain": chain.size(), "chain_ok": chain_ok, "cart_a": cart_a.get("reason"), "ride_a": ride_a.reached, "a_home": a_home, "cart_b": cart_b.get("reason"), "ride_b": ride_b.reached, "two_tracks": two_tracks, "round_trip": round_trip})
 
 
 func _count_entities(ws: WorkstationService, entity_id: String) -> int:

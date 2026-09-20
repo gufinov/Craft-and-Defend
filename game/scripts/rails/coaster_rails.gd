@@ -132,11 +132,17 @@ static func connections(record: Dictionary) -> Array[Vector3i]:
 					cells.append(anchor + side)
 			var recorded: Variant = record.get("coaster_joints")
 			if recorded is Array and not (recorded as Array).is_empty():
-				for joint in recorded:
-					if joint is Array and joint.size() == 3:
-						var offset := Vector3i(int(joint[0]), int(joint[1]), int(joint[2]))
-						if not cells.has(anchor + offset):
-							cells.append(anchor + offset)
+				# A crossing's shared cell (CoasterCraft card 3) carries a second
+				# curve with its own joint pair (`coaster_joints_b`): it joins both.
+				for pair_key in ["coaster_joints", "coaster_joints_b"]:
+					var pair_joints: Variant = record.get(pair_key)
+					if not (pair_joints is Array):
+						continue
+					for joint in pair_joints:
+						if joint is Array and joint.size() == 3:
+							var offset := Vector3i(int(joint[0]), int(joint[1]), int(joint[2]))
+							if not cells.has(anchor + offset):
+								cells.append(anchor + offset)
 			else:
 				var axis := loop_plane_axis(quarters)
 				for along in [-1, 1]:
@@ -460,3 +466,179 @@ static func loop_offsets(radius: int, along: Vector3i) -> Array[Vector3i]:
 		var point: Vector2i = entry[1]
 		offsets.append(along * (point.x - bottom_left.x) + Vector3i.UP * (point.y - bottom_left.y))
 	return offsets
+
+
+# ---------------------------------------------------------------------------
+# CoasterCraft cards 2 and 3 (docs/COASTERCRAFT_TRACKS.md): the Smooth Switch
+# (`rail_bend`, coaster_tool "bend") and the Crossing (`rail_cross`, "cross").
+# Both lay `rail_loop` records carrying a TrackCurve s-bend: the track leaves
+# the entry cell heading along its rotation, drifts `lanes` lanes sideways
+# (positive = to the RIGHT of travel, negative = left) with a smoothstep
+# profile and lands `length` cells ahead heading along again, flat (rise 0,
+# bank 0.35). The first cell is the entry, the last the exit; both ride at
+# rail height (y + 0.55) so plain rails behind / ahead join them flush.
+#
+# The Crossing lays two such tracks of one length whose lanes swap - track
+# A from lane 0 to lane `lanes`, track B from lane `lanes` to lane 0 - so
+# they cross in the middle. A cell both curves pass through is ONE record
+# carrying both: `curve` / `t0` / `t1` / `coaster_joints` are track A's,
+# `curve_b` / `t0_b` / `t1_b` / `coaster_joints_b` track B's. `pair_for`
+# resolves which of the two a rider is on from the cell it came from (or
+# the track it was already riding when both pairs join that cell - the two
+# curves run side by side through consecutive shared cells). Kettles
+# (SiegeDefenseService._rail_point) simply ride such a cell as track A's.
+# ---------------------------------------------------------------------------
+
+const BEND_MIN_LENGTH := 3
+const BEND_MAX_LENGTH := 40
+const BEND_MAX_LANES := 6
+const BEND_DEFAULT_LENGTH := 6
+const BEND_DEFAULT_LANES := 1
+const CROSS_DEFAULT_LENGTH := 8
+const CROSS_DEFAULT_LANES := 2
+
+
+static func bend_length_clamp(length: int) -> int:
+	return clampi(length, BEND_MIN_LENGTH, BEND_MAX_LENGTH)
+
+
+## Lanes clamped to -BEND_MAX_LANES..BEND_MAX_LANES, never 0 (a bend needs a
+## side; 0 keeps the sign of `fallback`).
+static func bend_lanes_clamp(lanes: int, fallback: int = 1) -> int:
+	if lanes == 0:
+		lanes = 1 if fallback >= 0 else -1
+	return clampi(lanes, -BEND_MAX_LANES, BEND_MAX_LANES)
+
+
+## The s-bend from `entry`'s ride point along rotation `quarters`: `lanes`
+## to the right of travel (negative = left), landing `length` cells ahead.
+static func bend_curve(entry: Vector3i, quarters: int, length: int, lanes: int) -> Dictionary:
+	length = bend_length_clamp(length)
+	lanes = bend_lanes_clamp(lanes)
+	var along := Vector3(switch_along(quarters))
+	var side := Vector3(switch_side(quarters)) * float(signi(lanes))
+	var origin := Vector3(entry) + Vector3(0.5, 0.55, 0.5)
+	return TrackCurve.make_s_bend(origin, along, side, float(length), float(absi(lanes)), 0.0)
+
+
+## The Smooth Switch's pieces: {pieces, cells, entry, exit, curve}.
+static func bend_layout(entry: Vector3i, quarters: int, length: int, lanes: int) -> Dictionary:
+	length = bend_length_clamp(length)
+	lanes = bend_lanes_clamp(lanes)
+	var along := switch_along(quarters)
+	var side := switch_side(quarters) * signi(lanes)
+	var exit := entry + along * length + side * absi(lanes)
+	var curve := bend_curve(entry, quarters, length, lanes)
+	var loop_rotation := 1 if along.x != 0 else 0
+	var pieces := TrackCurve.pieces(curve, LOOP, loop_rotation, entry - along, exit + along, {}, maxi(720, length * 90))
+	var cells: Array[Vector3i] = []
+	for piece: Dictionary in pieces:
+		cells.append(piece.cell)
+	return {"pieces": pieces, "cells": cells, "entry": entry, "exit": exit, "curve": curve}
+
+
+## How many pieces a Smooth Switch of `length` / `lanes` takes (its price).
+static func bend_piece_count(length: int, lanes: int) -> int:
+	return (bend_layout(Vector3i.ZERO, 0, length, lanes).cells as Array).size()
+
+
+## The Crossing's pieces: track A (entry -> `lanes` over) and track B (from
+## `lanes` over -> the entry lane) merged cell by cell; a cell on both gets
+## B's curve as `curve_b` / `t0_b` / `t1_b` and B's joints as `joints_b`.
+## {pieces, cells, shared: Array[Vector3i], entry_a, exit_a, entry_b, exit_b}.
+static func cross_layout(entry: Vector3i, quarters: int, length: int, lanes: int) -> Dictionary:
+	length = bend_length_clamp(length)
+	lanes = bend_lanes_clamp(lanes)
+	var along := switch_along(quarters)
+	var side := switch_side(quarters) * signi(lanes)
+	var track_a := bend_layout(entry, quarters, length, lanes)
+	var entry_b: Vector3i = entry + side * absi(lanes)
+	var track_b := bend_layout(entry_b, quarters, length, -lanes)
+	var pieces: Array[Dictionary] = []
+	var cells: Array[Vector3i] = []
+	var shared: Array[Vector3i] = []
+	for piece: Dictionary in track_a.pieces:
+		pieces.append(piece)
+		cells.append(piece.cell)
+	for piece: Dictionary in track_b.pieces:
+		var cell: Vector3i = piece.cell
+		var index := cells.find(cell)
+		if index < 0:
+			pieces.append(piece)
+			cells.append(cell)
+			continue
+		var host: Dictionary = pieces[index]
+		var extra: Dictionary = host.extra
+		var b_extra: Dictionary = piece.extra
+		extra["curve_b"] = b_extra.get("curve", {})
+		extra["t0_b"] = float(b_extra.get("t0", 0.0))
+		extra["t1_b"] = float(b_extra.get("t1", 1.0))
+		host["joints_b"] = piece.joints
+		shared.append(cell)
+	return {"pieces": pieces, "cells": cells, "shared": shared, "entry_a": entry, "exit_a": track_a.exit, "entry_b": entry_b, "exit_b": track_b.exit, "along": along, "side": side}
+
+
+static func cross_piece_count(length: int, lanes: int) -> int:
+	return (cross_layout(Vector3i.ZERO, 0, length, lanes).cells as Array).size()
+
+
+## True for a crossing's shared cell: a record carrying two curves.
+static func has_second_curve(record: Dictionary) -> bool:
+	return record.has("curve") and record.has("curve_b")
+
+
+static func _joint_cells(record: Dictionary, key: String) -> Array[Vector3i]:
+	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	var cells: Array[Vector3i] = []
+	var recorded: Variant = record.get(key)
+	if recorded is Array:
+		for joint in recorded:
+			if joint is Array and joint.size() == 3:
+				cells.append(anchor + Vector3i(int(joint[0]), int(joint[1]), int(joint[2])))
+	return cells
+
+
+## The one-curve view of `record` a rider arriving from `neighbour` is on:
+## a record-shaped Dictionary (anchor, entity_id, rotation_quarters, curve,
+## t0, t1, coaster_joints) plus "pair" ("a" / "b") and "joints"
+## (Array[Vector3i], the pair's two cells). A record with one curve is its
+## own pair "a". With two: the pair whose joints hold `neighbour`; when both
+## do (consecutive shared cells) or `neighbour` is Vector3i.MAX, `preferred`.
+static func pair_for(record: Dictionary, neighbour: Vector3i, preferred: String = "a") -> Dictionary:
+	var joints_a := _joint_cells(record, "coaster_joints")
+	var pair := record.duplicate()
+	pair["pair"] = "a"
+	pair["joints"] = joints_a
+	if not has_second_curve(record):
+		return pair
+	var joints_b := _joint_cells(record, "coaster_joints_b")
+	var in_a := joints_a.has(neighbour)
+	var in_b := joints_b.has(neighbour)
+	var use_b := false
+	if in_a != in_b:
+		use_b = in_b
+	else:
+		use_b = preferred == "b"
+	if not use_b:
+		return pair
+	pair["pair"] = "b"
+	pair["joints"] = joints_b
+	pair["curve"] = record.get("curve_b", {})
+	pair["t0"] = float(record.get("t0_b", 0.0))
+	pair["t1"] = float(record.get("t1_b", 1.0))
+	pair["coaster_joints"] = record.get("coaster_joints_b", [])
+	pair.erase("curve_b")
+	pair.erase("t0_b")
+	pair.erase("t1_b")
+	pair.erase("coaster_joints_b")
+	return pair
+
+
+## The other end of the pair a rider on `record` came into from `previous`
+## (Vector3i.MAX when the pair has no other cell).
+static func pair_partner(pair: Dictionary, previous: Vector3i) -> Vector3i:
+	var joints: Array[Vector3i] = pair.get("joints", [] as Array[Vector3i])
+	for cell: Vector3i in joints:
+		if cell != previous:
+			return cell
+	return Vector3i.MAX

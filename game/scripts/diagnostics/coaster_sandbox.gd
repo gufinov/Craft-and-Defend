@@ -9,7 +9,7 @@ extends Node
 
 const TOP_UP_SECONDS := 1.0
 ## Hotbar order, then the rest of the pack.
-const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "rail_switch", "mine_cart", "coaster_car", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone"]
+const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "rail_switch", "mine_cart", "coaster_car", "rail_bend", "rail_cross", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone"]
 
 var app: CraftAndDefendApp
 var loop_car_id := ""
@@ -238,6 +238,40 @@ func _lay_demo() -> void:
 	print("COASTER_SANDBOX circuit %d / %d rails, chain %d" % [laid, circuit.size(), CoasterRails.chain(ws.stations, origin).size()])
 	# Owner 2026-09-20: nothing else on the plate - the loop, its circuit and
 	# the car are the whole sandbox; build the rest yourself.
+	# CoasterCraft cards 2-3 (behind the loop, z 36..42): a Smooth Switch
+	# heading +x from (-12, 36) that lands one lane right (z 37) six cells on,
+	# and a Crossing heading +x from (-1, 39) whose two tracks swap lanes
+	# z 39 <-> z 41 over eight cells; plain rails lead in and out, a mine
+	# cart on each.
+	var bend_entry := Vector3i(-12, 1, 36)
+	# The circuit used the rail stack: top up before the lead-ins.
+	_stock_pack(false)
+	app.session.inventory.select_hotbar(STOCK.find("rail_bend"))
+	interaction.placement_rotation_quarters = 1
+	interaction.set_curve_size(CoasterRails.BEND_DEFAULT_LENGTH, CoasterRails.BEND_DEFAULT_LANES)
+	interaction.begin_curve_tool_at(bend_entry)
+	var bend := interaction.commit_drag_place()
+	var bend_layout := CoasterRails.bend_layout(bend_entry, 1, CoasterRails.BEND_DEFAULT_LENGTH, CoasterRails.BEND_DEFAULT_LANES)
+	for step in range(1, 3):
+		ws.try_place("rail", bend_entry - Vector3i(step, 0, 0), world.query_cell, AABB(), 0)
+		ws.try_place("rail", Vector3i(bend_layout.exit) + Vector3i(step, 0, 0), world.query_cell, AABB(), 0)
+	var bend_cart := ws.try_place("mine_cart", bend_entry + Vector3i(-2, 1, 0), world.query_cell, AABB(), 0)
+	print("COASTER_SANDBOX smooth switch %s (%s pieces) cart %s" % [bend.get("reason"), bend.get("changes", {}).get("count"), bend_cart.get("reason")])
+	var cross_entry := Vector3i(-1, 1, 39)
+	app.session.inventory.select_hotbar(STOCK.find("rail_cross"))
+	interaction.set_curve_size(CoasterRails.CROSS_DEFAULT_LENGTH, CoasterRails.CROSS_DEFAULT_LANES)
+	interaction.begin_curve_tool_at(cross_entry)
+	var cross := interaction.commit_drag_place()
+	var cross_layout := CoasterRails.cross_layout(cross_entry, 1, CoasterRails.CROSS_DEFAULT_LENGTH, CoasterRails.CROSS_DEFAULT_LANES)
+	for step in range(1, 3):
+		for end_cell: Vector3i in [cross_layout.entry_a, cross_layout.entry_b]:
+			ws.try_place("rail", end_cell - Vector3i(step, 0, 0), world.query_cell, AABB(), 0)
+		for end_cell: Vector3i in [cross_layout.exit_a, cross_layout.exit_b]:
+			ws.try_place("rail", end_cell + Vector3i(step, 0, 0), world.query_cell, AABB(), 0)
+	var cross_cart := ws.try_place("mine_cart", Vector3i(cross_layout.entry_a) + Vector3i(-2, 1, 0), world.query_cell, AABB(), 0)
+	print("COASTER_SANDBOX crossing %s (%s pieces, %d shared) cart %s" % [cross.get("reason"), cross.get("changes", {}).get("count"), (cross_layout.shared as Array).size(), cross_cart.get("reason")])
+	interaction.placement_rotation_quarters = 0
+	app.session.inventory.select_hotbar(0)
 
 
 func _level_ground(origin: Vector3i, width: int, depth: int, height: int) -> void:

@@ -36,6 +36,8 @@ DERIVED = [
     "rail_slope", "rail_loop", "mine_cart",
     # Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): owner art.
     "coaster_car", "rail_switch",
+    # CoasterCraft cards 2-3 (docs/COASTERCRAFT_TRACKS.md): drawn placeholders.
+    "rail_bend", "rail_cross",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -263,6 +265,45 @@ def icon_rail_switch() -> Image.Image:
     return canvas
 
 
+def _s_bend_points(x0: int, y0: int, x1: int, y1: int, steps: int = 24) -> list:
+    """A smoothstep S-curve from (x0, y0) at the bottom to (x1, y1) at the top."""
+    points = []
+    for index in range(steps + 1):
+        t = index / steps
+        blend = t * t * (3.0 - 2.0 * t)
+        points.append((x0 + (x1 - x0) * blend, y0 + (y1 - y0) * t))
+    return points
+
+
+def icon_rail_bend() -> Image.Image:
+    """Smooth Switch: two rails sweeping in one S-bend from the bottom left to the top right."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    centre = _s_bend_points(72, 236, 184, 20)
+    for index in range(0, len(centre), 4):
+        x, y = centre[index]
+        draw.rectangle([x - 34, y - 7, x + 34, y + 7], fill=(139, 82, 38, 255))
+    for offset in (-20, 20):
+        draw.line([(x + offset, y) for x, y in centre], fill=(110, 118, 126, 255), width=14, joint="curve")
+    return canvas
+
+
+def icon_rail_cross() -> Image.Image:
+    """Crossing: two S-bends whose lanes swap, crossing in the middle."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    track_a = _s_bend_points(60, 236, 196, 20)
+    track_b = _s_bend_points(196, 236, 60, 20)
+    for track in (track_a, track_b):
+        for index in range(0, len(track), 4):
+            x, y = track[index]
+            draw.rectangle([x - 30, y - 6, x + 30, y + 6], fill=(139, 82, 38, 255))
+    for track in (track_a, track_b):
+        for offset in (-18, 18):
+            draw.line([(x + offset, y) for x, y in track], fill=(110, 118, 126, 255), width=12, joint="curve")
+    return canvas
+
+
 def icon_mine_cart() -> Image.Image:
     """An oak cart with iron bands on two wheels, seen from the side."""
     canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
@@ -285,6 +326,7 @@ BUILDERS = {
     "post_lantern": lambda: owner_icon("post_lantern"), "campfire": lambda: owner_icon("campfire"),
     "light_block_blue": lambda: owner_icon("light_block_blue"), "light_block_red": lambda: owner_icon("light_block_red"),
     "rail_slope": icon_rail_slope, "rail_loop": icon_rail_loop, "mine_cart": icon_mine_cart, "rail_switch": icon_rail_switch,
+    "rail_bend": icon_rail_bend, "rail_cross": icon_rail_cross,
     "coaster_car": lambda: owner_icon("coaster_car"),
 }
 

@@ -38,3 +38,4 @@ Tests: every required action responds; forward is E (not W); a changed movement 
 - **While riding a Coaster Car**: mouse turns the head (±110° / ±60°, no turning around); **1–9** speed; **arrow keys** outside views (↑ behind, ↓ front, ← → sides; same arrow again = seat); **Shift** / Escape leave.
 
 - **Rail Loop held**: hold Right Mouse for the loop ghost (a true helix loop); **hold Shift and aim further away** to size it (or 4–9 / X / C); **L** classic foundation loop; **W / R** turn it; release to build.
+- **Rail Bend (Smooth Switch) / Rail Cross (Crossing) held**: hold Right Mouse for the S-bend ghost (the crossing: two S-bends that swap lanes); **hold Shift and aim where the exit goes** — forward distance = length (3–40), sideways offset = lanes (−6..6, left or right); **4–9 / X / C** length; **W / R** turn it; release to lay it (one item per piece, all or nothing).
