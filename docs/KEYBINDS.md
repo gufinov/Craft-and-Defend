@@ -39,6 +39,7 @@ Tests: every required action responds; forward is E (not W); a changed movement 
 
 - **While riding a Coaster Car**: mouse turns the head (±110° / ±60°, no turning around); **1–9** speed; **arrow keys** outside views (↑ behind, ↓ front, ← → sides; same arrow again = seat); **Shift** / Escape leave.
 
+- **U or Ctrl+Z - Undo**: takes back the newest placement - a whole lay (loop, curve, climb, switch, crossing, rail line) or a single piece / block: its pieces go, terrain it auto-cleared comes back (the mined blocks leave the pack), and the items it cost return (what fits in the pack). Twelve steps deep, this session only (not saved). Raw key like V / X / C, not rebindable.
 - **Every coaster tool** (loop, climb, curve, bend / cross, switch): the aimed cell is the piece's **entry** and the piece heads **the way you face** when you press (the ghost extends away from you); **W / R** turn it afterwards; a **Shift-drag re-aims** a climb or loop along the drag, and a bend / cross dragged behind its entry flips to head that way.
 - **Rail Loop held**: hold Right Mouse for the loop ghost (a true helix loop); **hold Shift and aim further away** to size it (or 4–9 / X / C); **L** classic foundation loop; **W / R** turn it; release to build.
 - **Climb held**: hold Right Mouse at the entry for the whole climb's ghost (slope-in, grade, slope-out); **hold Shift and aim at the landing** (a hilltop; below the entry for a descent) to set its length and rise; **4–9 / X / C** set the rise; **W / R** turn it; release to build.

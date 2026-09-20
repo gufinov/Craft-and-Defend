@@ -1081,6 +1081,72 @@ func _run_gate() -> void:
 		tr_post_reaches = absf(_post_bottom(tr_support) - float(tr.y)) < 0.05
 	_record("T183_TRESTLE_TRUSS", tr_loaded and tr_laid.get("reason") == "CLIMB_PLACED" and tr_legs == 2 and tr_ties >= 1 and tr_diagonals >= 2 and tr_stringers >= 1 and tr_stringer_between and tr_post_reaches, "the middle piece of a climb (length 12, rise 6) carries a Support bent with two legs (Post, Post2) reaching the plate, at least one Tie, at least two Diagonal braces and at least one Stringer whose centre lies between this bent and the next piece's bent", {"loaded": tr_loaded, "laid": tr_laid.get("reason"), "middle": tr_middle.get("anchor"), "next": tr_next.get("anchor"), "legs": tr_legs, "ties": tr_ties, "diagonals": tr_diagonals, "stringers": tr_stringers, "stringer_between": tr_stringer_between, "post_reaches": tr_post_reaches})
 
+	# T184 undo (owner 2026-09-20: "when I place something big improperly, it
+	# takes forever to chop it down"): U / Ctrl+Z takes back the newest
+	# placement - the climb just laid (its pieces, the items it cost), then a
+	# single rail, then a rail line through a dirt bump with auto-clear on
+	# (the bump comes back, the mined dirt goes back out of the pack).
+	var un_pieces_before := ws.stations.size()
+	var un_climb_pieces: Array[String] = []
+	for station_id: String in ws.stations.keys():
+		var station_record: Dictionary = ws.stations[station_id]
+		if station_record.has("curve") and Vector3i(station_record.get("anchor", Vector3i.MAX)).z == tr.z and Vector3i(station_record.get("anchor", Vector3i.MAX)).x >= tr.x and Vector3i(station_record.get("anchor", Vector3i.MAX)).x <= tr.x + 12:
+			un_climb_pieces.append(station_id)
+	var un_climbs_before := app.session.inventory.count("rail_climb")
+	var un_count_before := interaction.undo_count()
+	# The key path needs a live player and an unpaused session for a frame.
+	var un_was_paused: bool = app.session.simulation_paused
+	app.session.simulation_paused = false
+	app.session.player.activate(false)
+	await get_tree().process_frame
+	for pressed in [true, false]:
+		var un_key := InputEventKey.new()
+		un_key.keycode = KEY_U
+		un_key.physical_keycode = KEY_U
+		un_key.pressed = pressed
+		Input.parse_input_event(un_key)
+		await get_tree().process_frame
+	await get_tree().process_frame
+	app.session.player.deactivate()
+	app.session.simulation_paused = un_was_paused
+	var un_climb_gone := true
+	for station_id: String in un_climb_pieces:
+		if ws.stations.has(station_id):
+			un_climb_gone = false
+	var un_visual_gone := true
+	for station_id: String in un_climb_pieces:
+		if app.session._station_visuals.has(station_id):
+			un_visual_gone = false
+	var un_climb_refund := app.session.inventory.count("rail_climb") - un_climbs_before
+	var un_key_used: bool = interaction.undo_count() == un_count_before - 1 and ws.stations.size() == un_pieces_before - un_climb_pieces.size()
+	# A single rail, undone by the service call.
+	_hotbar_slot_for("rail", 0)
+	var un_rail_cell := tr + Vector3i(2, 0, 4)
+	var un_rails_before := app.session.inventory.count("rail")
+	var un_rail := interaction.try_place_item(un_rail_cell, "rail")
+	var un_rail_id := ws.station_at_cell(un_rail_cell)
+	var un_rail_undo := interaction.undo_last()
+	var un_rail_gone: bool = un_rail.get("ok", false) and not un_rail_id.is_empty() and not ws.stations.has(un_rail_id) and app.session.inventory.count("rail") == un_rails_before
+	# A rail line through a dirt bump with auto-clear on: the bump returns.
+	if not interaction.auto_clear:
+		app._toggle_track_auto_clear()
+	var un_line_anchor := tr + Vector3i(4, 0, 5)
+	world.set_cell(un_line_anchor + Vector3i(2, 0, 0), 1)
+	var un_dirt_before := app.session.inventory.count("dirt")
+	interaction.begin_entity_line_at(un_line_anchor)
+	interaction.set_drag_end(un_line_anchor + Vector3i(3, 0, 0))
+	var un_line := interaction.commit_drag_place()
+	var un_line_cleared: bool = un_line.get("reason") == "LINE_PLACED" and int(un_line.get("changes", {}).get("cleared", 0)) == 1 and app.session.inventory.count("dirt") == un_dirt_before + 1
+	var un_line_undo := interaction.undo_last()
+	var un_bump_back: bool = int(world.query_cell(un_line_anchor + Vector3i(2, 0, 0)).get("voxel_id", 0)) == 1 and app.session.inventory.count("dirt") == un_dirt_before and app.session.inventory.count("rail") == un_rails_before
+	var un_line_gone := true
+	for step in range(4):
+		if not ws.station_at_cell(un_line_anchor + Vector3i(step, 0, 0)).is_empty():
+			un_line_gone = false
+	app._toggle_track_auto_clear()
+	var un_empty := interaction.undo_last()
+	_record("T184_UNDO", not un_climb_pieces.is_empty() and un_key_used and un_climb_gone and un_visual_gone and un_climb_refund == un_climb_pieces.size() and un_rail_gone and un_rail_undo.get("reason") == "UNDONE" and un_line_cleared and un_line_undo.get("reason") == "UNDONE" and un_bump_back and un_line_gone, "pressing U removes every piece of the climb just laid (records and visuals) and hands back one Rail Climb per piece, popping one undo entry; a single rail placed then undone is gone with its rail back; a rail line that auto-cleared a dirt bump, undone, loses its rails, the bump is back and the mined dirt leaves the pack", {"climb_pieces": un_climb_pieces.size(), "key_used": un_key_used, "climb_gone": un_climb_gone, "visual_gone": un_visual_gone, "climb_refund": un_climb_refund, "rail_gone": un_rail_gone, "rail_undo": un_rail_undo.get("reason"), "line_cleared": un_line_cleared, "line": un_line.get("reason"), "line_undo": un_line_undo.get("reason"), "bump_back": un_bump_back, "line_gone": un_line_gone, "empty": un_empty.get("reason")})
+
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on
 ## the track, beside a slope run climbing a step, in one 1280x720 view.

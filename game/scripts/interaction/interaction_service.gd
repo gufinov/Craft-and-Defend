@@ -86,7 +86,133 @@ func try_break_cell(cell: Vector3i, expected_world_revision: int = -1) -> Dictio
 	return _finish(true, reason, {"cell": cell, "cells": break_cells, "voxel_before": voxel_id, "voxel_after": AIR, "drops": additions})
 
 
+## Undo (owner 2026-09-20: "when I place something big improperly, it takes
+## forever to chop it down"): every placement - a single piece or block, or a
+## whole lay tool commit - is recorded as the stations it created, the
+## voxels it changed and the pack's net change; `undo_last` reverses the
+## newest one (pieces removed without their own refund, voxels restored,
+## the items the lay cost handed back, its drops taken back). UNDO_DEPTH deep.
+const UNDO_DEPTH := 12
+var _undo: Array[Dictionary] = []
+
+
+func undo_count() -> int:
+	return _undo.size()
+
+
+func _pack_counts() -> Dictionary:
+	var counts: Dictionary = {}
+	for slot: Dictionary in inventory.slots:
+		var slot_item := str(slot.get("item_id", ""))
+		if slot_item.is_empty():
+			continue
+		counts[slot_item] = int(counts.get(slot_item, 0)) + int(slot.get("count", 0))
+	return counts
+
+
+## Voxel ids of the cells a placement may touch (the cells themselves and
+## whatever auto-clear would mine), before it happens.
+func _undo_snapshot(cells: Array[Vector3i]) -> Dictionary:
+	var voxels: Dictionary = {}
+	for cell: Vector3i in cells:
+		if voxels.has(cell):
+			continue
+		var query := world.query_cell(cell)
+		if query.get("state") == "LOADED":
+			voxels[cell] = int(query.get("voxel_id", 0))
+	return {"stations": workstations.stations.keys() if workstations != null else [], "voxels": voxels, "pack": _pack_counts()}
+
+
+## After a successful placement: what changed since `snapshot` becomes an
+## undo entry (nothing recorded when nothing changed).
+func _undo_record(snapshot: Dictionary, label: String) -> void:
+	var before_ids: Array = snapshot.get("stations", [])
+	var created: Array[String] = []
+	if workstations != null:
+		for instance_id: String in workstations.stations:
+			if not before_ids.has(instance_id):
+				created.append(instance_id)
+	var voxels: Array[Dictionary] = []
+	var before_voxels: Dictionary = snapshot.get("voxels", {})
+	for cell: Vector3i in before_voxels:
+		var now := int(world.query_cell(cell).get("voxel_id", before_voxels[cell]))
+		if now != int(before_voxels[cell]):
+			voxels.append({"cell": cell, "before": int(before_voxels[cell]), "after": now})
+	var items: Dictionary = {}
+	var before_pack: Dictionary = snapshot.get("pack", {})
+	var after_pack := _pack_counts()
+	for item_id: String in before_pack:
+		var delta := int(after_pack.get(item_id, 0)) - int(before_pack[item_id])
+		if delta != 0:
+			items[item_id] = delta
+	for item_id: String in after_pack:
+		if not before_pack.has(item_id):
+			items[item_id] = int(after_pack[item_id])
+	if created.is_empty() and voxels.is_empty():
+		return
+	_undo.append({"label": label, "stations": created, "voxels": voxels, "items": items})
+	while _undo.size() > UNDO_DEPTH:
+		_undo.pop_front()
+
+
+## Reverses the newest placement. Pieces already gone are skipped; a voxel
+## is restored only if it still holds what the placement wrote; the refund
+## is what the pack can take (creative: whatever fits, no complaint).
+func undo_last() -> Dictionary:
+	if _undo.is_empty():
+		return _finish(false, "NOTHING_TO_UNDO")
+	var entry: Dictionary = _undo.pop_back()
+	if not _drag.is_empty():
+		_drag = {}
+	var removed := 0
+	for instance_id: String in entry.get("stations", []):
+		if workstations == null or not workstations.stations.has(instance_id):
+			continue
+		var gone := workstations.try_dismantle(instance_id, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB(), false)
+		if gone.get("ok", false):
+			removed += 1
+	var restored := 0
+	for change: Dictionary in entry.get("voxels", []):
+		var cell: Vector3i = change.cell
+		if int(world.query_cell(cell).get("voxel_id", -1)) == int(change.after) and world.set_cell(cell, int(change.before)):
+			restored += 1
+	var refunds: Dictionary = {}
+	var take_back: Dictionary = {}
+	var items: Dictionary = entry.get("items", {})
+	for item_id: String in items:
+		var delta := int(items[item_id])
+		if delta < 0:
+			refunds[item_id] = -delta
+		elif delta > 0 and mini(delta, inventory.count(item_id)) > 0:
+			take_back[item_id] = mini(delta, inventory.count(item_id))
+	var refunded := inventory.try_transaction(take_back, refunds)
+	if not refunded.get("ok", false):
+		# The pack cannot take the whole refund: give back what fits, one
+		# item kind at a time (creative packs are full by design).
+		inventory.try_transaction(take_back, {})
+		for item_id: String in refunds:
+			var amount := int(refunds[item_id])
+			while amount > 0 and not inventory.can_transaction({}, {item_id: amount}):
+				amount -= 1
+			if amount > 0:
+				inventory.try_transaction({}, {item_id: amount})
+	return _finish(true, "UNDONE", {"label": str(entry.get("label", "")), "removed": removed, "restored": restored, "refunds": refunds, "taken_back": take_back, "remaining": _undo.size()})
+
+
 func try_place_item(cell: Vector3i, item_id: String, expected_world_revision: int = -1, rotation_quarters: int = -1) -> Dictionary:
+	var checked_first := preview_place_item(cell, item_id, placement_rotation_quarters if rotation_quarters < 0 else rotation_quarters)
+	var touched: Array[Vector3i] = [cell]
+	for clear_cell in checked_first.get("clear", []):
+		if clear_cell is Vector3i:
+			touched.append(clear_cell)
+	var snapshot := _undo_snapshot(touched)
+	var placed := _try_place_item(cell, item_id, expected_world_revision, rotation_quarters)
+	if placed.get("ok", false):
+		_undo_record(snapshot, item_id)
+	return placed
+
+
+func _try_place_item(cell: Vector3i, item_id: String, expected_world_revision: int = -1, rotation_quarters: int = -1) -> Dictionary:
 	if expected_world_revision >= 0 and expected_world_revision != world.revision:
 		return _finish(false, "STALE_REVISION")
 	var rotation := placement_rotation_quarters if rotation_quarters < 0 else rotation_quarters
@@ -521,6 +647,23 @@ func cancel_drag_place() -> Dictionary:
 
 
 func commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
+	if _drag.is_empty():
+		return _finish(false, "NO_DRAG")
+	var touched: Array[Vector3i] = []
+	for entry in _drag.cells:
+		touched.append(Vector3i(entry.cell))
+		for clear_cell in entry.get("clear", []):
+			if clear_cell is Vector3i:
+				touched.append(clear_cell)
+	var label := str(_drag.get("mode", "drag"))
+	var snapshot := _undo_snapshot(touched)
+	var committed := _commit_drag_place(expected_world_revision)
+	if committed.get("ok", false):
+		_undo_record(snapshot, label)
+	return committed
+
+
+func _commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 	if _drag.is_empty():
 		return _finish(false, "NO_DRAG")
 	if expected_world_revision >= 0 and expected_world_revision != world.revision:

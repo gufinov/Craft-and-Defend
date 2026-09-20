@@ -395,17 +395,17 @@ func select_hotbar(index: int) -> Dictionary:
 		# Coaster pieces carry their controls on screen (owner could not find
 		# the loop gesture without them).
 		if item_id == CoasterRails.LOOP:
-			_on_interaction_feedback("RAIL LOOP: aim at the ground where the entry goes, HOLD Right Mouse — the loop ghost appears; hold Shift and aim further away to size it (or 4-9 / X / C), W / R turn it, L classic loop; let go to build it (red = does not fit)")
+			_on_interaction_feedback("RAIL LOOP: aim at the ground where the entry goes, HOLD Right Mouse — the loop ghost appears; hold Shift and aim further away to size it (or 4-9 / X / C), W / R turn it, L classic loop; let go to build it (red = does not fit) — it heads the way you face; U / Ctrl+Z undoes")
 		elif item_id == CoasterRails.SLOPE:
 			_on_interaction_feedback("RAIL SLOPE: the arrow end climbs one block — W / R turns it; put a Rail on the block it climbs to")
 		elif item_id == CoasterRails.CLIMB:
-			_on_interaction_feedback("CLIMB: aim at the ground where the climb starts, HOLD Right Mouse — the whole climb ghosts (slope-in, grade, slope-out); hold Shift and aim where it should land (a hilltop, or below for a descent) to set its length and rise (or 4-9 / X / C for the rise), W / R turn it; let go to build it (red = does not fit)")
+			_on_interaction_feedback("CLIMB: aim at the ground where the climb starts, HOLD Right Mouse — the whole climb ghosts (slope-in, grade, slope-out); hold Shift and aim where it should land (a hilltop, or below for a descent) to set its length and rise (or 4-9 / X / C for the rise), W / R turn it; let go to build it (red = does not fit) — it heads the way you face; U / Ctrl+Z undoes")
 		elif interaction != null and interaction.is_smooth_bend_item(item_id):
-			_on_interaction_feedback("SMOOTH SWITCH: aim where the entry goes, HOLD Right Mouse — the S-bend ghost appears; hold Shift and aim where the exit goes (forward = length, sideways = lanes, left or right), or 4-9 / X / C for the length; W / R turn it; let go to lay it (one item per piece, red = does not fit)")
+			_on_interaction_feedback("SMOOTH SWITCH: aim where the entry goes, HOLD Right Mouse — the S-bend ghost appears; hold Shift and aim where the exit goes (forward = length, sideways = lanes, left or right), or 4-9 / X / C for the length; W / R turn it; let go to lay it (one item per piece, red = does not fit) — it heads the way you face; U / Ctrl+Z undoes")
 		elif interaction != null and interaction.is_rail_cross_item(item_id):
-			_on_interaction_feedback("CROSSING: aim where the first entry goes, HOLD Right Mouse — two S-bends that swap lanes appear; hold Shift and aim where the first exit goes (forward = length, sideways = lanes), or 4-9 / X / C for the length; W / R turn it; let go to lay it (one item per piece, red = does not fit)")
+			_on_interaction_feedback("CROSSING: aim where the first entry goes, HOLD Right Mouse — two S-bends that swap lanes appear; hold Shift and aim where the first exit goes (forward = length, sideways = lanes), or 4-9 / X / C for the length; W / R turn it; let go to lay it (one item per piece, red = does not fit) — it heads the way you face; U / Ctrl+Z undoes")
 		elif item_id == "rail_curve":
-			_on_interaction_feedback("CURVE: aim at the ground where the entry goes, HOLD Right Mouse — the curve ghost appears (90°, radius 4, bending right); hold Shift and aim where it should go: ahead-right = 45°, right = 90°, behind-right = 135°, behind = U-turn, aim LEFT to bend left, further = wider (or 4-9 / X / C); W / R turn the entry; let go to build it (red = does not fit); one Curve per piece")
+			_on_interaction_feedback("CURVE: aim at the ground where the entry goes, HOLD Right Mouse — the curve ghost appears (90°, radius 4, bending right); hold Shift and aim where it should go: ahead-right = 45°, right = 90°, behind-right = 135°, behind = U-turn, aim LEFT to bend left, further = wider (or 4-9 / X / C); W / R turn the entry; let go to build it (red = does not fit); one Curve per piece — it heads the way you face; U / Ctrl+Z undoes")
 	return result
 
 
@@ -694,6 +694,30 @@ func _update_sun_visual() -> void:
 	_sun_visual.global_position = player.global_position + clock.sun_direction() * 180.0
 
 
+## U / Ctrl+Z: reverse the newest placement (InteractionService.undo_last).
+func undo_last_placement() -> Dictionary:
+	if interaction == null:
+		return {"ok": false, "reason": "NO_SESSION"}
+	if interaction.drag_active():
+		_update_drag_preview(interaction.cancel_drag_place())
+	var undone := interaction.undo_last()
+	if not undone.get("ok", false):
+		_on_interaction_feedback("Nothing to undo.")
+		return undone
+	var changes: Dictionary = undone.get("changes", {})
+	var parts: Array[String] = []
+	if int(changes.get("removed", 0)) > 0:
+		parts.append("%d piece%s removed" % [int(changes.removed), "" if int(changes.removed) == 1 else "s"])
+	if int(changes.get("restored", 0)) > 0:
+		parts.append("%d block%s restored" % [int(changes.restored), "" if int(changes.restored) == 1 else "s"])
+	var refunds: Dictionary = changes.get("refunds", {})
+	for item_id: String in refunds:
+		parts.append("%d %s back" % [int(refunds[item_id]), registry.display_name(item_id)])
+	_on_interaction_feedback("Undone: %s (%d more to undo; U or Ctrl+Z)" % [", ".join(parts) if not parts.is_empty() else "nothing changed", int(changes.get("remaining", 0))])
+	_emit_hud()
+	return undone
+
+
 func _on_interaction_feedback(message: String) -> void:
 	var friendly := str(REASON_TEXT.get(message, message if message.contains(" ") else message.replace("_", " ").capitalize()))
 	if _cleared_for_track > 0:
@@ -783,6 +807,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				_on_interaction_feedback("Curve radius %d (4-9 while the ghost shows; X / C too; Shift-aim for any size and the sweep)" % int(interaction.drag_state().get("curve_radius", radius)))
 				get_viewport().set_input_as_handled()
 				return
+	if event is InputEventKey and event.pressed and not event.echo and ((event.physical_keycode == KEY_U or event.keycode == KEY_U) or ((event.physical_keycode == KEY_Z or event.keycode == KEY_Z) and event.ctrl_pressed)):
+		# Undo (owner 2026-09-20): U or Ctrl+Z takes back the last placement -
+		# a whole lay (loop, curve, climb, switch, crossing, rail line) or a
+		# single piece / block - pieces gone, terrain restored, items back.
+		undo_last_placement()
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_V or event.keycode == KEY_V):
 		# Coaster car and hero: V toggles the chase camera (raw key, like X / C).
 		toggle_third_person()

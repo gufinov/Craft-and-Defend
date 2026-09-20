@@ -131,7 +131,9 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 	return result
 
 
-func try_dismantle(instance_id: String, world_query: Callable, player_aabb: AABB) -> Dictionary:
+## `refund` false (undo): the piece goes without handing its item back - the
+## undo refunds what the lay actually cost.
+func try_dismantle(instance_id: String, world_query: Callable, player_aabb: AABB, refund: bool = true) -> Dictionary:
 	if not stations.has(instance_id):
 		return _result(false, "NO_ENTITY")
 	if jobs.has(instance_id):
@@ -140,13 +142,13 @@ func try_dismantle(instance_id: String, world_query: Callable, player_aabb: AABB
 	if str(record.get("entity_id", "")) == "furnace" and not _furnace_is_empty(record):
 		return _result(false, "STATION_NOT_EMPTY")
 	var item_id := str(record.entity_id)
-	var refund := inventory.can_transaction({}, {item_id: 1})
-	if not refund and not creative:
+	var refund_fits := refund and inventory.can_transaction({}, {item_id: 1})
+	if refund and not refund_fits and not creative:
 		return _result(false, "INVENTORY_FULL")
 	var released := footprints.release_at(record.anchor)
 	if not released.get("ok", false):
 		return released
-	var granted := inventory.try_transaction({}, {item_id: 1}) if refund else {"ok": true}
+	var granted := inventory.try_transaction({}, {item_id: 1}) if refund_fits else {"ok": true}
 	if not granted.get("ok", false):
 		var definition := registry.entity(item_id)
 		footprints.try_reserve(instance_id, record.anchor, _vector_list(definition.occupied_offsets), int(record.rotation_quarters), world_query, player_aabb, _vector_list(definition.support_offsets))
