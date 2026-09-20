@@ -98,24 +98,6 @@ func run(application: CraftAndDefendApp) -> void:
 				after += 1
 		print("SWITCH_CLICK laid %d pieces" % (after - before))
 		get_tree().quit(0)
-	if OS.get_cmdline_user_args().has("--coaster-sandbox-switch-check"):
-		# The mine cart on the switcher demo rides from lane 0 through the
-		# diagonal to lane 1 and back: print its cells for 8 s.
-		var cart_id := ""
-		for station_id: String in app.session.workstations.stations:
-			var record: Dictionary = app.session.workstations.station(station_id)
-			if str(record.get("entity_id", "")) == "mine_cart" and Vector3i(record.get("anchor", Vector3i.ZERO)).z == 38:
-				cart_id = station_id
-		var seen: Array[Vector3i] = []
-		for sample in range(32):
-			var until := Time.get_ticks_msec() + 250
-			while Time.get_ticks_msec() < until:
-				await get_tree().process_frame
-			var cell := app.session.coaster_carts.rider_cell(cart_id)
-			if seen.is_empty() or seen[seen.size() - 1] != cell:
-				seen.append(cell)
-		print("SWITCH_CHECK cells %s" % [seen])
-		get_tree().quit(0)
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-board-check"):
 		# Aim from beside the parked car at the rail piece under it: Shift must
 		# still board (owner 2026-09-20: the aim landed on the rail, not the car).
@@ -203,10 +185,10 @@ func _stock_pack(arrange: bool) -> void:
 				inventory.swap_slots(hotbar_index, slot_index)
 				break
 	inventory.select_hotbar(0)
-
+## A stone plate beside the spawn with a size-6 loop element in a closed circuit and
 
 ## A stone plate beside the spawn with a lead-in + loop (radius 3) along +x
-## and a slope run climbing a two-block step, each with a mine cart.
+## the car on its approach; nothing else on the plate.
 func _lay_demo() -> void:
 	var ws: WorkstationService = app.session.workstations
 	var world: WorldAdapter = app.session.world
@@ -230,10 +212,6 @@ func _lay_demo() -> void:
 	var loop_car := ws.try_place("coaster_car", origin + Vector3i(3, 1, 0), world.query_cell, AABB(), 0)
 	loop_car_id = str(loop_car.get("details", {}).get("station", {}).get("instance_id", ""))
 	print("COASTER_SANDBOX loop %s (%s pieces) car %s" % [loop.get("reason"), loop.get("changes", {}).get("count"), loop_car.get("reason")])
-	var debug_chain := CoasterRails.chain(ws.stations, origin)
-	for probe: Vector3i in [Vector3i(-4, 1, 29), Vector3i(1, 1, 29), Vector3i(-5, 2, 29), Vector3i(2, 2, 29), Vector3i(-1, 1, 29), Vector3i(0, 1, 29)]:
-		var probe_record: Dictionary = ws.station(ws.station_at_cell(probe))
-		print("COASTER_SANDBOX probe %s entity=%s role=%s joints=%s rot=%s chain=%s conn=%s" % [probe, probe_record.get("entity_id"), probe_record.get("switch_role"), probe_record.get("coaster_joints"), probe_record.get("rotation_quarters"), debug_chain.get(probe), CoasterRails.connections(probe_record)])
 	# Closed circuit: from the exit (-1, 28) on to x=-8, up to z=32, back to
 	# x=4 and down to the approach, so the car laps forever.
 	var circuit: Array[Vector3i] = []
@@ -249,38 +227,8 @@ func _lay_demo() -> void:
 		if ws.try_place("rail", cell, world.query_cell, AABB(), 0).get("ok", false):
 			laid += 1
 	print("COASTER_SANDBOX circuit %d / %d rails, chain %d" % [laid, circuit.size(), CoasterRails.chain(ws.stations, origin).size()])
-	# Slope run: rails, slope, two-block step with rails on top, then down again.
-	var step := Vector3i(2, 1, 34)
-	for x in range(3, 6):
-		world.set_cell(step + Vector3i(x, 0, 0), 3)
-	for x in [0, 1]:
-		ws.try_place("rail", step + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
-	ws.try_place("rail_slope", step + Vector3i(2, 0, 0), world.query_cell, AABB(), 1)
-	for x in [3, 4, 5]:
-		ws.try_place("rail", step + Vector3i(x, 1, 0), world.query_cell, AABB(), 0)
-	ws.try_place("rail_slope", step + Vector3i(6, 0, 0), world.query_cell, AABB(), 3)
-	for x in [7, 8, 9]:
-		ws.try_place("rail", step + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
-	var slope_cart := ws.try_place("mine_cart", step + Vector3i(0, 1, 0), world.query_cell, AABB(), 0)
-	# Lane switcher demo (owner 2026-09-20): four rails, the switcher laid
-	# through the drag tool, four rails one lane over, and a mine cart.
-	var switch_start := Vector3i(-12, 1, 38)
-	_stock_pack(false)
-	for x in range(0, 4):
-		var lead_rail := ws.try_place("rail", switch_start + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
-		if not lead_rail.get("ok", false):
-			print("COASTER_SANDBOX switch lead rail %s: %s" % [switch_start + Vector3i(x, 0, 0), lead_rail.get("reason")])
-	app.session.inventory.select_hotbar(STOCK.find("rail_switch"))
-	interaction.placement_rotation_quarters = 1
-	interaction.begin_lane_switch_at(switch_start + Vector3i(4, 0, 0))
-	var switch_laid := interaction.commit_drag_place()
-	interaction.placement_rotation_quarters = 0
-	app.session.inventory.select_hotbar(0)
-	for x in range(7, 11):
-		ws.try_place("rail", switch_start + Vector3i(x, 0, 1), world.query_cell, AABB(), 0)
-	var switch_cart := ws.try_place("mine_cart", switch_start + Vector3i(0, 1, 0), world.query_cell, AABB(), 0)
-	print("COASTER_SANDBOX lane switcher %s, chain %d, cart %s" % [switch_laid.get("reason"), CoasterRails.chain(ws.stations, switch_start).size(), switch_cart.get("reason")])
-	print("COASTER_SANDBOX slope run %d pieces, cart %s" % [CoasterRails.chain(ws.stations, step).size(), slope_cart.get("reason")])
+	# Owner 2026-09-20: nothing else on the plate - the loop, its circuit and
+	# the car are the whole sandbox; build the rest yourself.
 
 
 func _level_ground(origin: Vector3i, width: int, depth: int, height: int) -> void:

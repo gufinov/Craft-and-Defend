@@ -89,6 +89,10 @@ func speed_of(instance_id: String) -> float:
 
 
 ## The moving "CartRig" node of a registered cart, or null.
+## How fast the body's heading follows the track (per second).
+const HEADING_RATE := 10.0
+
+
 func cart_rig(instance_id: String) -> Node3D:
 	var body: Node3D = _bodies.get(instance_id)
 	if body == null or not is_instance_valid(body):
@@ -161,7 +165,21 @@ func _ride(instance_id: String, body: Node3D, rig: Node3D, record: Dictionary, t
 	var moved := rig.global_position.move_toward(desired, speed * delta)
 	rig.global_position = moved
 	if travel.length() > 0.001:
-		var forward := travel.normalized()
+		# Heading: the chord from the previous cell's point to the target's
+		# point (owner 2026-09-20: pointing at the very next point made the
+		# body flick sideways where two points sit close together on the
+		# circle or across a switcher), eased so no cell boundary snaps it.
+		var chord := travel.normalized()
+		var previous_cell: Vector3i = rider.get("previous", Vector3i.MAX)
+		if previous_cell != Vector3i.MAX and chain.has(previous_cell):
+			var from_previous := desired - _ride_point(tracks, previous_cell, up)
+			if from_previous.length() > 0.3:
+				chord = from_previous.normalized()
+		var forward: Vector3 = _directions.get(instance_id, chord)
+		if forward.length() < 0.5 or forward.dot(chord) < -0.2:
+			forward = chord
+		else:
+			forward = forward.slerp(chord, minf(1.0, delta * HEADING_RATE)).normalized()
 		_directions[instance_id] = forward
 		var basis_up := up
 		if absf(forward.dot(basis_up)) > 0.98:
