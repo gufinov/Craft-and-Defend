@@ -9,6 +9,9 @@ var inventory: F0Inventory
 var footprints := EntityFootprintService.new()
 var stations: Dictionary = {}
 var jobs: Dictionary = {}
+## Creative sandbox: a dismantled entity the full pack cannot take is simply
+## gone instead of refusing the removal (the stock is infinite anyway).
+var creative := false
 var _next_instance := 1
 var _next_job := 1
 
@@ -137,12 +140,13 @@ func try_dismantle(instance_id: String, world_query: Callable, player_aabb: AABB
 	if str(record.get("entity_id", "")) == "furnace" and not _furnace_is_empty(record):
 		return _result(false, "STATION_NOT_EMPTY")
 	var item_id := str(record.entity_id)
-	if not inventory.can_transaction({}, {item_id: 1}):
+	var refund := inventory.can_transaction({}, {item_id: 1})
+	if not refund and not creative:
 		return _result(false, "INVENTORY_FULL")
 	var released := footprints.release_at(record.anchor)
 	if not released.get("ok", false):
 		return released
-	var granted := inventory.try_transaction({}, {item_id: 1})
+	var granted := inventory.try_transaction({}, {item_id: 1}) if refund else {"ok": true}
 	if not granted.get("ok", false):
 		var definition := registry.entity(item_id)
 		footprints.try_reserve(instance_id, record.anchor, _vector_list(definition.occupied_offsets), int(record.rotation_quarters), world_query, player_aabb, _vector_list(definition.support_offsets))

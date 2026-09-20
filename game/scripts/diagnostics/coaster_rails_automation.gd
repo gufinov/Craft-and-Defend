@@ -145,7 +145,9 @@ func _run_gate() -> void:
 	# The right-press path itself must start the switcher drag (owner
 	# 2026-09-20: it placed a single piece when it fell through to the
 	# one-cell placement).
-	var press_origin := Vector3(sw) + Vector3(4.5, 2.0, 3.0)
+	# The press faces +x (the heading follows the player's facing since
+	# 2026-09-20), standing behind the entry.
+	var press_origin := Vector3(sw) + Vector3(2.0, 2.0, 0.5)
 	var press_aim := (Vector3(sw) + Vector3(4.5, 0.0, 0.5) - press_origin).normalized()
 	var press_started := interaction.secondary_press_from_view(press_origin, press_aim)
 	var press_mode := str(interaction.drag_state().get("mode", ""))
@@ -411,7 +413,7 @@ func _run_gate() -> void:
 	interaction.placement_rotation_quarters = 1
 	interaction.set_climb(CoasterRails.CLIMB_LENGTH_DEFAULT, CoasterRails.CLIMB_RISE_DEFAULT)
 	# The right-press path itself starts the climb drag.
-	var cb_press_origin := Vector3(cb) + Vector3(0.5, 3.0, 3.0)
+	var cb_press_origin := Vector3(cb) + Vector3(-2.0, 3.0, 0.5)
 	var cb_press_aim := (Vector3(cb) + Vector3(0.5, 0.0, 0.5) - cb_press_origin).normalized()
 	var cb_press := interaction.secondary_press_from_view(cb_press_origin, cb_press_aim)
 	var cb_press_mode := str(interaction.drag_state().get("mode", ""))
@@ -642,7 +644,7 @@ func _run_gate() -> void:
 	interaction.curve_radius = 4
 	interaction.curve_sweep = 90
 	interaction.curve_left = false
-	var cv_press_origin := Vector3(cv) + Vector3(0.5, 2.0, 3.0)
+	var cv_press_origin := Vector3(cv) + Vector3(-2.0, 2.0, 0.5)
 	var cv_press := interaction.secondary_press_from_view(cv_press_origin, (Vector3(cv) + Vector3(0.5, 0.0, 0.5) - cv_press_origin).normalized())
 	var cv_press_mode := str(interaction.drag_state().get("mode", ""))
 	interaction.cancel_drag_place()
@@ -977,6 +979,55 @@ func _run_gate() -> void:
 				lower_posts += 1
 				post_reaches = post_reaches and absf(_post_bottom(support) - float(clear_anchor.y)) < 0.05
 	_record("T180_TRESTLE_SUPPORTS", lower_posts >= 4 and lower_missing.is_empty() and top_posts.is_empty() and stacked_checked > 0 and stacked_posts.is_empty() and post_reaches, "every lower piece of the laid diameter-8 loop (1-3 cells up, not over another piece of the loop) carries a Support node whose post reaches the plate; the top row has none; a piece within two cells above another piece of the same loop has none", {"lower_posts": lower_posts, "lower_missing": str(lower_missing), "top_posts": str(top_posts), "stacked_checked": stacked_checked, "stacked_posts": str(stacked_posts), "post_reaches": post_reaches, "top_y": top_y})
+
+	# T182 the heading follows the aim (owner 2026-09-20: "the item should
+	# start from where I place and extend towards its rotated direction, or
+	# be dragged from that spot"): a coaster-tool press heads the way the
+	# player faces whatever the build orientation was; a Shift-drag re-aims a
+	# climb / loop along the drag, and a bend dragged behind its entry flips.
+	var hd := Vector3i(30, 0, 66)
+	var hd_loaded := await _wait_levelled(hd + Vector3i(-12, 0, -4), 24, 9, 14, [hd, hd + Vector3i(8, 0, 0), hd + Vector3i(-8, 0, 0)] as Array[Vector3i])
+	app.session.inventory.try_transaction({}, {"rail_climb": 40, "rail_loop": 60, "rail_bend": 20})
+	var hd_climb_slot := _hotbar_slot_for("rail_climb", 7)
+	app.session.inventory.select_hotbar(hd_climb_slot)
+	interaction.placement_rotation_quarters = 1
+	interaction.set_climb(CoasterRails.CLIMB_LENGTH_DEFAULT, CoasterRails.CLIMB_RISE_DEFAULT)
+	# Standing east of the entry looking west (-x): the climb must head west.
+	var hd_origin := Vector3(hd) + Vector3(3.0, 2.5, 0.5)
+	var hd_press := interaction.secondary_press_from_view(hd_origin, (Vector3(hd) + Vector3(0.5, 0.0, 0.5) - hd_origin).normalized())
+	var hd_state := interaction.drag_state()
+	var faces_west: bool = str(hd_state.get("mode", "")) == "climb" and int(hd_state.get("rotation_quarters", -1)) == 3 and Vector3i(hd_state.get("anchor", Vector3i.MAX)) == hd
+	# Shift-drag 8 cells EAST of the entry: the climb turns around and heads east, length 8.
+	interaction.update_drag_place(Vector3(hd) + Vector3(8.5, 6.0, 0.5), Vector3.DOWN, true)
+	hd_state = interaction.drag_state()
+	var climb_flipped: bool = int(hd_state.get("rotation_quarters", -1)) == 1 and int(hd_state.get("climb_length", 0)) == 8
+	var climb_east := true
+	for entry in hd_state.get("cells", []):
+		if Vector3i(entry.cell).x < hd.x:
+			climb_east = false
+	interaction.cancel_drag_place()
+	# The loop: pressed facing west, dragged 6 cells south (+z) heads south at diameter 6.
+	app.session.inventory.select_hotbar(_hotbar_slot_for("rail_loop", 2))
+	interaction.placement_rotation_quarters = 1
+	interaction.secondary_press_from_view(hd_origin, (Vector3(hd) + Vector3(0.5, 0.0, 0.5) - hd_origin).normalized())
+	var loop_west: bool = int(interaction.drag_state().get("rotation_quarters", -1)) == 3
+	interaction.update_drag_place(Vector3(hd) + Vector3(0.5, 6.0, 6.5), Vector3.DOWN, true)
+	hd_state = interaction.drag_state()
+	var loop_south: bool = str(hd_state.get("mode", "")) == "loop_element" and int(hd_state.get("rotation_quarters", -1)) == 2 and int(hd_state.get("loop_size", 0)) == 6
+	interaction.cancel_drag_place()
+	# The bend: heading east, dragged 6 cells behind (west) flips to west, length 6.
+	app.session.inventory.select_hotbar(_hotbar_slot_for("rail_bend", 4))
+	interaction.placement_rotation_quarters = 1
+	interaction.set_curve_size(CoasterRails.BEND_DEFAULT_LENGTH, CoasterRails.BEND_DEFAULT_LANES)
+	interaction.begin_curve_tool_at(hd)
+	interaction.update_drag_place(Vector3(hd) + Vector3(-5.5, 6.0, 1.5), Vector3.DOWN, true)
+	hd_state = interaction.drag_state()
+	var bend_flipped: bool = int(hd_state.get("rotation_quarters", -1)) == 3 and int(hd_state.get("curve_length", 0)) == 6
+	interaction.cancel_drag_place()
+	interaction.placement_rotation_quarters = 0
+	interaction.set_curve_size(CoasterRails.BEND_DEFAULT_LENGTH, CoasterRails.BEND_DEFAULT_LANES)
+	interaction.set_climb(CoasterRails.CLIMB_LENGTH_DEFAULT, CoasterRails.CLIMB_RISE_DEFAULT)
+	_record("T182_HEADING_FOLLOWS_AIM", hd_loaded and hd_press.get("reason") == "DRAG_STARTED" and faces_west and climb_flipped and climb_east and loop_west and loop_south and bend_flipped, "with the build orientation East, a Climb right-press from east of the entry looking west starts a climb heading west at the aimed cell; Shift-dragging 8 cells east turns it east (length 8, every ghost cell east of the entry); a Loop pressed the same way heads west and a Shift-drag 6 cells south turns it south at diameter 6; a Bend heading east Shift-dragged 6 cells behind its entry flips west with length 6", {"loaded": hd_loaded, "press": hd_press.get("reason"), "faces_west": faces_west, "climb_flipped": climb_flipped, "climb_east": climb_east, "loop_west": loop_west, "loop_south": loop_south, "bend_flipped": bend_flipped, "bend_state": {"rotation": hd_state.get("rotation_quarters"), "length": hd_state.get("curve_length"), "lanes": hd_state.get("curve_lanes")}})
 
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on

@@ -205,6 +205,7 @@ func _lay_demo() -> void:
 	var origin := Vector3i(0, 1, 30)
 	# Creative: loops cost nothing here and grow as far as the sky allows.
 	interaction.creative = true
+	ws.creative = true
 	app.session.inventory.select_hotbar(STOCK.find("rail_loop"))
 	interaction.placement_rotation_quarters = 3
 	# The true loop (owner 2026-09-20): diameter 8, entry at (0, 30) heading
@@ -267,6 +268,9 @@ func _lay_demo() -> void:
 	for x in [-3, -2, -1]:
 		ws.try_place("rail", turn_entry + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
 		ws.try_place("rail", turn_exit + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+	# Back to the tool's defaults: the owner's first Rail Curve came out a U-turn.
+	interaction.set_curve_sweep(90, false)
+	interaction.set_curve_radius(4)
 	var turn_cart := ws.try_place("mine_cart", turn_entry + Vector3i(-2, 1, 0), world.query_cell, AABB(), 0)
 	interaction.placement_rotation_quarters = 0
 	app.session.inventory.select_hotbar(0)

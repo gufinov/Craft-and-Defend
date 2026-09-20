@@ -67,7 +67,9 @@ func try_break_cell(cell: Vector3i, expected_world_revision: int = -1) -> Dictio
 	var drop_value: Variant = block.get("drop")
 	var additions: Dictionary = {} if drop_value == null else {str(drop_value): break_cells.size()}
 	if not inventory.can_transaction({}, additions):
-		return _finish(false, "INVENTORY_FULL")
+		if not creative:
+			return _finish(false, "INVENTORY_FULL")
+		additions = {}
 	var changed_cells: Array[Vector3i] = []
 	for break_cell in break_cells:
 		if not world.set_cell(break_cell, AIR):
@@ -177,6 +179,13 @@ func begin_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
 		var anchor := placement_anchor_from_view(origin, direction)
 		if anchor == Vector3i.MAX:
 			return _finish(false, "NO_TARGET")
+		if not is_linear_entity_item(item_id):
+			# Coaster tools (owner 2026-09-20, "the item should start from
+			# where I place and extend towards its rotated direction"): the
+			# aimed cell is the ENTRY and the piece heads the way the player
+			# faces, so the ghost is seen from its entry; W / R still turn it
+			# and a Shift-drag re-aims it.
+			placement_rotation_quarters = facing_quarters(direction)
 		if is_coaster_loop_item(item_id):
 			return begin_coaster_loop_at(anchor)
 		if is_curve_item(item_id):
@@ -194,6 +203,35 @@ func begin_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
 	if hit == null:
 		return _finish(false, "NO_TARGET")
 	return begin_drag_at(hit.previous_position)
+
+
+## The placement rotation whose travel direction best matches `direction`
+## (horizontal part; a straight-down aim keeps the current rotation).
+func facing_quarters(direction: Vector3) -> int:
+	var flat := Vector3(direction.x, 0.0, direction.z)
+	if flat.length() < 0.05:
+		return placement_rotation_quarters
+	flat = flat.normalized()
+	var best := placement_rotation_quarters
+	var best_dot := -2.0
+	for quarters in range(4):
+		var dot := flat.dot(Vector3(CoasterRails.switch_along(quarters)))
+		if dot > best_dot:
+			best_dot = dot
+			best = quarters
+	return best
+
+
+## The rotation that heads along the dominant horizontal axis of `span`
+## (MAX-less: the current rotation when the span is too short to tell).
+func _span_quarters(span: Vector3i, minimum: int = 2) -> int:
+	if maxi(absi(span.x), absi(span.z)) < minimum:
+		return placement_rotation_quarters
+	var axis := Vector3i(signi(span.x), 0, 0) if absi(span.x) >= absi(span.z) else Vector3i(0, 0, signi(span.z))
+	for quarters in range(4):
+		if CoasterRails.switch_along(quarters) == axis:
+			return quarters
+	return placement_rotation_quarters
 
 
 ## Rails, walkway slabs and merlons (`linear: true` in content) lay in one
@@ -310,8 +348,11 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 				if plane.has("cell"):
 					reach = plane.cell
 			if reach != Vector3i.MAX:
-				var along := CoasterRails.switch_along(int(_drag.get("rotation", placement_rotation_quarters)))
+				# The drag's direction is the climb's heading (a climb dragged
+				# behind the entry heads the other way - owner 2026-09-20).
 				var span: Vector3i = reach - _drag.anchor
+				placement_rotation_quarters = _span_quarters(span)
+				var along := CoasterRails.switch_along(placement_rotation_quarters)
 				set_climb(span.x * along.x + span.z * along.z, span.y)
 			return drag_state()
 		var climb_anchor := placement_anchor_from_view(origin, direction, 12.0)
@@ -331,8 +372,13 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 			if reach != Vector3i.MAX:
 				var span: Vector3i = reach - _drag.anchor
 				var along := CoasterRails.switch_along(placement_rotation_quarters)
-				var side := CoasterRails.switch_side(placement_rotation_quarters)
 				var forward: int = span.x * along.x + span.z * along.z
+				if forward <= -2:
+					# Dragged behind the entry: the piece heads that way instead.
+					placement_rotation_quarters = posmod(placement_rotation_quarters + 2, 4)
+					along = CoasterRails.switch_along(placement_rotation_quarters)
+					forward = -forward
+				var side := CoasterRails.switch_side(placement_rotation_quarters)
 				var sideways: int = span.x * side.x + span.z * side.z
 				set_curve_size(forward, sideways)
 			return drag_state()
@@ -352,9 +398,12 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 				if plane.has("cell"):
 					reach = plane.cell
 			if reach != Vector3i.MAX:
+				# The drag's direction is the loop's heading, its length the diameter.
+				placement_rotation_quarters = _span_quarters(reach - _drag.anchor)
 				var span := Vector3(reach - _drag.anchor)
 				span.y = 0.0
 				set_loop_diameter(int(round(span.length())))
+				_replan_loop_element()
 			return drag_state()
 		var loop_anchor := placement_anchor_from_view(origin, direction, 12.0)
 		if loop_anchor != Vector3i.MAX and loop_anchor != _drag.anchor:
