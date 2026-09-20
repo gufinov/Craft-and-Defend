@@ -15,6 +15,12 @@ extends Node
 ## leaves the loop onto the exit. At a dead end it turns around and forgets
 ## what it visited. No gravity: constant speed.
 ##
+## CoasterCraft crossing (docs/COASTERCRAFT_TRACKS.md card 3): a cell that
+## carries two curves (`CoasterRails.has_second_curve`) is left toward the
+## partner of the cell the cart came from (`CoasterRails.pair_for`), and its
+## ride point / up come from that pair's curve; the rider remembers the pair
+## (`track`) so consecutive shared cells, where both pairs join, stay on it.
+##
 ## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): a cart registered
 ## `parked` (the `coaster_car`) stands still until `set_parked(id, false)`;
 ## `set_speed(id, cells_per_second)` overrides the entity's `rail_speed` for
@@ -160,7 +166,8 @@ func _ride(instance_id: String, body: Node3D, rig: Node3D, record: Dictionary, t
 		target = _choose_next(chain, tracks, current, rider)
 	var speed := speed_of(instance_id)
 	var up: Vector3 = rider.up
-	var desired := _ride_point(tracks, target, up)
+	var track := str(rider.get("track", "a"))
+	var desired := _ride_point(tracks, target, up, current, track)
 	var travel := desired - rig.global_position
 	var moved := rig.global_position.move_toward(desired, speed * delta)
 	rig.global_position = moved
@@ -172,7 +179,7 @@ func _ride(instance_id: String, body: Node3D, rig: Node3D, record: Dictionary, t
 		var chord := travel.normalized()
 		var previous_cell: Vector3i = rider.get("previous", Vector3i.MAX)
 		if previous_cell != Vector3i.MAX and chain.has(previous_cell):
-			var from_previous := desired - _ride_point(tracks, previous_cell, up)
+			var from_previous := desired - _ride_point(tracks, previous_cell, up, current, track)
 			if from_previous.length() > 0.3:
 				chord = from_previous.normalized()
 		var forward: Vector3 = _directions.get(instance_id, chord)
@@ -197,7 +204,7 @@ func _ride(instance_id: String, body: Node3D, rig: Node3D, record: Dictionary, t
 			rider.visited = {}
 		var next := _choose_next(chain, tracks, current, rider)
 		rider.target = next
-		rider.up = _up_at(tracks, current, rider.previous, next, up)
+		rider.up = _up_at(tracks, current, rider.previous, next, up, str(rider.get("track", "a")))
 	else:
 		rider.target = target
 	rider.cell = current
@@ -218,6 +225,16 @@ func _choose_next(chain: Dictionary, tracks: Dictionary, current: Vector3i, ride
 	var visited: Dictionary = rider.get("visited", {})
 	var joined: Array = chain.get(current, [])
 	var candidates: Array[Vector3i] = []
+	var here: Dictionary = tracks.get(current, {})
+	if CoasterRails.has_second_curve(here):
+		# A crossing's shared cell: keep to the track the cart arrived on.
+		var pair := CoasterRails.pair_for(here, previous, str(rider.get("track", "a")))
+		rider.track = str(pair.pair)
+		var partner := CoasterRails.pair_partner(pair, previous)
+		if partner != Vector3i.MAX and joined.has(partner):
+			return partner
+	else:
+		rider.track = "a"
 	for cell in joined:
 		if cell is Vector3i and cell != previous:
 			candidates.append(cell)
@@ -274,8 +291,10 @@ func _is_curved(chain: Dictionary, tracks: Dictionary, cell: Vector3i) -> bool:
 
 ## Where the cart's wheels rest in `cell`: on the rail top of flats and
 ## slopes, at a loop piece's centre nudged along the cart's up vector.
-func _ride_point(tracks: Dictionary, cell: Vector3i, up: Vector3) -> Vector3:
+func _ride_point(tracks: Dictionary, cell: Vector3i, up: Vector3, neighbour: Vector3i = Vector3i.MAX, track: String = "a") -> Vector3:
 	var record: Dictionary = tracks.get(cell, {"anchor": cell, "entity_id": CoasterRails.FLAT})
+	if CoasterRails.has_second_curve(record):
+		record = CoasterRails.pair_for(record, neighbour, track)
 	var point := CoasterRails.ride_point(record)
 	if _is_loop(tracks, cell):
 		point += up * 0.05
@@ -285,13 +304,15 @@ func _ride_point(tracks: Dictionary, cell: Vector3i, up: Vector3) -> Vector3:
 ## The cart's up vector leaving `cell`: straight up on flats and slopes; on a
 ## loop piece the curvature normal (departure minus arrival direction), so the
 ## cart leans into the circle and hangs upside down over the top.
-func _up_at(tracks: Dictionary, cell: Vector3i, previous: Vector3i, next: Vector3i, fallback: Vector3) -> Vector3:
+func _up_at(tracks: Dictionary, cell: Vector3i, previous: Vector3i, next: Vector3i, fallback: Vector3, track: String = "a") -> Vector3:
 	if not _is_loop(tracks, cell):
 		return Vector3.UP
 	# A loop with a known centre: lean straight at it (owner 2026-09-20: the
 	# cell-quantised curvature normal flipped on stair-step cells and rolled
 	# the rider's view); the point toward the centre is the inward normal.
 	var record: Dictionary = tracks.get(cell, {})
+	if CoasterRails.has_second_curve(record):
+		record = CoasterRails.pair_for(record, previous, track)
 	if record.has("curve"):
 		return TrackCurve.up_at(record.get("curve", {}), TrackCurve.piece_t(record))
 	var lean := CoasterRails.lean_center(record)

@@ -20,7 +20,7 @@
       "file": "derived_atlas_p4.png",
       "size": [
         1536,
-        1024
+        1280
       ]
     },
     "gold": {
@@ -480,6 +480,24 @@
         808,
         217,
         197
+      ]
+    },
+    "rail_bend": {
+      "atlas": "derived",
+      "rect": [
+        38,
+        1037,
+        181,
+        231
+      ]
+    },
+    "rail_cross": {
+      "atlas": "derived",
+      "rect": [
+        286,
+        1038,
+        197,
+        229
       ]
     },
     "gold_ore": {

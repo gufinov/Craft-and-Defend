@@ -156,7 +156,7 @@ func drag_active() -> bool:
 func begin_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
 	var item_id := inventory.active_item_id()
 	var item := registry.item(item_id)
-	if item.has("places_entity") and (is_linear_entity_item(item_id) or is_coaster_loop_item(item_id) or is_lane_switch_item(item_id) or is_climb_item(item_id)):
+	if item.has("places_entity") and (is_linear_entity_item(item_id) or is_coaster_loop_item(item_id) or is_lane_switch_item(item_id) or is_climb_item(item_id) or is_curve_tool_item(item_id)):
 		var anchor := placement_anchor_from_view(origin, direction)
 		if anchor == Vector3i.MAX:
 			return _finish(false, "NO_TARGET")
@@ -166,6 +166,8 @@ func begin_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
 			return begin_lane_switch_at(anchor)
 		if is_climb_item(item_id):
 			return begin_climb_at(anchor)
+		if is_curve_tool_item(item_id):
+			return begin_curve_tool_at(anchor)
 		return begin_entity_line_at(anchor)
 	if item.is_empty() or not item.has("places_block"):
 		return _finish(false, "NOT_PLACEABLE")
@@ -294,6 +296,28 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 		if climb_anchor != Vector3i.MAX and climb_anchor != _drag.anchor:
 			_drag.anchor = climb_anchor
 			_replan_climb()
+	if CURVE_TOOL_MODES.has(str(_drag.get("mode", "drag"))):
+		# Smooth Switch / Crossing (CoasterCraft cards 2-3): the ghost follows
+		# the aim; Shift held: the entry stays put and the aim's offset from it
+		# sets the length (forward) and the lanes (sideways, negative = left).
+		if vertical:
+			var reach := placement_anchor_from_view(origin, direction, 80.0)
+			if reach == Vector3i.MAX:
+				var floor_end := _drag_floor_end(origin, direction)
+				if floor_end.has("cell"):
+					reach = floor_end.cell
+			if reach != Vector3i.MAX:
+				var span: Vector3i = reach - _drag.anchor
+				var along := CoasterRails.switch_along(placement_rotation_quarters)
+				var side := CoasterRails.switch_side(placement_rotation_quarters)
+				var forward: int = span.x * along.x + span.z * along.z
+				var sideways: int = span.x * side.x + span.z * side.z
+				set_curve_size(forward, sideways)
+			return drag_state()
+		var curve_anchor := placement_anchor_from_view(origin, direction, 12.0)
+		if curve_anchor != Vector3i.MAX and curve_anchor != _drag.anchor:
+			_drag.anchor = curve_anchor
+			_replan_curve_tool()
 		return drag_state()
 	if str(_drag.get("mode", "drag")) == "loop_element":
 		# The whole-loop ghost follows the aim; W / R and 4-9 replan it.
@@ -385,7 +409,7 @@ func drag_state() -> Dictionary:
 		if str(entry.state) == "ok":
 			var entry_item := str(entry.get("item_id", _drag.get("item_id", "")))
 			costs[entry_item] = int(costs.get(entry_item, 0)) + 1
-	return {"active": true, "snapped": bool(_drag.get("snapped", false)), "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single"), "loop_size": loop_diameter if loop_true else loop_size, "loop_true": loop_true, "loop_radius": float(_drag.get("radius", 0.0)), "loop_cells": int(_drag.get("loop_cells", 0)), "climb_length": climb_length, "climb_rise": climb_rise}
+	return {"active": true, "snapped": bool(_drag.get("snapped", false)), "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single"), "loop_size": loop_diameter if loop_true else loop_size, "loop_true": loop_true, "loop_radius": float(_drag.get("radius", 0.0)), "loop_cells": int(_drag.get("loop_cells", 0)), "climb_length": climb_length, "climb_rise": climb_rise, "curve_length": int(_drag.get("curve_length", 0)), "curve_lanes": int(_drag.get("curve_lanes", 0)), "curve_cells": int(_drag.get("curve_cells", 0))}
 
 
 func cancel_drag_place() -> Dictionary:
@@ -412,6 +436,8 @@ func commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 		return _commit_lane_switch()
 	if mode == "climb":
 		return _commit_climb()
+	if CURVE_TOOL_MODES.has(mode):
+		return _commit_curve_tool()
 	if mode == "blueprint":
 		_replan_blueprint()
 	else:
@@ -578,14 +604,22 @@ func coaster_loop_keys(x_pressed: bool, c_pressed: bool) -> void:
 		_drag.x_down = x_pressed
 		_drag.c_down = c_pressed
 		return
-	if mode != "loop_element":
+	if mode != "loop_element" and not CURVE_TOOL_MODES.has(mode):
 		return
-	if x_pressed and not bool(_drag.get("x_down", false)):
-		set_loop_size((loop_diameter if loop_true else loop_size) - 1)
-	if c_pressed and not bool(_drag.get("c_down", false)):
-		set_loop_size((loop_diameter if loop_true else loop_size) + 1)
+	var x_edge := x_pressed and not bool(_drag.get("x_down", false))
+	var c_edge := c_pressed and not bool(_drag.get("c_down", false))
 	_drag.x_down = x_pressed
 	_drag.c_down = c_pressed
+	if CURVE_TOOL_MODES.has(mode):
+		if x_edge:
+			set_curve_length(curve_length() - 1)
+		if c_edge:
+			set_curve_length(curve_length() + 1)
+		return
+	if x_edge:
+		set_loop_size((loop_diameter if loop_true else loop_size) - 1)
+	if c_edge:
+		set_loop_size((loop_diameter if loop_true else loop_size) + 1)
 
 
 ## Every piece of the element validated at its cell (loop pieces float, the
@@ -641,6 +675,208 @@ func _commit_loop_element() -> Dictionary:
 			return _finish(false, str(result.get("reason", "PLACEMENT_FAILED")), {"cells": cells, "cell": cell})
 		cells.append(cell)
 	return _finish(true, "LOOP_PLACED", {"cells": cells, "count": cells.size(), "size": loop_diameter if loop_true else loop_size, "items": {item_id: -price}})
+
+
+# ---------------------------------------------------------------------------
+# CoasterCraft cards 2 and 3 (docs/COASTERCRAFT_TRACKS.md): the Smooth Switch
+# (`rail_bend`, coaster_tool "bend") and the Crossing (`rail_cross`, "cross").
+# A right-press with either held ghosts the whole piece at the aim as
+# `rail_loop` records riding a TrackCurve s-bend (CoasterRails.bend_layout /
+# cross_layout); W / R turn it; X / C and 4-9 set the length; Shift held
+# sizes it by the aim (forward = length 3..40, sideways = lanes -6..6,
+# negative = to the left of travel). Release lays every piece or nothing
+# for one item per piece (creative: free); the length is capped by the pack
+# exactly like the true loop (`curve_length_limit`).
+# ---------------------------------------------------------------------------
+
+const CURVE_TOOL_MODES: Array[String] = ["smooth_bend", "rail_cross"]
+var bend_length := CoasterRails.BEND_DEFAULT_LENGTH
+var bend_lanes := CoasterRails.BEND_DEFAULT_LANES
+var cross_length := CoasterRails.CROSS_DEFAULT_LENGTH
+var cross_lanes := CoasterRails.CROSS_DEFAULT_LANES
+
+
+func is_smooth_bend_item(item_id: String) -> bool:
+	return _coaster_tool_of(item_id) == "bend"
+
+
+func is_rail_cross_item(item_id: String) -> bool:
+	return _coaster_tool_of(item_id) == "cross"
+
+
+func is_curve_tool_item(item_id: String) -> bool:
+	return is_smooth_bend_item(item_id) or is_rail_cross_item(item_id)
+
+
+func _coaster_tool_of(item_id: String) -> String:
+	var item := registry.item(item_id)
+	if item.is_empty() or not item.has("places_entity"):
+		return ""
+	return str(registry.entity(str(item.places_entity)).get("coaster_tool", ""))
+
+
+## The active curve tool's mode ("" when no curve drag is active).
+func curve_tool_mode() -> String:
+	if _drag.is_empty():
+		return ""
+	var mode := str(_drag.get("mode", ""))
+	return mode if CURVE_TOOL_MODES.has(mode) else ""
+
+
+func curve_length() -> int:
+	return cross_length if curve_tool_mode() == "rail_cross" else bend_length
+
+
+func curve_lanes() -> int:
+	return cross_lanes if curve_tool_mode() == "rail_cross" else bend_lanes
+
+
+func begin_curve_tool_at(anchor: Vector3i) -> Dictionary:
+	var item_id := inventory.active_item_id()
+	var item := registry.item(item_id)
+	if not is_curve_tool_item(item_id) or workstations == null:
+		return _finish(false, "NOT_PLACEABLE")
+	var mode := "rail_cross" if is_rail_cross_item(item_id) else "smooth_bend"
+	_drag = {"mode": mode, "item_id": item_id, "entity_id": str(item.places_entity), "voxel_id": 0, "anchor": anchor, "end": anchor, "cells": [], "shape": mode, "rotation": placement_rotation_quarters, "x_down": false, "c_down": false}
+	_replan_curve_tool()
+	return {"ok": true, "reason": "DRAG_STARTED", "anchor": anchor}
+
+
+## The pieces a curve tool would lay at `anchor` for the given size.
+func curve_tool_layout(mode: String, anchor: Vector3i, rotation: int, length: int, lanes: int) -> Dictionary:
+	if mode == "rail_cross":
+		return CoasterRails.cross_layout(anchor, rotation, length, lanes)
+	return CoasterRails.bend_layout(anchor, rotation, length, lanes)
+
+
+func curve_tool_piece_count(mode: String, length: int, lanes: int) -> int:
+	return (curve_tool_layout(mode, Vector3i.ZERO, 0, length, lanes).cells as Array).size()
+
+
+## The longest length at or under `wanted` whose pieces the pack can pay for
+## (creative: only the 3..40 clamp).
+func curve_length_limit(wanted: int, lanes: int = 0) -> int:
+	var mode := curve_tool_mode()
+	if mode.is_empty():
+		mode = "smooth_bend"
+	if lanes == 0:
+		lanes = curve_lanes()
+	var length := CoasterRails.bend_length_clamp(wanted)
+	if creative:
+		return length
+	var budget := inventory.count(str(_drag.get("item_id", inventory.active_item_id())))
+	while length > CoasterRails.BEND_MIN_LENGTH and curve_tool_piece_count(mode, length, lanes) > budget:
+		length -= 1
+	return length
+
+
+func set_curve_length(length: int) -> Dictionary:
+	return set_curve_size(length, curve_lanes())
+
+
+func set_curve_lanes(lanes: int) -> Dictionary:
+	return set_curve_size(curve_length(), lanes)
+
+
+## Length (3..40, pack-capped) and lanes (-6..6, never 0) of the active
+## curve tool - or of the Smooth Switch when none is active.
+func set_curve_size(length: int, lanes: int) -> Dictionary:
+	var mode := curve_tool_mode()
+	lanes = CoasterRails.bend_lanes_clamp(lanes, curve_lanes())
+	length = curve_length_limit(length, lanes)
+	if mode == "rail_cross":
+		cross_length = length
+		cross_lanes = lanes
+	else:
+		bend_length = length
+		bend_lanes = lanes
+	if not mode.is_empty():
+		_replan_curve_tool()
+	return drag_state()
+
+
+## Every piece validated at its cell (curve pieces float); amber when the
+## pack cannot pay one item per piece.
+func _replan_curve_tool() -> void:
+	var rotation := placement_rotation_quarters
+	_drag.rotation = rotation
+	var mode := str(_drag.get("mode", ""))
+	var layout := curve_tool_layout(mode, _drag.anchor, rotation, curve_length(), curve_lanes())
+	var affordable: bool = creative or inventory.count(str(_drag.item_id)) >= (layout.pieces as Array).size()
+	var entries: Array[Dictionary] = []
+	for piece: Dictionary in layout.pieces:
+		var cell: Vector3i = piece.cell
+		var entity_id := str(piece.entity_id)
+		var check := workstations.preview_placement(entity_id, cell, int(piece.rotation), world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB())
+		var state := "ok"
+		if not check.get("ok", false):
+			state = "blocked"
+		elif not affordable:
+			state = "unaffordable"
+		var entry := {"cell": cell, "state": state, "reason": str(check.get("reason", "PLACEMENT_FAILED")), "voxel_id": 0, "item_id": str(_drag.item_id), "entity_id": entity_id, "rotation": int(piece.rotation), "joints": piece.joints, "extra": piece.extra}
+		if piece.has("joints_b"):
+			entry["joints_b"] = piece.joints_b
+		entries.append(entry)
+	_drag.cells = entries
+	_drag.curve_cells = entries.size()
+	_drag.curve_length = curve_length()
+	_drag.curve_lanes = curve_lanes()
+
+
+static func _joint_offsets(cell: Vector3i, joints: Variant) -> Array:
+	var out: Array = []
+	if joints is Array:
+		for joint in joints:
+			if joint is Vector3i:
+				var offset: Vector3i = joint - cell
+				out.append([offset.x, offset.y, offset.z])
+	return out
+
+
+## All pieces or nothing, one item per piece (creative: free); pieces are
+## laid `_free` since the items were paid up front.
+func _commit_curve_tool() -> Dictionary:
+	var mode := str(_drag.get("mode", ""))
+	var item_id := str(_drag.get("item_id", ""))
+	var entries: Array = _drag.cells
+	_drag = {}
+	var blocked_reason := "CROSS_BLOCKED" if mode == "rail_cross" else "BEND_BLOCKED"
+	for entry in entries:
+		if str(entry.state) != "ok":
+			return _finish(false, blocked_reason if str(entry.state) == "blocked" else "NO_RESOURCE", {"cell": entry.cell, "why": entry.reason})
+	var price := 0 if creative else entries.size()
+	if price > 0:
+		var paid := inventory.try_transaction({item_id: price}, {})
+		if not paid.get("ok", false):
+			return _finish(false, str(paid.get("reason", "NO_RESOURCE")))
+	var cells: Array[Vector3i] = []
+	for entry in entries:
+		var cell: Vector3i = entry.cell
+		var extra: Dictionary = (entry.get("extra", {}) as Dictionary).duplicate()
+		extra["coaster_joints"] = _joint_offsets(cell, entry.get("joints", []))
+		if entry.has("joints_b"):
+			extra["coaster_joints_b"] = _joint_offsets(cell, entry.get("joints_b", []))
+		extra["_free"] = true
+		var result := workstations.try_place(str(entry.entity_id), cell, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB(), int(entry.rotation), extra)
+		if not result.get("ok", false):
+			return _finish(false, str(result.get("reason", "PLACEMENT_FAILED")), {"cells": cells, "cell": cell})
+		cells.append(cell)
+	var placed_reason := "CROSS_PLACED" if mode == "rail_cross" else "BEND_PLACED"
+	return _finish(true, placed_reason, {"cells": cells, "count": cells.size(), "length": cross_length if mode == "rail_cross" else bend_length, "lanes": cross_lanes if mode == "rail_cross" else bend_lanes, "items": {item_id: -price}})
+
+
+## The aim ray's hit on the horizontal plane through the drag anchor's
+## centre (Shift sizing of the flat curve tools when nothing solid is aimed).
+func _drag_floor_end(origin: Vector3, direction: Vector3) -> Dictionary:
+	var anchor: Vector3i = _drag.anchor
+	var plane_y := float(anchor.y) + 0.5
+	if absf(direction.y) < 0.02:
+		return {}
+	var distance := (plane_y - origin.y) / direction.y
+	if distance <= 0.0 or distance > 80.0:
+		return {}
+	var point := origin + direction * distance
+	return {"cell": Vector3i(floori(point.x), anchor.y, floori(point.z))}
 
 
 ## Lane Switcher (owner 2026-09-20): the held item lays four pieces at once.
@@ -1233,6 +1469,8 @@ func rotate_placement(direction: int = 1) -> int:
 		_replan_loop_element()
 	if not _drag.is_empty() and str(_drag.get("mode", "")) == "climb":
 		_replan_climb()
+	if not _drag.is_empty() and CURVE_TOOL_MODES.has(str(_drag.get("mode", ""))):
+		_replan_curve_tool()
 	return placement_rotation_quarters
 
 
@@ -1251,7 +1489,7 @@ func secondary_press_from_view(origin: Vector3, direction: Vector3) -> Dictionar
 	if not station_id.is_empty() and not workstations.station_type(station_id).is_empty():
 		return _finish(true, "OPEN_STATION", {"instance_id": station_id, "station": workstations.station(station_id)})
 	var item := registry.item(inventory.active_item_id())
-	if item.has("places_block") or is_linear_entity_item(inventory.active_item_id()) or is_coaster_loop_item(inventory.active_item_id()) or is_lane_switch_item(inventory.active_item_id()) or is_climb_item(inventory.active_item_id()):
+	if item.has("places_block") or is_linear_entity_item(inventory.active_item_id()) or is_coaster_loop_item(inventory.active_item_id()) or is_lane_switch_item(inventory.active_item_id()) or is_climb_item(inventory.active_item_id()) or is_curve_tool_item(inventory.active_item_id()):
 		return begin_drag_place(origin, direction)
 	return place_from_view(origin, direction)
 

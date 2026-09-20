@@ -33,6 +33,10 @@ const REASON_TEXT := {
 	"SWITCH_BLOCKED": "The lane switcher needs four free cells: entry, two side by side, exit.",
 	"CLIMB_PLACED": "Climb built. Rails join its entry (behind) and its landing (ahead, at the top).",
 	"CLIMB_BLOCKED": "The climb does not fit here: a red cell is in the way (ground, tree, hill or block). Move, turn (W / R), or hold Shift and aim past the obstacle.",
+	"BEND_PLACED": "Smooth switch laid. Rails join its entry (behind) and its exit (ahead, on the new lane).",
+	"BEND_BLOCKED": "The smooth switch does not fit here: a red cell is in the way. Move, turn (W / R) or resize (Shift-aim, X / C, 4-9).",
+	"CROSS_PLACED": "Crossing laid: two tracks swap lanes through the middle. Rails join both entries (behind) and both exits (ahead).",
+	"CROSS_BLOCKED": "The crossing does not fit here: a red cell is in the way. Move, turn (W / R) or resize (Shift-aim, X / C, 4-9).",
 	"COASTER_BOARDED": "Boarded the coaster car — 1-9 sets the speed, Shift or Escape leaves.",
 	"COASTER_LEFT": "Left the coaster car.",
 	"ALREADY_RIDING": "Already riding.",
@@ -389,6 +393,10 @@ func select_hotbar(index: int) -> Dictionary:
 			_on_interaction_feedback("RAIL SLOPE: the arrow end climbs one block — W / R turns it; put a Rail on the block it climbs to")
 		elif item_id == CoasterRails.CLIMB:
 			_on_interaction_feedback("CLIMB: aim at the ground where the climb starts, HOLD Right Mouse — the whole climb ghosts (slope-in, grade, slope-out); hold Shift and aim where it should land (a hilltop, or below for a descent) to set its length and rise (or 4-9 / X / C for the rise), W / R turn it; let go to build it (red = does not fit)")
+		elif interaction != null and interaction.is_smooth_bend_item(item_id):
+			_on_interaction_feedback("SMOOTH SWITCH: aim where the entry goes, HOLD Right Mouse — the S-bend ghost appears; hold Shift and aim where the exit goes (forward = length, sideways = lanes, left or right), or 4-9 / X / C for the length; W / R turn it; let go to lay it (one item per piece, red = does not fit)")
+		elif interaction != null and interaction.is_rail_cross_item(item_id):
+			_on_interaction_feedback("CROSSING: aim where the first entry goes, HOLD Right Mouse — two S-bends that swap lanes appear; hold Shift and aim where the first exit goes (forward = length, sideways = lanes), or 4-9 / X / C for the length; W / R turn it; let go to lay it (one item per piece, red = does not fit)")
 	return result
 
 
@@ -720,6 +728,14 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 		return
+	if interaction != null and interaction.drag_active() and not interaction.curve_tool_mode().is_empty():
+		# Smooth Switch / Crossing ghost: 4-9 set the length instead of the hotbar.
+		for size in range(4, 10):
+			if event.is_action_pressed("hotbar_%d" % size):
+				interaction.set_curve_length(size)
+				_on_interaction_feedback("Length %d, lanes %d (4-9 / X / C length; Shift-aim sets length and lanes)" % [interaction.curve_length(), interaction.curve_lanes()])
+				get_viewport().set_input_as_handled()
+				return
 	if interaction != null and interaction.drag_active() and str(interaction.drag_state().get("mode", "")) == "loop_element":
 		# Loop element ghost: 4-9 set the base width instead of the hotbar.
 		for size in range(InteractionService.LOOP_SIZE_MIN, InteractionService.LOOP_SIZE_MAX + 1):
@@ -1456,21 +1472,26 @@ const LOOP_ARC_SECTIONS := 4
 ## circle for round pieces (short sections), straight for octagon pieces -
 ## and all the way to a slope's rail corner so the ring continues the
 ## slope's incline without a kink. No posts or blocks.
-func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[Vector3i]) -> void:
+## `record` is the one-curve view to draw (`CoasterRails.pair_for`: a
+## crossing's shared cell is drawn once per curve, as "LoopTrack" and
+## "LoopTrackB"); `joined` the joined cells of that curve.
+func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[Vector3i], node_name: String = "LoopTrack") -> void:
 	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
 	var tracks := CoasterRails.track_records(workstations.stations)
-	_add_collision_box(parent, Vector3(0.70, 0.70, 0.70), Vector3.ZERO)
+	if parent.get_node_or_null("LoopTrack") == null:
+		_add_collision_box(parent, Vector3(0.70, 0.70, 0.70), Vector3.ZERO)
 	var iron := _visual_material(Color("8a939b"))
 	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
 	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")
 	var undo := Node3D.new()
-	undo.name = "LoopTrack"
+	undo.name = node_name
 	undo.rotation.y = -parent.rotation.y
 	parent.add_child(undo)
 	var body_origin := Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
 	var own_point := CoasterRails.ride_point(record)
 	var lean := CoasterRails.lean_center(record)
 	var curve: Dictionary = record.get("curve", {})
+	var pair_key := str(record.get("pair", "a"))
 	if not curve.is_empty():
 		# Lean straight at the curve's centre of curvature (any bank).
 		lean = own_point + TrackCurve.up_at(curve, TrackCurve.piece_t(record))
@@ -1481,6 +1502,9 @@ func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[
 	var plane_across := plane_axis
 	for cell: Vector3i in joined:
 		var other: Dictionary = tracks.get(cell, {"anchor": cell, "entity_id": CoasterRails.FLAT})
+		if CoasterRails.has_second_curve(other):
+			# A crossing's shared neighbour: the curve of the pair this cell is on.
+			other = CoasterRails.pair_for(other, anchor, pair_key)
 		var points: Array[Vector3] = [own_point]
 		if str(other.get("entity_id", "")) == CoasterRails.SLOPE:
 			# A raised ring (fit B / C) meets the slope a little above its rail
@@ -1579,6 +1603,16 @@ func _build_rail_loop_visual(parent: Node3D, record: Dictionary) -> void:
 	var joined := CoasterRails.connected_cells(record, CoasterRails.track_records(workstations.stations))
 	# Curve pieces (TrackCurve) and classic loop-ring pieces share one track
 	# style.
+	if CoasterRails.has_second_curve(record):
+		# A crossing's shared cell: both curves, each with its own joints.
+		for pair_key in ["a", "b"]:
+			var pair := CoasterRails.pair_for(record, Vector3i.MAX, pair_key)
+			var pair_joined: Array[Vector3i] = []
+			for cell: Vector3i in joined:
+				if (pair.joints as Array).has(cell):
+					pair_joined.append(cell)
+			_build_loop_track_visual(parent, pair, pair_joined, "LoopTrack" if pair_key == "a" else "LoopTrackB")
+		return
 	if record.has("curve") or CoasterRails.lean_center(record) != Vector3.INF:
 		_build_loop_track_visual(parent, record, joined)
 		return
