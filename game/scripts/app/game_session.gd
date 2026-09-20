@@ -382,7 +382,7 @@ func select_hotbar(index: int) -> Dictionary:
 		# Coaster pieces carry their controls on screen (owner could not find
 		# the loop gesture without them).
 		if item_id == CoasterRails.LOOP:
-			_on_interaction_feedback("RAIL LOOP: aim at the ground where the entry goes, HOLD Right Mouse — the whole loop ghost appears; 4-9 (or X / C) set its size, L cycles the ring fit A / B / C, W / R turn it; let go to build it (red = does not fit)")
+			_on_interaction_feedback("RAIL LOOP: aim at the ground where the entry goes, HOLD Right Mouse — the loop ghost appears; hold Shift and aim further away to size it (or 4-9 / X / C), W / R turn it, L classic loop; let go to build it (red = does not fit)")
 		elif item_id == CoasterRails.SLOPE:
 			_on_interaction_feedback("RAIL SLOPE: the arrow end climbs one block — W / R turns it; put a Rail on the block it climbs to")
 	return result
@@ -721,13 +721,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		for size in range(InteractionService.LOOP_SIZE_MIN, InteractionService.LOOP_SIZE_MAX + 1):
 			if event.is_action_pressed("hotbar_%d" % size):
 				interaction.set_loop_size(size)
-				_on_interaction_feedback("Loop size %d (4-9 while the ghost shows; X / C too)" % size)
+				_on_interaction_feedback("Loop size %d (4-9 while the ghost shows; X / C too; Shift-drag for any size)" % size)
 				get_viewport().set_input_as_handled()
 				return
 		if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_L or event.keycode == KEY_L):
-			# Owner comparison 2026-09-20: three ring fits to choose from.
-			var lift := interaction.cycle_loop_lift()
-			_on_interaction_feedback("Ring fit %s: circle %s the slope corners (L cycles)" % ["A" if lift == 0.0 else ("B" if lift < 0.5 else "C"), "tangent at" if lift == 0.0 else "raised %.2f above" % lift])
+			var true_loop := interaction.toggle_loop_kind()
+			_on_interaction_feedback("Loop kind: %s (L toggles)" % ("TRUE LOOP - touches the ground at its entry and exit only; Shift-drag or 4-9 / X / C size it" if true_loop else "classic foundation loop (switchers, slopes, ring)"))
+			_emit_hud()
 			get_viewport().set_input_as_handled()
 			return
 	if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_V or event.keycode == KEY_V):
@@ -1471,6 +1471,11 @@ func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[
 			# corner; the last bit of rail bridges the lift.
 			points.append(CoasterRails.slope_rail_corner(other) + Vector3.UP * float(record.get("loop_lift", 0.0)))
 			points.append(CoasterRails.slope_rail_corner(other))
+		elif record.has("helix_center") and other.has("helix_center"):
+			var own_theta := CoasterRails.helix_theta(record, own_point)
+			var other_theta := CoasterRails.helix_theta(record, CoasterRails.ride_point(other))
+			for section in range(1, LOOP_ARC_SECTIONS + 1):
+				points.append(CoasterRails.helix_point(record, own_theta + (other_theta - own_theta) * 0.5 * float(section) / float(LOOP_ARC_SECTIONS)))
 		elif round:
 			var other_angle := CoasterRails.arc_angle(record, CoasterRails.arc_point(record, CoasterRails.ride_point(other)))
 			var own_angle := CoasterRails.arc_angle(record, own_point)

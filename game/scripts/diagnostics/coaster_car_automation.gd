@@ -67,6 +67,7 @@ func _run_gate() -> void:
 	session.inventory.try_transaction({}, {"rail_loop": 4, CAR: 1})
 	_hold_item("rail_loop")
 	interaction.placement_rotation_quarters = 3
+	interaction.loop_true = false
 	interaction.set_loop_size(6)
 	interaction.begin_coaster_loop_at(anchor)
 	var committed := interaction.commit_drag_place()
@@ -231,6 +232,7 @@ func _run_visual() -> void:
 	session.inventory.try_transaction({}, {"rail_loop": 4, CAR: 1})
 	_hold_item("rail_loop")
 	interaction.placement_rotation_quarters = 3
+	interaction.loop_true = false
 	interaction.set_loop_size(6)
 	interaction.begin_coaster_loop_at(origin)
 	var committed := interaction.commit_drag_place()

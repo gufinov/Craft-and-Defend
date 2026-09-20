@@ -207,6 +207,7 @@ func _run_gate() -> void:
 		loop_slot = 2
 	app.session.inventory.select_hotbar(loop_slot)
 	interaction.placement_rotation_quarters = 3
+	interaction.loop_true = false
 	interaction.set_loop_size(4)
 	var started := interaction.begin_coaster_loop_at(anchor)
 	var ghost := interaction.drag_state()
@@ -245,7 +246,7 @@ func _run_gate() -> void:
 	var committed := interaction.commit_drag_place()
 	interaction.placement_rotation_quarters = 0
 	var one_item := loops_before - app.session.inventory.count("rail_loop") == 1
-	var layout := CoasterRails.loop_element_layout(anchor, 3, 4)
+	var layout := CoasterRails.loop_element_layout(anchor, 3, 4, CoasterRails.LOOP_LIFTS[interaction.loop_lift_index])
 	var exit_cell: Vector3i = layout.exit
 	var left_slope: Vector3i = layout.left_slope
 	var right_slope: Vector3i = layout.right_slope
@@ -304,7 +305,64 @@ func _run_gate() -> void:
 	var restored := ws.restore(saved, world.query_cell) if saved is Dictionary else {"ok": false, "reason": "SNAPSHOT_NOT_JSON"}
 	var restored_chain := CoasterRails.chain(ws.stations, anchor)
 	var round_trip: bool = restored.get("ok", false) and restored_chain.size() == chain_before_save and CoasterRails.lean_center(ws.station(ws.station_at_cell(top_cell))) != Vector3.INF
-	_record("T162_LOOP_ELEMENT", started.get("ok", false) and size_four and four_ok and switch_pieces and six_count > four_count and seven == 7 and six_again == 6 and clamped == 9 and round_ok and committed.get("reason") == "LOOP_PLACED" and int(committed.get("changes", {}).get("count", 0)) == four_count and one_item and chain_ok and arc_drawn and rides_circle and loop_cart.get("ok", false) and top_reached > 0 and exit_reached > top_reached and red > 0 and nothing_laid and round_trip, "with Rail Loop held a press ghosts a complete size-4 loop (six switcher pieces, two slopes, the circle pieces); 6 by key adds pieces, C makes 7, X makes 6, 12 clamps to 9, every ring piece rides the true circle; release lays every piece for one item as one chain from the entry through both slopes and the circle's top to the exit two lanes over; every ring piece draws the loop track (rails, ties, spine) and leans toward the loop's centre; a cart from the approach reaches the top and then the exit; a ghost over a stone column shows red and lays nothing; the laid track survives a save round-trip", {"started": started.get("reason"), "size_four": size_four, "four_ok": four_ok, "entities": four_entities, "four_count": four_count, "six_count": six_count, "seven": seven, "six_again": six_again, "clamped": clamped, "round_loops": round_loops, "round_arcs": round_arcs, "committed": committed.get("reason"), "count": committed.get("changes", {}).get("count", 0), "one_item": one_item, "chain": loop_chain.size(), "chain_ok": chain_ok, "arc_drawn": arc_drawn, "rides_circle": rides_circle, "cart": loop_cart.get("reason"), "top_frame": top_reached, "exit_frame": exit_reached, "red": red, "nothing_laid": nothing_laid, "refused": refused.get("reason"), "round_trip": round_trip, "restored": restored.get("reason")})
+	# The true loop (owner 2026-09-20): L switches to the helix; every ghost
+	# piece is a rail_loop piece; the entry and the exit one lane right are
+	# the only ground cells; Shift-drag sizing; a cart rides the approach,
+	# over the top (drifting a lane) and out on the exit lane.
+	var helix_anchor := anchor + Vector3i(0, 0, 12)
+	_level_ground(helix_anchor + Vector3i(-12, 0, -4), 22, 8, 14)
+	app.session.inventory.try_transaction({}, {"rail_loop": 2, "rail": 8})
+	app.session.inventory.select_hotbar(loop_slot)
+	interaction.placement_rotation_quarters = 3
+	interaction.begin_coaster_loop_at(helix_anchor)
+	var helix_on := interaction.toggle_loop_kind()
+	interaction.set_loop_diameter(8)
+	var helix_ghost: Array = interaction.drag_state().get("cells", [])
+	var helix_all_loops := not helix_ghost.is_empty()
+	var helix_ground := 0
+	for entry in helix_ghost:
+		helix_all_loops = helix_all_loops and str(entry.entity_id) == "rail_loop" and str(entry.state) == "ok"
+		if Vector3i(entry.cell).y == helix_anchor.y:
+			helix_ground += 1
+	var eight_count := helix_ghost.size()
+	# Shift-drag: aiming 14 cells along the lane from above sets diameter 14.
+	var far_origin := Vector3(helix_anchor) + Vector3(-13.5, 6.0, 0.5)
+	interaction.update_drag_place(far_origin, Vector3.DOWN, true)
+	var dragged := int(interaction.drag_state().get("loop_size", 0))
+	var dragged_count: int = (interaction.drag_state().get("cells", []) as Array).size()
+	interaction.set_loop_diameter(8)
+	var helix_laid := interaction.commit_drag_place()
+	interaction.placement_rotation_quarters = 0
+	var helix_layout := CoasterRails.helix_layout(helix_anchor, 3, 8)
+	var helix_exit: Vector3i = helix_layout.exit
+	var helix_top := helix_anchor
+	for cell: Vector3i in helix_layout.cells:
+		if cell.y > helix_top.y:
+			helix_top = cell
+	for x in range(1, 4):
+		ws.try_place("rail", helix_anchor + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+	for x in range(1, 4):
+		ws.try_place("rail", helix_exit + Vector3i(-x, 0, 0), world.query_cell, AABB(), 0)
+	var helix_chain := CoasterRails.chain(ws.stations, helix_anchor)
+	var helix_joined := helix_chain.has(helix_exit) and helix_chain.has(helix_top) and helix_chain.has(helix_exit + Vector3i(-3, 0, 0)) and helix_chain.has(helix_anchor + Vector3i(3, 0, 0)) and not (helix_chain.get(helix_anchor, []) as Array).has(helix_exit)
+	var helix_cart := ws.try_place("mine_cart", helix_anchor + Vector3i(3, 1, 0), world.query_cell, AABB(), 0)
+	var helix_cart_id := str(helix_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	var helix_over := -1
+	var helix_out := -1
+	if app.session.coaster_carts != null:
+		for frame in range(1200):
+			app.session.coaster_carts.advance(1.0 / 30.0, false)
+			var cell := app.session.coaster_carts.rider_cell(helix_cart_id)
+			if helix_over < 0 and cell == helix_top:
+				helix_over = frame
+			if helix_over >= 0 and helix_out < 0 and cell == helix_exit + Vector3i(-3, 0, 0):
+				helix_out = frame
+				break
+	var helix_ok: bool = helix_on and helix_all_loops and helix_ground >= 4 and dragged == 14 and dragged_count > eight_count and helix_laid.get("reason") == "LOOP_PLACED" and int(helix_laid.get("changes", {}).get("count", 0)) == eight_count and helix_joined and helix_cart.get("ok", false) and helix_over > 0 and helix_out > helix_over
+	if helix_cart.get("ok", false):
+		ws.try_dismantle(helix_cart_id, world.query_cell, AABB())
+	interaction.loop_true = true
+	_record("T162_LOOP_ELEMENT", started.get("ok", false) and size_four and four_ok and switch_pieces and six_count > four_count and seven == 7 and six_again == 6 and clamped == 9 and round_ok and committed.get("reason") == "LOOP_PLACED" and int(committed.get("changes", {}).get("count", 0)) == four_count and one_item and chain_ok and arc_drawn and rides_circle and loop_cart.get("ok", false) and top_reached > 0 and exit_reached > top_reached and red > 0 and nothing_laid and round_trip and helix_ok, "with Rail Loop held a press ghosts a complete size-4 loop (six switcher pieces, two slopes, the circle pieces); 6 by key adds pieces, C makes 7, X makes 6, 12 clamps to 9, every ring piece rides the true circle; release lays every piece for one item as one chain from the entry through both slopes and the circle's top to the exit two lanes over; every ring piece draws the loop track (rails, ties, spine) and leans toward the loop's centre; a cart from the approach reaches the top and then the exit; a ghost over a stone column shows red and lays nothing; the laid track survives a save round-trip; L switches to the TRUE loop: a diameter-8 helix of rail_loop pieces touching the ground only at its entry and exit one lane right, Shift-drag to 14 grows it, and a cart rides the approach over the top and out on the exit lane", {"started": started.get("reason"), "size_four": size_four, "four_ok": four_ok, "entities": four_entities, "four_count": four_count, "six_count": six_count, "seven": seven, "six_again": six_again, "clamped": clamped, "round_loops": round_loops, "round_arcs": round_arcs, "committed": committed.get("reason"), "count": committed.get("changes", {}).get("count", 0), "one_item": one_item, "chain": loop_chain.size(), "chain_ok": chain_ok, "arc_drawn": arc_drawn, "rides_circle": rides_circle, "cart": loop_cart.get("reason"), "top_frame": top_reached, "exit_frame": exit_reached, "red": red, "nothing_laid": nothing_laid, "refused": refused.get("reason"), "round_trip": round_trip, "restored": restored.get("reason"), "helix_ok": helix_ok, "helix_all_loops": helix_all_loops, "helix_ground": helix_ground, "eight_count": eight_count, "dragged": dragged, "dragged_count": dragged_count, "helix_laid": helix_laid.get("reason"), "helix_joined": helix_joined, "helix_cart": helix_cart.get("reason"), "helix_over": helix_over, "helix_out": helix_out})
 
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on

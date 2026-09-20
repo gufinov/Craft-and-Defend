@@ -201,32 +201,34 @@ func _lay_demo() -> void:
 	var origin := Vector3i(0, 1, 30)
 	app.session.inventory.select_hotbar(STOCK.find("rail_loop"))
 	interaction.placement_rotation_quarters = 3
+	# The true loop (owner 2026-09-20): diameter 8, entry at (0, 30) heading
+	# -x on lane z=30, exit one lane right at (0, 29). `--coaster-sandbox-
+	# classic` lays the foundation loop (fit C) instead.
+	interaction.loop_true = not OS.get_cmdline_user_args().has("--coaster-sandbox-classic")
+	interaction.set_loop_diameter(8)
 	interaction.set_loop_size(6)
-	# `--coaster-sandbox-lift=1|2` lays ring fit B / C for comparison.
-	for argument in OS.get_cmdline_user_args():
-		if argument.begins_with("--coaster-sandbox-lift="):
-			for _cycle in range(int(argument.trim_prefix("--coaster-sandbox-lift="))):
-				interaction.cycle_loop_lift()
 	interaction.begin_coaster_loop_at(origin)
 	var loop := interaction.commit_drag_place()
 	interaction.placement_rotation_quarters = 0
 	app.session.inventory.select_hotbar(0)
-	# Approach rails on lane A (x 1..4), the car on the third.
+	# Approach rails on the entry lane (x 1..4), the car on the third.
 	for x in range(1, 5):
 		ws.try_place("rail", origin + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
 	var loop_car := ws.try_place("coaster_car", origin + Vector3i(3, 1, 0), world.query_cell, AABB(), 0)
 	loop_car_id = str(loop_car.get("details", {}).get("station", {}).get("instance_id", ""))
 	print("COASTER_SANDBOX loop %s (%s pieces) car %s" % [loop.get("reason"), loop.get("changes", {}).get("count"), loop_car.get("reason")])
-	# Closed circuit: from the exit (-1, 28) on to x=-8, up to z=32, back to
-	# x=4 and down to the approach, so the car laps forever.
+	# Closed circuit from the exit lane (z=29 true loop / z=28 classic) on to
+	# x=-9, up to z=32, back to x=5 and down to the approach.
+	var exit_z := 29 if interaction.loop_true else 28
 	var circuit: Array[Vector3i] = []
-	for x in range(-2, -9, -1):
-		circuit.append(Vector3i(x, origin.y, 28))
-	for z in range(29, 33):
-		circuit.append(Vector3i(-8, origin.y, z))
-	for x in range(-7, 5):
+	for x in range(-1, -10, -1):
+		circuit.append(Vector3i(x, origin.y, exit_z))
+	for z in range(exit_z + 1, 33):
+		circuit.append(Vector3i(-9, origin.y, z))
+	for x in range(-8, 6):
 		circuit.append(Vector3i(x, origin.y, 32))
-	circuit.append(Vector3i(4, origin.y, 31))
+	circuit.append(Vector3i(5, origin.y, 31))
+	circuit.append(Vector3i(5, origin.y, 30))
 	var laid := 0
 	for cell: Vector3i in circuit:
 		if ws.try_place("rail", cell, world.query_cell, AABB(), 0).get("ok", false):

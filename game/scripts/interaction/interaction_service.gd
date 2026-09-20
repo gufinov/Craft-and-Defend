@@ -274,6 +274,19 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 		return drag_state()
 	if str(_drag.get("mode", "drag")) == "loop_element":
 		# The whole-loop ghost follows the aim; W / R and 4-9 replan it.
+		# Shift held (owner 2026-09-20, "Shift drag"): the entry stays put and
+		# the aim's distance from it sets the true loop's diameter.
+		if vertical and loop_true:
+			var reach := placement_anchor_from_view(origin, direction, 80.0)
+			if reach == Vector3i.MAX:
+				var plane := _drag_plane_end(origin, direction)
+				if plane.has("cell"):
+					reach = plane.cell
+			if reach != Vector3i.MAX:
+				var span := Vector3(reach - _drag.anchor)
+				span.y = 0.0
+				set_loop_diameter(int(round(span.length())))
+			return drag_state()
 		var loop_anchor := placement_anchor_from_view(origin, direction, 12.0)
 		if loop_anchor != Vector3i.MAX and loop_anchor != _drag.anchor:
 			_drag.anchor = loop_anchor
@@ -349,7 +362,7 @@ func drag_state() -> Dictionary:
 		if str(entry.state) == "ok":
 			var entry_item := str(entry.get("item_id", _drag.get("item_id", "")))
 			costs[entry_item] = int(costs.get(entry_item, 0)) + 1
-	return {"active": true, "snapped": bool(_drag.get("snapped", false)), "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single"), "loop_size": loop_size, "loop_radius": float(_drag.get("radius", 0.0)), "loop_cells": int(_drag.get("loop_cells", 0))}
+	return {"active": true, "snapped": bool(_drag.get("snapped", false)), "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single"), "loop_size": loop_diameter if loop_true else loop_size, "loop_true": loop_true, "loop_radius": float(_drag.get("radius", 0.0)), "loop_cells": int(_drag.get("loop_cells", 0))}
 
 
 func cancel_drag_place() -> Dictionary:
@@ -453,8 +466,15 @@ const LOOP_SIZE_MIN := 4
 const LOOP_SIZE_MAX := 9
 const LOOP_SIZE_DEFAULT := 4
 var loop_size := LOOP_SIZE_DEFAULT
-## L while the ghost shows cycles the ring fit (CoasterRails.LOOP_LIFTS).
-var loop_lift_index := 0
+## The classic (foundation) loop's ring fit: C, raised half a block (owner
+## pick 2026-09-20).
+var loop_lift_index := 2
+## The true loop (owner 2026-09-20): a helix that touches the ground only at
+## its entry and its exit one lane over. Default; L switches to the classic
+## foundation loop and back. Its size is the circle's diameter in cells,
+## set by Shift-drag (aim distance from the entry) or 4-9 / X / C.
+var loop_true := true
+var loop_diameter := 8
 
 
 func is_coaster_loop_item(item_id: String) -> bool:
@@ -476,6 +496,8 @@ func begin_coaster_loop_at(anchor: Vector3i) -> Dictionary:
 
 ## Number keys 4-9 while the ghost is shown: the base width in cells.
 func set_loop_size(size: int) -> Dictionary:
+	if loop_true:
+		return set_loop_diameter(size)
 	loop_size = clampi(size, LOOP_SIZE_MIN, LOOP_SIZE_MAX)
 	if not _drag.is_empty() and str(_drag.get("mode", "")) == "loop_element":
 		_replan_loop_element()
@@ -484,20 +506,28 @@ func set_loop_size(size: int) -> Dictionary:
 
 
 ## Raw key states each frame (X smaller, C bigger); edges change the size once.
-func cycle_loop_lift() -> float:
-	loop_lift_index = (loop_lift_index + 1) % CoasterRails.LOOP_LIFTS.size()
+## L while the ghost shows: true loop <-> classic foundation loop.
+func toggle_loop_kind() -> bool:
+	loop_true = not loop_true
 	if not _drag.is_empty() and str(_drag.get("mode", "")) == "loop_element":
 		_replan_loop_element()
-	return CoasterRails.LOOP_LIFTS[loop_lift_index]
+	return loop_true
+
+
+func set_loop_diameter(diameter: int) -> Dictionary:
+	loop_diameter = clampi(diameter, CoasterRails.HELIX_MIN, CoasterRails.HELIX_MAX)
+	if not _drag.is_empty() and str(_drag.get("mode", "")) == "loop_element":
+		_replan_loop_element()
+	return drag_state()
 
 
 func coaster_loop_keys(x_pressed: bool, c_pressed: bool) -> void:
 	if _drag.is_empty() or str(_drag.get("mode", "")) != "loop_element":
 		return
 	if x_pressed and not bool(_drag.get("x_down", false)):
-		set_loop_size(loop_size - 1)
+		set_loop_size((loop_diameter if loop_true else loop_size) - 1)
 	if c_pressed and not bool(_drag.get("c_down", false)):
-		set_loop_size(loop_size + 1)
+		set_loop_size((loop_diameter if loop_true else loop_size) + 1)
 	_drag.x_down = x_pressed
 	_drag.c_down = c_pressed
 
@@ -507,7 +537,7 @@ func coaster_loop_keys(x_pressed: bool, c_pressed: bool) -> void:
 func _replan_loop_element() -> void:
 	var rotation := placement_rotation_quarters
 	_drag.rotation = rotation
-	var layout := CoasterRails.loop_element_layout(_drag.anchor, rotation, loop_size, CoasterRails.LOOP_LIFTS[loop_lift_index])
+	var layout: Dictionary = CoasterRails.helix_layout(_drag.anchor, rotation, loop_diameter) if loop_true else CoasterRails.loop_element_layout(_drag.anchor, rotation, loop_size, CoasterRails.LOOP_LIFTS[loop_lift_index])
 	var affordable: bool = inventory.count(str(_drag.item_id)) >= 1
 	var entries: Array[Dictionary] = []
 	for piece: Dictionary in layout.pieces:
