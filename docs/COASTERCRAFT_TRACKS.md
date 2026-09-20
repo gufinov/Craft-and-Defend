@@ -23,6 +23,8 @@ With that in place every piece below is a curve description plus a drag gesture.
 
 **Card 1 is in** (2026-09-20): `game/scripts/rails/track_curve.gd` (`TrackCurve`: `make_*`, `point`, `tangent`, `up_at`, `nearest_t`, `cells`, `pieces`, `piece_t`). A record with `curve` + `t0`/`t1` rides the curve (`CoasterRails.ride_point`), joins only its recorded joints (`connections`), leans by `TrackCurve.up_at` (`CoasterCartService._up_at`) and draws with `GameSession._build_loop_track_visual` (same-curve neighbours are followed along the curve). The true loop is `TrackCurve.make_helix` laid by `TrackCurve.pieces`; the classic loop ring still uses `loop_center` (fine, it is the fallback). Cards 2–6 and 8 are open for agents.
 
+**Card 4 is in** (2026-09-20, `feature/coaster-curves`): the **Curve** item (`rail_curve`) lays the 90° curve, the U-turn and the free curve (45 / 90 / 135 / 180 by Shift-aim, left or right, radius 2..30) as one flat, banked `make_arc` of `rail_loop` pieces; see [COASTER_RAILS.md — Flat curves](COASTER_RAILS.md#flat-curves-90-u-turn-free-curve-coastercraft-card-4-2026-09-20). Open: a plain rail cannot join a diagonal (45 / 135) end — only another curve continues it.
+
 ## The pieces
 
 | Piece | Curve | Drag gesture | Notes |
@@ -30,9 +32,9 @@ With that in place every piece below is a curve description plus a drag gesture.
 | **Loop** (done) | helix, 1 turn, drift 1 lane | Shift + aim distance = diameter; pack-capped | entry / exit on neighbouring lanes |
 | **Smooth lane switcher** | s_bend: lateral shift of *n* lanes over length *L*, cosine profile | drag along = length, sideways = lanes | replaces the 4-block switcher's kinked diagonal; the block switcher stays for tight spots |
 | **X crossing** | two s_bends crossing in the middle cell | drag like the switcher; Shift mirrors the second | one cell carries two tracks: the piece records two joint pairs; a rider keeps to the pair it arrived on |
-| **90° curve** | arc, sweep 90°, radius *R* | drag to the corner cell: R = distance | banked: lean toward the inside |
-| **U-turn** | arc, sweep 180°, radius R | drag sideways: lanes apart = 2R | |
-| **Free curve** | arc, any sweep | drag the far end; the sweep follows the aim direction | for gentle bends |
+| **90° curve** (done) | arc, sweep 90°, radius *R* | Shift-aim ahead-right; half the distance = R | banked: lean toward the inside |
+| **U-turn** (done) | arc, sweep 180°, radius R | Shift-aim behind: lanes apart = 2R | |
+| **Free curve** (done) | arc, 45 / 135 | Shift-aim ahead (45) or straight right (135); left mirrors | diagonal ends chain curve to curve |
 | **Slope-in / slope-out** | vertical_arc (concave into a climb; convex over a crest) | drag up: the climb angle | any grade, not only 45°; pairs with the straight climb |
 | **Straight climb** | line at a grade | Shift-drag up and along | the mountain straight |
 | **Winding snake** (switchbacks) | macro: climb + banked U-turn, repeated | drag from the foot to the summit; the tool lays N switchbacks that fit | the mountain road |
