@@ -389,7 +389,7 @@ func _run_visual() -> void:
 	var interaction := app.session.interaction
 	var origin := Vector3i(-2, 0, 36)
 	_level_ground(origin + Vector3i(-10, 0, -6), 22, 14, 14)
-	app.session.inventory.try_transaction({}, {"rail_loop": 4, "mine_cart": 2, "rail": 12, "rail_slope": 2})
+	app.session.inventory.try_transaction({}, {"rail_loop": 64, "mine_cart": 2, "rail": 12, "rail_slope": 2})
 	var loop_slot := -1
 	for slot_index in range(F0Inventory.SLOT_COUNT):
 		if str(app.session.inventory.slots[slot_index].get("item_id", "")) == "rail_loop":
@@ -424,7 +424,7 @@ func _run_visual() -> void:
 		for _frame in range(900):
 			app.session.coaster_carts.advance(1.0 / 30.0, false)
 			var top_now := app.session.coaster_carts.rider_cell(cart_id)
-			if top_now.y >= origin.y + 5 and absi(top_now.x - (origin.x - 3)) <= 1:
+			if top_now.y >= origin.y + 5:
 				break
 	for _frame in range(4):
 		await get_tree().physics_frame
@@ -452,7 +452,7 @@ func _run_visual() -> void:
 	var cart_body: Node3D = app.session._station_visuals.get(cart_id)
 	var cart_parts := cart_body.find_children("*", "MeshInstance3D", true, false).size() if cart_body != null else 0
 	var cart_cell := app.session.coaster_carts.rider_cell(cart_id) if app.session.coaster_carts != null else Vector3i(0, -9999, 0)
-	_record("T163_COASTER_RENDERED", committed.get("reason") == "LOOP_PLACED" and cart.get("ok", false) and slope_ok and slope_cart.get("ok", false) and error == OK and image.get_size() == Vector2i(1280, 720) and loop_parts >= 60 and cart_parts >= 18 and cart_cell.y >= origin.y + 5, "a size-6 loop element (switchers, slopes and the octagon) renders with a mine cart on it, beside a slope run climbing a step with its own cart, in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "committed": committed.get("reason"), "cart": cart.get("reason"), "slope_ok": slope_ok, "slope_cart": slope_cart.get("reason"), "loop_parts": loop_parts, "cart_parts": cart_parts, "cart_cell": cart_cell})
+	_record("T163_COASTER_RENDERED", committed.get("reason") == "LOOP_PLACED" and cart.get("ok", false) and slope_ok and slope_cart.get("ok", false) and error == OK and image.get_size() == Vector2i(1280, 720) and loop_parts >= 60 and cart_parts >= 18 and cart_cell.y >= origin.y + 5, "a diameter-6 true loop renders with a mine cart on it, beside a slope run climbing a step with its own cart, in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "committed": committed.get("reason"), "cart": cart.get("reason"), "slope_ok": slope_ok, "slope_cart": slope_cart.get("reason"), "loop_parts": loop_parts, "cart_parts": cart_parts, "cart_cell": cart_cell})
 
 
 func _count_entities(ws: WorkstationService, entity_id: String) -> int:
