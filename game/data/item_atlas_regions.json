@@ -473,6 +473,15 @@
         217
       ]
     },
+    "rail_climb": {
+      "atlas": "derived",
+      "rect": [
+        1300,
+        808,
+        217,
+        197
+      ]
+    },
     "gold_ore": {
       "atlas": "gold",
       "rect": [

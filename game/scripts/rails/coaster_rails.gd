@@ -35,6 +35,9 @@ const CAR := "coaster_car"
 ## exit also join plain rails behind / ahead.
 const SWITCH := "rail_switch"
 const SWITCH_MID_OFFSET := 0.25
+## The Climb (CoasterCraft card 5): the tool item's entity id; its pieces
+## are `rail_loop` records carrying the climb curve.
+const CLIMB := "rail_climb"
 ## Height of a slope's rails at its high edge above the slope cell's floor
 ## (the loop ring meets the slope there).
 const SLOPE_RAIL_TOP := 1.04
@@ -365,6 +368,47 @@ static func helix_layout(entry: Vector3i, quarters: int, diameter: int) -> Dicti
 	for piece: Dictionary in pieces:
 		cells.append(piece.cell)
 	return {"pieces": pieces, "cells": cells, "center": ground + Vector3.UP * radius, "radius": radius, "entry": entry, "exit": exit}
+
+
+# ---------------------------------------------------------------------------
+# The Climb (CoasterCraft card 5, 2026-09-20): with `rail_climb` held a
+# press ghosts a complete climb from the entry cell to a landing `length`
+# cells ahead and `rise` cells up (negative = a descent): a concave slope-in,
+# a straight at the grade and a convex slope-out, one TrackCurve
+# (`make_climb`) laid as `rail_loop` pieces. The entry and the landing are
+# at rail height on their levels, so plain rails join them flush.
+# ---------------------------------------------------------------------------
+
+const CLIMB_LENGTH_MIN := 3
+const CLIMB_LENGTH_MAX := 60
+const CLIMB_RISE_MIN := -30
+const CLIMB_RISE_MAX := 30
+const CLIMB_LENGTH_DEFAULT := 8
+const CLIMB_RISE_DEFAULT := 4
+
+
+## How many pieces a climb of `length` and `rise` takes (its item price).
+static func climb_piece_count(length: int, rise: int) -> int:
+	return (climb_layout(Vector3i.ZERO, 0, length, rise).cells as Array).size()
+
+
+## The climb's pieces: {pieces, cells, curve, entry, landing}. The landing
+## cell is `entry + along * length + up * rise` (its floor is the entry's
+## floor plus the rise).
+static func climb_layout(entry: Vector3i, quarters: int, length: int, rise: int) -> Dictionary:
+	length = clampi(length, CLIMB_LENGTH_MIN, CLIMB_LENGTH_MAX)
+	rise = clampi(rise, CLIMB_RISE_MIN, CLIMB_RISE_MAX)
+	var along := switch_along(quarters)
+	var side := switch_side(quarters)
+	var origin := Vector3(entry) + Vector3(0.5, 0.55, 0.5)
+	var curve := TrackCurve.make_climb(origin, Vector3(along), Vector3(side), float(length), float(rise))
+	var landing := entry + along * length + Vector3i.UP * rise
+	var loop_rotation := 1 if along.x != 0 else 0
+	var pieces := TrackCurve.pieces(curve, LOOP, loop_rotation, entry - along, landing + along, {}, maxi(720, (length + absi(rise)) * 40))
+	var cells: Array[Vector3i] = []
+	for piece: Dictionary in pieces:
+		cells.append(piece.cell)
+	return {"pieces": pieces, "cells": cells, "curve": curve, "entry": entry, "landing": landing}
 
 
 ## Ring fit variants for the owner to compare (L cycles): how far above the

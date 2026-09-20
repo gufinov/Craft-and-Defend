@@ -27,7 +27,7 @@ F5 candidate status: every currently implemented action below except reserved `r
 
 `Z` implements crouch; prone is deferred. Sprint is hold-to-run initially. `G` is reserved; do not invent a reload mechanic for a pickaxe. Left mouse breaks/dismantles. Right mouse first opens a targeted station and otherwise places the selected item. Shift remains the general Interact action but does not open current crafting/processing stations; targeting one explains that right-click is required. P3H assigns separate W clockwise and R counterclockwise preview rotation actions. W is intentionally a build control, not forward movement; physical E remains forward under the ESDF layout.
 
-Coaster rails side project ([contract](COASTER_RAILS.md)): while a Rail Loop drag is active, **X** shrinks and **C** grows the loop radius. They are read as raw keys only during that drag, are not InputMap actions and cannot be rebound; X and C are otherwise unbound.
+Coaster rails side project ([contract](COASTER_RAILS.md)): while a Rail Loop drag is active, **X** shrinks and **C** grows the loop radius (while a Climb drag is active they lower / raise the rise). They are read as raw keys only during that drag, are not InputMap actions and cannot be rebound; X and C are otherwise unbound.
 
 Coaster car and hero ([contract](COASTER_CAR_AND_HERO.md)): **Shift** (Interact) aimed at a parked Coaster Car boards it; while riding, **1–9** set the car's speed in cells per second (they do not change the hotbar slot) and **Shift** or **Escape** leaves the car (Escape leaves before it pauses). On foot, **V** toggles third person (chase camera with the hero visible). V is read as a raw key like X / C: not an InputMap action, not rebindable, otherwise unbound.
 
@@ -38,3 +38,4 @@ Tests: every required action responds; forward is E (not W); a changed movement 
 - **While riding a Coaster Car**: mouse turns the head (±110° / ±60°, no turning around); **1–9** speed; **arrow keys** outside views (↑ behind, ↓ front, ← → sides; same arrow again = seat); **Shift** / Escape leave.
 
 - **Rail Loop held**: hold Right Mouse for the loop ghost (a true helix loop); **hold Shift and aim further away** to size it (or 4–9 / X / C); **L** classic foundation loop; **W / R** turn it; release to build.
+- **Climb held**: hold Right Mouse at the entry for the whole climb's ghost (slope-in, grade, slope-out); **hold Shift and aim at the landing** (a hilltop; below the entry for a descent) to set its length and rise; **4–9 / X / C** set the rise; **W / R** turn it; release to build.

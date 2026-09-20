@@ -3,9 +3,9 @@ extends Node
 
 ## Coaster rails side project (docs/COASTER_RAILS.md): slope rails that join
 ## two levels, the loop drag tool and the mine cart that rides the whole
-## track. Runs with `--coaster-rails-automation=gate` (headless: T160-T162)
-## and `--coaster-rails-automation=visual` (needs a window: T163 renders
-## `coaster-rails.png`).
+## track. Runs with `--coaster-rails-automation=gate` (headless: T160-T162,
+## T168, T176-T177) and `--coaster-rails-automation=visual` (needs a window:
+## T163 renders `coaster-rails.png`, T178 `coaster-climb.png`).
 
 var app: CraftAndDefendApp
 var failures: Array[String] = []
@@ -372,6 +372,226 @@ func _run_gate() -> void:
 	interaction.loop_true = true
 	_record("T162_LOOP_ELEMENT", started.get("ok", false) and size_four and four_ok and switch_pieces and six_count > four_count and seven == 7 and six_again == 6 and clamped == 9 and round_ok and committed.get("reason") == "LOOP_PLACED" and int(committed.get("changes", {}).get("count", 0)) == four_count and one_item and chain_ok and arc_drawn and rides_circle and loop_cart.get("ok", false) and top_reached > 0 and exit_reached > top_reached and red > 0 and nothing_laid and round_trip and helix_ok, "with Rail Loop held a press ghosts a complete size-4 loop (six switcher pieces, two slopes, the circle pieces); 6 by key adds pieces, C makes 7, X makes 6, 12 clamps to 9, every ring piece rides the true circle; release lays every piece for one item as one chain from the entry through both slopes and the circle's top to the exit two lanes over; every ring piece draws the loop track (rails, ties, spine) and leans toward the loop's centre; a cart from the approach reaches the top and then the exit; a ghost over a stone column shows red and lays nothing; the laid track survives a save round-trip; L switches to the TRUE loop: a diameter-8 helix of rail_loop pieces touching the ground only at its entry and exit one lane right, Shift-drag to 14 grows it, the pack caps the size (about 60 loops) and pays one per piece, and a cart rides the approach over the top and out on the exit lane", {"started": started.get("reason"), "size_four": size_four, "four_ok": four_ok, "entities": four_entities, "four_count": four_count, "six_count": six_count, "seven": seven, "six_again": six_again, "clamped": clamped, "round_loops": round_loops, "round_arcs": round_arcs, "committed": committed.get("reason"), "count": committed.get("changes", {}).get("count", 0), "one_item": one_item, "chain": loop_chain.size(), "chain_ok": chain_ok, "arc_drawn": arc_drawn, "rides_circle": rides_circle, "cart": loop_cart.get("reason"), "top_frame": top_reached, "exit_frame": exit_reached, "red": red, "nothing_laid": nothing_laid, "refused": refused.get("reason"), "round_trip": round_trip, "restored": restored.get("reason"), "helix_ok": helix_ok, "capped": capped, "capped_ok": capped_ok, "paid_per_piece": paid_per_piece, "helix_all_loops": helix_all_loops, "helix_ground": helix_ground, "eight_count": eight_count, "dragged": dragged, "dragged_count": dragged_count, "helix_laid": helix_laid.get("reason"), "helix_joined": helix_joined, "helix_cart": helix_cart.get("reason"), "helix_over": helix_over, "helix_out": helix_out})
 
+	# T176 the Climb (CoasterCraft card 5, 2026-09-20): with Climb held a
+	# press ghosts a complete climb (slope-in, grade, slope-out) from the
+	# entry to a landing 8 ahead and 4 up; Shift-aim sets length and rise
+	# (a hilltop column, a pit for a descent); 4-9 / X / C set the rise; the
+	# pack caps the length; release lays every rail_loop piece for one item
+	# each; plain rails join both ends at their heights; a cart rides up to
+	# the landing and back without its up vector flipping; a blocked ghost
+	# shows red and lays nothing; the track survives a save round-trip.
+	var cb := Vector3i(-14, 0, 62)
+	_level_ground(cb + Vector3i(-4, 0, -4), 26, 9, 14)
+	app.session.inventory.try_transaction({}, {"rail_climb": 20, "rail": 12, "mine_cart": 1})
+	var climb_item: Dictionary = registry.item("rail_climb")
+	var climb_entity: Dictionary = registry.entity("rail_climb")
+	var climb_recipe: Dictionary = {}
+	for recipe: Dictionary in registry.recipes_for("workbench"):
+		if str(recipe.get("id", "")) == "rail_climb":
+			climb_recipe = recipe
+	var climb_content := not climb_item.is_empty() and str(climb_entity.get("coaster_tool", "")) == "climb" and (climb_entity.get("support_offsets", [1]) as Array).is_empty() and int(climb_recipe.get("recipe_book_order", 0)) == 212 and int((climb_recipe.get("outputs", {}) as Dictionary).get("rail_climb", 0)) == 8 and ItemIconCatalog.missing_item_ids(["rail_climb"]).is_empty() and interaction.is_climb_item("rail_climb") and not interaction.is_linear_entity_item("rail_climb")
+	var climb_slot := -1
+	for slot_index in range(F0Inventory.SLOT_COUNT):
+		if str(app.session.inventory.slots[slot_index].get("item_id", "")) == "rail_climb":
+			climb_slot = slot_index
+	if climb_slot >= F0Inventory.HOTBAR_COUNT:
+		app.session.inventory.swap_slots(climb_slot, 4)
+		climb_slot = 4
+	app.session.inventory.select_hotbar(climb_slot)
+	interaction.placement_rotation_quarters = 1
+	interaction.set_climb(CoasterRails.CLIMB_LENGTH_DEFAULT, CoasterRails.CLIMB_RISE_DEFAULT)
+	# The right-press path itself starts the climb drag.
+	var cb_press_origin := Vector3(cb) + Vector3(0.5, 3.0, 3.0)
+	var cb_press_aim := (Vector3(cb) + Vector3(0.5, 0.0, 0.5) - cb_press_origin).normalized()
+	var cb_press := interaction.secondary_press_from_view(cb_press_origin, cb_press_aim)
+	var cb_press_mode := str(interaction.drag_state().get("mode", ""))
+	var cb_press_anchor: Vector3i = interaction.drag_state().get("anchor", Vector3i.MAX)
+	interaction.cancel_drag_place()
+	var cb_started := interaction.begin_climb_at(cb)
+	var cb_ghost: Array = interaction.drag_state().get("cells", [])
+	var cb_default := int(interaction.drag_state().get("climb_length", 0)) == 8 and int(interaction.drag_state().get("climb_rise", 0)) == 4
+	var cb_all_ok := not cb_ghost.is_empty()
+	for entry in cb_ghost:
+		cb_all_ok = cb_all_ok and str(entry.entity_id) == "rail_loop" and str(entry.state) == "ok" and (entry.get("extra", {}) as Dictionary).has("curve")
+	var cb_ends_ok := cb_all_ok and Vector3i(cb_ghost[0].cell) == cb and Vector3i(cb_ghost[cb_ghost.size() - 1].cell) == cb + Vector3i(8, 4, 0)
+	var cb_default_count := cb_ghost.size()
+	# Shift-aim: a stone column 12 ahead, 6 high; aiming down at it sets
+	# length 12 and rise 6.
+	for y in range(0, 6):
+		world.set_cell(cb + Vector3i(12, y, 0), 3)
+	interaction.update_drag_place(Vector3(cb) + Vector3(12.5, 12.0, 0.5), Vector3.DOWN, true)
+	var cb_shift_up := int(interaction.drag_state().get("climb_length", 0)) == 12 and int(interaction.drag_state().get("climb_rise", 0)) == 6
+	var cb_shift_landing: Vector3i = interaction.drag_state().get("end", Vector3i.MAX)
+	# A pit 10 ahead (floor at -4, open from 3 ahead so the descent's cells
+	# are clear): aiming into it sets length 10, rise -3.
+	for x in range(3, 11):
+		for y in range(-1, -4, -1):
+			world.set_cell(cb + Vector3i(x, y, 0), 0)
+		world.set_cell(cb + Vector3i(x, -4, 0), 3)
+	interaction.update_drag_place(Vector3(cb) + Vector3(10.5, 8.0, 0.5), Vector3.DOWN, true)
+	var cb_shift_down := int(interaction.drag_state().get("climb_length", 0)) == 10 and int(interaction.drag_state().get("climb_rise", 0)) == -3
+	var cb_descent_ok := true
+	var cb_descent_cells: Array = interaction.drag_state().get("cells", [])
+	for entry in cb_descent_cells:
+		cb_descent_ok = cb_descent_ok and str(entry.state) == "ok"
+	cb_descent_ok = cb_descent_ok and Vector3i(cb_descent_cells[cb_descent_cells.size() - 1].cell) == cb + Vector3i(10, -3, 0)
+	# Keys: 6 sets the rise, X lowers it, C raises it.
+	interaction.set_climb_rise(6)
+	var cb_six := int(interaction.drag_state().get("climb_rise", 0))
+	interaction.coaster_loop_keys(true, false)
+	interaction.coaster_loop_keys(false, false)
+	var cb_five := int(interaction.drag_state().get("climb_rise", 0))
+	interaction.coaster_loop_keys(false, true)
+	interaction.coaster_loop_keys(false, false)
+	var cb_six_again := int(interaction.drag_state().get("climb_rise", 0))
+	# The pack caps the length: with 20 items, asking for 60 stops where the
+	# next length would cost more than the pack holds.
+	interaction.set_climb(60, 4)
+	var cb_capped := int(interaction.drag_state().get("climb_length", 0))
+	var cb_in_pack := app.session.inventory.count("rail_climb")
+	var cb_capped_ok := cb_capped < 60 and CoasterRails.climb_piece_count(cb_capped, 4) <= cb_in_pack and CoasterRails.climb_piece_count(cb_capped + 1, 4) > cb_in_pack
+	# Lay the default climb (8 ahead, 4 up) for one item per piece.
+	interaction.set_climb(8, 4)
+	var cb_before := app.session.inventory.count("rail_climb")
+	var cb_laid := interaction.commit_drag_place()
+	interaction.placement_rotation_quarters = 0
+	var cb_landing: Vector3i = cb_laid.get("changes", {}).get("landing", Vector3i.MAX)
+	var cb_paid := cb_before - app.session.inventory.count("rail_climb") == cb_default_count and int(cb_laid.get("changes", {}).get("count", 0)) == cb_default_count
+	# Plain rails: three behind the entry, three past the landing (4 up, on
+	# a stone ledge).
+	var cb_rails := true
+	var cb_rail_reasons: Array[String] = []
+	for x in range(1, 4):
+		var behind := ws.try_place("rail", cb + Vector3i(-x, 0, 0), world.query_cell, AABB(), 0)
+		cb_rails = cb_rails and bool(behind.get("ok", false))
+		cb_rail_reasons.append(str(behind.get("reason")))
+	for x in range(1, 4):
+		world.set_cell(cb_landing + Vector3i(x, -1, 0), 3)
+		var ahead := ws.try_place("rail", cb_landing + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+		cb_rails = cb_rails and bool(ahead.get("ok", false))
+		cb_rail_reasons.append(str(ahead.get("reason")))
+	var cb_chain := CoasterRails.chain(ws.stations, cb + Vector3i(-3, 0, 0))
+	var cb_joined := cb_chain.size() == cb_default_count + 6 and cb_chain.has(cb_landing + Vector3i(3, 0, 0)) and cb_landing == cb + Vector3i(8, 4, 0)
+	var cb_entry_record: Dictionary = ws.station(ws.station_at_cell(cb))
+	var cb_landing_record: Dictionary = ws.station(ws.station_at_cell(cb_landing))
+	var cb_heights := is_equal_approx(CoasterRails.ride_point(cb_entry_record).y, float(cb.y) + 0.55) and is_equal_approx(CoasterRails.ride_point(cb_landing_record).y, float(cb_landing.y) + 0.55)
+	var cb_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(cb + Vector3i(4, 2, 0)))
+	var cb_drawn := cb_body != null and cb_body.get_node_or_null("LoopTrack") != null
+	var cb_cart := ws.try_place("mine_cart", cb + Vector3i(-3, 1, 0), world.query_cell, AABB(), 0)
+	var cb_cart_id := str(cb_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	var cb_top_frame := -1
+	var cb_home_frame := -1
+	var cb_min_up := 1.0
+	if app.session.coaster_carts != null:
+		for frame in range(900):
+			app.session.coaster_carts.advance(1.0 / 30.0, false)
+			var cell := app.session.coaster_carts.rider_cell(cb_cart_id)
+			var cb_rig: Node3D = app.session.coaster_carts.cart_rig(cb_cart_id)
+			if cb_rig != null:
+				cb_min_up = minf(cb_min_up, cb_rig.global_basis.y.y)
+			if cb_top_frame < 0 and cell == cb_landing + Vector3i(3, 0, 0):
+				cb_top_frame = frame
+			if cb_top_frame >= 0 and cb_home_frame < 0 and cell == cb + Vector3i(-3, 0, 0):
+				cb_home_frame = frame
+				break
+	if cb_cart.get("ok", false):
+		ws.try_dismantle(cb_cart_id, world.query_cell, AABB())
+	# Blocked: a stone column across the grade shows red and lays nothing.
+	var cb_blocked_entry := cb + Vector3i(0, 0, 3)
+	for y in range(0, 4):
+		world.set_cell(cb_blocked_entry + Vector3i(4, y, 0), 3)
+	app.session.inventory.try_transaction({}, {"rail_climb": 20})
+	app.session.inventory.select_hotbar(climb_slot)
+	interaction.placement_rotation_quarters = 1
+	interaction.begin_climb_at(cb_blocked_entry)
+	var cb_red := 0
+	for entry in interaction.drag_state().get("cells", []):
+		if str(entry.state) == "blocked":
+			cb_red += 1
+	var cb_stations := ws.stations.size()
+	var cb_refused := interaction.commit_drag_place()
+	interaction.placement_rotation_quarters = 0
+	var cb_nothing: bool = ws.stations.size() == cb_stations and cb_refused.get("reason") == "CLIMB_BLOCKED"
+	# Save round-trip keeps the curve and the joints.
+	var cb_saved: Variant = JSON.parse_string(JSON.stringify(ws.snapshot()))
+	var cb_restored := ws.restore(cb_saved, world.query_cell) if cb_saved is Dictionary else {"ok": false, "reason": "SNAPSHOT_NOT_JSON"}
+	var cb_restored_chain := CoasterRails.chain(ws.stations, cb + Vector3i(-3, 0, 0))
+	var cb_round_trip: bool = cb_restored.get("ok", false) and cb_restored_chain.size() == cb_chain.size() and ws.station(ws.station_at_cell(cb_landing)).has("curve") and is_equal_approx(CoasterRails.ride_point(ws.station(ws.station_at_cell(cb_landing))).y, float(cb_landing.y) + 0.55)
+	_record("T176_CLIMB", climb_content and cb_press.get("reason") == "DRAG_STARTED" and cb_press_mode == "climb" and cb_press_anchor == cb and cb_started.get("ok", false) and cb_default and cb_all_ok and cb_ends_ok and cb_shift_up and cb_shift_landing == cb + Vector3i(12, 6, 0) and cb_shift_down and cb_descent_ok and cb_six == 6 and cb_five == 5 and cb_six_again == 6 and cb_capped_ok and cb_laid.get("reason") == "CLIMB_PLACED" and cb_paid and cb_rails and cb_joined and cb_heights and cb_drawn and cb_cart.get("ok", false) and cb_top_frame > 0 and cb_home_frame > cb_top_frame and cb_min_up > 0.5 and cb_red > 0 and cb_nothing and cb_round_trip, "rail_climb (climb tool, no support, recipe 212 -> 8, icon) is registered; with Climb held a right-press starts the climb drag at the aim; the ghost is a complete climb of rail_loop curve pieces from the entry to a landing 8 ahead and 4 up; Shift-aiming at a 6-high column 12 ahead sets length 12 / rise 6 (landing on the column's top) and aiming into a pit 10 ahead sets length 10 / rise -3 (a descent, all pieces ok); 6 by key, X and C set the rise; a 20-item pack caps the length; release lays every piece for one item each; plain rails join the entry (behind) and the landing (ahead, 4 up) in one chain, both ends ride at rail height, the pieces draw the loop track; a mine cart rides up to the rail past the landing and back home with its up vector never dipping below 0.5; a ghost through a stone column shows red and lays nothing; the laid climb survives a save round-trip", {"content": climb_content, "press": cb_press.get("reason"), "press_mode": cb_press_mode, "press_anchor": cb_press_anchor, "started": cb_started.get("reason"), "default": cb_default, "all_ok": cb_all_ok, "ends_ok": cb_ends_ok, "count": cb_default_count, "shift_up": cb_shift_up, "shift_landing": cb_shift_landing, "shift_down": cb_shift_down, "descent_ok": cb_descent_ok, "six": cb_six, "five": cb_five, "six_again": cb_six_again, "capped": cb_capped, "capped_ok": cb_capped_ok, "in_pack": cb_in_pack, "laid": cb_laid.get("reason"), "landing": cb_landing, "paid": cb_paid, "rails": cb_rails, "rail_reasons": cb_rail_reasons, "chain": cb_chain.size(), "joined": cb_joined, "heights": cb_heights, "drawn": cb_drawn, "cart": cb_cart.get("reason"), "top_frame": cb_top_frame, "home_frame": cb_home_frame, "min_up": cb_min_up, "red": cb_red, "nothing": cb_nothing, "refused": cb_refused.get("reason"), "round_trip": cb_round_trip, "restored": cb_restored.get("reason")})
+
+	# T177 the mountain: a stepped stone bank (x -5..4, one step per cell up
+	# to 6 high), a climb from the plate onto its top (length 11, rise 6),
+	# plain rails across the top, a descent back down (length 10, rise -6);
+	# a cart rides up, across and down to the far rail and back; a climb too
+	# low for the bank ghosts red and lays nothing.
+	var mb := Vector3i(0, 0, 72)
+	_level_ground(mb + Vector3i(-16, 0, -4), 33, 11, 14)
+	app.session.inventory.try_transaction({}, {"rail_climb": 64, "rail": 12, "mine_cart": 1})
+	for x in range(-5, 5):
+		var height := mini(6, x + 6)
+		for z in range(-3, 4):
+			for y in range(0, height):
+				world.set_cell(mb + Vector3i(x, y, z), 3)
+	app.session.inventory.select_hotbar(climb_slot)
+	interaction.placement_rotation_quarters = 1
+	interaction.begin_climb_at(mb + Vector3i(-13, 0, 0))
+	interaction.set_climb(13, 6)
+	var mb_up := interaction.commit_drag_place()
+	var mb_top: Vector3i = mb_up.get("changes", {}).get("landing", Vector3i.MAX)
+	var mb_top_ok := mb_top == mb + Vector3i(0, 6, 0)
+	var mb_rails := true
+	var mb_rail_reasons: Array[String] = []
+	for x in range(1, 4):
+		var top_rail := ws.try_place("rail", mb + Vector3i(x, 6, 0), world.query_cell, AABB(), 0)
+		mb_rails = mb_rails and bool(top_rail.get("ok", false))
+		mb_rail_reasons.append(str(top_rail.get("reason")))
+	interaction.begin_climb_at(mb + Vector3i(4, 6, 0))
+	interaction.set_climb(10, -6)
+	var mb_down := interaction.commit_drag_place()
+	var mb_foot: Vector3i = mb_down.get("changes", {}).get("landing", Vector3i.MAX)
+	var mb_foot_ok := mb_foot == mb + Vector3i(14, 0, 0)
+	for end_cell: Vector3i in [mb + Vector3i(-14, 0, 0), mb + Vector3i(15, 0, 0)]:
+		var end_rail := ws.try_place("rail", end_cell, world.query_cell, AABB(), 0)
+		mb_rails = mb_rails and bool(end_rail.get("ok", false))
+		mb_rail_reasons.append(str(end_rail.get("reason")))
+	var mb_chain := CoasterRails.chain(ws.stations, mb + Vector3i(-14, 0, 0))
+	var mb_chain_ok := mb_chain.has(mb + Vector3i(15, 0, 0)) and mb_chain.has(mb + Vector3i(2, 6, 0)) and mb_chain.size() == int(mb_up.get("changes", {}).get("count", 0)) + int(mb_down.get("changes", {}).get("count", 0)) + 5
+	var mb_cart := ws.try_place("mine_cart", mb + Vector3i(-14, 1, 0), world.query_cell, AABB(), 0)
+	var mb_cart_id := str(mb_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	var mb_top_frame := -1
+	var mb_far_frame := -1
+	var mb_home_frame := -1
+	var mb_min_up := 1.0
+	if app.session.coaster_carts != null:
+		for frame in range(1500):
+			app.session.coaster_carts.advance(1.0 / 30.0, false)
+			var cell := app.session.coaster_carts.rider_cell(mb_cart_id)
+			var mb_rig: Node3D = app.session.coaster_carts.cart_rig(mb_cart_id)
+			if mb_rig != null:
+				mb_min_up = minf(mb_min_up, mb_rig.global_basis.y.y)
+			if mb_top_frame < 0 and cell == mb + Vector3i(2, 6, 0):
+				mb_top_frame = frame
+			if mb_top_frame >= 0 and mb_far_frame < 0 and cell == mb + Vector3i(15, 0, 0):
+				mb_far_frame = frame
+			if mb_far_frame >= 0 and mb_home_frame < 0 and cell == mb + Vector3i(-14, 0, 0):
+				mb_home_frame = frame
+				break
+	if mb_cart.get("ok", false):
+		ws.try_dismantle(mb_cart_id, world.query_cell, AABB())
+	# Too low: a climb of rise 2 on the next lane runs into the bank.
+	interaction.begin_climb_at(mb + Vector3i(-13, 0, 2))
+	interaction.set_climb(13, 2)
+	var mb_red := 0
+	for entry in interaction.drag_state().get("cells", []):
+		if str(entry.state) == "blocked":
+			mb_red += 1
+	var mb_stations := ws.stations.size()
+	var mb_refused := interaction.commit_drag_place()
+	interaction.placement_rotation_quarters = 0
+	interaction.set_climb(CoasterRails.CLIMB_LENGTH_DEFAULT, CoasterRails.CLIMB_RISE_DEFAULT)
+	var mb_nothing: bool = ws.stations.size() == mb_stations and mb_refused.get("reason") == "CLIMB_BLOCKED"
+	_record("T177_CLIMB_MOUNTAIN", mb_up.get("reason") == "CLIMB_PLACED" and mb_top_ok and mb_rails and mb_down.get("reason") == "CLIMB_PLACED" and mb_foot_ok and mb_chain_ok and mb_cart.get("ok", false) and mb_top_frame > 0 and mb_far_frame > mb_top_frame and mb_home_frame > mb_far_frame and mb_min_up > 0.5 and mb_red > 0 and mb_nothing, "a climb of length 13 / rise 6 from the plate lands on top of a 6-high stepped stone bank, three plain rails cross the top, a descent of length 10 / rise -6 lands back on the plate, and with a rail at each end the whole run is one chain; a mine cart rides up the climb, across the top, down the descent to the far rail and back home with its up vector never dipping below 0.5; a climb of rise 2 into the bank ghosts red cells and lays nothing", {"up": mb_up.get("reason"), "up_count": mb_up.get("changes", {}).get("count", 0), "top": mb_top, "rails": mb_rails, "rail_reasons": mb_rail_reasons, "down": mb_down.get("reason"), "down_count": mb_down.get("changes", {}).get("count", 0), "foot": mb_foot, "chain": mb_chain.size(), "chain_ok": mb_chain_ok, "cart": mb_cart.get("reason"), "top_frame": mb_top_frame, "far_frame": mb_far_frame, "home_frame": mb_home_frame, "min_up": mb_min_up, "red": mb_red, "nothing": mb_nothing, "refused": mb_refused.get("reason")})
+
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on
 ## the track, beside a slope run climbing a step, in one 1280x720 view.
@@ -453,6 +673,63 @@ func _run_visual() -> void:
 	var cart_parts := cart_body.find_children("*", "MeshInstance3D", true, false).size() if cart_body != null else 0
 	var cart_cell := app.session.coaster_carts.rider_cell(cart_id) if app.session.coaster_carts != null else Vector3i(0, -9999, 0)
 	_record("T163_COASTER_RENDERED", committed.get("reason") == "LOOP_PLACED" and cart.get("ok", false) and slope_ok and slope_cart.get("ok", false) and error == OK and image.get_size() == Vector2i(1280, 720) and loop_parts >= 60 and cart_parts >= 18 and cart_cell.y >= origin.y + 5, "a diameter-6 true loop renders with a mine cart on it, beside a slope run climbing a step with its own cart, in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "committed": committed.get("reason"), "cart": cart.get("reason"), "slope_ok": slope_ok, "slope_cart": slope_cart.get("reason"), "loop_parts": loop_parts, "cart_parts": cart_parts, "cart_cell": cart_cell})
+
+	# T178 the Climb rendered: a climb of length 12 / rise 6 with rails at
+	# both ends and a mine cart part way up, seen from the side.
+	var climb_origin := Vector3i(-12, 0, 52)
+	_level_ground(climb_origin + Vector3i(-3, 0, -4), 22, 20, 14)
+	app.session.inventory.try_transaction({}, {"rail_climb": 64, "rail": 12, "mine_cart": 1})
+	var climb_slot := -1
+	for slot_index in range(F0Inventory.SLOT_COUNT):
+		if str(app.session.inventory.slots[slot_index].get("item_id", "")) == "rail_climb":
+			climb_slot = slot_index
+	if climb_slot >= F0Inventory.HOTBAR_COUNT:
+		app.session.inventory.swap_slots(climb_slot, 4)
+		climb_slot = 4
+	app.session.inventory.select_hotbar(climb_slot)
+	interaction.placement_rotation_quarters = 1
+	interaction.begin_climb_at(climb_origin)
+	interaction.set_climb(12, 6)
+	var climb_laid := interaction.commit_drag_place()
+	interaction.placement_rotation_quarters = 0
+	var climb_landing: Vector3i = climb_laid.get("changes", {}).get("landing", climb_origin + Vector3i(12, 6, 0))
+	for x in range(1, 3):
+		ws.try_place("rail", climb_origin + Vector3i(-x, 0, 0), world.query_cell, AABB(), 0)
+		ws.try_place("rail", climb_landing + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+	var climb_cart := ws.try_place("mine_cart", climb_origin + Vector3i(-2, 1, 0), world.query_cell, AABB(), 0)
+	var climb_cart_id := str(climb_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	var climb_cart_cell := climb_origin
+	if app.session.coaster_carts != null:
+		for _frame in range(900):
+			app.session.coaster_carts.advance(1.0 / 30.0, false)
+			climb_cart_cell = app.session.coaster_carts.rider_cell(climb_cart_id)
+			if climb_cart_cell.y >= climb_origin.y + 3:
+				break
+	for _frame in range(4):
+		await get_tree().physics_frame
+	player.global_position = Vector3(climb_origin) + Vector3(6.0, 4.0, 13.0)
+	player.rotation = Vector3.ZERO
+	player.look_pitch = 0.08
+	player.apply_mouse_look(Vector2.ZERO)
+	for _frame in range(90):
+		await get_tree().process_frame
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+	var climb_texture := get_viewport().get_texture()
+	var climb_image := climb_texture.get_image() if climb_texture != null else null
+	var climb_path := app.data_root.path_join("coaster-climb.png")
+	if climb_image == null:
+		_record("T178_CLIMB_RENDERED", false, "a climb with a cart part way up renders in one 1280x720 view", {"path": climb_path, "reason": "NO_RENDERED_VIEWPORT"})
+		return
+	var climb_error := climb_image.save_png(climb_path)
+	var climb_parts := 0
+	for cell: Vector3i in CoasterRails.chain(ws.stations, climb_origin).keys():
+		var record: Dictionary = ws.station(ws.station_at_cell(cell))
+		if record.has("curve"):
+			var body: Node3D = app.session._station_visuals.get(ws.station_at_cell(cell))
+			if body != null:
+				climb_parts += body.find_children("*", "MeshInstance3D", true, false).size()
+	_record("T178_CLIMB_RENDERED", climb_laid.get("reason") == "CLIMB_PLACED" and climb_cart.get("ok", false) and climb_error == OK and climb_image.get_size() == Vector2i(1280, 720) and climb_parts >= 40 and climb_cart_cell.y >= climb_origin.y + 3, "a climb of length 12 / rise 6 renders with rails at both ends and a mine cart part way up, seen from the side, in one 1280x720 view", {"path": climb_path, "size": climb_image.get_size(), "error": climb_error, "laid": climb_laid.get("reason"), "cart": climb_cart.get("reason"), "parts": climb_parts, "cart_cell": climb_cart_cell})
 
 
 func _count_entities(ws: WorkstationService, entity_id: String) -> int:

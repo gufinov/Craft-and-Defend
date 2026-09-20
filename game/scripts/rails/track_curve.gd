@@ -50,6 +50,14 @@ static func make_s_bend(origin: Vector3, along: Vector3, side: Vector3, length: 
 	return make("s_bend", origin, along, side, {"length": length, "shift": shift, "rise": rise}, 0.35)
 
 
+## A climb (or a descent: negative `rise`): slope-in, straight grade and
+## slope-out in one smooth profile - an s_bend with no lateral shift. Bank 0
+## keeps riders upright (the pitch comes from the heading; a vertical
+## profile has no side to lean into).
+static func make_climb(origin: Vector3, along: Vector3, side: Vector3, length: float, rise: float) -> Dictionary:
+	return make("s_bend", origin, along, side, {"length": length, "shift": 0.0, "rise": rise}, 0.0)
+
+
 static func _vector(value: Variant, fallback: Vector3) -> Vector3:
 	if value is Array and (value as Array).size() == 3:
 		return Vector3(float(value[0]), float(value[1]), float(value[2]))

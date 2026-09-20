@@ -9,7 +9,7 @@ extends Node
 
 const TOP_UP_SECONDS := 1.0
 ## Hotbar order, then the rest of the pack.
-const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "rail_switch", "mine_cart", "coaster_car", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone"]
+const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "rail_switch", "rail_climb", "mine_cart", "coaster_car", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone"]
 
 var app: CraftAndDefendApp
 var loop_car_id := ""
@@ -29,7 +29,7 @@ func run(application: CraftAndDefendApp) -> void:
 	await get_tree().process_frame
 	_stock_pack(true)
 	_lay_demo()
-	app.session.navigation_changed.emit("COASTER SANDBOX  ·  infinite stock  ·  loop ahead (Shift on the car to ride, 1-9 speed), slope run to the right, V third person")
+	app.session.navigation_changed.emit("COASTER SANDBOX  ·  infinite stock  ·  loop ahead (Shift on the car to ride, 1-9 speed), mountain climb behind it, V third person")
 	print("COASTER_SANDBOX_READY")
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-ride-shot"):
 		# Seat-view pictures: boarding, mid-climb, head turned left.
@@ -138,13 +138,12 @@ func run(application: CraftAndDefendApp) -> void:
 		get_tree().quit(0)
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-shot"):
 		var player := app.session.player
-		# Above and behind the loop's bottom, looking down the lead-in so the
-		# 45-degree steps into and out of the circle show.
-		# Over the lane switcher demo, looking down its length.
+		# Beside the mountain climb's foot, looking over the plate: the climb
+		# rises to the right onto the stone bank, the loop stands beyond.
 		player.deactivate()
-		player.global_position = Vector3(-1.0, 4.5, 42.0)
+		player.global_position = Vector3(-8.0, 5.5, 44.0)
 		player.rotation = Vector3.ZERO
-		player.look_pitch = 0.08
+		player.look_pitch = 0.06
 		player.apply_mouse_look(Vector2.ZERO)
 		app.session.inventory.select_hotbar(STOCK.find("iron_pick"))
 		player.apply_mouse_look(Vector2.ZERO)
@@ -238,6 +237,44 @@ func _lay_demo() -> void:
 	print("COASTER_SANDBOX circuit %d / %d rails, chain %d" % [laid, circuit.size(), CoasterRails.chain(ws.stations, origin).size()])
 	# Owner 2026-09-20: nothing else on the plate - the loop, its circuit and
 	# the car are the whole sandbox; build the rest yourself.
+	_lay_mountain()
+
+
+## The mountain test (CoasterCraft card 5): a stepped stone bank on the
+## plate (x -5..4, z 36..42, one step per cell up to 6 high) with a Climb
+## from the plate onto its top (length 13, rise 6), plain rails across the
+## top, a descent back to the plate (length 10, rise -6) and a mine cart
+## riding up, across and down.
+func _lay_mountain() -> void:
+	var ws: WorkstationService = app.session.workstations
+	var world: WorldAdapter = app.session.world
+	var interaction: InteractionService = app.session.interaction
+	var lane := 39
+	# The loop's circuit used the whole rail stack; refill before laying more.
+	_stock_pack(false)
+	for x in range(-5, 5):
+		var height := mini(6, x + 6)
+		for z in range(36, 43):
+			for y in range(1, height + 1):
+				world.set_cell(Vector3i(x, y, z), 3)
+	app.session.inventory.select_hotbar(STOCK.find("rail_climb"))
+	interaction.placement_rotation_quarters = 1
+	interaction.begin_climb_at(Vector3i(-13, 1, lane))
+	interaction.set_climb(13, 6)
+	var up := interaction.commit_drag_place()
+	var top: Vector3i = up.get("changes", {}).get("landing", Vector3i(0, 7, lane))
+	for x in range(top.x + 1, 4):
+		ws.try_place("rail", Vector3i(x, top.y, lane), world.query_cell, AABB(), 0)
+	interaction.begin_climb_at(Vector3i(4, top.y, lane))
+	interaction.set_climb(10, -6)
+	var down := interaction.commit_drag_place()
+	interaction.placement_rotation_quarters = 0
+	interaction.set_climb(CoasterRails.CLIMB_LENGTH_DEFAULT, CoasterRails.CLIMB_RISE_DEFAULT)
+	app.session.inventory.select_hotbar(0)
+	ws.try_place("rail", Vector3i(-14, 1, lane), world.query_cell, AABB(), 0)
+	ws.try_place("rail", Vector3i(15, 1, lane), world.query_cell, AABB(), 0)
+	var cart := ws.try_place("mine_cart", Vector3i(-14, 2, lane), world.query_cell, AABB(), 0)
+	print("COASTER_SANDBOX mountain climb %s (%s pieces) descent %s (%s pieces) cart %s chain %d" % [up.get("reason"), up.get("changes", {}).get("count"), down.get("reason"), down.get("changes", {}).get("count"), cart.get("reason"), CoasterRails.chain(ws.stations, Vector3i(-14, 1, lane)).size()])
 
 
 func _level_ground(origin: Vector3i, width: int, depth: int, height: int) -> void:

@@ -31,6 +31,8 @@ const REASON_TEXT := {
 	"LOOP_PLACED": "Loop built. Rails join its entry (behind) and its exit (ahead, one lane right).",
 	"LOOP_BLOCKED": "The loop does not fit here: a red cell is in the way (ground, tree, hill or block). Move, turn (W / R) or resize (4-9).",
 	"SWITCH_BLOCKED": "The lane switcher needs four free cells: entry, two side by side, exit.",
+	"CLIMB_PLACED": "Climb built. Rails join its entry (behind) and its landing (ahead, at the top).",
+	"CLIMB_BLOCKED": "The climb does not fit here: a red cell is in the way (ground, tree, hill or block). Move, turn (W / R), or hold Shift and aim past the obstacle.",
 	"COASTER_BOARDED": "Boarded the coaster car — 1-9 sets the speed, Shift or Escape leaves.",
 	"COASTER_LEFT": "Left the coaster car.",
 	"ALREADY_RIDING": "Already riding.",
@@ -385,6 +387,8 @@ func select_hotbar(index: int) -> Dictionary:
 			_on_interaction_feedback("RAIL LOOP: aim at the ground where the entry goes, HOLD Right Mouse — the loop ghost appears; hold Shift and aim further away to size it (or 4-9 / X / C), W / R turn it, L classic loop; let go to build it (red = does not fit)")
 		elif item_id == CoasterRails.SLOPE:
 			_on_interaction_feedback("RAIL SLOPE: the arrow end climbs one block — W / R turns it; put a Rail on the block it climbs to")
+		elif item_id == CoasterRails.CLIMB:
+			_on_interaction_feedback("CLIMB: aim at the ground where the climb starts, HOLD Right Mouse — the whole climb ghosts (slope-in, grade, slope-out); hold Shift and aim where it should land (a hilltop, or below for a descent) to set its length and rise (or 4-9 / X / C for the rise), W / R turn it; let go to build it (red = does not fit)")
 	return result
 
 
@@ -730,6 +734,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			_emit_hud()
 			get_viewport().set_input_as_handled()
 			return
+	if interaction != null and interaction.drag_active() and str(interaction.drag_state().get("mode", "")) == "climb":
+		# Climb ghost: 4-9 set the rise in cells instead of the hotbar.
+		for rise in range(4, 10):
+			if event.is_action_pressed("hotbar_%d" % rise):
+				interaction.set_climb_rise(rise)
+				_on_interaction_feedback("Climb rise %d, length %d (4-9 / X / C set the rise while the ghost shows; Shift-aim at the landing for any length and rise, below the entry for a descent)" % [interaction.climb_rise, interaction.climb_length])
+				get_viewport().set_input_as_handled()
+				return
 	if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_V or event.keycode == KEY_V):
 		# Coaster car and hero: V toggles the chase camera (raw key, like X / C).
 		toggle_third_person()

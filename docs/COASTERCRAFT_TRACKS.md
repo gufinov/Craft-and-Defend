@@ -23,6 +23,8 @@ With that in place every piece below is a curve description plus a drag gesture.
 
 **Card 1 is in** (2026-09-20): `game/scripts/rails/track_curve.gd` (`TrackCurve`: `make_*`, `point`, `tangent`, `up_at`, `nearest_t`, `cells`, `pieces`, `piece_t`). A record with `curve` + `t0`/`t1` rides the curve (`CoasterRails.ride_point`), joins only its recorded joints (`connections`), leans by `TrackCurve.up_at` (`CoasterCartService._up_at`) and draws with `GameSession._build_loop_track_visual` (same-curve neighbours are followed along the curve). The true loop is `TrackCurve.make_helix` laid by `TrackCurve.pieces`; the classic loop ring still uses `loop_center` (fine, it is the fallback). Cards 2–6 and 8 are open for agents.
 
+**Card 5 is in** (2026-09-20, `feature/coaster-climbs`): the **Climb** tool (`rail_climb`, Workbench 212) — slope-in, straight grade and slope-out as one `TrackCurve.make_climb` (an s_bend with no shift, bank 0) of `rail_loop` pieces from the entry to a landing `length` ahead and `rise` up (negative = descent); Shift-aim sets both. See [COASTER_RAILS.md — The Climb](COASTER_RAILS.md#the-climb-coastercraft-card-5-2026-09-20); T176–T178.
+
 ## The pieces
 
 | Piece | Curve | Drag gesture | Notes |
@@ -33,8 +35,8 @@ With that in place every piece below is a curve description plus a drag gesture.
 | **90° curve** | arc, sweep 90°, radius *R* | drag to the corner cell: R = distance | banked: lean toward the inside |
 | **U-turn** | arc, sweep 180°, radius R | drag sideways: lanes apart = 2R | |
 | **Free curve** | arc, any sweep | drag the far end; the sweep follows the aim direction | for gentle bends |
-| **Slope-in / slope-out** | vertical_arc (concave into a climb; convex over a crest) | drag up: the climb angle | any grade, not only 45°; pairs with the straight climb |
-| **Straight climb** | line at a grade | Shift-drag up and along | the mountain straight |
+| **Slope-in / slope-out** (done: the Climb) | s_bend with no shift (smoothstep height blend; concave in, convex out) | Shift-aim at the landing: distance = length, height = rise | any grade; the straight grade is the middle of the same curve |
+| **Straight climb** (done: the Climb) | the same curve | Shift-aim up and along | the mountain straight |
 | **Winding snake** (switchbacks) | macro: climb + banked U-turn, repeated | drag from the foot to the summit; the tool lays N switchbacks that fit | the mountain road |
 | **Corkscrew** | helix around the travel axis (pitch = its length) | Shift + aim distance = length | the loop's cousin; riders invert sideways |
 | **Splitter (Y)** and **merge** | two arcs leaving one cell | drag the branch; Shift toggles which way the switch points | a switch state on the piece; a lever later |

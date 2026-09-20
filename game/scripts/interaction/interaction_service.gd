@@ -156,7 +156,7 @@ func drag_active() -> bool:
 func begin_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
 	var item_id := inventory.active_item_id()
 	var item := registry.item(item_id)
-	if item.has("places_entity") and (is_linear_entity_item(item_id) or is_coaster_loop_item(item_id) or is_lane_switch_item(item_id)):
+	if item.has("places_entity") and (is_linear_entity_item(item_id) or is_coaster_loop_item(item_id) or is_lane_switch_item(item_id) or is_climb_item(item_id)):
 		var anchor := placement_anchor_from_view(origin, direction)
 		if anchor == Vector3i.MAX:
 			return _finish(false, "NO_TARGET")
@@ -164,6 +164,8 @@ func begin_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
 			return begin_coaster_loop_at(anchor)
 		if is_lane_switch_item(item_id):
 			return begin_lane_switch_at(anchor)
+		if is_climb_item(item_id):
+			return begin_climb_at(anchor)
 		return begin_entity_line_at(anchor)
 	if item.is_empty() or not item.has("places_block"):
 		return _finish(false, "NOT_PLACEABLE")
@@ -272,6 +274,27 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 			_drag.anchor = switch_anchor
 			_replan_lane_switch()
 		return drag_state()
+	if str(_drag.get("mode", "drag")) == "climb":
+		# The whole climb follows the aim; W / R and 4-9 / X / C replan it.
+		# Shift held: the entry stays put and the aim sets both the length
+		# (its distance ahead along the heading) and the rise (its height
+		# above or below the entry - aim at a hillside to climb onto it).
+		if vertical:
+			var reach := placement_anchor_from_view(origin, direction, 80.0)
+			if reach == Vector3i.MAX:
+				var plane := _drag_plane_end(origin, direction)
+				if plane.has("cell"):
+					reach = plane.cell
+			if reach != Vector3i.MAX:
+				var along := CoasterRails.switch_along(int(_drag.get("rotation", placement_rotation_quarters)))
+				var span: Vector3i = reach - _drag.anchor
+				set_climb(span.x * along.x + span.z * along.z, span.y)
+			return drag_state()
+		var climb_anchor := placement_anchor_from_view(origin, direction, 12.0)
+		if climb_anchor != Vector3i.MAX and climb_anchor != _drag.anchor:
+			_drag.anchor = climb_anchor
+			_replan_climb()
+		return drag_state()
 	if str(_drag.get("mode", "drag")) == "loop_element":
 		# The whole-loop ghost follows the aim; W / R and 4-9 replan it.
 		# Shift held (owner 2026-09-20, "Shift drag"): the entry stays put and
@@ -362,7 +385,7 @@ func drag_state() -> Dictionary:
 		if str(entry.state) == "ok":
 			var entry_item := str(entry.get("item_id", _drag.get("item_id", "")))
 			costs[entry_item] = int(costs.get(entry_item, 0)) + 1
-	return {"active": true, "snapped": bool(_drag.get("snapped", false)), "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single"), "loop_size": loop_diameter if loop_true else loop_size, "loop_true": loop_true, "loop_radius": float(_drag.get("radius", 0.0)), "loop_cells": int(_drag.get("loop_cells", 0))}
+	return {"active": true, "snapped": bool(_drag.get("snapped", false)), "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single"), "loop_size": loop_diameter if loop_true else loop_size, "loop_true": loop_true, "loop_radius": float(_drag.get("radius", 0.0)), "loop_cells": int(_drag.get("loop_cells", 0)), "climb_length": climb_length, "climb_rise": climb_rise}
 
 
 func cancel_drag_place() -> Dictionary:
@@ -387,6 +410,8 @@ func commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 		return _commit_loop_element()
 	if mode == "lane_switch":
 		return _commit_lane_switch()
+	if mode == "climb":
+		return _commit_climb()
 	if mode == "blueprint":
 		_replan_blueprint()
 	else:
@@ -541,7 +566,19 @@ func set_loop_diameter(diameter: int) -> Dictionary:
 
 
 func coaster_loop_keys(x_pressed: bool, c_pressed: bool) -> void:
-	if _drag.is_empty() or str(_drag.get("mode", "")) != "loop_element":
+	if _drag.is_empty():
+		return
+	var mode := str(_drag.get("mode", ""))
+	if mode == "climb":
+		# The Climb: X lowers the rise by one, C raises it (negative = descent).
+		if x_pressed and not bool(_drag.get("x_down", false)):
+			set_climb_rise(climb_rise - 1)
+		if c_pressed and not bool(_drag.get("c_down", false)):
+			set_climb_rise(climb_rise + 1)
+		_drag.x_down = x_pressed
+		_drag.c_down = c_pressed
+		return
+	if mode != "loop_element":
 		return
 	if x_pressed and not bool(_drag.get("x_down", false)):
 		set_loop_size((loop_diameter if loop_true else loop_size) - 1)
@@ -668,6 +705,133 @@ func _commit_lane_switch() -> Dictionary:
 			return _finish(false, str(result.get("reason", "PLACEMENT_FAILED")), {"cells": cells})
 		cells.append(cell)
 	return _finish(true, "SWITCH_PLACED", {"cells": cells, "count": cells.size(), "entity_id": entity_id, "items": {item_id: -cells.size()}})
+
+
+# ---------------------------------------------------------------------------
+# The Climb (CoasterCraft card 5, 2026-09-20). With `rail_climb` held a
+# right-press ghosts a complete climb from the entry (the aim) to a landing
+# `climb_length` cells ahead and `climb_rise` cells up (negative = a
+# descent): slope-in, straight grade, slope-out as one TrackCurve
+# (`CoasterRails.climb_layout`) of `rail_loop` pieces. Shift held: the aim
+# sets both (its distance ahead = length, its height = rise); 4-9 / X / C
+# set the rise; W / R turn it. Release lays every piece all-or-nothing for
+# one Climb item each (creative: free); the pack caps the length, the sky
+# caps the rise.
+# ---------------------------------------------------------------------------
+
+var climb_length := CoasterRails.CLIMB_LENGTH_DEFAULT
+var climb_rise := CoasterRails.CLIMB_RISE_DEFAULT
+
+
+func is_climb_item(item_id: String) -> bool:
+	var item := registry.item(item_id)
+	if item.is_empty() or not item.has("places_entity"):
+		return false
+	return str(registry.entity(str(item.places_entity)).get("coaster_tool", "")) == "climb"
+
+
+func begin_climb_at(anchor: Vector3i) -> Dictionary:
+	var item_id := inventory.active_item_id()
+	var item := registry.item(item_id)
+	if not is_climb_item(item_id) or workstations == null:
+		return _finish(false, "NOT_PLACEABLE")
+	_drag = {"mode": "climb", "item_id": item_id, "entity_id": str(item.places_entity), "voxel_id": 0, "anchor": anchor, "end": anchor, "cells": [], "shape": "climb", "rotation": placement_rotation_quarters, "x_down": false, "c_down": false}
+	_replan_climb()
+	return {"ok": true, "reason": "DRAG_STARTED", "anchor": anchor}
+
+
+## The rise at or under `wanted` whose landing stays under the world's
+## ceiling and above its floor.
+func climb_rise_limit(wanted: int) -> int:
+	var anchor: Vector3i = _drag.get("anchor", Vector3i.ZERO) if not _drag.is_empty() else Vector3i.ZERO
+	var ceiling := WorldAdapter.WORLD_MIN.y + WorldAdapter.WORLD_SIZE.y - 2
+	var floor_y := WorldAdapter.WORLD_MIN.y + 1
+	return clampi(wanted, maxi(CoasterRails.CLIMB_RISE_MIN, floor_y - anchor.y), mini(CoasterRails.CLIMB_RISE_MAX, ceiling - anchor.y))
+
+
+## The longest length at or under `wanted` whose pieces (at `rise`) the pack
+## can pay for; creative is uncapped.
+func climb_length_limit(wanted: int, rise: int) -> int:
+	var length := clampi(wanted, CoasterRails.CLIMB_LENGTH_MIN, CoasterRails.CLIMB_LENGTH_MAX)
+	if creative:
+		return length
+	var budget := inventory.count(str(_drag.get("item_id", inventory.active_item_id())))
+	while length > CoasterRails.CLIMB_LENGTH_MIN and CoasterRails.climb_piece_count(length, rise) > budget:
+		length -= 1
+	return length
+
+
+## Number keys 4-9 / X / C while the ghost shows: the rise in cells.
+func set_climb_rise(rise: int) -> Dictionary:
+	return set_climb(climb_length, rise)
+
+
+func set_climb_length(length: int) -> Dictionary:
+	return set_climb(length, climb_rise)
+
+
+func set_climb(length: int, rise: int) -> Dictionary:
+	climb_rise = climb_rise_limit(rise)
+	climb_length = climb_length_limit(length, climb_rise)
+	if not _drag.is_empty() and str(_drag.get("mode", "")) == "climb":
+		_replan_climb()
+	return drag_state()
+
+
+## Every piece of the climb validated at its cell (they float); the ghost
+## carries each piece's curve and joints.
+func _replan_climb() -> void:
+	var rotation := placement_rotation_quarters
+	_drag.rotation = rotation
+	var layout: Dictionary = CoasterRails.climb_layout(_drag.anchor, rotation, climb_length, climb_rise)
+	var affordable: bool = creative or inventory.count(str(_drag.item_id)) >= (layout.pieces as Array).size()
+	var entries: Array[Dictionary] = []
+	for piece: Dictionary in layout.pieces:
+		var cell: Vector3i = piece.cell
+		var entity_id := str(piece.entity_id)
+		var check := workstations.preview_placement(entity_id, cell, int(piece.rotation), world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB())
+		var state := "ok"
+		if not check.get("ok", false):
+			state = "blocked"
+		elif not affordable:
+			state = "unaffordable"
+		entries.append({"cell": cell, "state": state, "reason": str(check.get("reason", "PLACEMENT_FAILED")), "voxel_id": 0, "item_id": str(_drag.item_id), "entity_id": entity_id, "rotation": int(piece.rotation), "joints": piece.joints, "extra": piece.extra})
+	_drag.cells = entries
+	_drag.end = layout.landing
+	_drag.loop_cells = entries.size()
+
+
+## All pieces or nothing, one Climb item per piece (creative: free); the
+## pieces are laid `_free` since the items paid for them.
+func _commit_climb() -> Dictionary:
+	var item_id := str(_drag.get("item_id", ""))
+	var entries: Array = _drag.cells
+	var landing: Vector3i = _drag.get("end", _drag.anchor)
+	_drag = {}
+	for entry in entries:
+		if str(entry.state) != "ok":
+			return _finish(false, "CLIMB_BLOCKED" if str(entry.state) == "blocked" else "NO_RESOURCE", {"cell": entry.cell, "why": entry.reason})
+	var price := 0 if creative else entries.size()
+	if price > 0:
+		var paid := inventory.try_transaction({item_id: price}, {})
+		if not paid.get("ok", false):
+			return _finish(false, str(paid.get("reason", "NO_RESOURCE")))
+	var cells: Array[Vector3i] = []
+	for entry in entries:
+		var cell: Vector3i = entry.cell
+		var joints: Array = []
+		for joint in entry.get("joints", []):
+			if joint is Vector3i:
+				var offset: Vector3i = joint - cell
+				joints.append([offset.x, offset.y, offset.z])
+		var extra: Dictionary = (entry.get("extra", {}) as Dictionary).duplicate()
+		extra["coaster_joints"] = joints
+		extra["_free"] = true
+		var result := workstations.try_place(str(entry.entity_id), cell, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB(), int(entry.rotation), extra)
+		if not result.get("ok", false):
+			return _finish(false, str(result.get("reason", "PLACEMENT_FAILED")), {"cells": cells, "cell": cell})
+		cells.append(cell)
+	return _finish(true, "CLIMB_PLACED", {"cells": cells, "count": cells.size(), "length": climb_length, "rise": climb_rise, "landing": landing, "items": {item_id: -price}})
 
 
 ## Cells between anchor and end in support-first order: outward along the
@@ -1067,6 +1231,8 @@ func rotate_placement(direction: int = 1) -> int:
 		_replan_lane_switch()
 	if not _drag.is_empty() and str(_drag.get("mode", "")) == "loop_element":
 		_replan_loop_element()
+	if not _drag.is_empty() and str(_drag.get("mode", "")) == "climb":
+		_replan_climb()
 	return placement_rotation_quarters
 
 
@@ -1085,7 +1251,7 @@ func secondary_press_from_view(origin: Vector3, direction: Vector3) -> Dictionar
 	if not station_id.is_empty() and not workstations.station_type(station_id).is_empty():
 		return _finish(true, "OPEN_STATION", {"instance_id": station_id, "station": workstations.station(station_id)})
 	var item := registry.item(inventory.active_item_id())
-	if item.has("places_block") or is_linear_entity_item(inventory.active_item_id()) or is_coaster_loop_item(inventory.active_item_id()) or is_lane_switch_item(inventory.active_item_id()):
+	if item.has("places_block") or is_linear_entity_item(inventory.active_item_id()) or is_coaster_loop_item(inventory.active_item_id()) or is_lane_switch_item(inventory.active_item_id()) or is_climb_item(inventory.active_item_id()):
 		return begin_drag_place(origin, direction)
 	return place_from_view(origin, direction)
 

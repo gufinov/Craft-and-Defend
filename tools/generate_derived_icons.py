@@ -36,6 +36,8 @@ DERIVED = [
     "rail_slope", "rail_loop", "mine_cart",
     # Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): owner art.
     "coaster_car", "rail_switch",
+    # CoasterCraft tracks (docs/COASTERCRAFT_TRACKS.md): the Climb tool.
+    "rail_climb",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -263,6 +265,20 @@ def icon_rail_switch() -> Image.Image:
     return canvas
 
 
+def icon_rail_climb() -> Image.Image:
+    """Rails running flat, curving up a grade and levelling out on a landing."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    # The profile: flat lead-in, slope-in, straight grade, slope-out, landing.
+    profile = [(20, 210), (60, 210), (84, 200), (108, 172), (148, 108), (172, 80), (196, 66), (236, 66)]
+    ties = [(40, 210), (74, 206), (100, 184), (128, 140), (156, 96), (184, 72), (216, 66)]
+    for x, y in ties:
+        draw.rectangle([x - 6, y - 26, x + 6, y + 26], fill=(139, 82, 38, 255))
+    for offset in (-16, 16):
+        draw.line([(x, y + offset) for x, y in profile], fill=(110, 118, 126, 255), width=14, joint="curve")
+    return canvas
+
+
 def icon_mine_cart() -> Image.Image:
     """An oak cart with iron bands on two wheels, seen from the side."""
     canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
@@ -285,7 +301,7 @@ BUILDERS = {
     "post_lantern": lambda: owner_icon("post_lantern"), "campfire": lambda: owner_icon("campfire"),
     "light_block_blue": lambda: owner_icon("light_block_blue"), "light_block_red": lambda: owner_icon("light_block_red"),
     "rail_slope": icon_rail_slope, "rail_loop": icon_rail_loop, "mine_cart": icon_mine_cart, "rail_switch": icon_rail_switch,
-    "coaster_car": lambda: owner_icon("coaster_car"),
+    "coaster_car": lambda: owner_icon("coaster_car"), "rail_climb": icon_rail_climb,
 }
 
 
