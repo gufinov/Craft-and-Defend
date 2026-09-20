@@ -62,15 +62,19 @@ func _run_gate() -> void:
 
 	# T165 ride: a parked car on a loop fixture waits; Shift boards it; 1-9
 	# set the speed (measured in cells per second); Shift leaves beside it.
-	var anchor := Vector3i(-14, 0, 40)
-	_level_ground(anchor + Vector3i(-2, 0, -3), 20, 7, 10)
-	session.inventory.try_transaction({}, {"rail_loop": 64, CAR: 1})
+	var anchor := Vector3i(-6, 0, 40)
+	_level_ground(anchor + Vector3i(-10, 0, -4), 22, 8, 14)
+	session.inventory.try_transaction({}, {"rail_loop": 4, CAR: 1})
 	_hold_item("rail_loop")
+	interaction.placement_rotation_quarters = 3
+	interaction.set_loop_size(6)
 	interaction.begin_coaster_loop_at(anchor)
-	interaction.set_drag_end(anchor + Vector3i(3, 0, 0))
-	interaction.set_coaster_loop(true)
 	var committed := interaction.commit_drag_place()
-	var placed := ws.try_place(CAR, anchor + Vector3i(0, 1, 0), world.query_cell, AABB(), 0)
+	interaction.placement_rotation_quarters = 0
+	session.inventory.try_transaction({}, {"rail": 6})
+	for x in range(1, 5):
+		ws.try_place("rail", anchor + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+	var placed := ws.try_place(CAR, anchor + Vector3i(3, 1, 0), world.query_cell, AABB(), 0)
 	var car_id := str(placed.get("details", {}).get("station", {}).get("instance_id", ""))
 	var carts := session.coaster_carts
 	var parked_before := carts != null and carts.is_parked(car_id)
@@ -87,8 +91,8 @@ func _run_gate() -> void:
 	# interaction service (the same path the Interact key takes).
 	for _frame in range(4):
 		await get_tree().physics_frame
-	var aim_origin := Vector3(anchor) + Vector3(0.5, 1.6, 3.0)
-	var aim_target := Vector3(anchor) + Vector3(0.5, 1.4, 0.5)
+	var aim_origin := Vector3(anchor) + Vector3(3.5, 1.6, 3.0)
+	var aim_target := Vector3(anchor) + Vector3(3.5, 1.4, 0.5)
 	var boarded := interaction.interact_from_view(aim_origin, (aim_target - aim_origin).normalized())
 	var ride := session.coaster_ride
 	var riding_ok := session.is_riding() and ride.car_id == car_id and not player.active and ride.ride_camera().current and not player.camera.current
@@ -164,7 +168,7 @@ func _run_gate() -> void:
 		snapshot_ok = snapshot_ok and JSON.stringify(stations).contains(CAR)
 		session.leave_coaster_car()
 		player.deactivate()
-	_record("T165_COASTER_CAR_RIDE", committed.get("reason") == "COASTER_PLACED" and placed.get("ok", false) and parked_before and stayed and car_parts >= 30 and seat_ok and key_boarded and boarded.get("reason") == "COASTER_BOARDED" and riding_ok and hero_ok and default_speed and hud_ok and speeds_ok and key_speed and left and beside_ok and parked_after and snapshot_ok, "a coaster car placed on a loop's lead-in stays parked; Shift aimed at it boards (player parked, ride camera current, seated hero on the Seat node, speed 3/9 HUD); speed 2 then 6 move the car about 2 and 6 cells per second; the 5 key sets speed 5 without touching the hotbar; Shift leaves the player 1 m beside the parked car on the rail cell's floor; a mid-ride snapshot saves the player beside the car", {"key_boarded": key_boarded, "committed": committed.get("reason"), "placed": placed.get("reason"), "parked_before": parked_before, "stayed": stayed, "car_parts": car_parts, "seat": seat_ok, "boarded": boarded.get("reason"), "riding": riding_ok, "hero": hero_ok, "default_speed": default_speed, "hud": hud_ok, "slow_cells_per_second": slow, "fast_cells_per_second": fast, "key_speed": key_speed, "left": left, "beside": beside, "beside_ok": beside_ok, "parked_after": parked_after, "snapshot": snapshot_ok})
+	_record("T165_COASTER_CAR_RIDE", committed.get("reason") == "LOOP_PLACED" and placed.get("ok", false) and parked_before and stayed and car_parts >= 30 and seat_ok and key_boarded and boarded.get("reason") == "COASTER_BOARDED" and riding_ok and hero_ok and default_speed and hud_ok and speeds_ok and key_speed and left and beside_ok and parked_after and snapshot_ok, "a coaster car placed on a loop's lead-in stays parked; Shift aimed at it boards (player parked, ride camera current, seated hero on the Seat node, speed 3/9 HUD); speed 2 then 6 move the car about 2 and 6 cells per second; the 5 key sets speed 5 without touching the hotbar; Shift leaves the player 1 m beside the parked car on the rail cell's floor; a mid-ride snapshot saves the player beside the car", {"key_boarded": key_boarded, "committed": committed.get("reason"), "placed": placed.get("reason"), "parked_before": parked_before, "stayed": stayed, "car_parts": car_parts, "seat": seat_ok, "boarded": boarded.get("reason"), "riding": riding_ok, "hero": hero_ok, "default_speed": default_speed, "hud": hud_ok, "slow_cells_per_second": slow, "fast_cells_per_second": fast, "key_speed": key_speed, "left": left, "beside": beside, "beside_ok": beside_ok, "parked_after": parked_after, "snapshot": snapshot_ok})
 
 	# T166 hero: parts, the armoured swap, the walk cycle, the seated pose,
 	# the third-person toggle and the persisted armour setting.
@@ -222,15 +226,19 @@ func _run_visual() -> void:
 	var ws := session.workstations
 	var world := session.world
 	var interaction := session.interaction
-	var origin := Vector3i(-8, 0, 36)
-	_level_ground(origin + Vector3i(-3, 0, -6), 22, 14, 10)
-	session.inventory.try_transaction({}, {"rail_loop": 64, CAR: 1})
+	var origin := Vector3i(-2, 0, 36)
+	_level_ground(origin + Vector3i(-10, 0, -6), 22, 14, 14)
+	session.inventory.try_transaction({}, {"rail_loop": 4, CAR: 1})
 	_hold_item("rail_loop")
+	interaction.placement_rotation_quarters = 3
+	interaction.set_loop_size(6)
 	interaction.begin_coaster_loop_at(origin)
-	interaction.set_drag_end(origin + Vector3i(3, 0, 0))
-	interaction.set_coaster_loop(true)
 	var committed := interaction.commit_drag_place()
-	var placed := ws.try_place(CAR, origin + Vector3i(0, 1, 0), world.query_cell, AABB(), 0)
+	interaction.placement_rotation_quarters = 0
+	session.inventory.try_transaction({}, {"rail": 6})
+	for x in range(1, 5):
+		ws.try_place("rail", origin + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+	var placed := ws.try_place(CAR, origin + Vector3i(3, 1, 0), world.query_cell, AABB(), 0)
 	var car_id := str(placed.get("details", {}).get("station", {}).get("instance_id", ""))
 	for _frame in range(4):
 		await get_tree().physics_frame
@@ -285,7 +293,7 @@ func _run_visual() -> void:
 	var hero_image := get_viewport().get_texture().get_image()
 	if hero_image != null:
 		hero_image.save_png(app.data_root.path_join("hero.png"))
-	_record("T167_COASTER_CAR_RENDERED", committed.get("reason") == "COASTER_PLACED" and placed.get("ok", false) and boarded.get("ok", false) and error == OK and image.get_size() == Vector2i(1280, 720) and car_parts >= 30 and hero_parts >= 30 and cell.y >= origin.y + 1 and camera_current, "the hero sits in the coaster car climbing into the loop, seen from the chase camera behind and above the car, in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "committed": committed.get("reason"), "placed": placed.get("reason"), "boarded": boarded.get("reason"), "car_parts": car_parts, "hero_parts": hero_parts, "cell": cell, "camera_current": camera_current})
+	_record("T167_COASTER_CAR_RENDERED", committed.get("reason") == "LOOP_PLACED" and placed.get("ok", false) and boarded.get("ok", false) and error == OK and image.get_size() == Vector2i(1280, 720) and car_parts >= 30 and hero_parts >= 30 and cell.y >= origin.y + 1 and camera_current, "the hero sits in the coaster car climbing into the loop, seen from the chase camera behind and above the car, in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "committed": committed.get("reason"), "placed": placed.get("reason"), "boarded": boarded.get("reason"), "car_parts": car_parts, "hero_parts": hero_parts, "cell": cell, "camera_current": camera_current})
 
 
 ## Path length the rig covers over `frames` steps of 1/30 s (cells per second

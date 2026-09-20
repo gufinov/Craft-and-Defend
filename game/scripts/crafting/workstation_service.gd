@@ -73,7 +73,9 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 	var definition := registry.entity(entity_id)
 	if definition.is_empty():
 		return _result(false, "UNKNOWN_ENTITY")
-	if inventory.count(entity_id) < 1:
+	# `_free` (the loop element, paid by one Rail Loop): no item is consumed.
+	var free := bool(extra.get("_free", false))
+	if not free and inventory.count(entity_id) < 1:
 		return _result(false, "NO_RESOURCE")
 	if bool(definition.get("linear", false)):
 		rotation_quarters = _aligned_rotation(entity_id, anchor, rotation_quarters)
@@ -90,14 +92,15 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 	var reserved := footprints.try_reserve(instance_id, anchor, _vector_list(definition.get("occupied_offsets", [])), rotation_quarters, world_query, player_aabb, [] if wall_side != Vector3i.ZERO else _vector_list(definition.get("support_offsets", [])))
 	if not reserved.get("ok", false):
 		return reserved
-	var consumed := inventory.try_transaction({entity_id: 1}, {})
-	if not consumed.get("ok", false):
-		footprints.release_at(anchor)
-		return _result(false, consumed.get("reason", "INVENTORY_COMMIT_FAILED"))
+	if not free:
+		var consumed := inventory.try_transaction({entity_id: 1}, {})
+		if not consumed.get("ok", false):
+			footprints.release_at(anchor)
+			return _result(false, consumed.get("reason", "INVENTORY_COMMIT_FAILED"))
 	_next_instance += 1
 	var record := {"instance_id": instance_id, "entity_id": entity_id, "anchor": anchor, "rotation_quarters": posmod(rotation_quarters, 4)}
 	for extra_key: String in extra.keys():
-		if not record.has(extra_key):
+		if not record.has(extra_key) and not extra_key.begins_with("_"):
 			record[extra_key] = extra[extra_key]
 	if entity_id == "furnace":
 		record["furnace_slots"] = _empty_furnace_slots()

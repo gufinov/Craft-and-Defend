@@ -28,10 +28,8 @@ const REASON_TEXT := {
 	"LINE_PLACED": "Pieces laid in a line.",
 	"COASTER_PLACED": "Coaster track laid.",
 	"SWITCH_PLACED": "Lane switcher laid: the track shifts one lane to the right.",
-	"LOOP_SNAPPED": "Loop raised over the base — it climbs the left slope and comes down the right.",
-	"LOOP_BASE_ODD": "Loop base: the two slopes must be an even number of cells apart (an odd count of rails between them).",
-	"LOOP_BASE_TOO_SMALL": "Loop base: put at least one rail between the two slopes.",
-	"LOOP_SNAP_BLOCKED": "Loop snap: something is in the way above the base.",
+	"LOOP_PLACED": "Loop built: entry lane, switchers, slopes and the circle. Rails join its entry (behind) and exit (ahead, two lanes over).",
+	"LOOP_BLOCKED": "The loop does not fit here: a red cell is in the way (ground, tree, hill or block). Move, turn (W / R) or resize (4-9).",
 	"SWITCH_BLOCKED": "The lane switcher needs four free cells: entry, two side by side, exit.",
 	"COASTER_BOARDED": "Boarded the coaster car — 1-9 sets the speed, Shift or Escape leaves.",
 	"COASTER_LEFT": "Left the coaster car.",
@@ -384,7 +382,7 @@ func select_hotbar(index: int) -> Dictionary:
 		# Coaster pieces carry their controls on screen (owner could not find
 		# the loop gesture without them).
 		if item_id == CoasterRails.LOOP:
-			_on_interaction_feedback("RAIL LOOP: aim at the ground, HOLD Right Mouse and drag sideways for the lead-in, then HOLD Shift — the loop appears; X smaller, C bigger; let go of Right Mouse to lay it")
+			_on_interaction_feedback("RAIL LOOP: aim at the ground where the entry goes, HOLD Right Mouse — the whole loop ghost appears; 4-9 (or X / C) set its size, W / R turn it; let go to build it (red = does not fit)")
 		elif item_id == CoasterRails.SLOPE:
 			_on_interaction_feedback("RAIL SLOPE: the arrow end climbs one block — W / R turns it; put a Rail on the block it climbs to")
 	return result
@@ -718,6 +716,14 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 		return
+	if interaction != null and interaction.drag_active() and str(interaction.drag_state().get("mode", "")) == "loop_element":
+		# Loop element ghost: 4-9 set the base width instead of the hotbar.
+		for size in range(InteractionService.LOOP_SIZE_MIN, InteractionService.LOOP_SIZE_MAX + 1):
+			if event.is_action_pressed("hotbar_%d" % size):
+				interaction.set_loop_size(size)
+				_on_interaction_feedback("Loop size %d (4-9 while the ghost shows; X / C too)" % size)
+				get_viewport().set_input_as_handled()
+				return
 	if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_V or event.keycode == KEY_V):
 		# Coaster car and hero: V toggles the chase camera (raw key, like X / C).
 		toggle_third_person()

@@ -238,16 +238,14 @@ func begin_drag_at(anchor: Vector3i) -> Dictionary:
 
 ## Stretches the active drag to `end` (also used by diagnostics).
 func set_drag_end(end: Vector3i) -> Dictionary:
-	if _drag.is_empty() or str(_drag.get("mode", "drag")) not in ["drag", "entity_line", "coaster_loop"]:
+	if _drag.is_empty() or str(_drag.get("mode", "drag")) not in ["drag", "entity_line"]:
 		return {"ok": false, "reason": "NO_DRAG"}
-	if str(_drag.get("mode", "drag")) in ["entity_line", "coaster_loop"]:
+	if str(_drag.get("mode", "drag")) == "entity_line":
 		end.y = _drag.anchor.y
 	if end != _drag.end:
 		_drag.end = end
 		if str(_drag.get("mode", "drag")) == "entity_line":
 			_replan_entity_line()
-		elif str(_drag.get("mode", "drag")) == "coaster_loop":
-			_replan_coaster_loop()
 		else:
 			_replan_drag()
 	return drag_state()
@@ -274,20 +272,12 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 			_drag.anchor = switch_anchor
 			_replan_lane_switch()
 		return drag_state()
-	if str(_drag.get("mode", "drag")) == "coaster_loop":
-		# Shift (the Interact action) starts the loop and latches it; while
-		# held the lead-in is frozen so dragging up does not stretch it.
-		if vertical:
-			if not bool(_drag.get("loop", false)):
-				_drag.loop = true
-				_replan_coaster_loop()
-			return drag_state()
-		var coaster_anchor := placement_anchor_from_view(origin, direction, 12.0)
-		if coaster_anchor != Vector3i.MAX:
-			return set_drag_end(coaster_anchor)
-		var coaster_plane := _drag_plane_end(origin, direction)
-		if coaster_plane.has("cell"):
-			return set_drag_end(coaster_plane.cell)
+	if str(_drag.get("mode", "drag")) == "loop_element":
+		# The whole-loop ghost follows the aim; W / R and 4-9 replan it.
+		var loop_anchor := placement_anchor_from_view(origin, direction, 12.0)
+		if loop_anchor != Vector3i.MAX and loop_anchor != _drag.anchor:
+			_drag.anchor = loop_anchor
+			_replan_loop_element()
 		return drag_state()
 	if str(_drag.get("mode", "drag")) == "entity_line":
 		var line_anchor := placement_anchor_from_view(origin, direction, 12.0)
@@ -359,7 +349,7 @@ func drag_state() -> Dictionary:
 		if str(entry.state) == "ok":
 			var entry_item := str(entry.get("item_id", _drag.get("item_id", "")))
 			costs[entry_item] = int(costs.get(entry_item, 0)) + 1
-	return {"active": true, "snapped": bool(_drag.get("snapped", false)), "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single"), "loop": bool(_drag.get("loop", false)), "loop_radius": int(_drag.get("radius", 0)), "loop_cells": int(_drag.get("loop_cells", 0))}
+	return {"active": true, "snapped": bool(_drag.get("snapped", false)), "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single"), "loop_size": loop_size, "loop_radius": float(_drag.get("radius", 0.0)), "loop_cells": int(_drag.get("loop_cells", 0))}
 
 
 func cancel_drag_place() -> Dictionary:
@@ -380,8 +370,8 @@ func commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 	var default_voxel := int(_drag.get("voxel_id", AIR))
 	if mode == "entity_line":
 		return _commit_entity_line()
-	if mode == "coaster_loop":
-		return _commit_coaster_loop()
+	if mode == "loop_element":
+		return _commit_loop_element()
 	if mode == "lane_switch":
 		return _commit_lane_switch()
 	if mode == "blueprint":
@@ -449,25 +439,25 @@ func _commit_entity_line() -> Dictionary:
 
 
 # ---------------------------------------------------------------------------
-# Coaster rails side project (docs/COASTER_RAILS.md): the loop drag tool.
-# With `rail_loop` held, a right-drag lays a flat lead-in like an entity line;
-# Shift (Interact) adds a vertical loop of LOOP_RADIUS_DEFAULT cells in the
-# line's vertical plane after the lead-in, followed by a two-cell flat exit.
-# X shrinks and C grows the radius (LOOP_RADIUS_MIN..LOOP_RADIUS_MAX) while the
-# drag is active - read edge-triggered by the session from the raw keys, not
-# rebindable actions, so the keybind fixture stays untouched. Release commits
-# every validated cell as a `rail_loop` piece; loop pieces need no support.
+# Coaster rails: the Loop element (owner 2026-09-20). With `rail_loop` held,
+# a right-press shows the ghost of a COMPLETE loop with its foundation at
+# the aim: two lane switchers (entry lane -> base row -> exit lane), a slope
+# at each end of the base rising outward, and the circle continuing the
+# slopes' 45-degree incline over the top. Number keys 4-9 (or X / C) set
+# the base width while the ghost is shown; W / R turn it. Release lays every
+# piece for one Rail Loop item; a blocked cell (tree, hill, block) shows red
+# and nothing is laid.
 # ---------------------------------------------------------------------------
 
-const LOOP_RADIUS_DEFAULT := 3
-const LOOP_RADIUS_MIN := 2
-const LOOP_RADIUS_MAX := 6
-const LOOP_EXIT_CELLS := 2
+const LOOP_SIZE_MIN := 4
+const LOOP_SIZE_MAX := 9
+const LOOP_SIZE_DEFAULT := 4
+var loop_size := LOOP_SIZE_DEFAULT
 
 
 func is_coaster_loop_item(item_id: String) -> bool:
 	var item := registry.item(item_id)
-	if not item.has("places_entity"):
+	if item.is_empty() or not item.has("places_entity"):
 		return false
 	return str(registry.entity(str(item.places_entity)).get("coaster_tool", "")) == "loop"
 
@@ -477,122 +467,82 @@ func begin_coaster_loop_at(anchor: Vector3i) -> Dictionary:
 	var item := registry.item(item_id)
 	if not is_coaster_loop_item(item_id) or workstations == null:
 		return _finish(false, "NOT_PLACEABLE")
-	# Owner 2026-09-20: aimed at a loop base (a track row ending in two
-	# slopes rising outward), the loop snaps up over it at once.
-	var snapped := _snap_loop_on_base(anchor)
-	if snapped.get("handled", false):
-		return _finish(bool(snapped.get("ok", false)), str(snapped.get("reason", "LOOP_SNAP_FAILED")), snapped.get("changes", {}))
-	_drag = {"mode": "coaster_loop", "item_id": item_id, "entity_id": str(item.places_entity), "voxel_id": 0, "anchor": anchor, "end": anchor, "cells": [], "shape": "single", "loop": false, "radius": LOOP_RADIUS_DEFAULT, "loop_cells": 0, "x_down": false, "c_down": false}
-	_replan_coaster_loop()
+	_drag = {"mode": "loop_element", "item_id": item_id, "entity_id": str(item.places_entity), "voxel_id": 0, "anchor": anchor, "end": anchor, "cells": [], "shape": "loop", "rotation": placement_rotation_quarters, "x_down": false, "c_down": false}
+	_replan_loop_element()
 	return {"ok": true, "reason": "DRAG_STARTED", "anchor": anchor}
 
 
-## Turns the loop on (Shift) or off for the active coaster drag.
-func set_coaster_loop(active: bool) -> Dictionary:
-	if _drag.is_empty() or str(_drag.get("mode", "")) != "coaster_loop":
-		return {"ok": false, "reason": "NO_DRAG"}
-	if bool(_drag.get("loop", false)) != active:
-		_drag.loop = active
-		_replan_coaster_loop()
+## Number keys 4-9 while the ghost is shown: the base width in cells.
+func set_loop_size(size: int) -> Dictionary:
+	loop_size = clampi(size, LOOP_SIZE_MIN, LOOP_SIZE_MAX)
+	if not _drag.is_empty() and str(_drag.get("mode", "")) == "loop_element":
+		_replan_loop_element()
 	return drag_state()
 
 
-## Grows (+1) or shrinks (-1) the loop radius within the limits.
-func resize_coaster_loop(direction: int) -> Dictionary:
-	if _drag.is_empty() or str(_drag.get("mode", "")) != "coaster_loop":
-		return {"ok": false, "reason": "NO_DRAG"}
-	var radius := clampi(int(_drag.get("radius", LOOP_RADIUS_DEFAULT)) + signi(direction), LOOP_RADIUS_MIN, LOOP_RADIUS_MAX)
-	if radius != int(_drag.get("radius", LOOP_RADIUS_DEFAULT)):
-		_drag.radius = radius
-		_replan_coaster_loop()
-	return drag_state()
-
-
-## Raw key states each frame (X smaller, C bigger); edges trigger one resize.
+## Raw key states each frame (X smaller, C bigger); edges change the size once.
 func coaster_loop_keys(x_pressed: bool, c_pressed: bool) -> void:
-	if _drag.is_empty() or str(_drag.get("mode", "")) != "coaster_loop":
+	if _drag.is_empty() or str(_drag.get("mode", "")) != "loop_element":
 		return
 	if x_pressed and not bool(_drag.get("x_down", false)):
-		resize_coaster_loop(-1)
+		set_loop_size(loop_size - 1)
 	if c_pressed and not bool(_drag.get("c_down", false)):
-		resize_coaster_loop(1)
+		set_loop_size(loop_size + 1)
 	_drag.x_down = x_pressed
 	_drag.c_down = c_pressed
 
 
-## Lays every validated ghost cell as a `rail_loop` piece carrying the joints
-## the plan drew (`coaster_joints`), so the chain follows the drawn path.
-## Loop snap (owner 2026-09-20): the aimed cell (or the track under it) is a
-## flat track piece on a row that ends in a `rail_slope` at each side rising
-## outward. The arch closing the loop (CoasterRails.loop_arch_offsets) is
-## laid as `rail_loop` pieces joined in order and to the two slopes.
-## {handled: false} when the aim is not on such a base.
-func _snap_loop_on_base(anchor: Vector3i) -> Dictionary:
-	var tracks := CoasterRails.track_records(workstations.stations)
-	var base := anchor
-	if not tracks.has(base):
-		base = anchor + Vector3i.DOWN
-	if not tracks.has(base) or str(tracks[base].get("entity_id", "")) == CoasterRails.SLOPE:
-		return {"handled": false}
-	for axis: Vector3i in [Vector3i(1, 0, 0), Vector3i(0, 0, 1)]:
-		var ends: Array[Vector3i] = []
-		var found := true
-		for step: Vector3i in [-axis, axis]:
-			var cell := base
-			var end := Vector3i.MAX
-			for _walk in range(DRAG_MAX_SPAN * 2):
-				cell += step
-				if not tracks.has(cell):
-					break
-				var record: Dictionary = tracks[cell]
-				if str(record.get("entity_id", "")) == CoasterRails.SLOPE:
-					if CoasterRails.slope_high_direction(int(record.get("rotation_quarters", 0))) == step:
-						end = cell
-					break
-			if end == Vector3i.MAX:
-				found = false
-				break
-			ends.append(end)
-		if not found:
-			continue
-		var left: Vector3i = ends[0]
-		var right: Vector3i = ends[1]
-		var span := int(Vector3(right - left).dot(Vector3(axis)))
-		if span % 2 != 0:
-			return {"handled": true, "ok": false, "reason": "LOOP_BASE_ODD"}
-		var half_width := span / 2
-		var arch := CoasterRails.loop_arch_offsets(half_width)
-		if arch.is_empty():
-			return {"handled": true, "ok": false, "reason": "LOOP_BASE_TOO_SMALL"}
-		var middle := left + axis * half_width
-		var entity_id := str(registry.item(inventory.active_item_id()).places_entity)
-		if inventory.count(inventory.active_item_id()) < arch.size():
-			return {"handled": true, "ok": false, "reason": "NO_RESOURCE"}
-		var rotation := 1 if axis.x != 0 else 0
-		var cells: Array[Vector3i] = []
-		for offset: Vector2i in arch:
-			cells.append(middle + axis * offset.x + Vector3i.UP * offset.y)
-		for cell: Vector3i in cells:
-			var check := workstations.preview_placement(entity_id, cell, rotation, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB())
-			if not check.get("ok", false):
-				return {"handled": true, "ok": false, "reason": "LOOP_SNAP_BLOCKED", "changes": {"cell": cell, "why": check.get("reason")}}
-		var placed: Array[Vector3i] = []
-		# The true circle: centred over the base midpoint, lifted to the
-		# middle of the arch's vertical sides (CoasterRails.arch_center_lift).
-		var radius := float(half_width + 1)
-		var center := Vector3(middle) + Vector3(0.5, 0.5, 0.5) + Vector3.UP * float(CoasterRails.arch_center_lift(half_width))
-		var loop_center: Array = [center.x, center.y, center.z]
-		for index in range(cells.size()):
-			var cell: Vector3i = cells[index]
-			var before: Vector3i = cells[index - 1] if index > 0 else left
-			var after: Vector3i = cells[index + 1] if index + 1 < cells.size() else right
-			var joints: Array = [[before.x - cell.x, before.y - cell.y, before.z - cell.z], [after.x - cell.x, after.y - cell.y, after.z - cell.z]]
-			var result := workstations.try_place(entity_id, cell, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB(), rotation, {"coaster_joints": joints, "loop_center": loop_center, "loop_radius": radius})
-			if not result.get("ok", false):
-				return {"handled": true, "ok": false, "reason": str(result.get("reason", "PLACEMENT_FAILED")), "changes": {"cells": placed}}
-			placed.append(cell)
-		return {"handled": true, "ok": true, "reason": "LOOP_SNAPPED", "changes": {"cells": placed, "count": placed.size(), "radius": half_width + 1, "items": {inventory.active_item_id(): -placed.size()}}}
-	return {"handled": false}
+## Every piece of the element validated at its cell (loop pieces float, the
+## foundation needs ground); the ghost carries each piece's entity.
+func _replan_loop_element() -> void:
+	var rotation := placement_rotation_quarters
+	_drag.rotation = rotation
+	var layout := CoasterRails.loop_element_layout(_drag.anchor, rotation, loop_size)
+	var affordable: bool = inventory.count(str(_drag.item_id)) >= 1
+	var entries: Array[Dictionary] = []
+	for piece: Dictionary in layout.pieces:
+		var cell: Vector3i = piece.cell
+		var entity_id := str(piece.entity_id)
+		var check := workstations.preview_placement(entity_id, cell, int(piece.rotation), world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB())
+		var state := "ok"
+		if not check.get("ok", false):
+			state = "blocked"
+		elif not affordable:
+			state = "unaffordable"
+		entries.append({"cell": cell, "state": state, "reason": str(check.get("reason", "PLACEMENT_FAILED")), "voxel_id": 0, "item_id": str(_drag.item_id), "entity_id": entity_id, "rotation": int(piece.rotation), "joints": piece.joints, "extra": piece.extra})
+	_drag.cells = entries
+	_drag.loop_cells = layout.pieces.size()
+	_drag.radius = layout.radius
+
+
+## All pieces or nothing, for one Rail Loop item; the pieces are laid free
+## (`_free`) since the item paid for the element.
+func _commit_loop_element() -> Dictionary:
+	var item_id := str(_drag.get("item_id", ""))
+	var entries: Array = _drag.cells
+	_drag = {}
+	for entry in entries:
+		if str(entry.state) != "ok":
+			return _finish(false, "LOOP_BLOCKED" if str(entry.state) == "blocked" else "NO_RESOURCE", {"cell": entry.cell, "why": entry.reason})
+	var paid := inventory.try_transaction({item_id: 1}, {})
+	if not paid.get("ok", false):
+		return _finish(false, str(paid.get("reason", "NO_RESOURCE")))
+	var cells: Array[Vector3i] = []
+	for entry in entries:
+		var cell: Vector3i = entry.cell
+		var joints: Array = []
+		for joint in entry.get("joints", []):
+			if joint is Vector3i:
+				var offset: Vector3i = joint - cell
+				joints.append([offset.x, offset.y, offset.z])
+		var extra: Dictionary = (entry.get("extra", {}) as Dictionary).duplicate()
+		extra["coaster_joints"] = joints
+		extra["_free"] = true
+		var result := workstations.try_place(str(entry.entity_id), cell, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB(), int(entry.rotation), extra)
+		if not result.get("ok", false):
+			return _finish(false, str(result.get("reason", "PLACEMENT_FAILED")), {"cells": cells, "cell": cell})
+		cells.append(cell)
+	return _finish(true, "LOOP_PLACED", {"cells": cells, "count": cells.size(), "size": loop_size, "items": {item_id: -1}})
 
 
 ## Lane Switcher (owner 2026-09-20): the held item lays four pieces at once.
@@ -657,118 +607,6 @@ func _commit_lane_switch() -> Dictionary:
 			return _finish(false, str(result.get("reason", "PLACEMENT_FAILED")), {"cells": cells})
 		cells.append(cell)
 	return _finish(true, "SWITCH_PLACED", {"cells": cells, "count": cells.size(), "entity_id": entity_id, "items": {item_id: -cells.size()}})
-
-
-func _commit_coaster_loop() -> Dictionary:
-	var entity_id := str(_drag.get("entity_id", ""))
-	var rotation := int(_drag.get("rotation", 0))
-	var entries: Array[Dictionary] = []
-	for entry in _drag.cells:
-		if str(entry.state) == "ok":
-			entries.append(entry)
-	var item_id := str(_drag.get("item_id", ""))
-	_drag = {}
-	if entries.is_empty():
-		return _finish(false, "DRAG_EMPTY")
-	var placed := 0
-	var cells: Array[Vector3i] = []
-	for entry in entries:
-		var cell: Vector3i = entry.cell
-		var joints: Array = []
-		for joint in entry.get("joints", []):
-			if joint is Vector3i:
-				var offset: Vector3i = joint - cell
-				joints.append([offset.x, offset.y, offset.z])
-		var result := workstations.try_place(entity_id, cell, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB(), rotation, {"coaster_joints": joints})
-		if result.get("ok", false):
-			placed += 1
-			cells.append(cell)
-	if placed == 0:
-		return _finish(false, "PLACEMENT_FAILED")
-	return _finish(true, "COASTER_PLACED", {"cells": cells, "count": placed, "entity_id": entity_id, "items": {item_id: -placed}})
-
-
-## Lead-in from anchor to end along the dominant axis at the anchor's height,
-## then (loop on) the circle of CoasterRails.loop_offsets starting one cell
-## past the lead-in and LOOP_EXIT_CELLS flat cells after the circle's bottom
-## row. Every cell is validated as a `rail_loop` placement and remembers the
-## cells before and after it on the drawn path (its joints).
-func _replan_coaster_loop() -> void:
-	var anchor: Vector3i = _drag.anchor
-	var end: Vector3i = _drag.end
-	var delta := end - anchor
-	var axis := 0 if absi(delta.x) >= absi(delta.z) else 2
-	var span := clampi(delta[axis], -(DRAG_MAX_SPAN - 1), DRAG_MAX_SPAN - 1)
-	var step := 1 if span >= 0 else -1
-	var rotation := 1 if axis == 0 else 0
-	_drag.rotation = rotation
-	var along := Vector3i.ZERO
-	along[axis] = step
-	var planned: Array[Vector3i] = []
-	var joints: Dictionary = {}
-	for index in range(absi(span) + 1):
-		_plan_join(planned, joints, anchor + along * index, planned[planned.size() - 1] if index > 0 else Vector3i.MAX)
-	var loop_count := 0
-	if bool(_drag.get("loop", false)):
-		var radius := int(_drag.get("radius", LOOP_RADIUS_DEFAULT))
-		var lead_end: Vector3i = planned[planned.size() - 1]
-		# Owner 2026-09-20: a real loop does not exit onto its own entry. The
-		# circle's plane sits one cell to the RIGHT of the lead-in (a 45-degree
-		# joint steps into it) and the exit steps 45 degrees right again, so
-		# the exit run is parallel to the lead-in, two cells over.
-		var side := Vector3i(Vector3(along).cross(Vector3.UP).round())
-		var circle_start: Vector3i = lead_end + along + side
-		var ring: Array[Vector3i] = []
-		var last_bottom := circle_start
-		for offset: Vector3i in CoasterRails.loop_offsets(radius, along):
-			var cell := circle_start + offset
-			ring.append(cell)
-			if offset.y == 0 and cell[axis] * step > last_bottom[axis] * step:
-				last_bottom = cell
-		for ring_index in range(ring.size()):
-			var before: Vector3i = ring[ring_index - 1] if ring_index > 0 else ring[ring.size() - 1]
-			if _plan_join(planned, joints, ring[ring_index], before):
-				loop_count += 1
-		_plan_join(planned, joints, circle_start, lead_end)
-		var exit_from := last_bottom
-		for exit_index in range(1, LOOP_EXIT_CELLS + 1):
-			var exit_cell := last_bottom + along * exit_index + side
-			_plan_join(planned, joints, exit_cell, exit_from)
-			exit_from = exit_cell
-	_drag.loop_cells = loop_count
-	_drag.shape = "coaster" if loop_count > 0 else ("single" if span == 0 else "row")
-	var budget: int = inventory.count(str(_drag.item_id))
-	var entries: Array[Dictionary] = []
-	for cell in planned:
-		var check := workstations.preview_placement(str(_drag.entity_id), cell, rotation, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB())
-		var reason := str(check.get("reason", "PLACEMENT_FAILED"))
-		var state := "ok"
-		if not check.get("ok", false):
-			state = "blocked"
-		elif budget <= 0:
-			state = "unaffordable"
-		else:
-			budget -= 1
-		entries.append({"cell": cell, "state": state, "reason": reason, "voxel_id": 0, "item_id": str(_drag.item_id), "entity_id": str(_drag.entity_id), "joints": joints.get(cell, [])})
-	_drag.cells = entries
-
-
-## Adds `cell` to the plan (once) and records the joint between it and
-## `before` on both cells. Returns true when the cell was new.
-func _plan_join(planned: Array[Vector3i], joints: Dictionary, cell: Vector3i, before: Vector3i) -> bool:
-	var added := false
-	if not planned.has(cell):
-		planned.append(cell)
-		added = true
-	if before != Vector3i.MAX and before != cell:
-		for pair in [[cell, before], [before, cell]]:
-			var own: Vector3i = pair[0]
-			var other: Vector3i = pair[1]
-			var list: Array = joints.get(own, [])
-			if not list.has(other):
-				list.append(other)
-			joints[own] = list
-	return added
 
 
 ## Cells between anchor and end in support-first order: outward along the
@@ -1166,6 +1004,8 @@ func rotate_placement(direction: int = 1) -> int:
 	placement_rotation_quarters = posmod(placement_rotation_quarters + signi(direction), 4)
 	if not _drag.is_empty() and str(_drag.get("mode", "")) == "lane_switch":
 		_replan_lane_switch()
+	if not _drag.is_empty() and str(_drag.get("mode", "")) == "loop_element":
+		_replan_loop_element()
 	return placement_rotation_quarters
 
 

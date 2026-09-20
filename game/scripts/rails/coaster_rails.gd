@@ -107,7 +107,7 @@ static func connections(record: Dictionary) -> Array[Vector3i]:
 			cells.append(anchor + high + Vector3i.UP)
 		SWITCH:
 			var role := str(record.get("switch_role", ""))
-			if role == "in" or role == "out":
+			if role == "in" or role == "out" or role == "fill":
 				# Only along the travel axis: a rail beside the entry or exit
 				# (in the other lane) must not join.
 				var along := switch_along(quarters)
@@ -207,17 +207,6 @@ static func ride_point(record: Dictionary) -> Vector3:
 			return Vector3(anchor) + Vector3(0.5, 0.55, 0.5)
 
 
-## Rows from the base row up to the centre of the arch circle
-## (loop_arch_offsets lifts the circle so its lowest side cell is one row up).
-static func arch_center_lift(half_width: int) -> int:
-	var radius := half_width + 1
-	var side_extent := 0
-	for point in circle_points(radius):
-		if point.x == radius:
-			side_extent = maxi(side_extent, absi(point.y))
-	return side_extent + 1
-
-
 ## The circle a snapped arch piece belongs to: {center: Vector3, radius}
 ## from its record, or empty.
 static func arc_of(record: Dictionary) -> Dictionary:
@@ -289,36 +278,89 @@ static func circle_points(radius: int) -> Array[Vector2i]:
 	return points
 
 
-## Loop snap (owner 2026-09-20): the arch that closes a loop over a base
-## row whose ends are two slopes rising outward. `half_width` is half the
-## distance between the slopes; the arch is the upper part of a circle of
-## radius half_width + 1 whose vertical sides start at the slope tops.
-## Returns the arch cells as (x, y) offsets from the base row's midpoint
-## (y = 1 is the slope-top row), ordered from the left slope top over the
-## top to the right slope top. Empty when no circle fits.
-static func loop_arch_offsets(half_width: int) -> Array[Vector2i]:
-	var radius := half_width + 1
-	var side_extent := 0
-	for point in circle_points(radius):
-		if point.x == radius:
-			side_extent = maxi(side_extent, absi(point.y))
-	var kept: Array[Array] = []
-	for point in circle_points(radius):
-		if point.y < -side_extent:
+## The Loop element (owner 2026-09-20): a complete loop with foundation.
+## `anchor` is the entry piece on the entry lane; `quarters` gives the
+## travel direction (`switch_along`); the lane shift is to the right of
+## travel (`switch_side`). Base row = entry lane + side, exit lane = + 2 side.
+## Base row along travel, from behind to ahead: right slope R (rising back),
+## the second switcher's mid_a, [the first switcher's mid_b], plain rails,
+## left slope L (rising ahead) - `size` cells in all (4..9). The first
+## switcher: entry (anchor), mid_a (anchor + along, entry lane), mid_b (same
+## column, base row) which joins L directly. The second: mid_a (anchor's
+## column, base row) joined to R, mid_b (exit lane), exit (anchor + along,
+## exit lane) heading on. The circle continues the slopes' 45-degree rise:
+## radius = size / sqrt(2), centred over the base's middle, size / 2 above
+## the slope tops; its cells run from L's top over the top to R's top.
+## Returns {pieces: [{cell, entity_id, rotation, joints: Array[Vector3i],
+## extra}], center: Vector3, radius: float}.
+static func loop_element_layout(anchor: Vector3i, quarters: int, size: int) -> Dictionary:
+	size = clampi(size, 4, 9)
+	var along := switch_along(quarters)
+	var side := switch_side(quarters)
+	var base := anchor + side
+	var right_slope := base - along
+	var left_slope := base + along * (size - 2)
+	var s1_entry := anchor
+	var s1_mid_a := anchor + along
+	var s1_mid_b := base + along
+	var s2_mid_a := base
+	var s2_mid_b := base + side
+	var s2_exit := base + side + along
+	var pieces: Array[Dictionary] = []
+	var switch_rotation := posmod(quarters, 4)
+	var slope_ahead := posmod(quarters, 4)
+	var slope_back := posmod(quarters + 2, 4)
+	pieces.append(_piece(s1_entry, SWITCH, switch_rotation, [s1_mid_a], {"switch_role": "in"}))
+	pieces.append(_piece(s1_mid_a, SWITCH, switch_rotation, [s1_entry, s1_mid_b], {"switch_role": "mid_a"}))
+	# mid_b hands on to the next base cell (the left slope for size 4, else
+	# the first filler); fillers are switch pieces too (role "fill") so they
+	# join only along the row, never a rail on the lanes beside them.
+	pieces.append(_piece(s1_mid_b, SWITCH, switch_rotation, [s1_mid_a, base + along * 2], {"switch_role": "mid_b"}))
+	for step in range(2, size - 2):
+		pieces.append(_piece(base + along * step, SWITCH, switch_rotation, [], {"switch_role": "fill"}))
+	pieces.append(_piece(left_slope, SLOPE, slope_ahead, [], {}))
+	pieces.append(_piece(right_slope, SLOPE, slope_back, [], {}))
+	pieces.append(_piece(s2_mid_a, SWITCH, switch_rotation, [right_slope, s2_mid_b], {"switch_role": "mid_a"}))
+	pieces.append(_piece(s2_mid_b, SWITCH, switch_rotation, [s2_mid_a, s2_exit], {"switch_role": "mid_b"}))
+	pieces.append(_piece(s2_exit, SWITCH, switch_rotation, [s2_mid_b], {"switch_role": "out"}))
+	# The circle: from L's outer edge to R's outer edge is `size` cells.
+	var left_edge := Vector3(left_slope) + Vector3(0.5, 0.0, 0.5) + Vector3(along) * 0.5
+	var right_edge := Vector3(right_slope) + Vector3(0.5, 0.0, 0.5) - Vector3(along) * 0.5
+	var radius := float(size) / sqrt(2.0)
+	var slope_top_y := float(base.y) + 1.55
+	var center := (left_edge + right_edge) * 0.5
+	center.y = slope_top_y + float(size) * 0.5
+	var toward_left := Vector3(along)
+	var loop_rotation := 1 if along.x != 0 else 0
+	var extra_loop := {"loop_center": [center.x, center.y, center.z], "loop_radius": radius}
+	var arch: Array[Vector3i] = []
+	var steps := 720
+	for index in range(1, steps):
+		# From just past the left slope's top corner (45 degrees below the
+		# centre, on L's side) up, over and down to just before the right
+		# slope's top corner; the corners themselves sit on cell edges.
+		var angle := deg_to_rad(225.0) - deg_to_rad(270.0) * float(index) / float(steps)
+		var point := center + toward_left * (-cos(angle)) * radius + Vector3.UP * sin(angle) * radius
+		var cell := Vector3i(floori(point.x), floori(point.y), floori(point.z))
+		if cell == left_slope or cell == right_slope or cell == left_slope + Vector3i.UP or cell == right_slope + Vector3i.UP or cell.y <= base.y:
 			continue
-		var angle := atan2(float(point.y), float(point.x))
-		if angle < -PI / 2.0:
-			angle += TAU
-		kept.append([angle, point])
-	kept.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) > float(b[0]))
-	var offsets: Array[Vector2i] = []
-	for entry in kept:
-		var point: Vector2i = entry[1]
-		# Lift so the lowest side cell (the slope top) sits one row above the base.
-		offsets.append(Vector2i(point.x, point.y + side_extent + 1))
-	if offsets.is_empty() or offsets[0] != Vector2i(-radius, 1) or offsets[offsets.size() - 1] != Vector2i(radius, 1):
-		return []
-	return offsets
+		if arch.is_empty() or arch[arch.size() - 1] != cell:
+			if not arch.has(cell):
+				arch.append(cell)
+	for index in range(arch.size()):
+		var cell: Vector3i = arch[index]
+		var before: Vector3i = arch[index - 1] if index > 0 else left_slope
+		var after: Vector3i = arch[index + 1] if index + 1 < arch.size() else right_slope
+		pieces.append(_piece(cell, LOOP, loop_rotation, [before, after], extra_loop))
+	return {"pieces": pieces, "center": center, "radius": radius, "arch": arch, "left_slope": left_slope, "right_slope": right_slope, "exit": s2_exit}
+
+
+static func _piece(cell: Vector3i, entity_id: String, rotation: int, joints: Array, extra: Dictionary) -> Dictionary:
+	var typed: Array[Vector3i] = []
+	for joint in joints:
+		if joint is Vector3i:
+			typed.append(joint)
+	return {"cell": cell, "entity_id": entity_id, "rotation": rotation, "joints": typed, "extra": extra}
 
 
 static func loop_offsets(radius: int, along: Vector3i) -> Array[Vector3i]:
