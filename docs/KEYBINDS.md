@@ -38,3 +38,4 @@ Tests: every required action responds; forward is E (not W); a changed movement 
 - **While riding a Coaster Car**: mouse turns the head (±110° / ±60°, no turning around); **1–9** speed; **arrow keys** outside views (↑ behind, ↓ front, ← → sides; same arrow again = seat); **Shift** / Escape leave.
 
 - **Rail Loop held**: hold Right Mouse for the loop ghost (a true helix loop); **hold Shift and aim further away** to size it (or 4–9 / X / C); **L** classic foundation loop; **W / R** turn it; release to build.
+- **Pause menu - Track auto-clear: on/off** (`[track] auto_clear` in settings.cfg, off by default): when on, every track lay tool (loop, lane switcher, rail line, single rail / slope) shows natural terrain in its way amber-orange and mines it on release (drops to the pack); water, bedrock, castle stone, planks and entity cells stay red. See [Coaster rails](COASTER_RAILS.md).

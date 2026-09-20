@@ -83,6 +83,10 @@ var coaster_carts: CoasterCartService
 ## camera; hero_armored mirrors the pause-menu toggle (settings.cfg).
 var coaster_ride: CoasterRide
 var hero_armored := false
+## Track auto-clear (CoasterCraft card 6): mirrors the pause-menu toggle
+## into InteractionService.auto_clear.
+var track_auto_clear := false
+var _cleared_for_track := 0
 var open_data: Dictionary
 var world_ready := false
 var saving := false
@@ -199,6 +203,7 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	siege_defense.state_changed.connect(_on_defense_state_changed)
 	interaction = InteractionService.new(world, inventory, player.get_body_aabb, registry, workstations, _raycast_station, _defense_interact)
 	interaction.restore_stamps(open_data.get("snapshot", {}).get("blueprints", {}).get("stamps", []))
+	interaction.auto_clear = track_auto_clear
 	player.interaction = interaction
 	player.primary_action = _player_primary_action
 	world.spawn_area_ready.connect(_on_spawn_area_ready)
@@ -549,6 +554,13 @@ func set_hero_armored(armored: bool) -> void:
 		coaster_ride.set_armored(armored)
 
 
+## Pause-menu "Track auto-clear on/off" (persisted by the app in settings.cfg).
+func set_track_auto_clear(enabled: bool) -> void:
+	track_auto_clear = enabled
+	if interaction != null:
+		interaction.auto_clear = enabled
+
+
 func snapshot() -> Dictionary:
 	return {
 		"schema_version": SaveCoordinator.SAVE_SCHEMA,
@@ -668,6 +680,9 @@ func _update_sun_visual() -> void:
 
 func _on_interaction_feedback(message: String) -> void:
 	var friendly := str(REASON_TEXT.get(message, message if message.contains(" ") else message.replace("_", " ").capitalize()))
+	if _cleared_for_track > 0:
+		friendly += " Cleared %d blocks for the track." % _cleared_for_track
+		_cleared_for_track = 0
 	status_changed.emit(friendly)
 	feedback_changed.emit(friendly)
 
@@ -753,6 +768,10 @@ func _on_interaction_result(result: Dictionary) -> void:
 	if _held_item_view != null and str(result.get("reason", "")) != "OPEN_STATION":
 		_held_item_view.play_use()
 	var changes: Dictionary = result.get("changes", {})
+	if result.get("ok", false) and int(changes.get("cleared", 0)) > 0:
+		# Track auto-clear: the player's own report of this result (which
+		# follows) carries the count.
+		_cleared_for_track = int(changes.cleared)
 	if result.get("ok", false) and str(result.get("reason", "")) == "OPEN_STATION":
 		var station_record: Dictionary = changes.get("station", {})
 		if str(station_record.get("entity_id", "")) == CoasterRails.CAR:
@@ -1291,6 +1310,14 @@ func _refresh_rail_neighbours(anchor: Vector3i) -> void:
 					continue
 				_remove_station_visual(neighbour)
 				_spawn_station_visual(workstations.station(neighbour))
+	# Trestle supports: a floating piece higher in this column may have
+	# grown (or now needs) a post that lands on this cell.
+	for drop in range(2, SUPPORT_MAX_DROP + 1):
+		var above := workstations.station_at_cell(anchor + Vector3i(0, drop, 0))
+		if above.is_empty() or str(workstations.station(above).get("entity_id", "")) != CoasterRails.LOOP:
+			continue
+		_remove_station_visual(above)
+		_spawn_station_visual(workstations.station(above))
 
 
 ## Rail block: stone corner posts with gold studs, an oak deck and iron rails
@@ -1562,8 +1589,78 @@ func _build_loop_arc_visual(parent: Node3D, record: Dictionary, joined: Array[Ve
 			previous_point = point
 
 
+## Automatic trestle supports (CoasterCraft card 8, docs/COASTER_RAILS.md):
+## a floating curve piece grows a thin stone post from its ride point
+## straight down to the first solid voxel or track cell below (at most
+## SUPPORT_MAX_DROP cells; none when nothing is found), a gold stud at its
+## top under the rail and a diagonal brace every four cells of height on
+## tall posts. Skipped for inverted pieces (their up more than 90 degrees
+## from world up - the post would cross the loop) and for pieces standing
+## within two cells above another piece of the same curve. Visual only, no
+## collision; the posts live under the piece's node so dismantling removes
+## them.
+const SUPPORT_MAX_DROP := 24
+const SUPPORT_BRACE_EVERY := 4
+
+
+func _add_track_supports(parent: Node3D, record: Dictionary) -> void:
+	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	var curve: Dictionary = record.get("curve", {})
+	var point := CoasterRails.ride_point(record)
+	var up := Vector3.UP
+	if not curve.is_empty():
+		up = TrackCurve.up_at(curve, TrackCurve.piece_t(record))
+	elif CoasterRails.lean_center(record) != Vector3.INF:
+		up = (CoasterRails.lean_center(record) - point).normalized()
+	if up.dot(Vector3.UP) < 0.0:
+		return
+	var tracks := CoasterRails.track_records(workstations.stations)
+	var column := Vector3i(floori(point.x), anchor.y, floori(point.z))
+	var floor_y := INF
+	for drop in range(1, SUPPORT_MAX_DROP + 1):
+		var cell := column + Vector3i(0, -drop, 0)
+		var other: Dictionary = tracks.get(cell, {})
+		if not other.is_empty():
+			if drop <= 2 and not curve.is_empty() and other.has("curve") and str(JSON.stringify(other.get("curve"))) == str(JSON.stringify(curve)):
+				return
+			floor_y = float(cell.y) + 0.6
+			break
+		var query := world.query_cell(cell)
+		if query.get("state") != "LOADED":
+			return
+		var voxel_id := int(query.get("voxel_id", 0))
+		if voxel_id != 0 and not WorldAdapter.PASSABLE_BLOCKS.has(WorldAdapter.BLOCK_NAMES[voxel_id]):
+			floor_y = float(cell.y) + 1.0
+			break
+	if floor_y == INF:
+		return
+	var top_y := point.y - 0.08
+	var height := top_y - floor_y
+	if height < 0.5:
+		return
+	var rig := Node3D.new()
+	rig.name = "Support"
+	rig.rotation.y = -parent.rotation.y
+	parent.add_child(rig)
+	var body_origin := Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
+	var foot := Vector3(floori(point.x) + 0.5, floor_y, floori(point.z) + 0.5) - body_origin
+	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	_add_mesh_box(rig, Vector3(0.12, height, 0.12), foot + Vector3(0.0, height * 0.5, 0.0), stone, "Post")
+	_add_stud(rig, foot + Vector3(0.0, height + 0.02, 0.0), gold, Vector3.ZERO)
+	if height > float(SUPPORT_BRACE_EVERY):
+		var level := float(SUPPORT_BRACE_EVERY)
+		var side := 1.0
+		while level < height - 0.6:
+			var brace := _add_mesh_box(rig, Vector3(0.07, 1.30, 0.07), foot + Vector3(side * 0.30, level, 0.0), stone, "Brace")
+			brace.rotation.z = side * PI / 5.0
+			side = -side
+			level += float(SUPPORT_BRACE_EVERY)
+
+
 func _build_rail_loop_visual(parent: Node3D, record: Dictionary) -> void:
 	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	_add_track_supports(parent, record)
 	var joined := CoasterRails.connected_cells(record, CoasterRails.track_records(workstations.stations))
 	# Curve pieces (TrackCurve) and classic loop-ring pieces share one track
 	# style.
@@ -2395,7 +2492,8 @@ func _update_placement_preview() -> void:
 		return
 	var anchor: Vector3i = preview.anchor
 	var kind := str(preview.get("kind", "entity"))
-	var key := "%s|%s|%s|%d|%s" % [kind, str(preview.get("entity_id", preview.get("voxel_id", 0))), anchor, int(preview.rotation_quarters), str(preview.ok)]
+	var clearing := int(preview.get("clear", 0)) > 0
+	var key := "%s|%s|%s|%d|%s|%s" % [kind, str(preview.get("entity_id", preview.get("voxel_id", 0))), anchor, int(preview.rotation_quarters), str(preview.ok), str(clearing)]
 	if key == _placement_preview_key:
 		return
 	_hide_placement_preview()
@@ -2405,7 +2503,7 @@ func _update_placement_preview() -> void:
 	_placement_preview.rotation.y = -float(int(preview.rotation_quarters)) * PI / 2.0
 	var material := StandardMaterial3D.new()
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.albedo_color = Color(0.2, 0.9, 0.45, 0.48) if preview.ok else Color(0.95, 0.2, 0.2, 0.48)
+	material.albedo_color = (Color(1.0, 0.52, 0.10, 0.55) if clearing else Color(0.2, 0.9, 0.45, 0.48)) if preview.ok else Color(0.95, 0.2, 0.2, 0.48)
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.no_depth_test = true
 	if kind == "block":
@@ -2442,12 +2540,14 @@ func _update_drag_preview(drag: Dictionary) -> void:
 	# P3K: plans may mix block types (blueprints), so "ok" materials are keyed
 	# by the cell's own voxel so each ghost shows the block it will become.
 	var materials := {}
-	for state in ["unaffordable", "blocked"]:
+	# "clear" (track auto-clear, CoasterCraft card 6): terrain the track will
+	# mine away on release - amber-orange, apart from the paler "unaffordable".
+	for state in ["unaffordable", "blocked", "clear"]:
 		var material := StandardMaterial3D.new()
 		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		material.no_depth_test = true
-		material.albedo_color = Color(1.0, 0.8, 0.25, 0.55) if state == "unaffordable" else Color(1.0, 0.25, 0.25, 0.55)
+		material.albedo_color = Color(1.0, 0.8, 0.25, 0.55) if state == "unaffordable" else (Color(1.0, 0.52, 0.10, 0.62) if state == "clear" else Color(1.0, 0.25, 0.25, 0.55))
 		materials[state] = material
 	for entry in drag.cells:
 		var entry_voxel := int(entry.get("voxel_id", drag.voxel_id))

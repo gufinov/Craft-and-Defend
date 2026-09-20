@@ -40,6 +40,7 @@ var menu_panel: Control
 var pause_panel: Control
 ## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): pause-menu toggle.
 var hero_armor_button: Button
+var track_auto_clear_button: Button
 var keybind_panel: Control
 var settings_panel: Control
 var inventory_panel: Control
@@ -479,6 +480,8 @@ func _build_pause(canvas: CanvasLayer) -> void:
 	pause_box.add_child(_button("Keybinds", _show_keybinds))
 	hero_armor_button = _button("Hero: Armour off", _toggle_hero_armor)
 	pause_box.add_child(hero_armor_button)
+	track_auto_clear_button = _button("Track auto-clear: off", _toggle_track_auto_clear)
+	pause_box.add_child(track_auto_clear_button)
 	pause_box.add_child(_button("Start Defense Drill", _start_defense_drill))
 	pause_box.add_child(_button("Start Attack from the Enemy Base (far)", _start_far_attack))
 	pause_box.add_child(_button("Start Drill (NEAR): single raider", _start_core_defense_prototype))
@@ -1285,7 +1288,9 @@ func _open_session(continue_existing: bool) -> void:
 	session = GameSession.new()
 	session.settings_view_distance = settings.view_distance
 	session.hero_armored = settings.hero_armored
+	session.track_auto_clear = settings.track_auto_clear
 	_refresh_hero_armor_button()
+	_refresh_track_auto_clear_button()
 	session.name = "GameSession"
 	add_child(session)
 	session.ready_for_play.connect(_on_session_ready)
@@ -1346,6 +1351,22 @@ func _toggle_hero_armor() -> void:
 func _refresh_hero_armor_button() -> void:
 	if hero_armor_button != null and settings != null:
 		hero_armor_button.text = "Hero: Armour %s" % ("on" if settings.hero_armored else "off")
+
+
+## Pause menu: track tools clear natural terrain in their way (persisted in
+## settings.cfg as [track] auto_clear; docs/COASTER_RAILS.md).
+func _toggle_track_auto_clear() -> void:
+	var result := settings.set_track_auto_clear(not settings.track_auto_clear)
+	if not result.get("ok", false):
+		_set_status("Track auto-clear could not be saved: %s" % str(result.get("reason", "UNKNOWN")))
+	_refresh_track_auto_clear_button()
+	if session != null:
+		session.set_track_auto_clear(settings.track_auto_clear)
+
+
+func _refresh_track_auto_clear_button() -> void:
+	if track_auto_clear_button != null and settings != null:
+		track_auto_clear_button.text = "Track auto-clear: %s" % ("on" if settings.track_auto_clear else "off")
 
 
 func _start_defense_drill() -> void:
