@@ -382,7 +382,7 @@ func select_hotbar(index: int) -> Dictionary:
 		# Coaster pieces carry their controls on screen (owner could not find
 		# the loop gesture without them).
 		if item_id == CoasterRails.LOOP:
-			_on_interaction_feedback("RAIL LOOP: aim at the ground where the entry goes, HOLD Right Mouse — the whole loop ghost appears; 4-9 (or X / C) set its size, W / R turn it; let go to build it (red = does not fit)")
+			_on_interaction_feedback("RAIL LOOP: aim at the ground where the entry goes, HOLD Right Mouse — the whole loop ghost appears; 4-9 (or X / C) set its size, L round / octagon, W / R turn it; let go to build it (red = does not fit)")
 		elif item_id == CoasterRails.SLOPE:
 			_on_interaction_feedback("RAIL SLOPE: the arrow end climbs one block — W / R turns it; put a Rail on the block it climbs to")
 	return result
@@ -721,9 +721,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		for size in range(InteractionService.LOOP_SIZE_MIN, InteractionService.LOOP_SIZE_MAX + 1):
 			if event.is_action_pressed("hotbar_%d" % size):
 				interaction.set_loop_size(size)
-				_on_interaction_feedback("Loop size %d (4-9 while the ghost shows; X / C too)" % size)
+				_on_interaction_feedback("Loop size %d (4-9 while the ghost shows; X / C too; L round / octagon)" % size)
 				get_viewport().set_input_as_handled()
 				return
+		if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_L or event.keycode == KEY_L):
+			interaction.set_loop_round(not interaction.loop_round)
+			_on_interaction_feedback("Loop shape: %s (L toggles)" % ("round" if interaction.loop_round else "octagon"))
+			get_viewport().set_input_as_handled()
+			return
 	if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_V or event.keycode == KEY_V):
 		# Coaster car and hero: V toggles the chase camera (raw key, like X / C).
 		toggle_third_person()
@@ -1430,6 +1435,69 @@ func _build_rail_slope_visual(parent: Node3D) -> void:
 const LOOP_ARC_SECTIONS := 4
 
 
+## A loop-element piece (owner 2026-09-20, "prettier"): two iron rails
+## with wooden ties and a stone spine on the outer side, running from the
+## piece's own point to halfway toward each neighbour - along the true
+## circle for round pieces (short sections), straight for octagon pieces -
+## and all the way to a slope's rail corner so the ring continues the
+## slope's incline without a kink. No posts or blocks.
+func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[Vector3i]) -> void:
+	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	var tracks := CoasterRails.track_records(workstations.stations)
+	_add_collision_box(parent, Vector3(0.70, 0.70, 0.70), Vector3.ZERO)
+	var iron := _visual_material(Color("8a939b"))
+	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
+	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")
+	var undo := Node3D.new()
+	undo.name = "LoopTrack"
+	undo.rotation.y = -parent.rotation.y
+	parent.add_child(undo)
+	var body_origin := Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
+	var own_point := CoasterRails.ride_point(record)
+	var lean := CoasterRails.lean_center(record)
+	var round := record.has("loop_center")
+	# Odd quarters: the loop lies in the x-y plane (axis x, normal z).
+	var plane_axis := Vector3(1.0, 0.0, 0.0) if int(record.get("rotation_quarters", 0)) % 2 == 1 else Vector3(0.0, 0.0, 1.0)
+	var across := Vector3(0.0, 0.0, 1.0) if plane_axis.x != 0.0 else Vector3(1.0, 0.0, 0.0)
+	var plane_across := plane_axis
+	for cell: Vector3i in joined:
+		var other: Dictionary = tracks.get(cell, {"anchor": cell, "entity_id": CoasterRails.FLAT})
+		var points: Array[Vector3] = [own_point]
+		if str(other.get("entity_id", "")) == CoasterRails.SLOPE:
+			points.append(CoasterRails.slope_rail_corner(other))
+		elif round:
+			var other_angle := CoasterRails.arc_angle(record, CoasterRails.arc_point(record, CoasterRails.ride_point(other)))
+			var own_angle := CoasterRails.arc_angle(record, own_point)
+			var delta := wrapf(other_angle - own_angle, -PI, PI)
+			var arc := CoasterRails.arc_of(record)
+			for section in range(1, LOOP_ARC_SECTIONS + 1):
+				var angle := own_angle + delta * 0.5 * float(section) / float(LOOP_ARC_SECTIONS)
+				var spoke := plane_across * cos(angle) + Vector3.UP * sin(angle)
+				points.append(Vector3(arc.center) + spoke * float(arc.radius))
+		else:
+			points.append((own_point + CoasterRails.ride_point(other)) * 0.5)
+		for index in range(1, points.size()):
+			var from_point: Vector3 = points[index - 1]
+			var to_point: Vector3 = points[index]
+			var direction := to_point - from_point
+			var length := direction.length()
+			if length < 0.001:
+				continue
+			direction = direction.normalized()
+			var piece := Node3D.new()
+			piece.position = (from_point + to_point) * 0.5 - body_origin
+			piece.basis = Basis.looking_at(direction, across)
+			undo.add_child(piece)
+			for offset in [-0.22, 0.22]:
+				_add_mesh_box(piece, Vector3(0.10, 0.10, length + 0.02), Vector3(0.0, offset, 0.0), iron)
+			# Outer spine (away from the loop's centre) and a tie per section.
+			var outward := ((from_point + to_point) * 0.5 - lean).normalized()
+			var local_x := piece.basis.x
+			var spine_side := 1.0 if local_x.dot(outward) >= 0.0 else -1.0
+			_add_mesh_box(piece, Vector3(0.16, 0.16, length + 0.02), Vector3(spine_side * 0.30, 0.0, 0.0), stone)
+			_add_mesh_box(piece, Vector3(0.10, 0.54, 0.10), Vector3(spine_side * 0.12, 0.0, 0.0), oak)
+
+
 func _build_loop_arc_visual(parent: Node3D, record: Dictionary, joined: Array[Vector3i]) -> void:
 	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
 	var tracks := CoasterRails.track_records(workstations.stations)
@@ -1481,6 +1549,11 @@ func _build_loop_arc_visual(parent: Node3D, record: Dictionary, joined: Array[Ve
 func _build_rail_loop_visual(parent: Node3D, record: Dictionary) -> void:
 	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
 	var joined := CoasterRails.connected_cells(record, CoasterRails.track_records(workstations.stations))
+	# Loop-element pieces (they know their loop's centre) share one track
+	# style, top row included.
+	if CoasterRails.lean_center(record) != Vector3.INF:
+		_build_loop_track_visual(parent, record, joined)
+		return
 	# Straight or cornered on one level: an ordinary rail. A diagonal joint
 	# (the 45-degree step into or out of a loop) or a climb draws arms.
 	var flat := true
@@ -1493,9 +1566,6 @@ func _build_rail_loop_visual(parent: Node3D, record: Dictionary) -> void:
 			flat_arms.append(offset)
 	if flat:
 		_build_rail_visual(parent, _track_arm_mask(record), flat_arms)
-		return
-	if record.has("loop_center"):
-		_build_loop_arc_visual(parent, record, joined)
 		return
 	_add_collision_box(parent, Vector3(0.70, 0.70, 0.70), Vector3.ZERO)
 	var iron := _visual_material(Color("8a939b"))

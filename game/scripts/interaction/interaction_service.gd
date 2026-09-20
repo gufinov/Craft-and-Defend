@@ -349,7 +349,7 @@ func drag_state() -> Dictionary:
 		if str(entry.state) == "ok":
 			var entry_item := str(entry.get("item_id", _drag.get("item_id", "")))
 			costs[entry_item] = int(costs.get(entry_item, 0)) + 1
-	return {"active": true, "snapped": bool(_drag.get("snapped", false)), "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single"), "loop_size": loop_size, "loop_radius": float(_drag.get("radius", 0.0)), "loop_cells": int(_drag.get("loop_cells", 0))}
+	return {"active": true, "snapped": bool(_drag.get("snapped", false)), "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single"), "loop_size": loop_size, "loop_round": loop_round, "loop_radius": float(_drag.get("radius", 0.0)), "loop_cells": int(_drag.get("loop_cells", 0))}
 
 
 func cancel_drag_place() -> Dictionary:
@@ -453,6 +453,8 @@ const LOOP_SIZE_MIN := 4
 const LOOP_SIZE_MAX := 9
 const LOOP_SIZE_DEFAULT := 4
 var loop_size := LOOP_SIZE_DEFAULT
+## L while the ghost shows: round ring (true circle) instead of the octagon.
+var loop_round := false
 
 
 func is_coaster_loop_item(item_id: String) -> bool:
@@ -480,6 +482,13 @@ func set_loop_size(size: int) -> Dictionary:
 	return drag_state()
 
 
+func set_loop_round(value: bool) -> Dictionary:
+	loop_round = value
+	if not _drag.is_empty() and str(_drag.get("mode", "")) == "loop_element":
+		_replan_loop_element()
+	return drag_state()
+
+
 ## Raw key states each frame (X smaller, C bigger); edges change the size once.
 func coaster_loop_keys(x_pressed: bool, c_pressed: bool) -> void:
 	if _drag.is_empty() or str(_drag.get("mode", "")) != "loop_element":
@@ -497,7 +506,7 @@ func coaster_loop_keys(x_pressed: bool, c_pressed: bool) -> void:
 func _replan_loop_element() -> void:
 	var rotation := placement_rotation_quarters
 	_drag.rotation = rotation
-	var layout := CoasterRails.loop_element_layout(_drag.anchor, rotation, loop_size)
+	var layout := CoasterRails.loop_element_layout(_drag.anchor, rotation, loop_size, loop_round)
 	var affordable: bool = inventory.count(str(_drag.item_id)) >= 1
 	var entries: Array[Dictionary] = []
 	for piece: Dictionary in layout.pieces:

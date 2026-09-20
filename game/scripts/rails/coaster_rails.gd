@@ -35,6 +35,9 @@ const CAR := "coaster_car"
 ## exit also join plain rails behind / ahead.
 const SWITCH := "rail_switch"
 const SWITCH_MID_OFFSET := 0.25
+## Height of a slope's rails at its high edge above the slope cell's floor
+## (the loop ring meets the slope there).
+const SLOPE_RAIL_TOP := 1.04
 const TRACK_IDS: Array[String] = [FLAT, SLOPE, LOOP, SWITCH]
 const HORIZONTAL: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
 
@@ -207,6 +210,14 @@ static func ride_point(record: Dictionary) -> Vector3:
 			return Vector3(anchor) + Vector3(0.5, 0.55, 0.5)
 
 
+## Where a slope's rails end at its high edge (world), for track pieces
+## that continue them.
+static func slope_rail_corner(record: Dictionary) -> Vector3:
+	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	var high := Vector3(slope_high_direction(int(record.get("rotation_quarters", 0))))
+	return Vector3(anchor) + Vector3(0.5, SLOPE_RAIL_TOP, 0.5) + high * 0.5
+
+
 ## The point a loop piece's riders lean toward (its loop's centre), from
 ## `loop_center` (true-circle pieces) or `loop_up_center` (octagon pieces);
 ## Vector3.INF when the piece has neither.
@@ -304,7 +315,7 @@ static func circle_points(radius: int) -> Array[Vector2i]:
 ## the slope tops; its cells run from L's top over the top to R's top.
 ## Returns {pieces: [{cell, entity_id, rotation, joints: Array[Vector3i],
 ## extra}], center: Vector3, radius: float}.
-static func loop_element_layout(anchor: Vector3i, quarters: int, size: int) -> Dictionary:
+static func loop_element_layout(anchor: Vector3i, quarters: int, size: int, round_loop: bool = false) -> Dictionary:
 	size = clampi(size, 4, 9)
 	var along := switch_along(quarters)
 	var side := switch_side(quarters)
@@ -334,27 +345,50 @@ static func loop_element_layout(anchor: Vector3i, quarters: int, size: int) -> D
 	pieces.append(_piece(s2_mid_a, SWITCH, switch_rotation, [right_slope, s2_mid_b], {"switch_role": "mid_a"}))
 	pieces.append(_piece(s2_mid_b, SWITCH, switch_rotation, [s2_mid_a, s2_exit], {"switch_role": "mid_b"}))
 	pieces.append(_piece(s2_exit, SWITCH, switch_rotation, [s2_mid_b], {"switch_role": "out"}))
-	# The octagon (owner 2026-09-20: straight rails, no roll): from each
-	# slope's top a vertical run of size - 2 cells one column outside the
-	# slope, then a flat top row of `size` cells whose end cells join the
-	# runs diagonally - as wide as the base plus the two runs, and as tall
-	# as it is wide. Every piece rides its cell centre; the loop's centre
-	# is stored so riders lean toward it (upside down over the top).
-	var run := size - 2
-	var top_y := run + 1
+	# The ring. Octagon (owner 2026-09-20: straight rails): from each slope's
+	# top a vertical run of size - 2 cells one column outside the slope, then
+	# a flat top row of `size` cells whose end cells join the runs diagonally.
+	# Round (`round_loop`): the circle continuing the slopes' 45-degree rise,
+	# radius size / sqrt(2), tangent at the slopes' rail corners; its pieces
+	# ride and draw the true circle. Either way every piece stores the
+	# loop's centre so riders lean toward it (upside down over the top).
 	var arch: Array[Vector3i] = []
-	var left_column := left_slope + along
-	var right_column := right_slope - along
-	for k in range(1, run + 1):
-		arch.append(left_column + Vector3i.UP * k)
-	for step in range(size - 1, -1, -1):
-		arch.append(right_slope + along * step + Vector3i.UP * top_y)
-	for k in range(run, 0, -1):
-		arch.append(right_column + Vector3i.UP * k)
-	var center := (Vector3(left_slope) + Vector3(right_slope)) * 0.5 + Vector3(0.5, 0.5, 0.5) + Vector3.UP * (float(top_y) * 0.5)
-	var radius := float(size) * 0.5 + 1.0
 	var loop_rotation := 1 if along.x != 0 else 0
-	var extra_loop := {"loop_up_center": [center.x, center.y, center.z]}
+	var center := Vector3.ZERO
+	var radius := 0.0
+	var extra_loop: Dictionary = {}
+	var slope_corner_y := float(base.y) + SLOPE_RAIL_TOP
+	if round_loop:
+		var left_edge := Vector3(left_slope) + Vector3(0.5, 0.0, 0.5) + Vector3(along) * 0.5
+		var right_edge := Vector3(right_slope) + Vector3(0.5, 0.0, 0.5) - Vector3(along) * 0.5
+		radius = float(size) / sqrt(2.0)
+		center = (left_edge + right_edge) * 0.5
+		center.y = slope_corner_y + float(size) * 0.5
+		var toward_left := Vector3(along)
+		extra_loop = {"loop_center": [center.x, center.y, center.z], "loop_radius": radius}
+		var steps := 720
+		for index in range(1, steps):
+			var angle := deg_to_rad(225.0) - deg_to_rad(270.0) * float(index) / float(steps)
+			var point := center + toward_left * (-cos(angle)) * radius + Vector3.UP * sin(angle) * radius
+			var cell := Vector3i(floori(point.x), floori(point.y), floori(point.z))
+			if cell == left_slope or cell == right_slope or cell == left_slope + Vector3i.UP or cell == right_slope + Vector3i.UP or cell.y <= base.y:
+				continue
+			if not arch.has(cell):
+				arch.append(cell)
+	else:
+		var run := size - 2
+		var top_y := run + 1
+		var left_column := left_slope + along
+		var right_column := right_slope - along
+		for k in range(1, run + 1):
+			arch.append(left_column + Vector3i.UP * k)
+		for step in range(size - 1, -1, -1):
+			arch.append(right_slope + along * step + Vector3i.UP * top_y)
+		for k in range(run, 0, -1):
+			arch.append(right_column + Vector3i.UP * k)
+		center = (Vector3(left_slope) + Vector3(right_slope)) * 0.5 + Vector3(0.5, 0.5, 0.5) + Vector3.UP * (float(top_y) * 0.5)
+		radius = float(size) * 0.5 + 1.0
+		extra_loop = {"loop_up_center": [center.x, center.y, center.z]}
 	for index in range(arch.size()):
 		var cell: Vector3i = arch[index]
 		var before: Vector3i = arch[index - 1] if index > 0 else left_slope
