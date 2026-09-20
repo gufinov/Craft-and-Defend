@@ -29,8 +29,12 @@ func run(application: CraftAndDefendApp) -> void:
 	await get_tree().process_frame
 	_stock_pack(true)
 	_lay_demo()
-	app.session.navigation_changed.emit("COASTER SANDBOX  ·  infinite stock  ·  loop ahead (Shift on the car to ride, 1-9 speed), mountain climb behind it, V third person")
-	app.session.navigation_changed.emit("COASTER SANDBOX  ·  infinite stock  ·  loop ahead (Shift on the car to ride, 1-9 speed), a 90-degree curve and a U-turn behind it, V third person")
+	app.session.navigation_changed.emit("COASTER SANDBOX  ·  infinite stock  ·  loop ahead (Shift on the car to ride, 1-9 speed); curves, a mountain climb, a smooth switch and a crossing behind you")
+	var spawn_clear := true
+	for y in range(1, 4):
+		if int(app.session.world.query_cell(Vector3i(0, y, 40)).get("voxel_id", 0)) != 0:
+			spawn_clear = false
+	print("COASTER_SANDBOX spawn clear=%s player=%s" % [spawn_clear, app.session.player.global_position])
 	print("COASTER_SANDBOX_READY")
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-ride-shot"):
 		# Seat-view pictures: boarding, mid-climb, head turned left.
@@ -194,7 +198,7 @@ func _lay_demo() -> void:
 	var world: WorldAdapter = app.session.world
 	var interaction: InteractionService = app.session.interaction
 	var plate := Vector3i(-14, 0, 22)
-	_level_ground(plate, 30, 40, 14)
+	_level_ground(plate, 30, 50, 14)
 	# The Loop element (owner 2026-09-20): size 6, entry heading -x from
 	# (0, 30) on lane A (z=30); base row z=29 with the slopes at x=1 and x=-4;
 	# exit on lane C (z=28) heading -x. A coaster car waits on the approach.
@@ -281,12 +285,15 @@ func _lay_mountain() -> void:
 	var ws: WorkstationService = app.session.workstations
 	var world: WorldAdapter = app.session.world
 	var interaction: InteractionService = app.session.interaction
-	var lane := 39
+	# Lane 65, bank z 62..68 at the far end of the plate: clear of the spawn
+	# cell (0, 40) - the bank used to sit on it and the spawn pushed the player
+	# through the plate - and of the curve demos (z 44..50).
+	var lane := 65
 	# The loop's circuit used the whole rail stack; refill before laying more.
 	_stock_pack(false)
 	for x in range(-5, 5):
 		var height := mini(6, x + 6)
-		for z in range(36, 43):
+		for z in range(62, 69):
 			for y in range(1, height + 1):
 				world.set_cell(Vector3i(x, y, z), 3)
 	app.session.inventory.select_hotbar(STOCK.find("rail_climb"))

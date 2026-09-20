@@ -124,7 +124,7 @@ Slope-in, straight climb of any grade, slope-out — one piece. Item **Climb** (
 
 Sizing: defaults length 8, rise 4 (3..60 and −30..30). **Shift held**: the entry stays put and the aim sets both — its distance ahead along the heading = length, its height above / below the entry = rise; aim at a hilltop and the landing sits on it, aim into a valley for a descent. **4–9 / X / C** set the rise; **W / R** turn it. Release lays all-or-nothing for **one Climb item per piece** (about length + |rise| pieces; the sandbox is creative: free); the pack caps the length (`InteractionService.climb_length_limit`, like the loop's diameter) and the world's ceiling / floor cap the rise (`climb_rise_limit`). A cell in the way (ground, tree, hill, block) shows red and nothing is laid (`CLIMB_BLOCKED`); unaffordable pieces show amber. Terrain is never dug by this tool (the auto-clear card is separate).
 
-The mountain test (sandbox, plate z 36..42): a 10-wide stepped stone bank (x −5..4, one step per cell up to 6 high), a climb of length 13 / rise 6 from x = −13 onto its flat top, three plain rails across, a descent of length 10 / rise −6 back to the plate and a mine cart riding up, across and down. Tests: T176 (tool), T177 (mountain), T178 (render `coaster-climb.png`).
+The mountain test (sandbox, plate z 62..68, lane 65 — clear of the spawn cell at (0, 40)): a 10-wide stepped stone bank (x −5..4, one step per cell up to 6 high), a climb of length 13 / rise 6 from x = −13 onto its flat top, three plain rails across, a descent of length 10 / rise −6 back to the plate and a mine cart riding up, across and down. Tests: T176 (tool), T177 (mountain), T178 (render `coaster-climb.png`).
 
 ## Smooth Switch and Crossing (CoasterCraft cards 2-3, 2026-09-20)
 
