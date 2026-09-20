@@ -112,10 +112,10 @@ func run(application: CraftAndDefendApp) -> void:
 		var player := app.session.player
 		# Above and behind the loop's bottom, looking down the lead-in so the
 		# 45-degree steps into and out of the circle show.
-		player.global_position = Vector3(-13.0, 6.0, 36.0)
+		player.global_position = Vector3(-3.0, 14.0, 31.0)
 		player.rotation = Vector3.ZERO
-		player.rotate_y(-0.9)
-		player.look_pitch = -0.42
+		player.rotate_y(-PI / 2.0)
+		player.look_pitch = -1.5
 		player.apply_mouse_look(Vector2.ZERO)
 		for _frame in range(150):
 			await get_tree().process_frame

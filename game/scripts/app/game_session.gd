@@ -1276,7 +1276,11 @@ func _refresh_rail_neighbours(anchor: Vector3i) -> void:
 ## Rail block: stone corner posts with gold studs, an oak deck and iron rails
 ## laid toward every connected neighbour — a straight, a 90-degree corner, a
 ## T or a crossroads follow from the neighbour mask. Ties sit under the rails.
-func _build_rail_visual(parent: Node3D, mask: int = 0) -> void:
+## Flat rail piece: `mask` (bits +x, -x, +z, -z) or an explicit `arm_list`
+## of horizontal joint offsets, which may be diagonal (the 45-degree steps
+## into and out of a loop, owner 2026-09-20): each arm is a pair of rails
+## with ties from the centre to the cell edge (0.5) or corner (0.707).
+func _build_rail_visual(parent: Node3D, mask: int = 0, arm_list: Array[Vector3i] = []) -> void:
 	_add_collision_box(parent, Vector3(0.98, 0.56, 0.98), Vector3(0.0, -0.22, 0.0))
 	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
 	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")
@@ -1294,12 +1298,15 @@ func _build_rail_visual(parent: Node3D, mask: int = 0) -> void:
 	parent.add_child(undo)
 	var along_x := (mask & 3) != 0
 	var along_z := (mask & 12) != 0
-	if mask == 0:
+	if mask == 0 and arm_list.is_empty():
 		along_z = parent.rotation.y == 0.0 or absf(parent.rotation.y) > 3.0
 		along_x = not along_z
 	var arms: Array[Vector3i] = []
+	for arm_offset: Vector3i in arm_list:
+		if arm_offset.y == 0 and arm_offset != Vector3i.ZERO:
+			arms.append(Vector3i(signi(arm_offset.x), 0, signi(arm_offset.z)))
 	for index in range(4):
-		if mask & (1 << index):
+		if arms.is_empty() and mask & (1 << index):
 			arms.append([Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)][index])
 	if arms.is_empty():
 		if along_z:
@@ -1310,18 +1317,24 @@ func _build_rail_visual(parent: Node3D, mask: int = 0) -> void:
 			arms.append(Vector3i(-1, 0, 0))
 	elif arms.size() == 1:
 		arms.append(-arms[0])
-	# Two parallel rails per arm from the centre to the cell edge, and ties.
+	# Two parallel rails per arm from the centre outward, and a tie.
 	for arm in arms:
 		var direction := Vector3(arm)
-		var side := Vector3(direction.z, 0.0, -direction.x)
+		var length := direction.length() * 0.5
+		direction = direction.normalized()
+		var arm_node := Node3D.new()
+		arm_node.rotation.y = atan2(direction.x, direction.z)
+		undo.add_child(arm_node)
 		for offset in [-0.22, 0.22]:
-			_add_mesh_box(undo, Vector3(0.10, 0.10, 0.10) + direction.abs() * 0.40, direction * 0.25 + side * offset, iron)
-		_add_mesh_box(undo, Vector3(0.10, 0.06, 0.10) + side.abs() * 0.52, direction * 0.32 + Vector3(0.0, -0.11, 0.0), iron)
-	# Centre piece: a plate on corners and junctions so the rails join cleanly.
+			_add_mesh_box(arm_node, Vector3(0.10, 0.10, length), Vector3(offset, 0.0, length * 0.5), iron)
+		_add_mesh_box(arm_node, Vector3(0.52, 0.06, 0.10), Vector3(0.0, -0.11, length * 0.64), iron)
+	# Centre piece: a plate on corners, bends and junctions so the rails join cleanly.
 	if arms.size() >= 2 and not (arms.size() == 2 and arms[0] == -arms[1]):
 		_add_mesh_box(undo, Vector3(0.54, 0.10, 0.54), Vector3(0.0, 0.0, 0.0), iron)
 	elif not along_x or not along_z:
-		_add_mesh_box(undo, Vector3(0.62, 0.06, 0.10) if along_x else Vector3(0.10, 0.06, 0.62), Vector3(0.0, -0.11, 0.0), iron)
+		var straight := Vector3(arms[0])
+		var tie_size := Vector3(0.10, 0.06, 0.10) + Vector3(absf(straight.z), 0.0, absf(straight.x)) * 0.52
+		_add_mesh_box(undo, tie_size, Vector3(0.0, -0.11, 0.0), iron)
 
 
 ## Coaster rails side project: a rail block climbing one cell toward its
@@ -1363,12 +1376,15 @@ func _build_rail_loop_visual(parent: Node3D, record: Dictionary) -> void:
 	# Straight or cornered on one level: an ordinary rail. A diagonal joint
 	# (the 45-degree step into or out of a loop) or a climb draws arms.
 	var flat := true
+	var flat_arms: Array[Vector3i] = []
 	for cell: Vector3i in joined:
 		var offset := cell - anchor
-		if offset.y != 0 or not CoasterRails.HORIZONTAL.has(offset):
+		if offset.y != 0:
 			flat = false
+		else:
+			flat_arms.append(offset)
 	if flat:
-		_build_rail_visual(parent, _track_arm_mask(record))
+		_build_rail_visual(parent, _track_arm_mask(record), flat_arms)
 		return
 	_add_collision_box(parent, Vector3(0.70, 0.70, 0.70), Vector3.ZERO)
 	var iron := _visual_material(Color("8a939b"))
