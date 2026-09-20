@@ -288,6 +288,14 @@ func _ride_point(tracks: Dictionary, cell: Vector3i, up: Vector3) -> Vector3:
 func _up_at(tracks: Dictionary, cell: Vector3i, previous: Vector3i, next: Vector3i, fallback: Vector3) -> Vector3:
 	if not _is_loop(tracks, cell):
 		return Vector3.UP
+	# A loop with a known centre: lean straight at it (owner 2026-09-20: the
+	# cell-quantised curvature normal flipped on stair-step cells and rolled
+	# the rider's view); the point toward the centre is the inward normal.
+	var lean := CoasterRails.lean_center(tracks.get(cell, {}))
+	if lean != Vector3.INF:
+		var toward := lean - _ride_point(tracks, cell, fallback)
+		if toward.length() > 0.05:
+			return toward.normalized()
 	if previous == Vector3i.MAX or next == cell:
 		return fallback
 	var arrival := Vector3(cell - previous).normalized()

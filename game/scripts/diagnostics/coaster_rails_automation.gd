@@ -240,17 +240,22 @@ func _run_gate() -> void:
 	var left_slope: Vector3i = layout.left_slope
 	var right_slope: Vector3i = layout.right_slope
 	var arch: Array = layout.arch
+	# The top row's middle piece (the row's end pieces are the corners).
 	var top_cell: Vector3i = arch[0]
 	for cell: Vector3i in arch:
-		if cell.y > top_cell.y:
+		if cell.y > top_cell.y or (cell.y == top_cell.y and absf(float(cell.x) + 0.5 - float(layout.center.x)) < absf(float(top_cell.x) + 0.5 - float(layout.center.x))):
 			top_cell = cell
 	var loop_chain := CoasterRails.chain(ws.stations, anchor)
 	var chain_ok := loop_chain.size() == four_count and loop_chain.has(exit_cell) and loop_chain.has(top_cell) and (loop_chain.get(left_slope, []) as Array).size() == 2 and (loop_chain.get(right_slope, []) as Array).size() == 2
 	var switch_pieces := int(four_entities.get("rail_switch", 0)) == 6 and int(four_entities.get("rail_slope", 0)) == 2 and int(four_entities.get("rail_loop", 0)) == arch.size()
-	var arc_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(top_cell))
-	var arc_drawn := arc_body != null and arc_body.get_node_or_null("LoopArc") != null
+	# Octagon: the top row draws as flat rail pieces, the vertical runs as
+	# loop arms; every piece knows the loop's centre to lean toward.
+	var side_cell: Vector3i = arch[0]
+	var arc_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(side_cell))
+	var top_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(top_cell))
+	var arc_drawn := arc_body != null and arc_body.get_node_or_null("LoopArms") != null and top_body != null and top_body.get_node_or_null("RailArms") != null
 	var top_record: Dictionary = ws.station(ws.station_at_cell(top_cell))
-	var rides_circle := CoasterRails.ride_point(top_record).distance_to(Vector3(layout.center)) < float(layout.radius) + 0.01 and CoasterRails.ride_point(top_record).distance_to(Vector3(layout.center)) > float(layout.radius) - 0.01
+	var rides_circle := CoasterRails.lean_center(top_record) != Vector3.INF and CoasterRails.lean_center(top_record).y < CoasterRails.ride_point(top_record).y and side_cell == left_slope + Vector3i(-1, 1, 0) and top_cell.y == anchor.y + 3
 	# Approach rails behind the entry (travel -x, so behind is +x) and a cart.
 	for x in range(1, 4):
 		ws.try_place("rail", anchor + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
@@ -287,8 +292,8 @@ func _run_gate() -> void:
 	var saved: Variant = JSON.parse_string(JSON.stringify(ws.snapshot()))
 	var restored := ws.restore(saved, world.query_cell) if saved is Dictionary else {"ok": false, "reason": "SNAPSHOT_NOT_JSON"}
 	var restored_chain := CoasterRails.chain(ws.stations, anchor)
-	var round_trip: bool = restored.get("ok", false) and restored_chain.size() == chain_before_save and CoasterRails.arc_of(ws.station(ws.station_at_cell(top_cell))).has("center")
-	_record("T162_LOOP_ELEMENT", started.get("ok", false) and size_four and four_ok and switch_pieces and six_count > four_count and seven == 7 and six_again == 6 and clamped == 9 and committed.get("reason") == "LOOP_PLACED" and int(committed.get("changes", {}).get("count", 0)) == four_count and one_item and chain_ok and arc_drawn and rides_circle and loop_cart.get("ok", false) and top_reached > 0 and exit_reached > top_reached and red > 0 and nothing_laid and round_trip, "with Rail Loop held a press ghosts a complete size-4 loop (six switcher pieces, two slopes, the circle pieces); 6 by key adds pieces, C makes 7, X makes 6, 12 clamps to 9; release lays every piece for one item as one chain from the entry through both slopes and the circle's top to the exit two lanes over; the top piece draws its arc and rides on the true circle; a cart from the approach reaches the top and then the exit; a ghost over a stone column shows red and lays nothing; the laid track survives a save round-trip", {"started": started.get("reason"), "size_four": size_four, "four_ok": four_ok, "entities": four_entities, "four_count": four_count, "six_count": six_count, "seven": seven, "six_again": six_again, "clamped": clamped, "committed": committed.get("reason"), "count": committed.get("changes", {}).get("count", 0), "one_item": one_item, "chain": loop_chain.size(), "chain_ok": chain_ok, "arc_drawn": arc_drawn, "rides_circle": rides_circle, "cart": loop_cart.get("reason"), "top_frame": top_reached, "exit_frame": exit_reached, "red": red, "nothing_laid": nothing_laid, "refused": refused.get("reason"), "round_trip": round_trip, "restored": restored.get("reason")})
+	var round_trip: bool = restored.get("ok", false) and restored_chain.size() == chain_before_save and CoasterRails.lean_center(ws.station(ws.station_at_cell(top_cell))) != Vector3.INF
+	_record("T162_LOOP_ELEMENT", started.get("ok", false) and size_four and four_ok and switch_pieces and six_count > four_count and seven == 7 and six_again == 6 and clamped == 9 and committed.get("reason") == "LOOP_PLACED" and int(committed.get("changes", {}).get("count", 0)) == four_count and one_item and chain_ok and arc_drawn and rides_circle and loop_cart.get("ok", false) and top_reached > 0 and exit_reached > top_reached and red > 0 and nothing_laid and round_trip, "with Rail Loop held a press ghosts a complete size-4 loop (six switcher pieces, two slopes, the circle pieces); 6 by key adds pieces, C makes 7, X makes 6, 12 clamps to 9; release lays every piece for one item as one chain from the entry through both slopes and the circle's top to the exit two lanes over; the vertical runs draw loop arms, the top row rail pieces, and every piece leans toward the loop's centre; a cart from the approach reaches the top and then the exit; a ghost over a stone column shows red and lays nothing; the laid track survives a save round-trip", {"started": started.get("reason"), "size_four": size_four, "four_ok": four_ok, "entities": four_entities, "four_count": four_count, "six_count": six_count, "seven": seven, "six_again": six_again, "clamped": clamped, "committed": committed.get("reason"), "count": committed.get("changes", {}).get("count", 0), "one_item": one_item, "chain": loop_chain.size(), "chain_ok": chain_ok, "arc_drawn": arc_drawn, "rides_circle": rides_circle, "cart": loop_cart.get("reason"), "top_frame": top_reached, "exit_frame": exit_reached, "red": red, "nothing_laid": nothing_laid, "refused": refused.get("reason"), "round_trip": round_trip, "restored": restored.get("reason")})
 
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on
@@ -339,8 +344,11 @@ func _run_visual() -> void:
 	if app.session.coaster_carts != null:
 		# Through the entry, the first switcher, the base and up the far
 		# side to the top of the circle (about 18 cells at speed 3).
-		for _frame in range(215):
+		for _frame in range(900):
 			app.session.coaster_carts.advance(1.0 / 30.0, false)
+			var top_now := app.session.coaster_carts.rider_cell(cart_id)
+			if top_now.y >= origin.y + 5 and absi(top_now.x - (origin.x - 3)) <= 1:
+				break
 	for _frame in range(4):
 		await get_tree().physics_frame
 	player.global_position = Vector3(origin) + Vector3(-1.5, 5.0, 14.0)
@@ -367,7 +375,7 @@ func _run_visual() -> void:
 	var cart_body: Node3D = app.session._station_visuals.get(cart_id)
 	var cart_parts := cart_body.find_children("*", "MeshInstance3D", true, false).size() if cart_body != null else 0
 	var cart_cell := app.session.coaster_carts.rider_cell(cart_id) if app.session.coaster_carts != null else Vector3i(0, -9999, 0)
-	_record("T163_COASTER_RENDERED", committed.get("reason") == "LOOP_PLACED" and cart.get("ok", false) and slope_ok and slope_cart.get("ok", false) and error == OK and image.get_size() == Vector2i(1280, 720) and loop_parts >= 120 and cart_parts >= 18 and cart_cell.y >= origin.y + 5, "a size-6 loop element (switchers, slopes and the round circle) renders with a mine cart on it, beside a slope run climbing a step with its own cart, in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "committed": committed.get("reason"), "cart": cart.get("reason"), "slope_ok": slope_ok, "slope_cart": slope_cart.get("reason"), "loop_parts": loop_parts, "cart_parts": cart_parts, "cart_cell": cart_cell})
+	_record("T163_COASTER_RENDERED", committed.get("reason") == "LOOP_PLACED" and cart.get("ok", false) and slope_ok and slope_cart.get("ok", false) and error == OK and image.get_size() == Vector2i(1280, 720) and loop_parts >= 120 and cart_parts >= 18 and cart_cell.y >= origin.y + 5, "a size-6 loop element (switchers, slopes and the octagon) renders with a mine cart on it, beside a slope run climbing a step with its own cart, in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "committed": committed.get("reason"), "cart": cart.get("reason"), "slope_ok": slope_ok, "slope_cart": slope_cart.get("reason"), "loop_parts": loop_parts, "cart_parts": cart_parts, "cart_cell": cart_cell})
 
 
 func _count_entities(ws: WorkstationService, entity_id: String) -> int:

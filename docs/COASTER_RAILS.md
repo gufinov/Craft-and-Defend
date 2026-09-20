@@ -93,3 +93,7 @@ Rail Loop is one element: hold it, aim at the ground where the **entry** goes an
 ### Sandbox cleared; steady heading (owner 2026-09-20)
 
 The sandbox plate holds only the size-6 loop, its circuit and the coaster car. A cart's body heading now follows the chord from the previous cell's point to the target's point, eased at `HEADING_RATE` 10/s (`CoasterCartService._ride`); aiming at the very next point made the body flick sideways where two points sit close together on the circle or across a switcher.
+
+### Octagon loop; no roll (owner 2026-09-20)
+
+The loop element's ring is now an **octagon** of straight pieces (owner: "build it more like an octagon so the rails remain flat"): from each slope's top a vertical run of size − 2 pieces one column outside the slope, then a flat top row of `size` pieces whose end pieces join the runs diagonally; as wide as the base plus the runs and as tall as it is wide. Every piece rides its cell centre; the top row draws as rail pieces, the runs and corners as loop arms. The ride view rolled because a cart's up vector was the cell-quantised curvature normal (departure − arrival), which flips on stair-step cells; loop pieces now carry the loop's centre (`loop_up_center`, `CoasterRails.lean_center`) and riders lean straight at it (`CoasterCartService._up_at`): upright on the runs' outer side, inverted over the top, never sideways. The true-circle arc code (`loop_center`, `_build_loop_arc_visual`) stays available but unused by the element.
