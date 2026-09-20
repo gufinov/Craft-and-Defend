@@ -70,6 +70,34 @@ func run(application: CraftAndDefendApp) -> void:
 			print("FACING t=%.1f cell=%s travel=%s hero=%s dot=%.2f rig_up=%s cam_from_rig=%s" % [sample * 0.5, app.session.coaster_carts.rider_cell(str(loop_car_id)), travel, hero_forward, travel.dot(hero_forward), rig.global_basis.y, (ride.ride_camera().global_position - rig.global_position)])
 		print("FACING reversals=%d" % reversals)
 		get_tree().quit(0)
+	if OS.get_cmdline_user_args().has("--coaster-sandbox-switch-click"):
+		# A real right-click (press, a few frames, release) with Rail Switch
+		# held, aiming at clear plate: four pieces must be laid.
+		var player := app.session.player
+		app.session.inventory.select_hotbar(STOCK.find("rail_switch"))
+		player.global_position = Vector3(4.0, 1.0, 26.0)
+		player.rotation = Vector3.ZERO
+		player.look_pitch = -0.6
+		player.apply_mouse_look(Vector2.ZERO)
+		await get_tree().process_frame
+		var before := 0
+		for station_id: String in app.session.workstations.stations:
+			if str(app.session.workstations.station(station_id).get("entity_id", "")) == "rail_switch":
+				before += 1
+		for pressed in [true, false]:
+			var click := InputEventMouseButton.new()
+			click.button_index = MOUSE_BUTTON_RIGHT
+			click.pressed = pressed
+			Input.parse_input_event(click)
+			for _frame in range(5):
+				await get_tree().process_frame
+			print("SWITCH_CLICK pressed=%s drag=%s state=%s" % [pressed, app.session.interaction.drag_active(), app.session.interaction.drag_state().get("mode", "")])
+		var after := 0
+		for station_id: String in app.session.workstations.stations:
+			if str(app.session.workstations.station(station_id).get("entity_id", "")) == "rail_switch":
+				after += 1
+		print("SWITCH_CLICK laid %d pieces" % (after - before))
+		get_tree().quit(0)
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-switch-check"):
 		# The mine cart on the switcher demo rides from lane 0 through the
 		# diagonal to lane 1 and back: print its cells for 8 s.

@@ -1106,7 +1106,7 @@ func secondary_press_from_view(origin: Vector3, direction: Vector3) -> Dictionar
 	if not station_id.is_empty() and not workstations.station_type(station_id).is_empty():
 		return _finish(true, "OPEN_STATION", {"instance_id": station_id, "station": workstations.station(station_id)})
 	var item := registry.item(inventory.active_item_id())
-	if item.has("places_block") or is_linear_entity_item(inventory.active_item_id()) or is_coaster_loop_item(inventory.active_item_id()):
+	if item.has("places_block") or is_linear_entity_item(inventory.active_item_id()) or is_coaster_loop_item(inventory.active_item_id()) or is_lane_switch_item(inventory.active_item_id()):
 		return begin_drag_place(origin, direction)
 	return place_from_view(origin, direction)
 

@@ -132,6 +132,14 @@ func _run_gate() -> void:
 		switch_slot = 3
 	app.session.inventory.select_hotbar(switch_slot)
 	interaction.placement_rotation_quarters = 1
+	# The right-press path itself must start the switcher drag (owner
+	# 2026-09-20: it placed a single piece when it fell through to the
+	# one-cell placement).
+	var press_origin := Vector3(sw) + Vector3(4.5, 2.0, 3.0)
+	var press_aim := (Vector3(sw) + Vector3(4.5, 0.0, 0.5) - press_origin).normalized()
+	var press_started := interaction.secondary_press_from_view(press_origin, press_aim)
+	var press_mode := str(interaction.drag_state().get("mode", ""))
+	interaction.cancel_drag_place()
 	var sw_started := interaction.begin_lane_switch_at(sw + Vector3i(4, 0, 0))
 	var sw_ghost := interaction.drag_state()
 	var sw_ghost_cells: Array = sw_ghost.get("cells", [])
@@ -177,7 +185,7 @@ func _run_gate() -> void:
 			if far_frame >= 0 and home_frame < 0 and cell == sw:
 				home_frame = frame
 				break
-	_record("T168_LANE_SWITCHER", sw_ok and sw_started.get("ok", false) and sw_ghost_ok and sw_laid.get("reason") == "SWITCH_PLACED" and switch_spent and sw_shape and sw_chain.size() == 12 and control_alone and rides_diagonal and kettle_on_diagonal and mid_diagonal and sw_cart.get("ok", false) and crossed_mid_b and far_frame > 0 and home_frame > far_frame, "the Lane Switcher drag ghosts four cells (entry, two middles side by side, exit one lane right) and lays them for four items; with four rails before and four after on the new lane the twelve pieces chain; a lane-0 rail beside the lane-1 middle stays alone; the middles ride a quarter cell onto their diagonal (kettles too) and draw diagonal rails; a mine cart crosses to the far rail and comes home", {"placed": sw_ok, "started": sw_started.get("reason"), "ghost": sw_ghost_ok, "laid": sw_laid.get("reason"), "spent": switch_spent, "shape": sw_shape, "chain": sw_chain.size(), "control_alone": control_alone, "ride_a": ride_a, "ride_b": ride_b, "kettle": kettle_point, "mid_diagonal": mid_diagonal, "cart": sw_cart.get("reason"), "crossed": crossed_mid_b, "far_frame": far_frame, "home_frame": home_frame})
+	_record("T168_LANE_SWITCHER", sw_ok and press_started.get("reason") == "DRAG_STARTED" and press_mode == "lane_switch" and sw_started.get("ok", false) and sw_ghost_ok and sw_laid.get("reason") == "SWITCH_PLACED" and switch_spent and sw_shape and sw_chain.size() == 12 and control_alone and rides_diagonal and kettle_on_diagonal and mid_diagonal and sw_cart.get("ok", false) and crossed_mid_b and far_frame > 0 and home_frame > far_frame, "the Lane Switcher drag ghosts four cells (entry, two middles side by side, exit one lane right) and lays them for four items; with four rails before and four after on the new lane the twelve pieces chain; a lane-0 rail beside the lane-1 middle stays alone; the middles ride a quarter cell onto their diagonal (kettles too) and draw diagonal rails; a mine cart crosses to the far rail and comes home", {"placed": sw_ok, "press": press_started.get("reason"), "press_mode": press_mode, "started": sw_started.get("reason"), "ghost": sw_ghost_ok, "laid": sw_laid.get("reason"), "spent": switch_spent, "shape": sw_shape, "chain": sw_chain.size(), "control_alone": control_alone, "ride_a": ride_a, "ride_b": ride_b, "kettle": kettle_point, "mid_diagonal": mid_diagonal, "cart": sw_cart.get("reason"), "crossed": crossed_mid_b, "far_frame": far_frame, "home_frame": home_frame})
 	if sw_cart.get("ok", false):
 		ws.try_dismantle(sw_cart_id, world.query_cell, AABB())
 
