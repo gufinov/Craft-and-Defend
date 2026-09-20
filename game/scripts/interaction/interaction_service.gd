@@ -95,8 +95,19 @@ func try_place_item(cell: Vector3i, item_id: String, expected_world_revision: in
 	if checked.get("kind") == "entity":
 		if workstations == null:
 			return _finish(false, "PLACEMENT_UNAVAILABLE")
+		var clearing: Dictionary = {}
+		var to_clear: Array[Vector3i] = []
+		for clear_cell in checked.get("clear", []):
+			if clear_cell is Vector3i:
+				to_clear.append(clear_cell)
+		if not to_clear.is_empty():
+			clearing = clear_cells_for_track(to_clear)
 		var station_result := workstations.try_place(str(item.places_entity), cell, world.query_cell, player_body_aabb.call(), rotation)
-		return _finish(bool(station_result.get("ok", false)), str(station_result.get("reason", "PLACEMENT_FAILED")), station_result.get("details", {}))
+		var details: Dictionary = (station_result.get("details", {}) as Dictionary).duplicate()
+		if int(clearing.get("cleared", 0)) > 0:
+			details["cleared"] = int(clearing.cleared)
+			details["drops"] = clearing.drops
+		return _finish(bool(station_result.get("ok", false)), str(station_result.get("reason", "PLACEMENT_FAILED")), details)
 	var voxel_id := int(item.places_block)
 	if not world.set_cell(cell, voxel_id):
 		return _finish(false, "WORLD_WRITE_FAILED")
@@ -117,7 +128,13 @@ func preview_place_item(cell: Vector3i, item_id: String, rotation_quarters: int 
 			return {"ok": false, "reason": "PLACEMENT_UNAVAILABLE"}
 		var entity_id := str(item.places_entity)
 		var entity_result := workstations.preview_placement(entity_id, cell, rotation, world.query_cell, player_body_aabb.call())
-		return {"ok": bool(entity_result.get("ok", false)), "reason": str(entity_result.get("reason", "PLACEMENT_FAILED")), "kind": "entity", "entity_id": entity_id, "rotation_quarters": rotation}
+		var clear_cells: Array[Vector3i] = []
+		if not entity_result.get("ok", false):
+			var plan := auto_clear_plan(entity_id, cell, rotation, str(entity_result.get("reason", "PLACEMENT_FAILED")))
+			if plan.get("ok", false):
+				entity_result = {"ok": true, "reason": "OK"}
+				clear_cells = plan.cells
+		return {"ok": bool(entity_result.get("ok", false)), "reason": str(entity_result.get("reason", "PLACEMENT_FAILED")), "kind": "entity", "entity_id": entity_id, "rotation_quarters": rotation, "clear": clear_cells}
 	if not item.has("places_block"):
 		return {"ok": false, "reason": "NOT_PLACEABLE"}
 	var query := world.query_cell(cell)
@@ -219,14 +236,17 @@ func _replan_entity_line() -> void:
 		cell[axis] += index * step
 		var check := workstations.preview_placement(str(_drag.entity_id), cell, rotation, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB())
 		var reason := str(check.get("reason", "PLACEMENT_FAILED"))
+		var clear_plan := {"ok": false, "cells": []} if check.get("ok", false) else auto_clear_plan(str(_drag.entity_id), cell, rotation, reason)
 		var state := "ok"
-		if not check.get("ok", false):
+		if not check.get("ok", false) and not clear_plan.get("ok", false):
 			state = "blocked"
 		elif budget <= 0:
 			state = "unaffordable"
 		else:
 			budget -= 1
-		entries.append({"cell": cell, "state": state, "reason": reason, "voxel_id": 0, "item_id": str(_drag.item_id), "entity_id": str(_drag.entity_id)})
+			if clear_plan.get("ok", false):
+				state = "clear"
+		entries.append({"cell": cell, "state": state, "reason": reason, "voxel_id": 0, "item_id": str(_drag.item_id), "entity_id": str(_drag.entity_id), "clear": clear_plan.cells})
 	_drag.cells = entries
 
 
@@ -434,11 +454,11 @@ func drag_state() -> Dictionary:
 		return {"active": false}
 	var affordable := 0
 	for entry in _drag.cells:
-		if str(entry.state) == "ok":
+		if str(entry.state) in ["ok", "clear"]:
 			affordable += 1
 	var costs: Dictionary = {}
 	for entry in _drag.cells:
-		if str(entry.state) == "ok":
+		if str(entry.state) in ["ok", "clear"]:
 			var entry_item := str(entry.get("item_id", _drag.get("item_id", "")))
 			costs[entry_item] = int(costs.get(entry_item, 0)) + 1
 	return {"active": true, "snapped": bool(_drag.get("snapped", false)), "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single"), "loop_size": loop_diameter if loop_true else loop_size, "loop_true": loop_true, "loop_radius": float(_drag.get("radius", 0.0)), "loop_cells": int(_drag.get("loop_cells", 0)), "climb_length": climb_length, "climb_rise": climb_rise, "curve_length": int(_drag.get("curve_length", 0)), "curve_lanes": int(_drag.get("curve_lanes", 0)), "curve_cells": int(_drag.get("curve_cells", 0)), "curve_radius": curve_radius, "curve_sweep": curve_sweep, "curve_left": curve_left, "curve_exit": _drag.get("curve_exit", _drag.anchor), "curve_diagonal_entry": bool(_drag.get("diagonal_entry", false))}
@@ -520,12 +540,14 @@ func _commit_entity_line() -> Dictionary:
 	var rotation := int(_drag.get("rotation", 0))
 	var cells: Array[Vector3i] = []
 	for entry in _drag.cells:
-		if str(entry.state) == "ok":
+		if str(entry.state) in ["ok", "clear"]:
 			cells.append(entry.cell)
+	var to_clear := _clear_cells_of(_drag.cells)
 	var item_id := str(_drag.get("item_id", ""))
 	_drag = {}
 	if cells.is_empty():
 		return _finish(false, "DRAG_EMPTY")
+	var clearing := clear_cells_for_track(to_clear)
 	var placed := 0
 	for cell in cells:
 		var result := workstations.try_place(entity_id, cell, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB(), rotation)
@@ -533,7 +555,7 @@ func _commit_entity_line() -> Dictionary:
 			placed += 1
 	if placed == 0:
 		return _finish(false, "PLACEMENT_FAILED")
-	return _finish(true, "LINE_PLACED", {"cells": cells, "count": placed, "entity_id": entity_id, "items": {item_id: -placed}})
+	return _finish(true, "LINE_PLACED", {"cells": cells, "count": placed, "entity_id": entity_id, "items": {item_id: -placed}, "cleared": int(clearing.cleared), "drops": clearing.drops})
 
 
 # ---------------------------------------------------------------------------
@@ -565,6 +587,109 @@ var loop_diameter := 8
 ## Loop item from anywhere in the pack, so the biggest loop is as big as the
 ## pack allows (owner 2026-09-20), and never taller than the world.
 var creative := false
+## Track auto-clear (CoasterCraft card 6, docs/COASTER_RAILS.md): the
+## "Track auto-clear" setting. When on, every track lay tool treats a cell
+## blocked only by clearable natural terrain as clearable: the ghost shows
+## it amber ("clear"), and on commit the blocking voxels are mined first
+## (their drops go to the pack, or are lost when it is full), then the piece
+## is laid. Water, bedrock, protected blocks, castle stone and planks (the
+## player's own building) and entity cells are never cleared; support cells
+## (below a slope) are never cleared either.
+var auto_clear := false
+## Blocks that read as player-built: the world keeps no edit record, so
+## these voxels are never cleared wherever they stand.
+const NEVER_CLEARED: Array[String] = ["castle_stone", "planks"]
+
+
+## Whether a voxel may be mined away for a track piece.
+func clearable_voxel(voxel_id: int) -> bool:
+	if voxel_id == AIR:
+		return false
+	var block := registry.block_for_voxel(voxel_id)
+	if block.is_empty() or bool(block.get("protected", false)) or not bool(block.get("solid", true)):
+		return false
+	return str(block.get("id", "")) not in NEVER_CLEARED
+
+
+## With auto-clear on and `entity_id` a track piece refused as OCCUPIED at
+## `cell`, the terrain cells the piece would clear: {ok, cells, reason}.
+## `ok` only when every occupied cell holds air or clearable terrain (no
+## entity, nothing propping another entity) and the placement passes with
+## those cells treated as air (its support cells stay as they are).
+func auto_clear_plan(entity_id: String, cell: Vector3i, rotation: int, reason: String) -> Dictionary:
+	if not auto_clear or reason != "OCCUPIED" or workstations == null or not CoasterRails.is_track_id(entity_id):
+		return {"ok": false, "cells": [], "reason": reason}
+	var definition := registry.entity(entity_id)
+	var cleared: Array[Vector3i] = []
+	for offset_value in definition.get("occupied_offsets", [[0, 0, 0]]):
+		if not offset_value is Array or (offset_value as Array).size() != 3:
+			return {"ok": false, "cells": [], "reason": reason}
+		var offset := Vector3i(int(offset_value[0]), int(offset_value[1]), int(offset_value[2]))
+		var occupied: Vector3i = cell + workstations.footprints.rotate_offset(offset, rotation)
+		var query := world.query_cell(occupied)
+		if query.get("state") != "LOADED":
+			return {"ok": false, "cells": [], "reason": str(query.get("state", "UNLOADED"))}
+		var voxel_id := int(query.get("voxel_id", AIR))
+		if voxel_id == AIR:
+			continue
+		if not clearable_voxel(voxel_id) or workstations.supported_by(occupied) or not workstations.station_at_cell(occupied).is_empty():
+			return {"ok": false, "cells": [], "reason": reason}
+		cleared.append(occupied)
+	if cleared.is_empty():
+		return {"ok": false, "cells": [], "reason": reason}
+	var check := workstations.preview_placement(entity_id, cell, rotation, masked_query(cleared), player_body_aabb.call() if player_body_aabb.is_valid() else AABB())
+	if not check.get("ok", false):
+		return {"ok": false, "cells": [], "reason": str(check.get("reason", reason))}
+	return {"ok": true, "cells": cleared, "reason": "OK"}
+
+
+## A world query that reports `cleared` cells as air (the world after the
+## clearing), for validating a placement before the terrain is mined.
+func masked_query(cleared: Array[Vector3i]) -> Callable:
+	return func(cell: Vector3i) -> Dictionary:
+		var query := world.query_cell(cell)
+		if cleared.has(cell) and query.get("state") == "LOADED":
+			return {"state": "LOADED", "voxel_id": AIR}
+		return query
+
+
+## Mines `cells` for a track piece: the voxels become air and their drops
+## join the pack as if mined by hand (a full pack loses the drop). Returns
+## {cleared, drops}; cells that are already air are skipped.
+func clear_cells_for_track(cells: Array[Vector3i]) -> Dictionary:
+	var cleared := 0
+	var drops: Dictionary = {}
+	for cell in cells:
+		var query := world.query_cell(cell)
+		var voxel_id := int(query.get("voxel_id", AIR))
+		if query.get("state") != "LOADED" or voxel_id == AIR or not clearable_voxel(voxel_id):
+			continue
+		if not world.set_cell(cell, AIR):
+			continue
+		cleared += 1
+		var drop_value: Variant = registry.block_for_voxel(voxel_id).get("drop")
+		if drop_value != null:
+			drops[str(drop_value)] = int(drops.get(str(drop_value), 0)) + 1
+	var banked: Dictionary = {}
+	for drop_id: String in drops:
+		var count := int(drops[drop_id])
+		while count > 0 and not inventory.try_transaction({}, {drop_id: count}).get("ok", false):
+			count -= 1
+		if count > 0:
+			banked[drop_id] = count
+	return {"cleared": cleared, "drops": banked}
+
+
+## The clearable cells of every "clear" ghost entry, in plan order.
+func _clear_cells_of(entries: Array) -> Array[Vector3i]:
+	var cells: Array[Vector3i] = []
+	for entry in entries:
+		if str(entry.get("state", "")) != "clear":
+			continue
+		for cell in entry.get("clear", []):
+			if cell is Vector3i and not cells.has(cell):
+				cells.append(cell)
+	return cells
 
 
 ## The largest diameter at or under `wanted` whose pieces the pack can pay
@@ -668,12 +793,15 @@ func _replan_loop_element() -> void:
 		var cell: Vector3i = piece.cell
 		var entity_id := str(piece.entity_id)
 		var check := workstations.preview_placement(entity_id, cell, int(piece.rotation), world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB())
+		var clear_plan := {"ok": false, "cells": []} if check.get("ok", false) else auto_clear_plan(entity_id, cell, int(piece.rotation), str(check.get("reason", "PLACEMENT_FAILED")))
 		var state := "ok"
-		if not check.get("ok", false):
+		if not check.get("ok", false) and not clear_plan.get("ok", false):
 			state = "blocked"
 		elif not affordable:
 			state = "unaffordable"
-		entries.append({"cell": cell, "state": state, "reason": str(check.get("reason", "PLACEMENT_FAILED")), "voxel_id": 0, "item_id": str(_drag.item_id), "entity_id": entity_id, "rotation": int(piece.rotation), "joints": piece.joints, "extra": piece.extra})
+		elif clear_plan.get("ok", false):
+			state = "clear"
+		entries.append({"cell": cell, "state": state, "reason": str(check.get("reason", "PLACEMENT_FAILED")), "voxel_id": 0, "item_id": str(_drag.item_id), "entity_id": entity_id, "rotation": int(piece.rotation), "joints": piece.joints, "extra": piece.extra, "clear": clear_plan.cells})
 	_drag.cells = entries
 	_drag.loop_cells = layout.pieces.size()
 	_drag.radius = layout.radius
@@ -686,13 +814,14 @@ func _commit_loop_element() -> Dictionary:
 	var entries: Array = _drag.cells
 	_drag = {}
 	for entry in entries:
-		if str(entry.state) != "ok":
+		if str(entry.state) not in ["ok", "clear"]:
 			return _finish(false, "LOOP_BLOCKED" if str(entry.state) == "blocked" else "NO_RESOURCE", {"cell": entry.cell, "why": entry.reason})
 	var price := 0 if creative else (entries.size() if loop_true else 1)
 	if price > 0:
 		var paid := inventory.try_transaction({item_id: price}, {})
 		if not paid.get("ok", false):
 			return _finish(false, str(paid.get("reason", "NO_RESOURCE")))
+	var clearing := clear_cells_for_track(_clear_cells_of(entries))
 	var cells: Array[Vector3i] = []
 	for entry in entries:
 		var cell: Vector3i = entry.cell
@@ -708,7 +837,7 @@ func _commit_loop_element() -> Dictionary:
 		if not result.get("ok", false):
 			return _finish(false, str(result.get("reason", "PLACEMENT_FAILED")), {"cells": cells, "cell": cell})
 		cells.append(cell)
-	return _finish(true, "LOOP_PLACED", {"cells": cells, "count": cells.size(), "size": loop_diameter if loop_true else loop_size, "items": {item_id: -price}})
+	return _finish(true, "LOOP_PLACED", {"cells": cells, "count": cells.size(), "size": loop_diameter if loop_true else loop_size, "items": {item_id: -price}, "cleared": int(clearing.cleared), "drops": clearing.drops})
 
 
 # ---------------------------------------------------------------------------
@@ -1102,14 +1231,17 @@ func _replan_lane_switch() -> void:
 	for piece: Dictionary in CoasterRails.switch_layout(_drag.anchor, rotation):
 		var cell: Vector3i = piece.cell
 		var check := workstations.preview_placement(str(_drag.entity_id), cell, rotation, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB())
+		var clear_plan := {"ok": false, "cells": []} if check.get("ok", false) else auto_clear_plan(str(_drag.entity_id), cell, rotation, str(check.get("reason", "PLACEMENT_FAILED")))
 		var state := "ok"
-		if not check.get("ok", false):
+		if not check.get("ok", false) and not clear_plan.get("ok", false):
 			state = "blocked"
 		elif budget <= 0:
 			state = "unaffordable"
 		else:
 			budget -= 1
-		entries.append({"cell": cell, "state": state, "reason": str(check.get("reason", "PLACEMENT_FAILED")), "voxel_id": 0, "item_id": str(_drag.item_id), "entity_id": str(_drag.entity_id), "joints": piece.joints, "role": str(piece.role)})
+			if clear_plan.get("ok", false):
+				state = "clear"
+		entries.append({"cell": cell, "state": state, "reason": str(check.get("reason", "PLACEMENT_FAILED")), "voxel_id": 0, "item_id": str(_drag.item_id), "entity_id": str(_drag.entity_id), "joints": piece.joints, "role": str(piece.role), "clear": clear_plan.cells})
 	_drag.cells = entries
 
 
@@ -1121,8 +1253,9 @@ func _commit_lane_switch() -> Dictionary:
 	var entries: Array = _drag.cells
 	_drag = {}
 	for entry in entries:
-		if str(entry.state) != "ok":
+		if str(entry.state) not in ["ok", "clear"]:
 			return _finish(false, "SWITCH_BLOCKED" if str(entry.state) == "blocked" else "NO_RESOURCE")
+	var clearing := clear_cells_for_track(_clear_cells_of(entries))
 	var cells: Array[Vector3i] = []
 	for entry in entries:
 		var cell: Vector3i = entry.cell
@@ -1135,7 +1268,7 @@ func _commit_lane_switch() -> Dictionary:
 		if not result.get("ok", false):
 			return _finish(false, str(result.get("reason", "PLACEMENT_FAILED")), {"cells": cells})
 		cells.append(cell)
-	return _finish(true, "SWITCH_PLACED", {"cells": cells, "count": cells.size(), "entity_id": entity_id, "items": {item_id: -cells.size()}})
+	return _finish(true, "SWITCH_PLACED", {"cells": cells, "count": cells.size(), "entity_id": entity_id, "items": {item_id: -cells.size()}, "cleared": int(clearing.cleared), "drops": clearing.drops})
 
 
 # ---------------------------------------------------------------------------
@@ -1626,6 +1759,7 @@ func placement_preview_from_view(origin: Vector3, direction: Vector3) -> Diction
 		"voxel_id": int(checked.get("voxel_id", item.get("places_block", AIR))),
 		"anchor": anchor,
 		"rotation_quarters": placement_rotation_quarters,
+		"clear": (checked.get("clear", []) as Array).size(),
 	}
 
 

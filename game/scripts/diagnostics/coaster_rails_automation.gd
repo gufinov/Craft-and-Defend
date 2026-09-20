@@ -12,6 +12,9 @@ extends Node
 ## track. Runs with `--coaster-rails-automation=gate` (headless: T160-T162, T168,
 ## T173-T174) and `--coaster-rails-automation=visual` (needs a window: T163
 ## renders `coaster-rails.png`, T175 `coaster-curves.png`).
+## T168, T179 track auto-clear, T180 trestle supports) and
+## `--coaster-rails-automation=visual` (needs a window: T163 renders
+## `coaster-rails.png`, T181 `coaster-supports.png`).
 
 var app: CraftAndDefendApp
 var failures: Array[String] = []
@@ -839,6 +842,141 @@ func _run_gate() -> void:
 	if fb_cart.get("ok", false):
 		ws.try_dismantle(fb_cart_id, world.query_cell, AABB())
 	_record("T174_UTURN_AND_45S", ut_ghost_ok and ut_laid.get("reason") == "CURVE_PLACED" and ut_shape and ut_rails and ut_joined and ut_cart.get("ok", false) and ut_far > 0 and ut_home > ut_far and fa_laid.get("reason") == "CURVE_PLACED" and fa_diagonal and fa_rail.get("ok", false) and fa_rail_alone and fb_diagonal_entry and fb_laid.get("reason") == "CURVE_PLACED" and fb_turns_to_z and fb_rails and fb_joined and fb_cart.get("ok", false) and fb_far > 0, "a 180-degree curve of radius 3 entered heading +x exits 6 cells to the right (2R) heading -x and joins three rails at each end; a cart rides to the far rail and home; a 45-degree curve of radius 6 ends on the diagonal (-x, -z) cell, which a plain rail cannot join; a Curve pressed on that cell takes the diagonal heading and its 45 bends to -z, and the two 45s with rails behind and beyond chain as one track a cart rides to the far end", {"ghost": ut_ghost_ok, "laid": ut_laid.get("reason"), "exit": ut_exit, "shape": ut_shape, "rails": ut_rails, "chain": ut_chain.size(), "joined": ut_joined, "cart": ut_cart.get("reason"), "far": ut_far, "home": ut_home, "fa_laid": fa_laid.get("reason"), "fa_exit": fa_exit, "fa_ahead": fa_ahead, "fa_diagonal": fa_diagonal, "fa_rail": fa_rail.get("reason"), "fa_rail_alone": fa_rail_alone, "fb_diagonal_entry": fb_diagonal_entry, "fb_laid": fb_laid.get("reason"), "fb_exit": fb_exit, "fb_heading": fb_heading, "fb_turns_to_z": fb_turns_to_z, "fb_rails": fb_rails, "fb_chain": fb_chain.size(), "fb_joined": fb_joined, "fb_cart": fb_cart.get("reason"), "fb_far": fb_far})
+	# T179 track auto-clear (CoasterCraft card 6): with the setting off a
+	# loop ghost over stone, water and castle stone shows those cells red and
+	# is refused; on, the stone cell alone turns amber ("clear"), water and
+	# castle stone stay red; with only the stone in the way release mines it
+	# (the pack gains the stone), lays every piece and reports the count; a
+	# rail line through a dirt bump clears it too; the setting persists in
+	# settings.cfg and a fresh store reads it back.
+	var clear_anchor := Vector3i(-14, 0, 66)
+	var clear_layout := CoasterRails.helix_layout(clear_anchor, 3, 8)
+	var clear_cells: Array[Vector3i] = clear_layout.cells
+	# This plate lies far from the spawn: level it once its chunks are in.
+	var plate_loaded := await _wait_levelled(clear_anchor + Vector3i(-12, 0, -4), 22, 8, 14, clear_cells)
+	var stone_cell := Vector3i.MAX
+	var water_cell := Vector3i.MAX
+	var castle_cell := Vector3i.MAX
+	for cell: Vector3i in clear_cells:
+		if cell.y == clear_anchor.y + 3 and stone_cell == Vector3i.MAX:
+			stone_cell = cell
+		elif cell.y == clear_anchor.y + 2 and water_cell == Vector3i.MAX:
+			water_cell = cell
+		elif cell.y == clear_anchor.y + 1 and castle_cell == Vector3i.MAX and cell != water_cell:
+			castle_cell = cell
+	world.set_cell(stone_cell, 3)
+	world.set_cell(water_cell, 12)
+	world.set_cell(castle_cell, 8)
+	app.session.inventory.try_transaction({}, {"rail_loop": 60, "rail": 8})
+	loop_slot = _hotbar_slot_for("rail_loop", 2)
+	var auto_clear_off: bool = not interaction.auto_clear and not app.settings.track_auto_clear
+	interaction.placement_rotation_quarters = 3
+	interaction.begin_coaster_loop_at(clear_anchor)
+	interaction.set_loop_diameter(8)
+	var off_states: Dictionary = {}
+	for entry in interaction.drag_state().get("cells", []):
+		off_states[entry.cell] = str(entry.state)
+	var off_red: bool = off_states.get(stone_cell, "") == "blocked" and off_states.get(water_cell, "") == "blocked" and off_states.get(castle_cell, "") == "blocked"
+	var off_red_count := 0
+	for cell: Vector3i in off_states:
+		if str(off_states[cell]) == "blocked":
+			off_red_count += 1
+	var off_stations := ws.stations.size()
+	var off_refused := interaction.commit_drag_place()
+	var off_nothing: bool = off_refused.get("reason") == "LOOP_BLOCKED" and ws.stations.size() == off_stations and int(world.query_cell(stone_cell).get("voxel_id", 0)) == 3
+	# The pause-menu toggle turns it on (settings.cfg) and the session mirrors it.
+	app._toggle_track_auto_clear()
+	var mirrored: bool = app.settings.track_auto_clear and interaction.auto_clear and app.track_auto_clear_button.text.ends_with("on")
+	var config := ConfigFile.new()
+	var persisted: bool = config.load(app.data_root.path_join("settings.cfg")) == OK and bool(config.get_value("track", "auto_clear", false))
+	var fresh_store := SettingsStore.new(app.data_root)
+	fresh_store.load_and_apply()
+	var reloaded: bool = fresh_store.track_auto_clear
+	interaction.placement_rotation_quarters = 3
+	interaction.begin_coaster_loop_at(clear_anchor)
+	interaction.set_loop_diameter(8)
+	var on_states: Dictionary = {}
+	var on_clear_cells: Array = []
+	for entry in interaction.drag_state().get("cells", []):
+		on_states[entry.cell] = str(entry.state)
+		if str(entry.state) == "clear":
+			on_clear_cells.append(entry.get("clear", []))
+	var on_amber: bool = on_states.get(stone_cell, "") == "clear" and on_states.get(water_cell, "") == "blocked" and on_states.get(castle_cell, "") == "blocked"
+	var on_amber_exact: bool = on_clear_cells.size() == 1 and on_clear_cells[0] is Array and (on_clear_cells[0] as Array).size() == 1 and on_clear_cells[0][0] == stone_cell
+	var still_refused := interaction.commit_drag_place()
+	var water_stays: bool = still_refused.get("reason") == "LOOP_BLOCKED" and ws.stations.size() == off_stations and int(world.query_cell(stone_cell).get("voxel_id", 0)) == 3
+	# Only the stone in the way: release mines it and lays the loop.
+	world.set_cell(water_cell, 0)
+	world.set_cell(castle_cell, 0)
+	interaction.placement_rotation_quarters = 3
+	interaction.begin_coaster_loop_at(clear_anchor)
+	interaction.set_loop_diameter(8)
+	var clear_only := 0
+	var clear_blocked := 0
+	for entry in interaction.drag_state().get("cells", []):
+		if str(entry.state) == "clear":
+			clear_only += 1
+		elif str(entry.state) == "blocked":
+			clear_blocked += 1
+	var stone_before := app.session.inventory.count("stone")
+	var loops_before_clear := app.session.inventory.count("rail_loop")
+	var cleared_laid := interaction.commit_drag_place()
+	interaction.placement_rotation_quarters = 0
+	var cleared_changes: Dictionary = cleared_laid.get("changes", {})
+	var clear_ok: bool = cleared_laid.get("reason") == "LOOP_PLACED" and int(cleared_changes.get("count", 0)) == clear_cells.size() and int(cleared_changes.get("cleared", 0)) == 1 and int(world.query_cell(stone_cell).get("voxel_id", 3)) == 0 and app.session.inventory.count("stone") == stone_before + 1 and loops_before_clear - app.session.inventory.count("rail_loop") == clear_cells.size() and not ws.station_at_cell(stone_cell).is_empty()
+	# A rail line through a dirt bump: the bump turns amber and is mined.
+	var line_anchor := clear_anchor + Vector3i(6, 0, 2)
+	world.set_cell(line_anchor + Vector3i(-2, 0, 0), 2)
+	var rail_slot := -1
+	for slot_index in range(F0Inventory.SLOT_COUNT):
+		if str(app.session.inventory.slots[slot_index].get("item_id", "")) == "rail":
+			rail_slot = slot_index
+	if rail_slot >= F0Inventory.HOTBAR_COUNT:
+		app.session.inventory.swap_slots(rail_slot, 3)
+		rail_slot = 3
+	app.session.inventory.select_hotbar(rail_slot)
+	interaction.begin_entity_line_at(line_anchor)
+	interaction.set_drag_end(line_anchor + Vector3i(-3, 0, 0))
+	var line_states: Dictionary = {}
+	for entry in interaction.drag_state().get("cells", []):
+		line_states[entry.cell] = str(entry.state)
+	var dirt_before := app.session.inventory.count("dirt")
+	var line_laid := interaction.commit_drag_place()
+	var line_ok: bool = line_states.get(line_anchor + Vector3i(-2, 0, 0), "") == "clear" and line_states.get(line_anchor, "") == "ok" and line_laid.get("reason") == "LINE_PLACED" and int(line_laid.get("changes", {}).get("count", 0)) == 4 and int(line_laid.get("changes", {}).get("cleared", 0)) == 1 and app.session.inventory.count("dirt") == dirt_before + 1 and int(world.query_cell(line_anchor + Vector3i(-2, 0, 0)).get("voxel_id", 2)) == 0
+	_record("T179_TRACK_AUTO_CLEAR", plate_loaded and auto_clear_off and off_red and off_red_count == 3 and off_nothing and mirrored and persisted and reloaded and on_amber and on_amber_exact and water_stays and clear_only == 1 and clear_blocked == 0 and clear_ok and line_ok, "auto-clear off: a diameter-8 loop ghost over a stone, a water and a castle-stone cell shows exactly those three red and release lays nothing; the pause-menu toggle turns it on, writes [track] auto_clear to settings.cfg (a fresh store reads it back) and the session mirrors it; on: the stone cell alone is amber (its clear list is exactly that cell), water and castle stone stay red and the loop is still refused; with only the stone in the way release mines it (+1 stone in the pack, reports cleared 1), lays every piece paying one loop each; a rail line through a dirt bump shows the bump amber, mines it (+1 dirt) and lays four rails", {"plate_loaded": plate_loaded, "auto_clear_off": auto_clear_off, "off_red": off_red, "off_states": str(off_states), "off_red_count": off_red_count, "off_nothing": off_nothing, "off_refused": off_refused.get("reason"), "mirrored": mirrored, "persisted": persisted, "reloaded": reloaded, "on_amber": on_amber, "on_amber_exact": on_amber_exact, "on_clear_cells": str(on_clear_cells), "water_stays": water_stays, "clear_only": clear_only, "clear_blocked": clear_blocked, "clear_ok": clear_ok, "cleared_laid": cleared_laid.get("reason"), "cleared": cleared_changes.get("cleared"), "count": cleared_changes.get("count"), "expected_count": clear_cells.size(), "stone_cell": stone_cell, "line_ok": line_ok, "line_laid": line_laid.get("reason"), "line_states": str(line_states)})
+	app._toggle_track_auto_clear()
+
+	# T180 automatic trestle supports (CoasterCraft card 8): the diameter-8
+	# loop just laid grows stone posts under its lower pieces down to the
+	# plate, none under the pieces over the top (inverted) and none under a
+	# piece standing right above another piece of the same curve.
+	var lower_posts := 0
+	var lower_missing: Array = []
+	var top_posts: Array = []
+	var stacked_posts: Array = []
+	var stacked_checked := 0
+	var post_reaches := true
+	var top_y := clear_anchor.y
+	for cell: Vector3i in clear_cells:
+		top_y = maxi(top_y, cell.y)
+	for cell: Vector3i in clear_cells:
+		var body: Node3D = app.session._station_visuals.get(ws.station_at_cell(cell))
+		var support: Node = body.find_child("Support", true, false) if body != null else null
+		var below_same := clear_cells.has(cell + Vector3i(0, -1, 0)) or clear_cells.has(cell + Vector3i(0, -2, 0))
+		if cell.y == top_y:
+			if support != null:
+				top_posts.append(cell)
+		elif below_same:
+			stacked_checked += 1
+			if support != null:
+				stacked_posts.append(cell)
+		elif cell.y >= clear_anchor.y + 1 and cell.y <= clear_anchor.y + 3:
+			if support == null:
+				lower_missing.append(cell)
+			else:
+				lower_posts += 1
+				post_reaches = post_reaches and absf(_post_bottom(support) - float(clear_anchor.y)) < 0.05
+	_record("T180_TRESTLE_SUPPORTS", lower_posts >= 4 and lower_missing.is_empty() and top_posts.is_empty() and stacked_checked > 0 and stacked_posts.is_empty() and post_reaches, "every lower piece of the laid diameter-8 loop (1-3 cells up, not over another piece of the loop) carries a Support node whose post reaches the plate; the top row has none; a piece within two cells above another piece of the same loop has none", {"lower_posts": lower_posts, "lower_missing": str(lower_missing), "top_posts": str(top_posts), "stacked_checked": stacked_checked, "stacked_posts": str(stacked_posts), "post_reaches": post_reaches, "top_y": top_y})
 
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on
@@ -866,7 +1004,7 @@ func _run_visual() -> void:
 	if loop_slot >= F0Inventory.HOTBAR_COUNT:
 		app.session.inventory.swap_slots(loop_slot, 2)
 		loop_slot = 2
-	app.session.inventory.select_hotbar(loop_slot)
+	loop_slot = _hotbar_slot_for("rail_loop", 2)
 	interaction.placement_rotation_quarters = 3
 	interaction.set_loop_size(6)
 	interaction.begin_coaster_loop_at(origin)
@@ -924,6 +1062,8 @@ func _run_visual() -> void:
 	_record("T163_COASTER_RENDERED", committed.get("reason") == "LOOP_PLACED" and cart.get("ok", false) and slope_ok and slope_cart.get("ok", false) and error == OK and image.get_size() == Vector2i(1280, 720) and loop_parts >= 60 and cart_parts >= 18 and cart_cell.y >= origin.y + 5, "a diameter-6 true loop renders with a mine cart on it, beside a slope run climbing a step with its own cart, in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "committed": committed.get("reason"), "cart": cart.get("reason"), "slope_ok": slope_ok, "slope_cart": slope_cart.get("reason"), "loop_parts": loop_parts, "cart_parts": cart_parts, "cart_cell": cart_cell})
 	await _render_smooth_pieces()
 	await _render_climb()
+	await _render_curves()
+	await _render_supports()
 
 
 ## T172: a Smooth Switch and a Crossing with lead-in / exit rails and a
@@ -1276,6 +1416,14 @@ func _render_climb() -> void:
 				climb_parts += body.find_children("*", "MeshInstance3D", true, false).size()
 	_record("T178_CLIMB_RENDERED", climb_laid.get("reason") == "CLIMB_PLACED" and climb_cart.get("ok", false) and climb_error == OK and climb_image.get_size() == Vector2i(1280, 720) and climb_parts >= 40 and climb_cart_cell.y >= climb_origin.y + 3, "a climb of length 12 / rise 6 renders with rails at both ends and a mine cart part way up, seen from the side, in one 1280x720 view", {"path": climb_path, "size": climb_image.get_size(), "error": climb_error, "laid": climb_laid.get("reason"), "cart": climb_cart.get("reason"), "parts": climb_parts, "cart_cell": climb_cart_cell})
 
+## T175: flat curves rendered (`coaster-curves.png`).
+func _render_curves() -> void:
+	var player := app.session.player
+	var ws := app.session.workstations
+	var world := app.session.world
+	var interaction := app.session.interaction
+	var origin := Vector3i(-2, 0, 36)
+
 	# T175 (CoasterCraft card 4): a 90-degree curve, a U-turn and an S of two
 	# 45s render on their own plate in `coaster-curves.png`.
 	var cp := Vector3i(20, 0, 50)
@@ -1360,6 +1508,72 @@ func _render_climb() -> void:
 	_record("T175_CURVES_RENDERED", ninety.get("reason") == "CURVE_PLACED" and uturn.get("reason") == "CURVE_PLACED" and s_first.get("reason") == "CURVE_PLACED" and s_second.get("reason") == "CURVE_PLACED" and curve_cart.get("ok", false) and curve_error == OK and curve_image.get_size() == Vector2i(1280, 720) and curve_parts >= 60 and curve_cart_cell != cp + Vector3i(-2, 0, 0), "a radius-4 90-degree curve with a mine cart on it, a radius-3 U-turn and an S of two radius-5 45s render with rails at their ends in one 1280x720 view", {"path": curve_path, "size": curve_image.get_size(), "error": curve_error, "ninety": ninety.get("reason"), "uturn": uturn.get("reason"), "s_first": s_first.get("reason"), "s_second": s_second.get("reason"), "s_exit": s_exit, "cart": curve_cart.get("reason"), "curve_parts": curve_parts, "cart_cell": curve_cart_cell})
 
 
+## T181: trestle supports rendered (`coaster-supports.png`).
+func _render_supports() -> void:
+	var player := app.session.player
+	var ws := app.session.workstations
+	var world := app.session.world
+	var interaction := app.session.interaction
+	var origin := Vector3i(-2, 0, 36)
+
+	# T181 trestle supports rendered (CoasterCraft card 8): the loop above
+	# grew its posts on placement; a straight of rail_loop pieces laid five
+	# cells up (TrackCurve.make_line) grows a post per piece down to the
+	# plate. Both render in `coaster-supports.png`.
+	var line_start := Vector3(origin) + Vector3(-9.0, 5.55, 3.5)
+	var line_curve := TrackCurve.make_line(line_start, Vector3(1.0, 0.0, 0.0), Vector3(0.0, 0.0, 1.0), 6.0)
+	var line_pieces := TrackCurve.pieces(line_curve, "rail_loop", 1, Vector3i(floori(line_start.x) - 1, 5, floori(line_start.z)), Vector3i(floori(line_start.x) + 6, 5, floori(line_start.z)))
+	var line_cells: Array[Vector3i] = []
+	var line_laid := true
+	for piece: Dictionary in line_pieces:
+		var piece_cell: Vector3i = piece.cell
+		var joints: Array = []
+		for joint in piece.get("joints", []):
+			if joint is Vector3i:
+				var offset: Vector3i = joint - piece_cell
+				joints.append([offset.x, offset.y, offset.z])
+		var extra: Dictionary = (piece.get("extra", {}) as Dictionary).duplicate()
+		extra["coaster_joints"] = joints
+		extra["_free"] = true
+		line_laid = line_laid and bool(ws.try_place("rail_loop", piece_cell, world.query_cell, AABB(), int(piece.rotation), extra).get("ok", false))
+		line_cells.append(piece_cell)
+	var line_posts := 0
+	var line_reach := true
+	for cell: Vector3i in line_cells:
+		var body: Node3D = app.session._station_visuals.get(ws.station_at_cell(cell))
+		var support: Node = body.find_child("Support", true, false) if body != null else null
+		if support != null:
+			line_posts += 1
+			line_reach = line_reach and absf(_post_bottom(support) - float(origin.y)) < 0.05
+	var loop_posts := 0
+	for station_id: String in ws.stations.keys():
+		var station_record: Dictionary = ws.stations[station_id]
+		if str(station_record.get("entity_id", "")) == "rail_loop" and station_record.has("curve") and not line_cells.has(station_record.get("anchor", Vector3i.ZERO)):
+			var loop_body: Node3D = app.session._station_visuals.get(station_id)
+			if loop_body != null and loop_body.find_child("Support", true, false) != null:
+				loop_posts += 1
+	player.global_position = Vector3(origin) + Vector3(-3.0, 4.5, 13.0)
+	player.rotation = Vector3.ZERO
+	player.look_pitch = 0.02
+	player.apply_mouse_look(Vector2.ZERO)
+	for _frame in range(60):
+		await get_tree().process_frame
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+	var supports_path := app.data_root.path_join("coaster-supports.png")
+	var supports_image := get_viewport().get_texture().get_image()
+	var supports_error := supports_image.save_png(supports_path) if supports_image != null else ERR_UNAVAILABLE
+	_record("T181_SUPPORTS_RENDERED", line_laid and line_cells.size() >= 6 and line_posts == line_cells.size() and line_reach and loop_posts >= 4 and supports_error == OK, "a straight of rail_loop pieces laid five cells up grows a stone post per piece down to the plate, the true loop's lower pieces carry posts, and both render in coaster-supports.png", {"path": supports_path, "error": supports_error, "line_laid": line_laid, "line_cells": line_cells.size(), "line_posts": line_posts, "line_reach": line_reach, "loop_posts": loop_posts})
+
+
+## World y of the bottom of a Support node's post (-99 without one).
+func _post_bottom(support: Node) -> float:
+	var post := support.find_child("Post", true, false) as MeshInstance3D
+	if post == null or not post.mesh is BoxMesh:
+		return -99.0
+	return post.global_position.y - (post.mesh as BoxMesh).size.y * 0.5
+
+
 func _count_entities(ws: WorkstationService, entity_id: String) -> int:
 	var count := 0
 	for station_id: String in ws.stations.keys():
@@ -1402,6 +1616,28 @@ func _wait_region_loaded() -> void:
 			return
 		await get_tree().process_frame
 	push_warning("coaster test region did not finish loading in 60 s")
+## Levels a plate and waits (up to ten seconds) until every cell in `cells`
+## reads LOADED and empty and the whole stone plate under it is in,
+## re-levelling as chunks stream in.
+func _wait_levelled(origin: Vector3i, width: int, depth: int, height: int, cells: Array[Vector3i]) -> bool:
+	var deadline := Time.get_ticks_msec() + 10000
+	while Time.get_ticks_msec() < deadline:
+		_level_ground(origin, width, depth, height)
+		var clear := true
+		for cell: Vector3i in cells:
+			var query := app.session.world.query_cell(cell)
+			if query.get("state") != "LOADED" or int(query.get("voxel_id", 1)) != 0:
+				clear = false
+				break
+		for x in range(width):
+			for z in range(depth):
+				var plate := app.session.world.query_cell(origin + Vector3i(x, -1, z))
+				if plate.get("state") != "LOADED" or int(plate.get("voxel_id", 0)) != 3:
+					clear = false
+		if clear:
+			return true
+		await get_tree().process_frame
+	return false
 
 
 func _wait_ready() -> bool:

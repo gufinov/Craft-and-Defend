@@ -97,6 +97,10 @@ var vsync_enabled := DEFAULT_VSYNC_ENABLED
 ## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): the pause-menu
 ## "Hero: Armour on/off" toggle, [hero] armored in settings.cfg.
 var hero_armored := false
+## CoasterCraft card 6 (docs/COASTER_RAILS.md): the pause-menu "Track
+## auto-clear on/off" toggle, [track] auto_clear in settings.cfg. Off by
+## default: track tools refuse terrain in their way unless the player asks.
+var track_auto_clear := false
 
 
 func _init(data_root: String) -> void:
@@ -130,6 +134,7 @@ func load_and_apply() -> Dictionary:
 			view_distance = candidate_view
 		vsync_enabled = bool(config.get_value("graphics", "vsync_enabled", DEFAULT_VSYNC_ENABLED))
 		hero_armored = bool(config.get_value("hero", "armored", false))
+		track_auto_clear = bool(config.get_value("track", "auto_clear", false))
 		if window_mode not in ["windowed", "fullscreen"]:
 			window_mode = DEFAULT_WINDOW_MODE
 		if not _bindings_are_safe():
@@ -259,6 +264,16 @@ func set_hero_armored(armored: bool) -> Dictionary:
 		hero_armored = previous
 		return {"ok": false, "reason": "SAVE_FAILED", "error": save_error}
 	return {"ok": true, "reason": "OK", "hero_armored": hero_armored}
+
+
+func set_track_auto_clear(enabled: bool) -> Dictionary:
+	var previous := track_auto_clear
+	track_auto_clear = enabled
+	var save_error := _save()
+	if save_error != OK:
+		track_auto_clear = previous
+		return {"ok": false, "reason": "SAVE_FAILED", "error": save_error}
+	return {"ok": true, "reason": "OK", "track_auto_clear": track_auto_clear}
 
 
 func begin_display_preview(candidate_mode: String, candidate_resolution: Vector2i) -> Dictionary:
@@ -478,4 +493,5 @@ func _save() -> Error:
 	config.set_value("graphics", "view_distance", view_distance)
 	config.set_value("graphics", "vsync_enabled", vsync_enabled)
 	config.set_value("hero", "armored", hero_armored)
+	config.set_value("track", "auto_clear", track_auto_clear)
 	return config.save(_settings_path)
