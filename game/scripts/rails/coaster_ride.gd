@@ -119,6 +119,7 @@ func board(instance_id: String, body: Node3D, cart_service: CoasterCartService, 
 	seat.add_child(_hero)
 	_hero.set_armored(armored)
 	_hero.set_seated(true)
+	_hero.visible = false
 	_smooth_forward = carts.travel_direction(car_id)
 	_update_horizontal_back()
 	_rig = rig
@@ -178,9 +179,18 @@ func select_view(wanted: String) -> String:
 		view = VIEW_SEAT
 	else:
 		view = wanted
+	_apply_hero_visibility()
 	if _rig != null:
 		_place_camera(_rig, true)
 	return view
+
+
+## The seated hero is drawn only from outside (owner 2026-09-20: in the
+## seat his arms and shoulders filled the view and turning "looked into"
+## him). The seat view is pure first person.
+func _apply_hero_visibility() -> void:
+	if _hero != null:
+		_hero.visible = view != VIEW_SEAT
 
 
 ## Outside camera spot for the current view, from the car's smoothed

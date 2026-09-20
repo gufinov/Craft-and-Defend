@@ -74,3 +74,7 @@ Shift aimed at the car "attacked" (the held-item use animation plays for any int
 - **Arrow keys while riding**: ↑ view from behind the car, ↓ from the front looking back at the rider, ← / → from that side (`CoasterRide.select_view`, 3.4 m out, 1.5 m up, world up so loops never roll them). The same arrow again returns to the seat. V does nothing while riding.
 - **The body turns with the look**: `HeroModel.set_look(yaw, pitch)` turns the whole seated body with the head yaw and tilts the head with the pitch, so in the seat view you see your own shoulders where you look and from outside the rider visibly looks around.
 - **"Riding backwards"**: the premade sandbox track was two dead ends (lead-in start, exit end); at a dead end the car turns round, so half of every trip was ridden the other way. The sandbox track is now a **closed circuit** (rails from the exit around the back of the plate to the lead-in), and `CoasterCartService` forgets a loop's visited cells once the car is on flat track clear of it, so every lap takes the loop again (`--coaster-sandbox-facing-check`: 40 samples, 0 reversals, loop taken on lap 1 and 2). A hand-built dead-end track still reverses at its ends.
+
+## Seat view is pure first person (owner playtest 2026-09-20)
+
+The seated hero is hidden while the seat view is active and shown in the four outside views (`CoasterRide._apply_hero_visibility`); his arms and shoulders had filled the seat view and turning sideways "looked into" him. T165 checks hidden-in-seat / shown-outside; T167's picture is taken from behind.

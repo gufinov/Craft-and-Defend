@@ -93,7 +93,8 @@ func _run_gate() -> void:
 	var ride := session.coaster_ride
 	var riding_ok := session.is_riding() and ride.car_id == car_id and not player.active and ride.ride_camera().current and not player.camera.current
 	var hero := ride.seated_hero()
-	var hero_ok := hero != null and hero.seated and hero.mesh_count() >= 30 and hero.get_parent().name == "Seat"
+	# The hero is hidden in the seat view and shown from the outside views.
+	var hero_ok := hero != null and hero.seated and hero.mesh_count() >= 30 and hero.get_parent().name == "Seat" and not hero.visible and ride.select_view("back") == "back" and hero.visible and ride.select_view("back") == "seat" and not hero.visible
 	var default_speed := ride.speed_level == 3 and carts.speed_of(car_id) == 3.0 and not carts.is_parked(car_id)
 	var hud_ok := session.coaster_ride.hud_text().begins_with("RIDING · speed 3/9 · 1-9 speed · view seat")
 	# Speed 2 for one second, then speed 6 for one second: path length.
@@ -235,6 +236,8 @@ func _run_visual() -> void:
 		await get_tree().physics_frame
 	session.set_hero_armored(false)
 	var boarded := session.board_coaster_car(car_id)
+	# Picture from behind the car so the seated hero is in it.
+	session.coaster_ride.select_view("back")
 	session.set_ride_speed(4)
 	var carts := session.coaster_carts
 	# Into the loop's climb so the picture shows the car leaning into the circle.
