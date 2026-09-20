@@ -1643,32 +1643,72 @@ func _build_loop_arc_visual(parent: Node3D, record: Dictionary, joined: Array[Ve
 			previous_point = point
 
 
-## Automatic trestle supports (CoasterCraft card 8, docs/COASTER_RAILS.md):
-## a floating curve piece grows a thin stone post from its ride point
-## straight down to the first solid voxel or track cell below (at most
-## SUPPORT_MAX_DROP cells; none when nothing is found), a gold stud at its
-## top under the rail and a diagonal brace every four cells of height on
-## tall posts. Skipped for inverted pieces (their up more than 90 degrees
-## from world up - the post would cross the loop) and for pieces standing
-## within two cells above another piece of the same curve. Visual only, no
-## collision; the posts live under the piece's node so dismantling removes
-## them.
+## Automatic trestle supports (CoasterCraft card 8; real trusses after the
+## owner playtest 2026-09-20 item 7, docs/COASTER_RAILS.md): a floating
+## curve piece grows a timber/steel trestle BENT from its rails straight down
+## to the first solid voxel or track cell below (at most SUPPORT_MAX_DROP
+## cells; none when nothing is found): two stone legs, one under each rail
+## (+/-SUPPORT_LEG_OFFSET across the piece's travel direction), a stone pad
+## under each on the floor, a gold stud where each leg meets the rail, and
+## steel sway bracing between the legs every SUPPORT_BRACE_EVERY cells from
+## the floor up (a horizontal tie and an X of two diagonals per panel) plus
+## a cap tie just under the rails. Bents taller than SUPPORT_SPLAY_MIN_HEIGHT
+## splay their legs outward toward the floor (SUPPORT_SPLAY_PER_CELL per cell
+## of height; the top stays under the rails). Longitudinal bracing ties a
+## bent to the NEXT bent along the curve (the piece's forward joint, drawn
+## once per bay): a stringer per tie level on each side and one diagonal per
+## bay, alternating direction bay to bay. Skipped for inverted pieces (their
+## up more than 90 degrees from world up - the legs would cross the loop)
+## and for pieces standing within two cells above another piece of the same
+## curve. Visual only, no collision; the bent lives in a `Support` node
+## under the piece's node (children `Post` / `Post2`, `Tie`, `Diagonal`,
+## `Stringer`, `Pad`) so dismantling removes it. One BoxMesh is shared per
+## strut size (`_support_meshes`).
 const SUPPORT_MAX_DROP := 24
-const SUPPORT_BRACE_EVERY := 4
+const SUPPORT_BRACE_EVERY := 2
+const SUPPORT_LEG_OFFSET := 0.32
+const SUPPORT_SPLAY_MIN_HEIGHT := 4.0
+const SUPPORT_SPLAY_PER_CELL := 0.06
+const SUPPORT_CAP_DROP := 0.14
+const SUPPORT_LEG_SIZE := 0.10
+const SUPPORT_BRACE_SIZE := 0.07
+var _support_meshes: Dictionary = {}
 
 
-func _add_track_supports(parent: Node3D, record: Dictionary) -> void:
+## The bent a floating piece would stand on: {point, floor_y, top_y, height,
+## side, along, splay, levels (tie heights above the floor, the cap last)}
+## or {} when the piece gets no support (see _add_track_supports). `tracks`
+## is CoasterRails.track_records(...) so a neighbour's bent can be found
+## without building it.
+func _support_bent(record: Dictionary, tracks: Dictionary) -> Dictionary:
+	if str(record.get("entity_id", "")) != CoasterRails.LOOP:
+		return {}
 	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
 	var curve: Dictionary = record.get("curve", {})
 	var point := CoasterRails.ride_point(record)
 	var up := Vector3.UP
+	var along := Vector3.ZERO
 	if not curve.is_empty():
-		up = TrackCurve.up_at(curve, TrackCurve.piece_t(record))
+		var t := TrackCurve.piece_t(record)
+		up = TrackCurve.up_at(curve, t)
+		var tangent := TrackCurve.tangent(curve, t)
+		along = Vector3(tangent.x, 0.0, tangent.z)
+		if along.length() < 0.05:
+			var curve_along := TrackCurve.along_of(curve)
+			along = Vector3(curve_along.x, 0.0, curve_along.z)
 	elif CoasterRails.lean_center(record) != Vector3.INF:
 		up = (CoasterRails.lean_center(record) - point).normalized()
 	if up.dot(Vector3.UP) < 0.0:
-		return
-	var tracks := CoasterRails.track_records(workstations.stations)
+		return {}
+	var side := Vector3.RIGHT
+	if along.length() >= 0.05:
+		along = along.normalized()
+		side = Vector3(-along.z, 0.0, along.x)
+	else:
+		# A ring piece travels in its loop's plane: the lateral direction is
+		# the plane axis.
+		side = Vector3(CoasterRails.loop_plane_axis(int(record.get("rotation_quarters", 0))))
+		along = Vector3(-side.z, 0.0, side.x)
 	var column := Vector3i(floori(point.x), anchor.y, floori(point.z))
 	var floor_y := INF
 	for drop in range(1, SUPPORT_MAX_DROP + 1):
@@ -1676,40 +1716,169 @@ func _add_track_supports(parent: Node3D, record: Dictionary) -> void:
 		var other: Dictionary = tracks.get(cell, {})
 		if not other.is_empty():
 			if drop <= 2 and not curve.is_empty() and other.has("curve") and str(JSON.stringify(other.get("curve"))) == str(JSON.stringify(curve)):
-				return
+				return {}
 			floor_y = float(cell.y) + 0.6
 			break
 		var query := world.query_cell(cell)
 		if query.get("state") != "LOADED":
-			return
+			return {}
 		var voxel_id := int(query.get("voxel_id", 0))
 		if voxel_id != 0 and not WorldAdapter.PASSABLE_BLOCKS.has(WorldAdapter.BLOCK_NAMES[voxel_id]):
 			floor_y = float(cell.y) + 1.0
 			break
 	if floor_y == INF:
-		return
+		return {}
 	var top_y := point.y - 0.08
 	var height := top_y - floor_y
 	if height < 0.5:
+		return {}
+	var levels: Array[float] = []
+	var level := float(SUPPORT_BRACE_EVERY)
+	while level < height - 0.7:
+		levels.append(level)
+		level += float(SUPPORT_BRACE_EVERY)
+	levels.append(height - SUPPORT_CAP_DROP)
+	var splay := SUPPORT_SPLAY_PER_CELL if height > SUPPORT_SPLAY_MIN_HEIGHT else 0.0
+	return {"point": point, "floor_y": floor_y, "top_y": top_y, "height": height, "side": side, "along": along, "splay": splay, "levels": levels}
+
+
+## World point on a bent's leg (`lateral` -1 left / +1 right of travel) at
+## `rise` cells above the bent's floor: the legs splay outward toward the
+## floor, the top stays SUPPORT_LEG_OFFSET from the track centre.
+func _bent_leg_point(bent: Dictionary, lateral: float, rise: float) -> Vector3:
+	var point: Vector3 = bent.point
+	var height: float = bent.height
+	var offset: float = SUPPORT_LEG_OFFSET + float(bent.splay) * maxf(height - rise, 0.0)
+	var side: Vector3 = bent.side
+	return Vector3(point.x, float(bent.floor_y) + rise, point.z) + side * lateral * offset
+
+
+func _add_track_supports(parent: Node3D, record: Dictionary) -> void:
+	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	var tracks := CoasterRails.track_records(workstations.stations)
+	var bent := _support_bent(record, tracks)
+	if bent.is_empty():
 		return
 	var rig := Node3D.new()
 	rig.name = "Support"
 	rig.rotation.y = -parent.rotation.y
 	parent.add_child(rig)
 	var body_origin := Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
-	var foot := Vector3(floori(point.x) + 0.5, floor_y, floori(point.z) + 0.5) - body_origin
+	var names: Dictionary = {}
 	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")
+	var steel := _visual_material(Color("545a63"), "")
 	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
-	_add_mesh_box(rig, Vector3(0.12, height, 0.12), foot + Vector3(0.0, height * 0.5, 0.0), stone, "Post")
-	_add_stud(rig, foot + Vector3(0.0, height + 0.02, 0.0), gold, Vector3.ZERO)
-	if height > float(SUPPORT_BRACE_EVERY):
-		var level := float(SUPPORT_BRACE_EVERY)
-		var side := 1.0
-		while level < height - 0.6:
-			var brace := _add_mesh_box(rig, Vector3(0.07, 1.30, 0.07), foot + Vector3(side * 0.30, level, 0.0), stone, "Brace")
-			brace.rotation.z = side * PI / 5.0
-			side = -side
-			level += float(SUPPORT_BRACE_EVERY)
+	var height: float = bent.height
+	var levels: Array[float] = bent.levels
+	var along: Vector3 = bent.along
+	var side: Vector3 = bent.side
+	# The two legs, their pads and studs.
+	for lateral: float in [-1.0, 1.0]:
+		var foot := _bent_leg_point(bent, lateral, 0.0)
+		var top := _bent_leg_point(bent, lateral, height)
+		_add_support_strut(rig, foot - body_origin, top - body_origin, SUPPORT_LEG_SIZE, stone, _support_name(names, "Post"), along)
+		_add_mesh_box(rig, Vector3(0.4, 0.15, 0.4), foot - body_origin + Vector3(0.0, 0.075, 0.0), stone, _support_name(names, "Pad"), _support_mesh(Vector3(0.4, 0.15, 0.4)))
+		_add_stud(rig, top - body_origin + Vector3(0.0, 0.02, 0.0), gold, Vector3.ZERO)
+	# Sway bracing between the legs: a tie per level and an X per panel
+	# (floor to first tie, then tie to tie).
+	var previous := 0.0
+	for level: float in levels:
+		_add_support_strut(rig, _bent_leg_point(bent, -1.0, level) - body_origin, _bent_leg_point(bent, 1.0, level) - body_origin, SUPPORT_BRACE_SIZE, steel, _support_name(names, "Tie"), along)
+		if level - previous > 0.6:
+			_add_support_strut(rig, _bent_leg_point(bent, -1.0, previous) - body_origin, _bent_leg_point(bent, 1.0, level) - body_origin, SUPPORT_BRACE_SIZE, steel, _support_name(names, "Diagonal"), along)
+			_add_support_strut(rig, _bent_leg_point(bent, 1.0, previous) - body_origin, _bent_leg_point(bent, -1.0, level) - body_origin, SUPPORT_BRACE_SIZE, steel, _support_name(names, "Diagonal"), along)
+		previous = level
+	# Longitudinal bracing to the next bent along the curve (the forward
+	# joint, the t1 side), drawn from this piece only so each bay is drawn
+	# once.
+	var next_bent := _support_next_bent(record, tracks)
+	if next_bent.is_empty():
+		return
+	var next_side: Vector3 = next_bent.side
+	var flip := 1.0 if next_side.dot(side) >= 0.0 else -1.0
+	var next_height: float = next_bent.height
+	var next_floor: float = next_bent.floor_y
+	var floor_y: float = bent.floor_y
+	for lateral: float in [-1.0, 1.0]:
+		# The rungs: [this end, next end] per level that both bents reach,
+		# the floor first (not drawn - it carries the first diagonal).
+		var rungs: Array[Array] = []
+		rungs.append([_bent_leg_point(bent, lateral, 0.0), _bent_leg_point(next_bent, lateral * flip, 0.0)])
+		for index in range(levels.size()):
+			var level: float = levels[index]
+			var from := _bent_leg_point(bent, lateral, level)
+			var to: Vector3
+			if index == levels.size() - 1:
+				# The cap stringer follows the grade to the next cap.
+				to = _bent_leg_point(next_bent, lateral * flip, next_height - SUPPORT_CAP_DROP)
+			else:
+				var next_rise := floor_y + level - next_floor
+				if next_rise < 0.3 or next_rise > next_height - 0.4:
+					continue
+				to = _bent_leg_point(next_bent, lateral * flip, next_rise)
+			_add_support_strut(rig, from - body_origin, to - body_origin, SUPPORT_BRACE_SIZE, steel, _support_name(names, "Stringer"), side)
+			rungs.append([from, to])
+		for bay in range(rungs.size() - 1):
+			var low: Array = rungs[bay]
+			var high: Array = rungs[bay + 1]
+			var a: Vector3 = low[0] if bay % 2 == 0 else low[1]
+			var b: Vector3 = high[1] if bay % 2 == 0 else high[0]
+			_add_support_strut(rig, a - body_origin, b - body_origin, SUPPORT_BRACE_SIZE, steel, _support_name(names, "Diagonal"), side)
+
+
+## Unique child names for a bent's struts: "Tie", "Tie2", "Tie3"... (a
+## repeated name would be replaced by "@MeshInstance3D@<id>").
+func _support_name(names: Dictionary, base: String) -> String:
+	var count := int(names.get(base, 0)) + 1
+	names[base] = count
+	return base if count == 1 else base + str(count)
+
+
+## The bent of the piece at `record`'s forward joint (the curve's next cell,
+## the second recorded joint), or {} when it has none / gets no support.
+func _support_next_bent(record: Dictionary, tracks: Dictionary) -> Dictionary:
+	var joints: Variant = record.get("coaster_joints")
+	if not (joints is Array) or (joints as Array).size() < 2:
+		return {}
+	var forward: Variant = (joints as Array)[1]
+	if not (forward is Array) or (forward as Array).size() != 3:
+		return {}
+	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	var next_cell := anchor + Vector3i(int(forward[0]), int(forward[1]), int(forward[2]))
+	var next_record: Dictionary = tracks.get(next_cell, {})
+	if next_record.is_empty():
+		return {}
+	return _support_bent(next_record, tracks)
+
+
+## One BoxMesh per strut size for the trestles (a tall climb is ~1000 struts).
+func _support_mesh(size: Vector3) -> BoxMesh:
+	var key := Vector3(snappedf(size.x, 0.001), snappedf(size.y, 0.001), snappedf(size.z, 0.001))
+	var cached: BoxMesh = _support_meshes.get(key)
+	if cached == null:
+		cached = BoxMesh.new()
+		cached.size = key
+		_support_meshes[key] = cached
+	return cached
+
+
+## A square strut of `thickness` from `from` to `to` (rig-local), its box's
+## Y along the strut and its X across `reference` (a direction perpendicular
+## to the strut's plane, so the faces line up with the trestle).
+func _add_support_strut(rig: Node3D, from: Vector3, to: Vector3, thickness: float, material: Material, node_name: String, reference: Vector3) -> MeshInstance3D:
+	var delta := to - from
+	var length := delta.length()
+	var box := _add_mesh_box(rig, Vector3(thickness, length, thickness), (from + to) * 0.5, material, node_name, _support_mesh(Vector3(thickness, length, thickness)))
+	if length < 0.001:
+		return box
+	var y := delta / length
+	var ref := reference
+	if absf(ref.dot(y)) > 0.95:
+		ref = Vector3.UP if absf(y.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
+	var x := ref.cross(y).normalized()
+	var z := x.cross(y).normalized()
+	box.basis = Basis(x, y, z)
+	return box
 
 
 func _build_rail_loop_visual(parent: Node3D, record: Dictionary) -> void:
@@ -2491,12 +2660,14 @@ func _add_collision_box(parent: Node3D, size: Vector3, offset: Vector3) -> Colli
 	return collision
 
 
-func _add_mesh_box(parent: Node3D, size: Vector3, offset: Vector3, material: Material, node_name: String = "") -> MeshInstance3D:
+func _add_mesh_box(parent: Node3D, size: Vector3, offset: Vector3, material: Material, node_name: String = "", shared_mesh: BoxMesh = null) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	if not node_name.is_empty():
 		mesh_instance.name = node_name
-	var mesh := BoxMesh.new()
-	mesh.size = size
+	var mesh := shared_mesh
+	if mesh == null:
+		mesh = BoxMesh.new()
+		mesh.size = size
 	mesh_instance.mesh = mesh
 	mesh_instance.position = offset
 	mesh_instance.material_override = material

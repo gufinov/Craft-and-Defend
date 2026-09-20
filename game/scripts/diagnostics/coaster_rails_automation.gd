@@ -12,7 +12,7 @@ extends Node
 ## track. Runs with `--coaster-rails-automation=gate` (headless: T160-T162, T168,
 ## T173-T174) and `--coaster-rails-automation=visual` (needs a window: T163
 ## renders `coaster-rails.png`, T175 `coaster-curves.png`).
-## T168, T179 track auto-clear, T180 trestle supports) and
+## T168, T179 track auto-clear, T180 trestle supports, T183 trestle trusses) and
 ## `--coaster-rails-automation=visual` (needs a window: T163 renders
 ## `coaster-rails.png`, T181 `coaster-supports.png`).
 
@@ -1029,6 +1029,58 @@ func _run_gate() -> void:
 	interaction.set_climb(CoasterRails.CLIMB_LENGTH_DEFAULT, CoasterRails.CLIMB_RISE_DEFAULT)
 	_record("T182_HEADING_FOLLOWS_AIM", hd_loaded and hd_press.get("reason") == "DRAG_STARTED" and faces_west and climb_flipped and climb_east and loop_west and loop_south and bend_flipped, "with the build orientation East, a Climb right-press from east of the entry looking west starts a climb heading west at the aimed cell; Shift-dragging 8 cells east turns it east (length 8, every ghost cell east of the entry); a Loop pressed the same way heads west and a Shift-drag 6 cells south turns it south at diameter 6; a Bend heading east Shift-dragged 6 cells behind its entry flips west with length 6", {"loaded": hd_loaded, "press": hd_press.get("reason"), "faces_west": faces_west, "climb_flipped": climb_flipped, "climb_east": climb_east, "loop_west": loop_west, "loop_south": loop_south, "bend_flipped": bend_flipped, "bend_state": {"rotation": hd_state.get("rotation_quarters"), "length": hd_state.get("curve_length"), "lanes": hd_state.get("curve_lanes")}})
 
+	# T183 trestle trusses (owner playtest 2026-09-20 item 7: "the girders
+	# that hold up the climbs are broken and missing the diagonal bracing"):
+	# a climb of length 12 / rise 6 on a levelled plate grows a real bent
+	# under its middle piece - two legs, ties, an X of diagonals, and a
+	# stringer reaching toward the next piece's bent.
+	var tr := Vector3i(-40, 0, 70)
+	var tr_loaded := await _wait_levelled(tr + Vector3i(-3, 0, -4), 20, 9, 14, [tr, tr + Vector3i(6, 3, 0), tr + Vector3i(12, 6, 0)] as Array[Vector3i])
+	app.session.inventory.try_transaction({}, {"rail_climb": 40})
+	_hotbar_slot_for("rail_climb", 7)
+	interaction.placement_rotation_quarters = 1
+	interaction.begin_climb_at(tr)
+	interaction.set_climb(12, 6)
+	var tr_laid := interaction.commit_drag_place()
+	interaction.placement_rotation_quarters = 0
+	interaction.set_climb(CoasterRails.CLIMB_LENGTH_DEFAULT, CoasterRails.CLIMB_RISE_DEFAULT)
+	var tr_middle: Dictionary = {}
+	var tr_next: Dictionary = {}
+	for station_id: String in ws.stations.keys():
+		var station_record: Dictionary = ws.stations[station_id]
+		var station_anchor: Vector3i = station_record.get("anchor", Vector3i.ZERO)
+		if str(station_record.get("entity_id", "")) == "rail_loop" and station_record.has("curve") and station_anchor.z == tr.z:
+			if station_anchor.x == tr.x + 6:
+				tr_middle = station_record
+			elif station_anchor.x == tr.x + 7:
+				tr_next = station_record
+	var tr_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(tr_middle.get("anchor", Vector3i.MAX))) if not tr_middle.is_empty() else null
+	var tr_support: Node = tr_body.find_child("Support", true, false) if tr_body != null else null
+	var tr_legs := 0
+	var tr_ties := 0
+	var tr_diagonals := 0
+	var tr_stringers := 0
+	var tr_stringer_between := false
+	var tr_post_reaches := false
+	if tr_support != null and not tr_next.is_empty():
+		var middle_x := CoasterRails.ride_point(tr_middle).x
+		var next_x := CoasterRails.ride_point(tr_next).x
+		for child in tr_support.get_children():
+			var child_name := str(child.name)
+			if child_name == "Post" or child_name == "Post2":
+				tr_legs += 1
+			elif child_name.begins_with("Tie"):
+				tr_ties += 1
+			elif child_name.begins_with("Diagonal"):
+				tr_diagonals += 1
+			elif child_name.begins_with("Stringer"):
+				tr_stringers += 1
+				var centre_x := (child as Node3D).global_position.x
+				if centre_x > minf(middle_x, next_x) and centre_x < maxf(middle_x, next_x):
+					tr_stringer_between = true
+		tr_post_reaches = absf(_post_bottom(tr_support) - float(tr.y)) < 0.05
+	_record("T183_TRESTLE_TRUSS", tr_loaded and tr_laid.get("reason") == "CLIMB_PLACED" and tr_legs == 2 and tr_ties >= 1 and tr_diagonals >= 2 and tr_stringers >= 1 and tr_stringer_between and tr_post_reaches, "the middle piece of a climb (length 12, rise 6) carries a Support bent with two legs (Post, Post2) reaching the plate, at least one Tie, at least two Diagonal braces and at least one Stringer whose centre lies between this bent and the next piece's bent", {"loaded": tr_loaded, "laid": tr_laid.get("reason"), "middle": tr_middle.get("anchor"), "next": tr_next.get("anchor"), "legs": tr_legs, "ties": tr_ties, "diagonals": tr_diagonals, "stringers": tr_stringers, "stringer_between": tr_stringer_between, "post_reaches": tr_post_reaches})
+
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on
 ## the track, beside a slope run climbing a step, in one 1280x720 view.
@@ -1443,9 +1495,10 @@ func _render_climb() -> void:
 				break
 	for _frame in range(4):
 		await get_tree().physics_frame
-	player.global_position = Vector3(climb_origin) + Vector3(6.0, 4.0, 13.0)
+	# Close enough that the trestle bents under the climb read (2026-09-20).
+	player.global_position = Vector3(climb_origin) + Vector3(6.0, 3.6, 11.0)
 	player.rotation = Vector3.ZERO
-	player.look_pitch = 0.08
+	player.look_pitch = 0.06
 	player.apply_mouse_look(Vector2.ZERO)
 	for _frame in range(90):
 		await get_tree().process_frame
@@ -1603,9 +1656,10 @@ func _render_supports() -> void:
 			var loop_body: Node3D = app.session._station_visuals.get(station_id)
 			if loop_body != null and loop_body.find_child("Support", true, false) != null:
 				loop_posts += 1
-	player.global_position = Vector3(origin) + Vector3(-3.0, 4.5, 13.0)
+	# Framed to show the whole bent, pads to cap (trusses, 2026-09-20).
+	player.global_position = Vector3(origin) + Vector3(-3.0, 4.0, 15.0)
 	player.rotation = Vector3.ZERO
-	player.look_pitch = 0.02
+	player.look_pitch = -0.06
 	player.apply_mouse_look(Vector2.ZERO)
 	for _frame in range(60):
 		await get_tree().process_frame
