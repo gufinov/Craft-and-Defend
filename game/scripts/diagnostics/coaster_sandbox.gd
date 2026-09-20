@@ -33,7 +33,7 @@ func run(application: CraftAndDefendApp) -> void:
 	print("COASTER_SANDBOX_READY")
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-ride-shot"):
 		# Seat-view pictures: boarding, mid-climb, head turned left.
-		var shots: Array[Dictionary] = [{"wait": 0.2, "name": "ride-start.png"}, {"wait": 2.2, "name": "ride-climb.png"}, {"wait": 1.2, "name": "ride-left.png", "yaw": Vector2(-400.0, 0.0)}]
+		var shots: Array[Dictionary] = [{"wait": 0.2, "name": "ride-start.png"}, {"wait": 2.2, "name": "ride-climb.png"}, {"wait": 1.2, "name": "ride-left.png", "yaw": Vector2(-400.0, 0.0)}, {"wait": 2.0, "name": "view-back.png", "view": "back"}, {"wait": 1.0, "name": "view-front.png", "view": "front"}, {"wait": 1.0, "name": "view-left.png", "view": "left"}, {"wait": 1.0, "name": "view-right.png", "view": "right"}]
 		app.session.board_coaster_car(str(loop_car_id))
 		app.session.set_ride_speed(4)
 		for shot in shots:
@@ -43,9 +43,32 @@ func run(application: CraftAndDefendApp) -> void:
 			if shot.has("yaw"):
 				app.session.coaster_ride.apply_mouse_look(shot.yaw)
 				await get_tree().process_frame
+			if shot.has("view"):
+				app.session.coaster_ride.select_view(str(shot.view))
+				await get_tree().process_frame
 			await RenderingServer.frame_post_draw
 			get_viewport().get_texture().get_image().save_png(app.data_root.path_join(str(shot.name)))
 			print("COASTER_SANDBOX shot %s forward=%s" % [shot.name, app.session.coaster_ride.view_forward()])
+		get_tree().quit(0)
+	if OS.get_cmdline_user_args().has("--coaster-sandbox-facing-check"):
+		app.session.board_coaster_car(str(loop_car_id))
+		app.session.set_ride_speed(6)
+		var previous_travel := Vector3.ZERO
+		var reversals := 0
+		for sample in range(40):
+			var until := Time.get_ticks_msec() + 500
+			while Time.get_ticks_msec() < until:
+				await get_tree().process_frame
+			var ride := app.session.coaster_ride
+			var hero := ride.seated_hero()
+			var travel: Vector3 = app.session.coaster_carts.travel_direction(str(loop_car_id))
+			var hero_forward: Vector3 = -hero.global_basis.z
+			var rig: Node3D = app.session.coaster_carts.cart_rig(str(loop_car_id))
+			if previous_travel.length() > 0.5 and travel.dot(previous_travel) < -0.5:
+				reversals += 1
+			previous_travel = travel
+			print("FACING t=%.1f cell=%s travel=%s hero=%s dot=%.2f rig_up=%s cam_from_rig=%s" % [sample * 0.5, app.session.coaster_carts.rider_cell(str(loop_car_id)), travel, hero_forward, travel.dot(hero_forward), rig.global_basis.y, (ride.ride_camera().global_position - rig.global_position)])
+		print("FACING reversals=%d" % reversals)
 		get_tree().quit(0)
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-board-check"):
 		# Aim from beside the parked car at the rail piece under it: Shift must
@@ -152,6 +175,28 @@ func _lay_demo() -> void:
 	loop_car_id = str(loop_car.get("details", {}).get("station", {}).get("instance_id", ""))
 	print("COASTER_SANDBOX loop %s car %s" % [loop.get("reason"), loop_car.get("reason")])
 	app.session.inventory.select_hotbar(0)
+	# Closed circuit (owner 2026-09-20: a dead end made the car turn round and
+	# "ride backwards"): flat rails from the loop's exit around the back of
+	# the plate to the lead-in's start, so the car circulates forever.
+	var exit_x := origin.x
+	for cell: Vector3i in CoasterRails.chain(ws.stations, origin):
+		if cell.y == origin.y and cell.x > exit_x:
+			exit_x = cell.x
+	var circuit: Array[Vector3i] = []
+	for x in range(exit_x + 1, exit_x + 3):
+		circuit.append(Vector3i(x, origin.y, origin.z))
+	for z in range(origin.z - 1, origin.z - 5, -1):
+		circuit.append(Vector3i(exit_x + 2, origin.y, z))
+	for x in range(exit_x + 1, origin.x - 3, -1):
+		circuit.append(Vector3i(x, origin.y, origin.z - 4))
+	for z in range(origin.z - 3, origin.z + 1):
+		circuit.append(Vector3i(origin.x - 2, origin.y, z))
+	circuit.append(Vector3i(origin.x - 1, origin.y, origin.z))
+	var laid := 0
+	for cell: Vector3i in circuit:
+		if ws.try_place("rail", cell, world.query_cell, AABB(), 0).get("ok", false):
+			laid += 1
+	print("COASTER_SANDBOX circuit %d / %d rails, chain %d" % [laid, circuit.size(), CoasterRails.chain(ws.stations, origin).size()])
 	# Slope run: rails, slope, two-block step with rails on top, then down again.
 	var step := Vector3i(2, 1, 34)
 	for x in range(3, 6):

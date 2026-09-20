@@ -51,6 +51,22 @@ func set_seated(value: bool) -> void:
 	_apply_pose()
 
 
+## Riding look (owner 2026-09-20): the whole body turns with the rider's
+## yaw and the head tilts with the pitch, so the seated body matches the
+## seat view instead of staying fixed while only the camera turns.
+var look_yaw := 0.0
+var look_pitch := 0.0
+
+
+func set_look(yaw: float, pitch: float) -> void:
+	look_yaw = yaw
+	look_pitch = pitch
+	if _model != null:
+		_model.rotation.y = yaw
+	if _head != null:
+		_head.rotation.x = pitch
+
+
 ## Walk cycle from the distance travelled this frame: legs scissor, arms
 ## counter-swing; blends out when standing. Ignored while seated.
 func animate_walk(delta: float, moving: bool, distance: float) -> void:

@@ -95,7 +95,7 @@ func _run_gate() -> void:
 	var hero := ride.seated_hero()
 	var hero_ok := hero != null and hero.seated and hero.mesh_count() >= 30 and hero.get_parent().name == "Seat"
 	var default_speed := ride.speed_level == 3 and carts.speed_of(car_id) == 3.0 and not carts.is_parked(car_id)
-	var hud_ok := session.coaster_ride.hud_text() == "RIDING · speed 3/9 · 1-9 speed · Shift leave · V chase view"
+	var hud_ok := session.coaster_ride.hud_text().begins_with("RIDING · speed 3/9 · 1-9 speed · view seat")
 	# Speed 2 for one second, then speed 6 for one second: path length.
 	session.set_ride_speed(2)
 	var slow := _measure_travel(carts, rig, 30)

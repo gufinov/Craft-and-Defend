@@ -173,6 +173,10 @@ func _ride(instance_id: String, body: Node3D, rig: Node3D, record: Dictionary, t
 		rider.trail[current] = true
 		if _is_curved(chain, tracks, current):
 			rider.visited[current] = true
+		elif not rider.visited.is_empty() and not _beside_curve(chain, tracks, current):
+			# Clear of the loop on flat track: forget it, so a closed circuit
+			# takes the loop again on the next lap (owner sandbox 2026-09-20).
+			rider.visited = {}
 		var next := _choose_next(chain, tracks, current, rider)
 		rider.target = next
 		rider.up = _up_at(tracks, current, rider.previous, next, up)
@@ -223,6 +227,14 @@ func _choose_next(chain: Dictionary, tracks: Dictionary, current: Vector3i, ride
 			best_score = score
 			best = cell
 	return best
+
+
+## True when any cell joined to `cell` is part of a loop's circle.
+func _beside_curve(chain: Dictionary, tracks: Dictionary, cell: Vector3i) -> bool:
+	for joined in chain.get(cell, []):
+		if joined is Vector3i and _is_curved(chain, tracks, joined):
+			return true
+	return false
 
 
 func _is_loop(tracks: Dictionary, cell: Vector3i) -> bool:

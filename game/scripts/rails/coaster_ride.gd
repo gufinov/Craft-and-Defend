@@ -5,9 +5,14 @@ extends Node
 ## `coaster_car`. GameSession owns one CoasterRide; boarding parks the player
 ## body (deactivated, dragged along under the car so terrain keeps streaming
 ## around it), seats a HeroModel on the car's "Seat" node and switches to the
-## ride camera: a three-quarter chase camera behind, beside and above the car
-## that follows the car's smoothed horizontal heading with world up, so loops
-## never roll the view and the camera stays out of the loop's plane.
+## ride camera. Owner 2026-09-20: the ride is a first-person seat view: the
+## camera sits at the hero's eyes, follows the car's (smoothed) basis through
+## climbs and loops, and the mouse turns the head left / right up to
+## SEAT_YAW_LIMIT and up / down up to SEAT_PITCH_LIMIT - you cannot turn
+## around in the seat; the seated body turns with the look. The arrow keys
+## pick an outside view of the car (Up: from behind, Down: from the front
+## looking back, Left / Right: from that side); the same arrow again returns
+## to the seat.
 ## Number keys 1-9 set the car's speed in cells per second (default 3).
 ## Leaving parks the car where it is and stands the player beside it.
 
@@ -46,8 +51,13 @@ var _hero: HeroModel
 var _smooth_forward := Vector3.FORWARD
 var _horizontal_back := Vector3.BACK
 var _third_person_before := false
-## Seat view state: chase view off by default; head yaw / pitch in seat space.
-var chase_view := false
+## View: "seat" (first person), or an outside view "back" / "front" / "left"
+## / "right" (arrow keys). Head yaw / pitch in seat space.
+const VIEW_SEAT := "seat"
+const OUTSIDE_VIEWS: Array[String] = ["back", "front", "left", "right"]
+const OUTSIDE_DISTANCE := 3.4
+const OUTSIDE_UP := 1.5
+var view := VIEW_SEAT
 var seat_yaw := 0.0
 var seat_pitch := 0.0
 var _seat_basis := Basis.IDENTITY
@@ -78,7 +88,8 @@ func seated_hero() -> HeroModel:
 
 
 func hud_text() -> String:
-	return "RIDING · speed %d/%d · 1-9 speed · Shift leave · V %s" % [speed_level, MAX_SPEED_LEVEL, "seat view" if chase_view else "chase view"]
+	var view_text := "seat" if view == VIEW_SEAT else "from the %s" % view
+	return "RIDING · speed %d/%d · 1-9 speed · view %s (arrows: back / front / sides, again = seat) · Shift leave" % [speed_level, MAX_SPEED_LEVEL, view_text]
 
 
 ## Seats the player in the car `instance_id` (its visual body `body`, moved by
@@ -111,6 +122,7 @@ func board(instance_id: String, body: Node3D, cart_service: CoasterCartService, 
 	_smooth_forward = carts.travel_direction(car_id)
 	_update_horizontal_back()
 	_rig = rig
+	view = VIEW_SEAT
 	seat_yaw = 0.0
 	seat_pitch = 0.0
 	_seat_basis = rig.global_basis.orthonormalized()
@@ -148,21 +160,45 @@ func leave(activate_player: bool, capture_pointer: bool) -> Dictionary:
 ## the seat basis (no turning around). Sensitivity and inversion follow the
 ## player's settings.
 func apply_mouse_look(relative: Vector2) -> void:
-	if not is_riding() or chase_view or player == null:
+	if not is_riding() or player == null:
 		return
 	var vertical_direction := -1.0 if player.invert_y else 1.0
 	seat_yaw = clampf(seat_yaw - relative.x * player.mouse_sensitivity, -SEAT_YAW_LIMIT, SEAT_YAW_LIMIT)
 	seat_pitch = clampf(seat_pitch - relative.y * player.mouse_sensitivity * vertical_direction, -SEAT_PITCH_LIMIT, SEAT_PITCH_LIMIT)
+	if _hero != null:
+		_hero.set_look(seat_yaw, seat_pitch)
 	if _rig != null:
 		_place_camera(_rig, false)
 
 
-## V while riding: seat view <-> chase view.
-func toggle_chase_view() -> bool:
-	chase_view = not chase_view
+## Arrow keys: an outside view of the car; the active view's arrow again
+## returns to the seat. Returns the view now shown.
+func select_view(wanted: String) -> String:
+	if not OUTSIDE_VIEWS.has(wanted) or view == wanted:
+		view = VIEW_SEAT
+	else:
+		view = wanted
 	if _rig != null:
 		_place_camera(_rig, true)
-	return chase_view
+	return view
+
+
+## Outside camera spot for the current view, from the car's smoothed
+## horizontal heading (world up, so loops never roll the outside views).
+func _outside_target(rig_position: Vector3) -> Vector3:
+	var forward := -_horizontal_back
+	var right := forward.cross(Vector3.UP)
+	var offset := Vector3.ZERO
+	match view:
+		"back":
+			offset = -forward
+		"front":
+			offset = forward
+		"left":
+			offset = -right
+		"right":
+			offset = right
+	return rig_position + Vector3.UP * OUTSIDE_UP + offset * OUTSIDE_DISTANCE
 
 
 ## The camera's forward direction (diagnostics).
@@ -173,16 +209,23 @@ func view_forward() -> Vector3:
 ## Seat view: eyes at SEAT_EYE in the smoothed seat basis, turned by the head
 ## yaw / pitch. Chase view: the three-quarter camera behind the car.
 func _place_camera(rig: Node3D, snap: bool) -> void:
-	if chase_view:
-		var target := _camera_target(rig.global_position)
+	if view != VIEW_SEAT:
+		var target := _outside_target(rig.global_position)
 		_camera.global_position = target if snap else _camera.global_position
-		_look(rig.global_position)
+		_look_at_car(rig.global_position)
 		return
 	if snap:
 		_seat_basis = rig.global_basis.orthonormalized()
-	_camera.global_position = rig.global_position + _seat_basis * SEAT_EYE
 	var head := Basis.from_euler(Vector3(seat_pitch, seat_yaw, 0.0))
+	_camera.global_position = rig.global_position + _seat_basis * (Basis(Vector3.UP, seat_yaw) * SEAT_EYE)
 	_camera.global_basis = _seat_basis * head
+
+
+func _look_at_car(rig_position: Vector3) -> void:
+	var focus := rig_position + Vector3.UP * CAMERA_LOOK_UP
+	if focus.distance_to(_camera.global_position) < 0.05:
+		return
+	_camera.look_at(focus, Vector3.UP)
 
 
 ## 1..9 cells per second; feedback text for the HUD.
@@ -231,10 +274,10 @@ func advance(delta: float) -> void:
 		else:
 			_smooth_forward = forward
 	_update_horizontal_back()
-	if chase_view:
-		var target := _camera_target(rig.global_position)
+	if view != VIEW_SEAT:
+		var target := _outside_target(rig.global_position)
 		_camera.global_position = _camera.global_position.lerp(target, minf(1.0, delta * CAMERA_FOLLOW_RATE))
-		_look(rig.global_position)
+		_look_at_car(rig.global_position)
 		return
 	# The seat basis eases toward the car's basis so a loop's climb, top and
 	# dive read as one smooth turn of the head rather than per-cell jumps.

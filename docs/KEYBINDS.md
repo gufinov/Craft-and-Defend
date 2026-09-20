@@ -35,4 +35,4 @@ Tab toggles inventory only. B toggles the limited hand-build/crafting modal; a w
 
 Tests: every required action responds; forward is E (not W); a changed movement key persists after full restart; conflicting assignment is rejected/explained; reset restores these defaults; escape from capture/modal/pause works; repeated UI open/close does not leave mouse capture stuck. Test keyboard layout behavior on Windows rather than assuming logical key codes equal physical positions.
 
-- **While riding a Coaster Car**: mouse turns the head (±110° / ±60°, no turning around); **1–9** speed; **V** seat view ↔ chase view; **Shift** / Escape leave.
+- **While riding a Coaster Car**: mouse turns the head (±110° / ±60°, no turning around); **1–9** speed; **arrow keys** outside views (↑ behind, ↓ front, ← → sides; same arrow again = seat); **Shift** / Escape leave.
