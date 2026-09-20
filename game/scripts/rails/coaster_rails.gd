@@ -326,7 +326,12 @@ static func circle_points(radius: int) -> Array[Vector2i]:
 ## the slope tops; its cells run from L's top over the top to R's top.
 ## Returns {pieces: [{cell, entity_id, rotation, joints: Array[Vector3i],
 ## extra}], center: Vector3, radius: float}.
-static func loop_element_layout(anchor: Vector3i, quarters: int, size: int) -> Dictionary:
+## Ring fit variants for the owner to compare (L cycles): how far above the
+## slopes' rail corners the circle's tangent point sits.
+const LOOP_LIFTS: Array[float] = [0.0, 0.25, 0.5]
+
+
+static func loop_element_layout(anchor: Vector3i, quarters: int, size: int, lift: float = 0.0) -> Dictionary:
 	size = clampi(size, 4, 9)
 	var along := switch_along(quarters)
 	var side := switch_side(quarters)
@@ -364,14 +369,14 @@ static func loop_element_layout(anchor: Vector3i, quarters: int, size: int) -> D
 	# the first and last pieces snap to the corner instead of dipping.
 	var arch: Array[Vector3i] = []
 	var loop_rotation := 1 if along.x != 0 else 0
-	var slope_corner_y := float(base.y) + SLOPE_RAIL_TOP
+	var slope_corner_y := float(base.y) + SLOPE_RAIL_TOP + lift
 	var left_edge := Vector3(left_slope) + Vector3(0.5, 0.0, 0.5) + Vector3(along) * 0.5
 	var right_edge := Vector3(right_slope) + Vector3(0.5, 0.0, 0.5) - Vector3(along) * 0.5
 	var radius := float(size) / sqrt(2.0)
 	var center := (left_edge + right_edge) * 0.5
 	center.y = slope_corner_y + float(size) * 0.5
 	var toward_left := Vector3(along)
-	var extra_loop := {"loop_center": [center.x, center.y, center.z], "loop_radius": radius, "loop_corner_y": slope_corner_y}
+	var extra_loop := {"loop_center": [center.x, center.y, center.z], "loop_radius": radius, "loop_corner_y": slope_corner_y, "loop_lift": lift}
 	var steps := 720
 	for index in range(1, steps):
 		var angle := deg_to_rad(225.0) - deg_to_rad(270.0) * float(index) / float(steps)

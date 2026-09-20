@@ -105,3 +105,7 @@ While the loop ghost shows, **L** toggles the ring shape: **octagon** (default; 
 ### Round ring locked in (owner 2026-09-20: "the round ring is best ... lock this in")
 
 The loop element's ring is the true circle only; the octagon and the L toggle are gone. Two fixes for "raise the loop slightly and it would fit": (1) a ring piece's point never drops below the slopes' rail corners (`loop_corner_y`; `CoasterRails.arc_point` snaps the first and last pieces to the corner instead of dipping under it), and (2) the slope's high-end trestle posts now stop just under its rails (they used to poke half a block above the rail corner, which made the ring look too low where it meets the slope). Verified: ring end at the slope corner in a zoomed render; 0 reversals, smooth up vector on a lap.
+
+### Ring fit A / B / C (owner comparison, 2026-09-20)
+
+While the loop ghost shows, **L** cycles the ring fit: **A** tangent at the slopes' rail corners (the default), **B** the circle raised 0.25 above them, **C** raised 0.5 (`CoasterRails.LOOP_LIFTS`, `loop_lift` on the ring pieces; the last bit of rail bridges the lift down to the slope corner). All three ride the same (traced, 0 reversals apart from the approach). Once the owner picks one it becomes the only fit. Sandbox: `--coaster-sandbox-lift=1|2`.

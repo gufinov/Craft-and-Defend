@@ -382,7 +382,7 @@ func select_hotbar(index: int) -> Dictionary:
 		# Coaster pieces carry their controls on screen (owner could not find
 		# the loop gesture without them).
 		if item_id == CoasterRails.LOOP:
-			_on_interaction_feedback("RAIL LOOP: aim at the ground where the entry goes, HOLD Right Mouse — the whole loop ghost appears; 4-9 (or X / C) set its size, W / R turn it; let go to build it (red = does not fit)")
+			_on_interaction_feedback("RAIL LOOP: aim at the ground where the entry goes, HOLD Right Mouse — the whole loop ghost appears; 4-9 (or X / C) set its size, L cycles the ring fit A / B / C, W / R turn it; let go to build it (red = does not fit)")
 		elif item_id == CoasterRails.SLOPE:
 			_on_interaction_feedback("RAIL SLOPE: the arrow end climbs one block — W / R turns it; put a Rail on the block it climbs to")
 	return result
@@ -724,6 +724,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				_on_interaction_feedback("Loop size %d (4-9 while the ghost shows; X / C too)" % size)
 				get_viewport().set_input_as_handled()
 				return
+		if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_L or event.keycode == KEY_L):
+			# Owner comparison 2026-09-20: three ring fits to choose from.
+			var lift := interaction.cycle_loop_lift()
+			_on_interaction_feedback("Ring fit %s: circle %s the slope corners (L cycles)" % ["A" if lift == 0.0 else ("B" if lift < 0.5 else "C"), "tangent at" if lift == 0.0 else "raised %.2f above" % lift])
+			get_viewport().set_input_as_handled()
+			return
 	if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_V or event.keycode == KEY_V):
 		# Coaster car and hero: V toggles the chase camera (raw key, like X / C).
 		toggle_third_person()
@@ -1461,6 +1467,9 @@ func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[
 		var other: Dictionary = tracks.get(cell, {"anchor": cell, "entity_id": CoasterRails.FLAT})
 		var points: Array[Vector3] = [own_point]
 		if str(other.get("entity_id", "")) == CoasterRails.SLOPE:
+			# A raised ring (fit B / C) meets the slope a little above its rail
+			# corner; the last bit of rail bridges the lift.
+			points.append(CoasterRails.slope_rail_corner(other) + Vector3.UP * float(record.get("loop_lift", 0.0)))
 			points.append(CoasterRails.slope_rail_corner(other))
 		elif round:
 			var other_angle := CoasterRails.arc_angle(record, CoasterRails.arc_point(record, CoasterRails.ride_point(other)))

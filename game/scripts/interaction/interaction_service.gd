@@ -453,6 +453,8 @@ const LOOP_SIZE_MIN := 4
 const LOOP_SIZE_MAX := 9
 const LOOP_SIZE_DEFAULT := 4
 var loop_size := LOOP_SIZE_DEFAULT
+## L while the ghost shows cycles the ring fit (CoasterRails.LOOP_LIFTS).
+var loop_lift_index := 0
 
 
 func is_coaster_loop_item(item_id: String) -> bool:
@@ -482,6 +484,13 @@ func set_loop_size(size: int) -> Dictionary:
 
 
 ## Raw key states each frame (X smaller, C bigger); edges change the size once.
+func cycle_loop_lift() -> float:
+	loop_lift_index = (loop_lift_index + 1) % CoasterRails.LOOP_LIFTS.size()
+	if not _drag.is_empty() and str(_drag.get("mode", "")) == "loop_element":
+		_replan_loop_element()
+	return CoasterRails.LOOP_LIFTS[loop_lift_index]
+
+
 func coaster_loop_keys(x_pressed: bool, c_pressed: bool) -> void:
 	if _drag.is_empty() or str(_drag.get("mode", "")) != "loop_element":
 		return
@@ -498,7 +507,7 @@ func coaster_loop_keys(x_pressed: bool, c_pressed: bool) -> void:
 func _replan_loop_element() -> void:
 	var rotation := placement_rotation_quarters
 	_drag.rotation = rotation
-	var layout := CoasterRails.loop_element_layout(_drag.anchor, rotation, loop_size)
+	var layout := CoasterRails.loop_element_layout(_drag.anchor, rotation, loop_size, CoasterRails.LOOP_LIFTS[loop_lift_index])
 	var affordable: bool = inventory.count(str(_drag.item_id)) >= 1
 	var entries: Array[Dictionary] = []
 	for piece: Dictionary in layout.pieces:

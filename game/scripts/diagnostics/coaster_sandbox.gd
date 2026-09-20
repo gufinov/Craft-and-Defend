@@ -202,6 +202,11 @@ func _lay_demo() -> void:
 	app.session.inventory.select_hotbar(STOCK.find("rail_loop"))
 	interaction.placement_rotation_quarters = 3
 	interaction.set_loop_size(6)
+	# `--coaster-sandbox-lift=1|2` lays ring fit B / C for comparison.
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--coaster-sandbox-lift="):
+			for _cycle in range(int(argument.trim_prefix("--coaster-sandbox-lift="))):
+				interaction.cycle_loop_lift()
 	interaction.begin_coaster_loop_at(origin)
 	var loop := interaction.commit_drag_place()
 	interaction.placement_rotation_quarters = 0
