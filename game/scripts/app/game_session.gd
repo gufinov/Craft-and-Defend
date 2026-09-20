@@ -27,6 +27,8 @@ const REASON_TEXT := {
 	"DRAG_PLACED": "Blocks placed.",
 	"LINE_PLACED": "Pieces laid in a line.",
 	"COASTER_PLACED": "Coaster track laid.",
+	"SWITCH_PLACED": "Lane switcher laid: the track shifts one lane to the right.",
+	"SWITCH_BLOCKED": "The lane switcher needs four free cells: entry, two side by side, exit.",
 	"COASTER_BOARDED": "Boarded the coaster car — 1-9 sets the speed, Shift or Escape leaves.",
 	"COASTER_LEFT": "Left the coaster car.",
 	"ALREADY_RIDING": "Already riding.",
@@ -823,6 +825,8 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_build_rail_slope_visual(body)
 	elif entity_id == CoasterRails.LOOP:
 		_build_rail_loop_visual(body, record)
+	elif entity_id == CoasterRails.SWITCH:
+		_build_rail_switch_visual(body, record)
 	elif entity_id == "mine_cart":
 		_build_mine_cart_visual(body)
 	elif entity_id == CoasterRails.CAR:
@@ -1335,6 +1339,45 @@ func _build_rail_visual(parent: Node3D, mask: int = 0, arm_list: Array[Vector3i]
 		var straight := Vector3(arms[0])
 		var tie_size := Vector3(0.10, 0.06, 0.10) + Vector3(absf(straight.z), 0.0, absf(straight.x)) * 0.52
 		_add_mesh_box(undo, tie_size, Vector3(0.0, -0.11, 0.0), iron)
+
+
+## Lane Switcher piece (owner 2026-09-20). Entry and exit: a straight rail
+## along the travel axis. Middles: the rail base with the track's 45-degree
+## diagonal running through the piece's ride point (entry-side edge centre
+## to the shared edge for mid_a, the shared edge to the exit-side edge
+## centre for mid_b), so the four pieces read as one track shifting a lane.
+func _build_rail_switch_visual(parent: Node3D, record: Dictionary) -> void:
+	var quarters := int(record.get("rotation_quarters", 0))
+	var along := CoasterRails.switch_along(quarters)
+	var role := str(record.get("switch_role", ""))
+	if role != "mid_a" and role != "mid_b":
+		var arms: Array[Vector3i] = [along, -along]
+		_build_rail_visual(parent, 0, arms)
+		return
+	_add_collision_box(parent, Vector3(0.98, 0.56, 0.98), Vector3(0.0, -0.22, 0.0))
+	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
+	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")
+	var iron := _visual_material(Color("8a939b"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	_add_mesh_box(parent, Vector3(0.96, 0.36, 0.96), Vector3(0.0, -0.32, 0.0), oak)
+	for x in [-0.38, 0.38]:
+		for z in [-0.38, 0.38]:
+			_add_mesh_box(parent, Vector3(0.22, 0.56, 0.22), Vector3(x, -0.22, z), stone)
+			_add_stud(parent, Vector3(x, 0.02, z), gold, Vector3.ZERO)
+	var undo := Node3D.new()
+	undo.name = "SwitchRails"
+	undo.rotation.y = -parent.rotation.y
+	parent.add_child(undo)
+	var diagonal := (Vector3(along) + Vector3(CoasterRails.switch_side(quarters))).normalized()
+	var rails := Node3D.new()
+	rails.position = CoasterRails.switch_mid_shift(record)
+	rails.rotation.y = atan2(diagonal.x, diagonal.z)
+	undo.add_child(rails)
+	var length := sqrt(0.5)
+	for offset in [-0.22, 0.22]:
+		_add_mesh_box(rails, Vector3(0.10, 0.10, length), Vector3(offset, 0.0, 0.0), iron)
+	for tie in [-0.22, 0.22]:
+		_add_mesh_box(rails, Vector3(0.52, 0.06, 0.10), Vector3(0.0, -0.11, tie), iron)
 
 
 ## Coaster rails side project: a rail block climbing one cell toward its

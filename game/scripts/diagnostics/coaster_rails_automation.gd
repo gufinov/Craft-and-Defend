@@ -112,6 +112,75 @@ func _run_gate() -> void:
 	if cart_placed.get("ok", false):
 		ws.try_dismantle(cart_id, world.query_cell, AABB())
 
+	# T168 lane switcher (owner 2026-09-20): four rails, the switcher laid by
+	# its drag tool (entry, two middles side by side, exit one lane to the
+	# right of travel), four rails on the new lane; one chain; the middles
+	# ride on the diagonal; a rail beside a middle does not join; a mine cart
+	# crosses to the far end and back; the middles draw diagonal rails.
+	var sw := Vector3i(-14, 0, 50)
+	_level_ground(sw + Vector3i(-2, 0, -3), 18, 8, 9)
+	app.session.inventory.try_transaction({}, {"rail": 12, "rail_switch": 8, "mine_cart": 1})
+	var sw_ok := true
+	for x in range(0, 4):
+		sw_ok = sw_ok and bool(ws.try_place("rail", sw + Vector3i(x, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+	var switch_slot := -1
+	for slot_index in range(F0Inventory.SLOT_COUNT):
+		if str(app.session.inventory.slots[slot_index].get("item_id", "")) == "rail_switch":
+			switch_slot = slot_index
+	if switch_slot >= F0Inventory.HOTBAR_COUNT:
+		app.session.inventory.swap_slots(switch_slot, 3)
+		switch_slot = 3
+	app.session.inventory.select_hotbar(switch_slot)
+	interaction.placement_rotation_quarters = 1
+	var sw_started := interaction.begin_lane_switch_at(sw + Vector3i(4, 0, 0))
+	var sw_ghost := interaction.drag_state()
+	var sw_ghost_cells: Array = sw_ghost.get("cells", [])
+	var sw_ghost_ok := sw_ghost_cells.size() == 4
+	for entry in sw_ghost_cells:
+		sw_ghost_ok = sw_ghost_ok and str(entry.state) == "ok"
+	var switch_before := app.session.inventory.count("rail_switch")
+	var sw_laid := interaction.commit_drag_place()
+	interaction.placement_rotation_quarters = 0
+	var switch_spent := switch_before - app.session.inventory.count("rail_switch") == 4
+	for x in range(7, 11):
+		sw_ok = sw_ok and bool(ws.try_place("rail", sw + Vector3i(x, 0, 1), world.query_cell, AABB(), 0).get("ok", false))
+	# Control: a rail in lane 0 beside the lane-1 middle must not join.
+	sw_ok = sw_ok and bool(ws.try_place("rail", sw + Vector3i(6, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+	var sw_chain := CoasterRails.chain(ws.stations, sw)
+	var sw_layout := CoasterRails.switch_layout(sw + Vector3i(4, 0, 0), 1)
+	var mid_a: Vector3i = sw_layout[1].cell
+	var mid_b: Vector3i = sw_layout[2].cell
+	var sw_exit: Vector3i = sw_layout[3].cell
+	var sw_shape := mid_a == sw + Vector3i(5, 0, 0) and mid_b == sw + Vector3i(5, 0, 1) and sw_exit == sw + Vector3i(6, 0, 1)
+	var control_alone := CoasterRails.chain(ws.stations, sw + Vector3i(6, 0, 0)).size() == 1 and not sw_chain.has(sw + Vector3i(6, 0, 0))
+	var mid_a_record: Dictionary = ws.station(ws.station_at_cell(mid_a))
+	var mid_b_record: Dictionary = ws.station(ws.station_at_cell(mid_b))
+	var ride_a := CoasterRails.ride_point(mid_a_record)
+	var ride_b := CoasterRails.ride_point(mid_b_record)
+	var rides_diagonal := ride_a.is_equal_approx(Vector3(mid_a) + Vector3(0.25, 0.55, 0.75)) and ride_b.is_equal_approx(Vector3(mid_b) + Vector3(0.75, 0.55, 0.25))
+	var kettle_point := app.session.siege_defense._rail_point(mid_a)
+	var kettle_on_diagonal := kettle_point.is_equal_approx(ride_a + Vector3(0.0, 0.95, 0.0))
+	var mid_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(mid_a))
+	var mid_diagonal := mid_body != null and mid_body.get_node_or_null("SwitchRails") != null
+	var sw_cart := ws.try_place("mine_cart", sw + Vector3i(0, 1, 0), world.query_cell, AABB(), 0)
+	var sw_cart_id := str(sw_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	var far_frame := -1
+	var home_frame := -1
+	var crossed_mid_b := false
+	if app.session.coaster_carts != null:
+		for frame in range(400):
+			app.session.coaster_carts.advance(1.0 / 30.0, false)
+			var cell := app.session.coaster_carts.rider_cell(sw_cart_id)
+			crossed_mid_b = crossed_mid_b or cell == mid_b
+			if far_frame < 0 and cell == sw + Vector3i(10, 0, 1):
+				far_frame = frame
+			if far_frame >= 0 and home_frame < 0 and cell == sw:
+				home_frame = frame
+				break
+	_record("T168_LANE_SWITCHER", sw_ok and sw_started.get("ok", false) and sw_ghost_ok and sw_laid.get("reason") == "SWITCH_PLACED" and switch_spent and sw_shape and sw_chain.size() == 12 and control_alone and rides_diagonal and kettle_on_diagonal and mid_diagonal and sw_cart.get("ok", false) and crossed_mid_b and far_frame > 0 and home_frame > far_frame, "the Lane Switcher drag ghosts four cells (entry, two middles side by side, exit one lane right) and lays them for four items; with four rails before and four after on the new lane the twelve pieces chain; a lane-0 rail beside the lane-1 middle stays alone; the middles ride a quarter cell onto their diagonal (kettles too) and draw diagonal rails; a mine cart crosses to the far rail and comes home", {"placed": sw_ok, "started": sw_started.get("reason"), "ghost": sw_ghost_ok, "laid": sw_laid.get("reason"), "spent": switch_spent, "shape": sw_shape, "chain": sw_chain.size(), "control_alone": control_alone, "ride_a": ride_a, "ride_b": ride_b, "kettle": kettle_point, "mid_diagonal": mid_diagonal, "cart": sw_cart.get("reason"), "crossed": crossed_mid_b, "far_frame": far_frame, "home_frame": home_frame})
+	if sw_cart.get("ok", false):
+		ws.try_dismantle(sw_cart_id, world.query_cell, AABB())
+
 	# T162 loop drag: the ghost lays a lead-in, Shift adds a radius-3 loop and
 	# a two-cell exit, X/C resize it within 2..6, release lays every piece as
 	# one chain, and a cart rides the loop before taking the exit.

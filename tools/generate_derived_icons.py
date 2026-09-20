@@ -35,7 +35,7 @@ DERIVED = [
     # Coaster rails side project (docs/COASTER_RAILS.md): drawn placeholders.
     "rail_slope", "rail_loop", "mine_cart",
     # Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): owner art.
-    "coaster_car",
+    "coaster_car", "rail_switch",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -250,6 +250,19 @@ def icon_rail_loop() -> Image.Image:
     return canvas
 
 
+def icon_rail_switch() -> Image.Image:
+    """Two rails entering at the bottom left, jogging 45 degrees, leaving top right."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    ties = [(70, 210), (70, 178), (128, 128), (186, 78), (186, 46)]
+    for x, y in ties:
+        draw.rectangle([x - 34, y - 7, x + 34, y + 7], fill=(139, 82, 38, 255))
+    for offset in (-20, 20):
+        x = 70 + offset
+        draw.line([(x, 236), (x, 168), (x + 116, 52), (x + 116, 20)], fill=(110, 118, 126, 255), width=14, joint="curve")
+    return canvas
+
+
 def icon_mine_cart() -> Image.Image:
     """An oak cart with iron bands on two wheels, seen from the side."""
     canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
@@ -271,7 +284,7 @@ BUILDERS = {
     "torch": lambda: owner_icon("torch"), "wall_lantern": lambda: owner_icon("wall_lantern"),
     "post_lantern": lambda: owner_icon("post_lantern"), "campfire": lambda: owner_icon("campfire"),
     "light_block_blue": lambda: owner_icon("light_block_blue"), "light_block_red": lambda: owner_icon("light_block_red"),
-    "rail_slope": icon_rail_slope, "rail_loop": icon_rail_loop, "mine_cart": icon_mine_cart,
+    "rail_slope": icon_rail_slope, "rail_loop": icon_rail_loop, "mine_cart": icon_mine_cart, "rail_switch": icon_rail_switch,
     "coaster_car": lambda: owner_icon("coaster_car"),
 }
 

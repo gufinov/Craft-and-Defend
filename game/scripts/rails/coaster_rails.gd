@@ -28,7 +28,14 @@ const SLOPE := "rail_slope"
 const LOOP := "rail_loop"
 ## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): the rideable car.
 const CAR := "coaster_car"
-const TRACK_IDS: Array[String] = [FLAT, SLOPE, LOOP]
+## Lane Switcher (owner 2026-09-20): four `rail_switch` pieces laid at once.
+## Roles: "in" (entry, lane 0), "mid_a" (lane 0) and "mid_b" (lane 1) side
+## by side carrying the 45-degree diagonal, "out" (exit, lane 1 = one cell
+## to the RIGHT of travel). Every piece stores its joints; the entry and
+## exit also join plain rails behind / ahead.
+const SWITCH := "rail_switch"
+const SWITCH_MID_OFFSET := 0.25
+const TRACK_IDS: Array[String] = [FLAT, SLOPE, LOOP, SWITCH]
 const HORIZONTAL: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
 
 
@@ -53,6 +60,31 @@ static func slope_high_direction(rotation_quarters: int) -> Vector3i:
 
 ## The horizontal axis of a loop piece's vertical plane for its rotation
 ## (quarters 1/3 lie along x like an entity line with rotation 1).
+## Travel direction of a lane switcher piece (its rotation's front) and the
+## lane-shift side (the right of travel).
+static func switch_along(rotation_quarters: int) -> Vector3i:
+	return slope_high_direction(rotation_quarters)
+
+
+static func switch_side(rotation_quarters: int) -> Vector3i:
+	return Vector3i(Vector3(switch_along(rotation_quarters)).cross(Vector3.UP).round())
+
+
+## The four cells and joints of a lane switcher anchored at `entry` with
+## rotation `quarters`: [{cell, role, joints: Array[Vector3i]}] in ride order.
+static func switch_layout(entry: Vector3i, quarters: int) -> Array[Dictionary]:
+	var along := switch_along(quarters)
+	var side := switch_side(quarters)
+	var mid_a := entry + along
+	var mid_b := mid_a + side
+	var exit := mid_b + along
+	var entry_joints: Array[Vector3i] = [mid_a]
+	var mid_a_joints: Array[Vector3i] = [entry, mid_b]
+	var mid_b_joints: Array[Vector3i] = [mid_a, exit]
+	var exit_joints: Array[Vector3i] = [mid_b]
+	return [{"cell": entry, "role": "in", "joints": entry_joints}, {"cell": mid_a, "role": "mid_a", "joints": mid_a_joints}, {"cell": mid_b, "role": "mid_b", "joints": mid_b_joints}, {"cell": exit, "role": "out", "joints": exit_joints}]
+
+
 static func loop_plane_axis(rotation_quarters: int) -> Vector3i:
 	return Vector3i(1, 0, 0) if posmod(rotation_quarters, 2) == 1 else Vector3i(0, 0, 1)
 
@@ -73,6 +105,22 @@ static func connections(record: Dictionary) -> Array[Vector3i]:
 			cells.append(anchor - high)
 			cells.append(anchor - high + Vector3i.DOWN)
 			cells.append(anchor + high + Vector3i.UP)
+		SWITCH:
+			var role := str(record.get("switch_role", ""))
+			if role == "in" or role == "out":
+				# Only along the travel axis: a rail beside the entry or exit
+				# (in the other lane) must not join.
+				var along := switch_along(quarters)
+				for step in [along, -along]:
+					cells.append(anchor + step)
+					cells.append(anchor + step + Vector3i.DOWN)
+			var switch_joints: Variant = record.get("coaster_joints")
+			if switch_joints is Array:
+				for joint in switch_joints:
+					if joint is Array and joint.size() == 3:
+						var joint_offset := Vector3i(int(joint[0]), int(joint[1]), int(joint[2]))
+						if not cells.has(anchor + joint_offset):
+							cells.append(anchor + joint_offset)
 		LOOP:
 			for side: Vector3i in HORIZONTAL:
 				cells.append(anchor + side)
@@ -147,8 +195,26 @@ static func ride_point(record: Dictionary) -> Vector3:
 			return Vector3(anchor) + Vector3(0.5, 1.05, 0.5)
 		LOOP:
 			return Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
+		SWITCH:
+			# The middle pieces ride on the diagonal: a quarter cell toward the
+			# entry side / the exit side of the piece's centre.
+			return Vector3(anchor) + Vector3(0.5, 0.55, 0.5) + switch_mid_shift(record)
 		_:
 			return Vector3(anchor) + Vector3(0.5, 0.55, 0.5)
+
+
+## Horizontal shift of a switch piece's ride point from its cell centre
+## (zero for the entry and exit pieces).
+static func switch_mid_shift(record: Dictionary) -> Vector3:
+	var quarters := int(record.get("rotation_quarters", 0))
+	var along := Vector3(switch_along(quarters))
+	var side := Vector3(switch_side(quarters))
+	match str(record.get("switch_role", "")):
+		"mid_a":
+			return (side - along) * SWITCH_MID_OFFSET
+		"mid_b":
+			return (along - side) * SWITCH_MID_OFFSET
+	return Vector3.ZERO
 
 
 ## The ordered cells of a discrete vertical circle of `radius` cells in the

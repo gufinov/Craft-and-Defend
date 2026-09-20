@@ -524,11 +524,11 @@ func _ride_rails(instance_id: String, details: Dictionary, target: Vector3, delt
 ## cell floor on a flat rail (unchanged), half a cell higher on a slope
 ## (coaster side project) so it climbs with the track.
 func _rail_point(cell: Vector3i) -> Vector3:
-	var point := Vector3(cell) + Vector3(0.5, 1.5, 0.5)
+	# The piece's ride point (slopes ride higher, lane-switcher middles ride
+	# on their diagonal) lifted to the kettle's wheel height.
 	var station_id := workstations.station_at_cell(cell)
-	if not station_id.is_empty() and str(workstations.station(station_id).get("entity_id", "")) == CoasterRails.SLOPE:
-		point.y += 0.5
-	return point
+	var record: Dictionary = workstations.station(station_id) if not station_id.is_empty() else {"anchor": cell, "entity_id": CoasterRails.FLAT}
+	return CoasterRails.ride_point(record) + Vector3(0.0, 0.95, 0.0)
 
 
 func _chain_degree(chain: Dictionary, cell: Vector3i) -> int:
