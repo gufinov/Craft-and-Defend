@@ -19,7 +19,8 @@ const WALK_PHASE_PER_METRE := 4.2
 const LEG_SWING := 0.55
 const ARM_SWING := 0.40
 ## Seated pose: arms forward onto the car's bar.
-const SEATED_ARM_PITCH := -1.25
+## Positive pitch swings the hanging arm forward (toward -z) onto the bar.
+const SEATED_ARM_PITCH := 1.25
 
 var armored := false
 var seated := false

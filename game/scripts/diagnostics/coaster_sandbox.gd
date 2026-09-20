@@ -33,7 +33,7 @@ func run(application: CraftAndDefendApp) -> void:
 	print("COASTER_SANDBOX_READY")
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-ride-shot"):
 		# Seat-view pictures: boarding, mid-climb, head turned left.
-		var shots: Array[Dictionary] = [{"wait": 0.2, "name": "ride-start.png"}, {"wait": 2.2, "name": "ride-climb.png"}, {"wait": 1.2, "name": "ride-left.png", "yaw": Vector2(-400.0, 0.0)}, {"wait": 2.0, "name": "view-back.png", "view": "back"}, {"wait": 1.0, "name": "view-front.png", "view": "front"}, {"wait": 1.0, "name": "view-left.png", "view": "left"}, {"wait": 1.0, "name": "view-right.png", "view": "right"}]
+		var shots: Array[Dictionary] = [{"wait": 0.2, "name": "ride-start.png"}, {"wait": 0.6, "name": "view-front.png", "view": "front"}, {"wait": 0.6, "name": "view-left.png", "view": "left"}, {"wait": 0.6, "name": "view-right.png", "view": "right"}, {"wait": 0.6, "name": "view-back.png", "view": "back"}, {"wait": 0.6, "name": "view-seat.png", "view": "back"}, {"wait": 1.6, "name": "ride-climb.png"}, {"wait": 1.2, "name": "ride-left.png", "yaw": Vector2(-400.0, 0.0)}, {"wait": 0.4, "name": "view-front-turned.png", "view": "front"}]
 		app.session.board_coaster_car(str(loop_car_id))
 		app.session.set_ride_speed(4)
 		for shot in shots:
