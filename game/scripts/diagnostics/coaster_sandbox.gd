@@ -199,6 +199,8 @@ func _lay_demo() -> void:
 	# (0, 30) on lane A (z=30); base row z=29 with the slopes at x=1 and x=-4;
 	# exit on lane C (z=28) heading -x. A coaster car waits on the approach.
 	var origin := Vector3i(0, 1, 30)
+	# Creative: loops cost nothing here and grow as far as the sky allows.
+	interaction.creative = true
 	app.session.inventory.select_hotbar(STOCK.find("rail_loop"))
 	interaction.placement_rotation_quarters = 3
 	# The true loop (owner 2026-09-20): diameter 8, entry at (0, 30) heading

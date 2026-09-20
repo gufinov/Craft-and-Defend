@@ -220,6 +220,10 @@ Owner direction 2026-09-18 (see [design direction](DESIGN_DIRECTION_2026-09-18.m
 
 Proceed in bounded order after P3I–P3J above: small/large persistent storage chests with lossless container gestures; siege Interact/loading/upgrades and dismantle/move; articulated Catapult facing/arm/release/projectile behavior; persistent tool durability plus data-owned harvesting balance; then species-aware gradual leaf decay/drops. Chest capacities, footprints and recipes require their own bounded UI/placement playtest rather than an implicit clone of another voxel game's double-chest rule. Each later stage must extend the canonical balance catalogue only with values consumed by its implemented runtime and must preserve save migration/recovery. P4 army/wave simulation remains separate.
 
+## CoasterCraft tracks — the smooth-track family (owner 2026-09-20)
+
+See [CoasterCraft tracks](COASTERCRAFT_TRACKS.md). Cards, in the owner's order: (1) `TrackCurve` core + generalised lay tool (the loop moves onto it); (2) smooth lane switcher (s-bend, drag length / lanes); (3) X crossing; (4) 90° curve + U-turn (banked, radius by drag); (5) slope-in / slope-out + straight climb of any grade; (6) auto-clear terrain (global toggle, dug blocks drop to the pack); (7) winding snake switchbacks up a mountain; (8) automatic trestle supports; (9) corkscrew; (10) splitter / merge. Real-game pricing: one item per cell, pack-capped; creative free. Cards 2–6 and 8 run in parallel agents once 1 is in.
+
 ## Card completion discipline
 
 Update relevant contracts/tests, source ledger and `docs/STATUS.md`; record exact commands/results/limitations; commit a coherent increment. Future systems remain backlog items until their gate is active. Do not automatically merge or publish builds.

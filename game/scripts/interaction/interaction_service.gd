@@ -475,6 +475,25 @@ var loop_lift_index := 2
 ## set by Shift-drag (aim distance from the entry) or 4-9 / X / C.
 var loop_true := true
 var loop_diameter := 8
+## Creative (the sandbox, later a game mode): loops cost nothing and are not
+## capped by the pack; in the real game each true-loop piece costs one Rail
+## Loop item from anywhere in the pack, so the biggest loop is as big as the
+## pack allows (owner 2026-09-20), and never taller than the world.
+var creative := false
+
+
+## The largest diameter at or under `wanted` whose pieces the pack can pay
+## for and whose top stays under the world's ceiling.
+func loop_diameter_limit(wanted: int) -> int:
+	var ceiling := WorldAdapter.WORLD_MIN.y + WorldAdapter.WORLD_SIZE.y - 2
+	var anchor: Vector3i = _drag.get("anchor", Vector3i.ZERO) if not _drag.is_empty() else Vector3i.ZERO
+	var diameter := clampi(mini(wanted, ceiling - anchor.y), CoasterRails.HELIX_MIN, CoasterRails.HELIX_MAX)
+	if creative:
+		return diameter
+	var budget := inventory.count(str(_drag.get("item_id", inventory.active_item_id())))
+	while diameter > CoasterRails.HELIX_MIN and CoasterRails.helix_piece_count(diameter) > budget:
+		diameter -= 1
+	return diameter
 
 
 func is_coaster_loop_item(item_id: String) -> bool:
@@ -515,7 +534,7 @@ func toggle_loop_kind() -> bool:
 
 
 func set_loop_diameter(diameter: int) -> Dictionary:
-	loop_diameter = clampi(diameter, CoasterRails.HELIX_MIN, CoasterRails.HELIX_MAX)
+	loop_diameter = loop_diameter_limit(diameter)
 	if not _drag.is_empty() and str(_drag.get("mode", "")) == "loop_element":
 		_replan_loop_element()
 	return drag_state()
@@ -538,7 +557,7 @@ func _replan_loop_element() -> void:
 	var rotation := placement_rotation_quarters
 	_drag.rotation = rotation
 	var layout: Dictionary = CoasterRails.helix_layout(_drag.anchor, rotation, loop_diameter) if loop_true else CoasterRails.loop_element_layout(_drag.anchor, rotation, loop_size, CoasterRails.LOOP_LIFTS[loop_lift_index])
-	var affordable: bool = inventory.count(str(_drag.item_id)) >= 1
+	var affordable: bool = creative or inventory.count(str(_drag.item_id)) >= (layout.pieces.size() if loop_true else 1)
 	var entries: Array[Dictionary] = []
 	for piece: Dictionary in layout.pieces:
 		var cell: Vector3i = piece.cell
@@ -564,9 +583,11 @@ func _commit_loop_element() -> Dictionary:
 	for entry in entries:
 		if str(entry.state) != "ok":
 			return _finish(false, "LOOP_BLOCKED" if str(entry.state) == "blocked" else "NO_RESOURCE", {"cell": entry.cell, "why": entry.reason})
-	var paid := inventory.try_transaction({item_id: 1}, {})
-	if not paid.get("ok", false):
-		return _finish(false, str(paid.get("reason", "NO_RESOURCE")))
+	var price := 0 if creative else (entries.size() if loop_true else 1)
+	if price > 0:
+		var paid := inventory.try_transaction({item_id: price}, {})
+		if not paid.get("ok", false):
+			return _finish(false, str(paid.get("reason", "NO_RESOURCE")))
 	var cells: Array[Vector3i] = []
 	for entry in entries:
 		var cell: Vector3i = entry.cell
@@ -582,7 +603,7 @@ func _commit_loop_element() -> Dictionary:
 		if not result.get("ok", false):
 			return _finish(false, str(result.get("reason", "PLACEMENT_FAILED")), {"cells": cells, "cell": cell})
 		cells.append(cell)
-	return _finish(true, "LOOP_PLACED", {"cells": cells, "count": cells.size(), "size": loop_size, "items": {item_id: -1}})
+	return _finish(true, "LOOP_PLACED", {"cells": cells, "count": cells.size(), "size": loop_diameter if loop_true else loop_size, "items": {item_id: -price}})
 
 
 ## Lane Switcher (owner 2026-09-20): the held item lays four pieces at once.

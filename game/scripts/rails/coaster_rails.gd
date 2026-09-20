@@ -382,6 +382,11 @@ static func helix_theta(record: Dictionary, point: Vector3) -> float:
 	return clampf(theta, 0.0, TAU)
 
 
+## How many pieces a true loop of `diameter` takes (its item price).
+static func helix_piece_count(diameter: int) -> int:
+	return (helix_layout(Vector3i.ZERO, 0, diameter).cells as Array).size()
+
+
 ## The true loop's pieces: {pieces, cells, center, radius, entry, exit}.
 static func helix_layout(entry: Vector3i, quarters: int, diameter: int) -> Dictionary:
 	diameter = clampi(diameter, HELIX_MIN, HELIX_MAX)

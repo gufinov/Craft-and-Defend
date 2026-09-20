@@ -31,6 +31,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P4G Core of Power and light sources (asset attribute sheet)](P4G_CORE_AND_LIGHTS.md)
 - [Coaster rails side project: slopes, loop drag tool, mine cart](COASTER_RAILS.md)
 - [Coaster car and hero: ride the coaster (Shift, 1–9 speed), the hero character, third person (V)](COASTER_CAR_AND_HERO.md)
+- [CoasterCraft tracks: the smooth-track family plan (TrackCurve core, switchers, curves, slopes, snake, auto-clear)](COASTERCRAFT_TRACKS.md)
 - [P4b resource distribution and gold](P4B_RESOURCE_DISTRIBUTION.md)
 - [Balance, ecology and siege systems](BALANCE_ECOLOGY_AND_SIEGE_SYSTEMS.md)
 - [Design direction 2026-09-18 — owner vision and proposals](DESIGN_DIRECTION_2026-09-18.md)

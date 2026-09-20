@@ -28,7 +28,7 @@ const REASON_TEXT := {
 	"LINE_PLACED": "Pieces laid in a line.",
 	"COASTER_PLACED": "Coaster track laid.",
 	"SWITCH_PLACED": "Lane switcher laid: the track shifts one lane to the right.",
-	"LOOP_PLACED": "Loop built: entry lane, switchers, slopes and the circle. Rails join its entry (behind) and exit (ahead, two lanes over).",
+	"LOOP_PLACED": "Loop built. Rails join its entry (behind) and its exit (ahead, one lane right).",
 	"LOOP_BLOCKED": "The loop does not fit here: a red cell is in the way (ground, tree, hill or block). Move, turn (W / R) or resize (4-9).",
 	"SWITCH_BLOCKED": "The lane switcher needs four free cells: entry, two side by side, exit.",
 	"COASTER_BOARDED": "Boarded the coaster car — 1-9 sets the speed, Shift or Escape leaves.",
