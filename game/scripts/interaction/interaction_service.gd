@@ -577,12 +577,17 @@ func _snap_loop_on_base(anchor: Vector3i) -> Dictionary:
 			if not check.get("ok", false):
 				return {"handled": true, "ok": false, "reason": "LOOP_SNAP_BLOCKED", "changes": {"cell": cell, "why": check.get("reason")}}
 		var placed: Array[Vector3i] = []
+		# The true circle: centred over the base midpoint, lifted to the
+		# middle of the arch's vertical sides (CoasterRails.arch_center_lift).
+		var radius := float(half_width + 1)
+		var center := Vector3(middle) + Vector3(0.5, 0.5, 0.5) + Vector3.UP * float(CoasterRails.arch_center_lift(half_width))
+		var loop_center: Array = [center.x, center.y, center.z]
 		for index in range(cells.size()):
 			var cell: Vector3i = cells[index]
 			var before: Vector3i = cells[index - 1] if index > 0 else left
 			var after: Vector3i = cells[index + 1] if index + 1 < cells.size() else right
 			var joints: Array = [[before.x - cell.x, before.y - cell.y, before.z - cell.z], [after.x - cell.x, after.y - cell.y, after.z - cell.z]]
-			var result := workstations.try_place(entity_id, cell, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB(), rotation, {"coaster_joints": joints})
+			var result := workstations.try_place(entity_id, cell, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB(), rotation, {"coaster_joints": joints, "loop_center": loop_center, "loop_radius": radius})
 			if not result.get("ok", false):
 				return {"handled": true, "ok": false, "reason": str(result.get("reason", "PLACEMENT_FAILED")), "changes": {"cells": placed}}
 			placed.append(cell)

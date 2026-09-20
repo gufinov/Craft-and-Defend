@@ -1417,6 +1417,61 @@ func _build_rail_slope_visual(parent: Node3D) -> void:
 ## its centre toward every track piece it joins (CoasterRails joints), pitched
 ## to the joint's direction, so a ring of pieces reads as a polygonal loop.
 ## A piece whose joints all lie flat is drawn as an ordinary rail block.
+## A snapped arch piece (owner 2026-09-20): its rails follow the loop's true
+## circle from halfway to the previous piece to halfway to the next, as a
+## few short straight sections, so the loop reads as a smooth ring instead
+## of a cell-centre zigzag. Wooden ties every section; a post at the centre.
+const LOOP_ARC_SECTIONS := 4
+
+
+func _build_loop_arc_visual(parent: Node3D, record: Dictionary, joined: Array[Vector3i]) -> void:
+	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	var tracks := CoasterRails.track_records(workstations.stations)
+	_add_collision_box(parent, Vector3(0.70, 0.70, 0.70), Vector3.ZERO)
+	var iron := _visual_material(Color("8a939b"))
+	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	var undo := Node3D.new()
+	undo.name = "LoopArc"
+	undo.rotation.y = -parent.rotation.y
+	parent.add_child(undo)
+	var body_origin := Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
+	var own_point := CoasterRails.ride_point(record)
+	var own_angle := CoasterRails.arc_angle(record, own_point)
+	var across := Vector3(1.0, 0.0, 0.0) if int(record.get("rotation_quarters", 0)) % 2 == 1 else Vector3(0.0, 0.0, 1.0)
+	_add_mesh_box(undo, Vector3(0.16, 0.16, 0.16), own_point - body_origin, iron)
+	_add_stud(undo, own_point - body_origin + Vector3(0.0, 0.10, 0.0), gold, Vector3.ZERO)
+	for cell: Vector3i in joined:
+		var other: Dictionary = tracks.get(cell, {"anchor": cell, "entity_id": CoasterRails.FLAT})
+		var other_point := CoasterRails.arc_point(record, CoasterRails.ride_point(other))
+		var other_angle := CoasterRails.arc_angle(record, other_point)
+		var delta := wrapf(other_angle - own_angle, -PI, PI)
+		# From this piece's point to halfway toward the neighbour, in sections.
+		var previous_point := own_point
+		for section in range(1, LOOP_ARC_SECTIONS + 1):
+			var angle := own_angle + delta * 0.5 * float(section) / float(LOOP_ARC_SECTIONS)
+			var arc := CoasterRails.arc_of(record)
+			var spoke := across * cos(angle) + Vector3.UP * sin(angle)
+			var point: Vector3 = arc.center + spoke * float(arc.radius)
+			var direction := point - previous_point
+			var length := direction.length()
+			if length < 0.001:
+				continue
+			direction = direction.normalized()
+			var side := direction.cross(Vector3.UP)
+			if side.length() < 0.01:
+				side = across
+			var piece := Node3D.new()
+			piece.position = (previous_point + point) * 0.5 - body_origin
+			piece.basis = Basis.looking_at(direction, side.normalized())
+			undo.add_child(piece)
+			for offset in [-0.22, 0.22]:
+				_add_mesh_box(piece, Vector3(0.10, 0.10, length + 0.02), Vector3(0.0, offset, 0.0), iron)
+			if section % 2 == 0:
+				_add_mesh_box(piece, Vector3(0.08, 0.60, 0.10), Vector3.ZERO, oak)
+			previous_point = point
+
+
 func _build_rail_loop_visual(parent: Node3D, record: Dictionary) -> void:
 	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
 	var joined := CoasterRails.connected_cells(record, CoasterRails.track_records(workstations.stations))
@@ -1432,6 +1487,9 @@ func _build_rail_loop_visual(parent: Node3D, record: Dictionary) -> void:
 			flat_arms.append(offset)
 	if flat:
 		_build_rail_visual(parent, _track_arm_mask(record), flat_arms)
+		return
+	if record.has("loop_center"):
+		_build_loop_arc_visual(parent, record, joined)
 		return
 	_add_collision_box(parent, Vector3(0.70, 0.70, 0.70), Vector3.ZERO)
 	var iron := _visual_material(Color("8a939b"))

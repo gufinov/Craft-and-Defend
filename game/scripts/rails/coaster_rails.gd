@@ -194,6 +194,10 @@ static func ride_point(record: Dictionary) -> Vector3:
 		SLOPE:
 			return Vector3(anchor) + Vector3(0.5, 1.05, 0.5)
 		LOOP:
+			# A snapped arch piece rides on the true circle (owner 2026-09-20:
+			# the cell-centre polygon looked broken); others ride their centre.
+			if record.has("loop_center"):
+				return arc_point(record, Vector3(anchor) + Vector3(0.5, 0.5, 0.5))
 			return Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
 		SWITCH:
 			# The middle pieces ride on the diagonal: a quarter cell toward the
@@ -201,6 +205,49 @@ static func ride_point(record: Dictionary) -> Vector3:
 			return Vector3(anchor) + Vector3(0.5, 0.55, 0.5) + switch_mid_shift(record)
 		_:
 			return Vector3(anchor) + Vector3(0.5, 0.55, 0.5)
+
+
+## Rows from the base row up to the centre of the arch circle
+## (loop_arch_offsets lifts the circle so its lowest side cell is one row up).
+static func arch_center_lift(half_width: int) -> int:
+	var radius := half_width + 1
+	var side_extent := 0
+	for point in circle_points(radius):
+		if point.x == radius:
+			side_extent = maxi(side_extent, absi(point.y))
+	return side_extent + 1
+
+
+## The circle a snapped arch piece belongs to: {center: Vector3, radius}
+## from its record, or empty.
+static func arc_of(record: Dictionary) -> Dictionary:
+	var stored: Variant = record.get("loop_center")
+	if not (stored is Array) or (stored as Array).size() != 3:
+		return {}
+	return {"center": Vector3(float(stored[0]), float(stored[1]), float(stored[2])), "radius": float(record.get("loop_radius", 1.0))}
+
+
+## `point` projected onto the piece's circle (in the circle's vertical plane).
+static func arc_point(record: Dictionary, point: Vector3) -> Vector3:
+	var arc := arc_of(record)
+	if arc.is_empty():
+		return point
+	var center: Vector3 = arc.center
+	var spoke := point - center
+	spoke[2 if int(record.get("rotation_quarters", 0)) % 2 == 1 else 0] = 0.0
+	if spoke.length() < 0.001:
+		return point
+	return center + spoke.normalized() * float(arc.radius)
+
+
+## Angle of `point` around the piece's circle, in the plane (0 = +axis).
+static func arc_angle(record: Dictionary, point: Vector3) -> float:
+	var arc := arc_of(record)
+	if arc.is_empty():
+		return 0.0
+	var spoke: Vector3 = point - arc.center
+	var horizontal := spoke.x if int(record.get("rotation_quarters", 0)) % 2 == 1 else spoke.z
+	return atan2(spoke.y, horizontal)
 
 
 ## Horizontal shift of a switch piece's ride point from its cell centre
