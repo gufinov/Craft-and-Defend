@@ -110,9 +110,13 @@ func run(application: CraftAndDefendApp) -> void:
 		get_tree().quit(0)
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-shot"):
 		var player := app.session.player
-		player.global_position = Vector3(2.0, 6.0, 46.0)
-		player.look_at(Vector3(-2.0, 2.0, 31.0), Vector3.UP)
-		player.camera.rotation.x = -0.15
+		# Above and behind the loop's bottom, looking down the lead-in so the
+		# 45-degree steps into and out of the circle show.
+		player.global_position = Vector3(-13.0, 6.0, 36.0)
+		player.rotation = Vector3.ZERO
+		player.rotate_y(-0.9)
+		player.look_pitch = -0.42
+		player.apply_mouse_look(Vector2.ZERO)
 		for _frame in range(150):
 			await get_tree().process_frame
 		await RenderingServer.frame_post_draw
@@ -178,18 +182,19 @@ func _lay_demo() -> void:
 	# Closed circuit (owner 2026-09-20: a dead end made the car turn round and
 	# "ride backwards"): flat rails from the loop's exit around the back of
 	# the plate to the lead-in's start, so the car circulates forever.
-	var exit_x := origin.x
+	var exit_cell := origin
 	for cell: Vector3i in CoasterRails.chain(ws.stations, origin):
-		if cell.y == origin.y and cell.x > exit_x:
-			exit_x = cell.x
+		if cell.y == origin.y and cell.x > exit_cell.x:
+			exit_cell = cell
+	var back_z := origin.z - 4
 	var circuit: Array[Vector3i] = []
-	for x in range(exit_x + 1, exit_x + 3):
-		circuit.append(Vector3i(x, origin.y, origin.z))
-	for z in range(origin.z - 1, origin.z - 5, -1):
-		circuit.append(Vector3i(exit_x + 2, origin.y, z))
-	for x in range(exit_x + 1, origin.x - 3, -1):
-		circuit.append(Vector3i(x, origin.y, origin.z - 4))
-	for z in range(origin.z - 3, origin.z + 1):
+	for x in range(exit_cell.x + 1, exit_cell.x + 3):
+		circuit.append(Vector3i(x, origin.y, exit_cell.z))
+	for z in range(exit_cell.z - 1, back_z - 1, -1):
+		circuit.append(Vector3i(exit_cell.x + 2, origin.y, z))
+	for x in range(exit_cell.x + 1, origin.x - 3, -1):
+		circuit.append(Vector3i(x, origin.y, back_z))
+	for z in range(back_z + 1, origin.z + 1):
 		circuit.append(Vector3i(origin.x - 2, origin.y, z))
 	circuit.append(Vector3i(origin.x - 1, origin.y, origin.z))
 	var laid := 0

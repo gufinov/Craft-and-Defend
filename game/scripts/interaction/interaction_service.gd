@@ -559,7 +559,12 @@ func _replan_coaster_loop() -> void:
 	if bool(_drag.get("loop", false)):
 		var radius := int(_drag.get("radius", LOOP_RADIUS_DEFAULT))
 		var lead_end: Vector3i = planned[planned.size() - 1]
-		var circle_start: Vector3i = lead_end + along
+		# Owner 2026-09-20: a real loop does not exit onto its own entry. The
+		# circle's plane sits one cell to the RIGHT of the lead-in (a 45-degree
+		# joint steps into it) and the exit steps 45 degrees right again, so
+		# the exit run is parallel to the lead-in, two cells over.
+		var side := Vector3i(Vector3(along).cross(Vector3.UP).round())
+		var circle_start: Vector3i = lead_end + along + side
 		var ring: Array[Vector3i] = []
 		var last_bottom := circle_start
 		for offset: Vector3i in CoasterRails.loop_offsets(radius, along):
@@ -574,7 +579,7 @@ func _replan_coaster_loop() -> void:
 		_plan_join(planned, joints, circle_start, lead_end)
 		var exit_from := last_bottom
 		for exit_index in range(1, LOOP_EXIT_CELLS + 1):
-			var exit_cell := last_bottom + along * exit_index
+			var exit_cell := last_bottom + along * exit_index + side
 			_plan_join(planned, joints, exit_cell, exit_from)
 			exit_from = exit_cell
 	_drag.loop_cells = loop_count

@@ -69,3 +69,7 @@ A Node that `GameSession` adds only when the first `mine_cart` is placed and fre
 ## Owner sandbox
 
 `START_COASTER_SANDBOX.cmd` (this worktree) launches the export with `--coaster-sandbox` (`CoasterSandbox`): a new game, a stone plate beside the spawn with a premade lead-in + radius-3 loop and a slope run over a two-block step (a mine cart on each), and a pack that refills every second with rails, slopes, loops, carts, kettles, castle stone, planks, picks, sword, shot, torches and chests — nothing to mine. Its saves go to `artifacts\coaster-sandbox` so ordinary saves are untouched.
+
+## Offset loop (owner 2026-09-20)
+
+"In the real world a loop starts on one side and shifts so it exits parallel to the other track, not on it." The loop drag now lays: lead-in → a 45° joint one cell to the **right** of travel into the circle's plane → the circle → a 45° joint right again → the exit run, parallel to the lead-in two cells over. The circle's bottom row is still shared by the climb and the descent (that is the circle itself), but the entry and exit tracks never overlap. Pieces with a diagonal joint draw arms toward their joined cells (`GameSession._build_rail_loop_visual`); carts and kettles follow the recorded joints. Cell count is unchanged (radius 3: 4 + 16 + 2 = 22). The sandbox circuit closes from the offset exit. T162 expects the shifted cells.

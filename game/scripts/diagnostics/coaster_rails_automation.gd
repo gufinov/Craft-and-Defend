@@ -163,9 +163,10 @@ func _run_gate() -> void:
 	var committed := interaction.commit_drag_place()
 	var loop_pieces := _count_entities(ws, "rail_loop") - loop_count_before
 	var loop_chain := CoasterRails.chain(ws.stations, anchor)
-	var top_cell := anchor + Vector3i(5, 6, 0)
-	var side_cell := anchor + Vector3i(8, 3, 0)
-	var exit_end := anchor + Vector3i(8, 0, 0)
+	# The circle sits one cell right (+z) of the lead-in; the exit run two.
+	var top_cell := anchor + Vector3i(5, 6, 1)
+	var side_cell := anchor + Vector3i(8, 3, 1)
+	var exit_end := anchor + Vector3i(8, 0, 2)
 	var top_joints: Array = loop_chain.get(top_cell, [])
 	var side_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(side_cell))
 	var top_curved := side_body != null and side_body.get_node_or_null("LoopArms") != null

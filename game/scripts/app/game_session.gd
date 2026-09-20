@@ -1360,9 +1360,12 @@ func _build_rail_slope_visual(parent: Node3D) -> void:
 func _build_rail_loop_visual(parent: Node3D, record: Dictionary) -> void:
 	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
 	var joined := CoasterRails.connected_cells(record, CoasterRails.track_records(workstations.stations))
+	# Straight or cornered on one level: an ordinary rail. A diagonal joint
+	# (the 45-degree step into or out of a loop) or a climb draws arms.
 	var flat := true
 	for cell: Vector3i in joined:
-		if cell.y != anchor.y:
+		var offset := cell - anchor
+		if offset.y != 0 or not CoasterRails.HORIZONTAL.has(offset):
 			flat = false
 	if flat:
 		_build_rail_visual(parent, _track_arm_mask(record))
