@@ -46,6 +46,7 @@ DERIVED = [
     # the plan's fixed order: coastercraft_shop, miner, ore_bin, warehouse, foundry.
     "coastercraft_shop",
     "miner", "ore_bin",
+    "warehouse", "foundry",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -420,6 +421,51 @@ def icon_coastercraft_shop() -> Image.Image:
     return canvas
 
 
+def icon_warehouse() -> Image.Image:
+    """A wide stone-footed oak shed: gable roof, a door and a crate beside it."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    wood = (139, 82, 38, 255)
+    dark = (92, 52, 24, 255)
+    stone = (110, 118, 126, 255)
+    draw.rectangle([24, 196, 232, 224], fill=stone, outline=(70, 74, 80, 255), width=4)
+    draw.rectangle([36, 112, 220, 200], fill=wood, outline=dark, width=6)
+    for y in (140, 168):
+        draw.line([(40, y), (216, y)], fill=dark, width=4)
+    draw.polygon([(20, 116), (128, 44), (236, 116)], fill=dark)
+    draw.polygon([(40, 112), (128, 56), (216, 112)], fill=(120, 68, 30, 255))
+    draw.rectangle([104, 136, 152, 200], fill=dark)
+    draw.rectangle([140, 164, 148, 172], fill=(226, 170, 44, 255))
+    draw.rectangle([160, 156, 208, 200], fill=(160, 100, 48, 255), outline=dark, width=4)
+    draw.line([(160, 156), (208, 200)], fill=dark, width=4)
+    draw.line([(208, 156), (160, 200)], fill=dark, width=4)
+    return canvas
+
+
+def icon_foundry() -> Image.Image:
+    """A castle-stone furnace body with an iron chimney and a mould tray."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    masonry = (200, 204, 208, 255)
+    mortar = (110, 118, 126, 255)
+    iron = (58, 62, 68, 255)
+    draw.rectangle([40, 108, 176, 216], fill=masonry, outline=mortar, width=6)
+    for y in (140, 172):
+        draw.line([(44, y), (172, y)], fill=mortar, width=4)
+    draw.rectangle([130, 36, 162, 112], fill=iron, outline=(30, 32, 36, 255), width=4)
+    draw.rectangle([122, 28, 170, 44], fill=iron)
+    for cx, r in ((146, 12), (156, 16)):
+        draw.ellipse([cx - r, 20 - r - 8, cx + r, 20 + r - 8], fill=(150, 156, 160, 160))
+    draw.rectangle([70, 150, 146, 204], fill=(20, 24, 28, 255))
+    draw.rectangle([78, 172, 138, 200], fill=(255, 122, 31, 255))
+    draw.rectangle([92, 160, 124, 186], fill=(255, 210, 90, 255))
+    draw.rectangle([184, 176, 236, 216], fill=iron, outline=(30, 32, 36, 255), width=4)
+    for x in (196, 220):
+        draw.rectangle([x - 8, 186, x + 8, 206], fill=(226, 170, 44, 255))
+    draw.rectangle([40, 216, 236, 230], fill=mortar)
+    return canvas
+
+
 BUILDERS = {
     "flame_shot": icon_flame_shot, "chest": icon_chest, "cannon": icon_cannon, "cannonball": icon_cannonball,
     "turret_catapult": icon_turret_catapult, "hot_oil": icon_hot_oil, "kettle": icon_kettle, "rail": icon_rail,
@@ -434,6 +480,7 @@ BUILDERS = {
     "rail_curve": icon_rail_curve,
     "coastercraft_shop": icon_coastercraft_shop,
     "miner": icon_miner, "ore_bin": icon_ore_bin,
+    "warehouse": icon_warehouse, "foundry": icon_foundry,
 }
 
 

@@ -128,10 +128,17 @@ var siege_legend_list: VBoxContainer
 var chest_card: PanelContainer
 var chest_column: VBoxContainer
 var chest_panel: ChestPanel
+## Industry wave 1: the Foundry's small panel (target buttons + status) and the
+## inventory card, hidden while it is open.
+var crafting_inventory_card: PanelContainer
+var foundry_card: PanelContainer
+var foundry_column: VBoxContainer
+var foundry_target_buttons: Array[Button] = []
+var foundry_status_label: Label
 var cursor_stack_panel: PanelContainer
 var cursor_stack_icon: TextureRect
 var cursor_stack_count: Label
-const CRAFTING_STATION_TYPES: Array[String] = ["workbench", "furnace", "siege", "chest", "coastercraft_shop"]
+const CRAFTING_STATION_TYPES: Array[String] = ["workbench", "furnace", "siege", "chest", "coastercraft_shop", "foundry"]
 var _crafting_station_id := ""
 var _crafting_station_type := "hand"
 var _selected_recipe_id := ""
@@ -1013,6 +1020,7 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	inventory_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	inventory_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 14))
 	columns.add_child(inventory_card)
+	crafting_inventory_card = inventory_card
 	var inventory_column := VBoxContainer.new()
 	inventory_card.add_child(inventory_column)
 	var inventory_heading := Label.new()
@@ -1154,6 +1162,32 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	chest_panel = ChestPanel.new()
 	chest_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	chest_column.add_child(chest_panel)
+	# Industry wave 1: the Foundry card — pick the ingot, read the status.
+	foundry_card = PanelContainer.new()
+	foundry_card.custom_minimum_size.x = 330
+	foundry_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 14))
+	foundry_card.hide()
+	columns.add_child(foundry_card)
+	foundry_column = VBoxContainer.new()
+	foundry_column.add_theme_constant_override("separation", 8)
+	foundry_card.add_child(foundry_column)
+	var foundry_help := Label.new()
+	foundry_help.text = "Smelts from the Warehouse it touches"
+	foundry_help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	foundry_help.add_theme_font_size_override("font_size", 14)
+	foundry_help.add_theme_color_override("font_color", Color("9fd8e8"))
+	foundry_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	foundry_help.mouse_filter = Control.MOUSE_FILTER_STOP
+	foundry_help.tooltip_text = "Every 10 seconds the Foundry takes one ore and one Coal from the Warehouse beside it and puts the ingot back. Any = the first ingot whose ore is there (iron before gold)."
+	foundry_column.add_child(foundry_help)
+	foundry_status_label = Label.new()
+	foundry_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	foundry_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	foundry_status_label.custom_minimum_size = Vector2(330, 44)
+	foundry_status_label.add_theme_font_size_override("font_size", 15)
+	foundry_status_label.add_theme_color_override("font_color", Color("ffd488"))
+	foundry_column.add_child(foundry_status_label)
+	foundry_column.add_child(_button("Close", _close_crafting, Vector2(330, 40)))
 
 	var recipe_card := PanelContainer.new()
 	recipe_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1564,7 +1598,8 @@ func _show_workstation(instance_id: String, station_type: String) -> void:
 		if service_type in CRAFTING_STATION_TYPES:
 			resolved = service_type
 		elif session.workstations.is_container(instance_id):
-			# Industry containers (ore_bin, warehouse) open the Chest grid.
+			# Industry wave 1: every container (Warehouse, Ore Bin) opens the
+			# Chest panel - same slot list, same gestures.
 			resolved = "chest"
 	_show_crafting(instance_id, resolved)
 
@@ -1856,9 +1891,18 @@ func _refresh_crafting_panel() -> void:
 		return
 	if _crafting_station_type == "chest":
 		_refresh_crafting_inventory()
-		crafting_title_label.text = "CHEST"
-		crafting_context_label.text = "STORE AND TAKE ITEMS  ·  SIEGE WEAPONS IN SUPPLY RANGE RELOAD FROM HERE  ·  ESC CLOSES"
+		var container_entity := str(session.workstations.station(_crafting_station_id).get("entity_id", "chest"))
+		crafting_title_label.text = session.registry.display_name(container_entity).to_upper()
+		if container_entity == "warehouse":
+			crafting_context_label.text = "STORE ORE AND COAL  ·  A FOUNDRY TOUCHING IT SMELTS THEM INTO INGOTS HERE  ·  ESC CLOSES"
+		else:
+			crafting_context_label.text = "STORE AND TAKE ITEMS  ·  SIEGE WEAPONS IN SUPPLY RANGE RELOAD FROM HERE  ·  ESC CLOSES"
 		_refresh_chest_panel_state()
+		return
+	if _crafting_station_type == "foundry":
+		crafting_title_label.text = "FOUNDRY"
+		crafting_context_label.text = "PICK THE INGOT  ·  SMELTS FROM THE WAREHOUSE BESIDE IT  ·  ESC CLOSES"
+		_refresh_foundry_panel_state()
 		return
 	var recipes := _available_crafting_recipes()
 	var grid_size := 2
@@ -1990,22 +2034,27 @@ func _refresh_crafting_panel() -> void:
 func _apply_crafting_card_layout() -> void:
 	var siege := _crafting_station_type == "siege"
 	var chest := _crafting_station_type == "chest"
+	var foundry := _crafting_station_type == "foundry"
 	if siege:
 		crafting_inventory_help.text = "Drag a munition onto the slot, or select then click it"
 	elif chest:
 		crafting_inventory_help.text = "Drag onto the chest, or select then click a chest tile"
 	else:
 		crafting_inventory_help.text = "Drag into the grid, or select then choose a cell"
-	crafting_grid_card.visible = not siege and not chest
-	crafting_recipe_card.visible = not siege and not chest
+	crafting_grid_card.visible = not siege and not chest and not foundry
+	crafting_recipe_card.visible = not siege and not chest and not foundry
+	crafting_inventory_card.visible = not foundry
 	siege_card.visible = siege
 	siege_legend_card.visible = siege
 	chest_card.visible = chest
+	foundry_card.visible = foundry
 	var message_parent: Container = crafting_grid_column
 	if siege:
 		message_parent = siege_column
 	elif chest:
 		message_parent = chest_column
+	elif foundry:
+		message_parent = foundry_column
 	if crafting_message.get_parent() != message_parent:
 		crafting_message.reparent(message_parent, false)
 
@@ -2173,6 +2222,42 @@ func _on_siege_stack_gesture(source_kind: String, source_index: int, mouse_butto
 			_load_siege_ammo(_crafting_selected_inventory_item, 5)
 		elif shift_pressed or double_click:
 			_on_siege_unload_pressed()
+
+
+## Industry wave 1: the Foundry card — one button per target ("Any" + each
+## furnace ingot), the pressed one is the current target, plus the status line.
+func _refresh_foundry_panel_state() -> void:
+	if session == null or foundry_column == null or session.foundry == null or _crafting_station_type != "foundry" or _crafting_station_id.is_empty():
+		return
+	_apply_crafting_card_layout()
+	var foundry_state: Dictionary = session.foundry.state(_crafting_station_id)
+	var targets: Array[String] = session.foundry.targets()
+	if foundry_target_buttons.size() != targets.size():
+		for button in foundry_target_buttons:
+			foundry_column.remove_child(button)
+			button.queue_free()
+		foundry_target_buttons.clear()
+		for index in range(targets.size()):
+			var target := targets[index]
+			var button := _button("Any" if target == FoundryService.TARGET_ANY else session.registry.display_name(target), _on_foundry_target_pressed.bind(target), Vector2(330, 40))
+			button.toggle_mode = true
+			button.tooltip_text = "Smelt whichever ingot the Warehouse has ore for (iron first)" if target == FoundryService.TARGET_ANY else "Smelt only %s" % session.registry.display_name(target)
+			foundry_column.add_child(button)
+			foundry_column.move_child(button, 1 + index)
+			foundry_target_buttons.append(button)
+	var current := str(foundry_state.get("target", FoundryService.TARGET_ANY))
+	for index in range(targets.size()):
+		foundry_target_buttons[index].set_pressed_no_signal(targets[index] == current)
+	foundry_status_label.text = "%s  ·  made %d" % [str(foundry_state.get("status", "")).capitalize(), int(foundry_state.get("made", 0))]
+
+
+func _on_foundry_target_pressed(target: String) -> void:
+	if session == null or session.foundry == null or _crafting_station_type != "foundry":
+		return
+	var result: Dictionary = session.foundry.set_target(_crafting_station_id, target)
+	if result.get("ok", false):
+		crafting_message.text = "The foundry now makes %s." % ("any ingot" if target == FoundryService.TARGET_ANY else session.registry.display_name(target))
+	_refresh_foundry_panel_state()
 
 
 func _refresh_chest_panel_state() -> void:

@@ -91,6 +91,8 @@ var registry: ContentRegistry
 var inventory: F0Inventory
 var crafting: CraftingService
 var workstations: WorkstationService
+## Industry wave 1 (docs/INDUSTRY.md): foundries smelting from warehouses.
+var foundry: FoundryService
 var interaction: InteractionService
 var clock: DayNightClock
 var defense: DefenseService
@@ -152,6 +154,8 @@ func initialize(session_data: Dictionary) -> Dictionary:
 		inventory.try_transaction({}, grant)
 	crafting = CraftingService.new(registry, inventory)
 	workstations = WorkstationService.new(registry, inventory)
+	foundry = FoundryService.new(workstations, registry)
+	foundry.foundry_changed.connect(_on_foundry_changed)
 	_pending_workstation_snapshot = snapshot.get("workstations", {})
 	clock = DayNightClock.new()
 	if not clock.load_error.is_empty():
@@ -289,6 +293,8 @@ func _process(delta: float) -> void:
 	if workstations != null and not saving:
 		workstations.advance(delta, simulation_paused)
 		_ensure_enemy_core(delta)
+	if foundry != null and not saving and world_ready:
+		foundry.advance(delta, simulation_paused)
 	if clock != null and not saving:
 		var clock_advanced := clock.advance(delta, simulation_paused)
 		_update_sun_visual()
@@ -437,6 +443,10 @@ func select_hotbar(index: int) -> Dictionary:
 			_on_interaction_feedback("RAIL SWITCH: aim where the entry goes, HOLD Right Mouse — the smooth S-bend ghost appears (4 long, one lane right); hold Shift and aim where the exit goes (forward = length, sideways = lanes, left or right), or 4-9 / X / C for the length; W / R turn it; let go to lay it (one item per piece, red = does not fit) — it heads the way you face; U / Ctrl+Z undoes")
 		elif interaction != null and interaction.is_rail_cross_item(item_id):
 			_on_interaction_feedback("CROSSING: aim where the first entry goes, HOLD Right Mouse — two S-bends that swap lanes appear; hold Shift and aim where the first exit goes (forward = length, sideways = lanes), or 4-9 / X / C for the length; W / R turn it; let go to lay it (one item per piece, red = does not fit) — it heads the way you face; U / Ctrl+Z undoes")
+		elif item_id == "foundry":
+			_on_interaction_feedback("FOUNDRY: place it touching a Warehouse (2 x 1, W / R turn it); right-click it to pick the ingot it smelts - it takes ore + Coal from the Warehouse every 10 s and puts the ingot back")
+		elif item_id == "warehouse":
+			_on_interaction_feedback("WAREHOUSE: 2 x 2 store with 27 slots; right-click it to store ore and Coal (or take ingots) - a Foundry touching it smelts on its own")
 		elif item_id == "rail_curve":
 			_on_interaction_feedback("CURVE: aim at the ground where the entry goes, HOLD Right Mouse — the curve ghost appears (90°, radius 4, bending right); hold Shift and aim where it should go: ahead-right = 45°, right = 90°, behind-right = 135°, behind = U-turn, aim LEFT to bend left, further = wider (or 4-9 / X / C); W / R turn the entry; let go to build it (red = does not fit); one Curve per piece — it heads the way you face; U / Ctrl+Z undoes")
 	return result
@@ -1062,6 +1072,37 @@ func _on_station_changed(result: Dictionary) -> void:
 		_update_station_visual(str(details.instance_id), int(details.integrity), int(details.get("max_integrity", 1)))
 	elif details.has("instance_id") and details.has("container_slots"):
 		_refresh_ore_heap(str(details.instance_id))
+		_refresh_container_visual(str(details.instance_id))
+
+
+## The foundry's glowing mouth follows its status (docs/INDUSTRY.md).
+func _on_foundry_changed(instance_id: String, state: Dictionary) -> void:
+	var body: Node3D = _station_visuals.get(instance_id)
+	if body == null:
+		return
+	var glow := body.get_node_or_null("Glow")
+	if glow != null:
+		glow.visible = bool(state.get("working", false))
+
+
+## Warehouse: the crate stack shows when it holds anything (rebuilt on every
+## container change; a chest keeps its fixed look).
+func _refresh_container_visual(instance_id: String) -> void:
+	var body: Node3D = _station_visuals.get(instance_id)
+	if body == null or str(workstations.station(instance_id).get("entity_id", "")) != "warehouse":
+		return
+	var old := body.get_node_or_null("Crates")
+	if old != null:
+		body.remove_child(old)
+		old.queue_free()
+	_build_warehouse_crates(body, _container_item_count(instance_id))
+
+
+func _container_item_count(instance_id: String) -> int:
+	var total := 0
+	for stack in workstations.container_slots(instance_id):
+		total += int(stack.get("count", 0))
+	return total
 
 
 func _on_job_completed(result: Dictionary) -> void:
@@ -1098,6 +1139,11 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_build_furnace_visual(body)
 	elif entity_id == "coastercraft_shop":
 		_build_coastercraft_shop_visual(body)
+	elif entity_id == "warehouse":
+		_build_warehouse_visual(body)
+		_build_warehouse_crates(body, _container_item_count(instance_id))
+	elif entity_id == "foundry":
+		_build_foundry_visual(body)
 	elif entity_id == "ballista":
 		_build_ballista_visual(body)
 		_wrap_siege_turret(body, definition)
@@ -1404,6 +1450,75 @@ func miner_status_line(instance_id: String) -> String:
 	elif status == MinerService.STATUS_NO_ORE:
 		line += " " + str(REASON_TEXT.get("MINER_NO_ORE_HINT", ""))
 	return line
+
+
+func _build_warehouse_visual(parent: Node3D) -> void:
+	# Industry wave 1: a stone-footed oak shed over the 2 x 2 footprint (the
+	# body sits at the anchor cell's centre; the shed spans +x / +z), a door
+	# on the +z face, a gable roof of dark oak and a gold latch.
+	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/stone.svg")
+	var wood := _visual_material(Color("b9783f"), "res://assets/blocks/planks.svg")
+	var dark_wood := _visual_material(Color("744326"), "res://assets/blocks/log.svg")
+	var gold := _visual_material(Color("e2aa2c"), "", Color("7a5210"))
+	var centre := Vector3(0.5, 0.0, 0.5)
+	_add_collision_box(parent, Vector3(1.96, 1.0, 1.96), centre)
+	_add_mesh_box(parent, Vector3(1.96, 0.16, 1.96), centre + Vector3(0.0, -0.42, 0.0), stone)
+	_add_mesh_box(parent, Vector3(1.84, 0.78, 1.84), centre + Vector3(0.0, 0.05, 0.0), wood)
+	for x in [-0.86, 0.86]:
+		for z in [-0.86, 0.86]:
+			_add_mesh_box(parent, Vector3(0.14, 0.86, 0.14), centre + Vector3(x, 0.02, z), dark_wood)
+	# Gable roof: two leaning slabs and a ridge beam.
+	for side in [-1.0, 1.0]:
+		var slab := _add_mesh_box(parent, Vector3(1.24, 0.08, 2.08), centre + Vector3(side * 0.48, 0.66, 0.0), dark_wood)
+		slab.rotation.z = -side * 0.42
+	_add_mesh_box(parent, Vector3(0.14, 0.14, 2.12), centre + Vector3(0.0, 0.94, 0.0), dark_wood)
+	# Door on the +z face with a gold latch.
+	_add_mesh_box(parent, Vector3(0.46, 0.66, 0.06), centre + Vector3(0.0, -0.04, 0.94), dark_wood)
+	_add_stud(parent, centre + Vector3(0.16, -0.06, 0.98), gold, Vector3.ZERO)
+
+
+## The crate stack outside the door: one crate per 9 items held (up to four).
+func _build_warehouse_crates(parent: Node3D, item_count: int) -> void:
+	var crates := Node3D.new()
+	crates.name = "Crates"
+	parent.add_child(crates)
+	if item_count <= 0:
+		return
+	var crate_wood := _visual_material(Color("a0642f"), "res://assets/blocks/planks.svg")
+	var band := _visual_material(Color("744326"), "res://assets/blocks/log.svg")
+	var count := clampi((item_count + 8) / 9, 1, 4)
+	var spots: Array[Vector3] = [Vector3(1.22, -0.2, 1.62), Vector3(1.22, -0.2, 1.22), Vector3(1.22, 0.18, 1.42), Vector3(0.82, -0.2, 1.62)]
+	for index in range(count):
+		var crate := _add_mesh_box(crates, Vector3(0.36, 0.36, 0.36), spots[index], crate_wood)
+		_add_mesh_box(crate, Vector3(0.38, 0.06, 0.38), Vector3.ZERO, band)
+
+
+func _build_foundry_visual(parent: Node3D) -> void:
+	# Industry wave 1: a castle-stone furnace body over the 2 x 1 footprint
+	# (spanning +x from the anchor), an iron chimney on the far cell, a wide
+	# mouth on the +z face whose glow shows while smelting, a mould tray of
+	# iron with gold studs on the near cell's top.
+	var masonry := _visual_material(Color("d9dde0"), "res://assets/blocks/castle_stone.svg")
+	var mortar := _visual_material(Color("6b7178"), "res://assets/blocks/stone.svg")
+	var iron := _visual_material(Color("4a5259"))
+	var dark := _visual_material(Color("14181c"))
+	var ember := _visual_material(Color("ff7a1f"), "", Color("ff4a0c"))
+	var gold := _visual_material(Color("e2aa2c"), "", Color("7a5210"))
+	var centre := Vector3(0.5, 0.0, 0.0)
+	_add_collision_box(parent, Vector3(1.9, 0.9, 0.9), centre)
+	_add_mesh_box(parent, Vector3(1.9, 0.9, 0.9), centre, masonry)
+	_add_mesh_box(parent, Vector3(1.96, 0.08, 0.96), centre + Vector3(0.0, 0.42, 0.0), mortar)
+	_add_mesh_box(parent, Vector3(1.96, 0.06, 0.96), centre + Vector3(0.0, -0.42, 0.0), mortar)
+	# Iron chimney on the far cell.
+	_add_mesh_cylinder(parent, 0.14, 0.9, Vector3(1.1, 0.85, 0.0), Vector3.ZERO, iron, "Chimney")
+	_add_mesh_box(parent, Vector3(0.4, 0.08, 0.4), Vector3(1.1, 1.3, 0.0), iron)
+	# Mouth on the -z face: dark opening, the glow toggles with the status.
+	_add_mesh_box(parent, Vector3(0.7, 0.4, 0.05), Vector3(0.0, -0.12, 0.455), dark)
+	_add_mesh_box(parent, Vector3(0.5, 0.16, 0.06), Vector3(0.0, -0.22, 0.462), ember, "Glow").visible = false
+	# Mould tray with gold studs on the near cell's top.
+	_add_mesh_box(parent, Vector3(0.62, 0.08, 0.46), Vector3(0.0, 0.5, 0.0), iron)
+	for x in [-0.18, 0.18]:
+		_add_stud(parent, Vector3(x, 0.56, 0.0), gold, Vector3.ZERO)
 
 
 func _build_ballista_visual(parent: Node3D) -> void:

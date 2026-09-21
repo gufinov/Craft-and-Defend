@@ -96,6 +96,74 @@ func _run_gate() -> void:
 	var manual_ok := app._selected_recipe_id == "planks" and app._grid_matches_recipe(manual_recipe)
 	app._close_crafting()
 	_record("T88_MANUAL_DISCOVERY", manual_ok, "manual grid patterns remain recognized without selecting or searching the recipe book", {"selected_recipe": app._selected_recipe_id, "recognized": manual_ok})
+	await _run_warehouse_foundry()
+
+
+## Industry wave 1 (docs/INDUSTRY.md): a Foundry beside a Warehouse smelts on
+## its own, "any" takes iron before gold, a lone Foundry says so, and a save
+## round-trip keeps the target, the counter and the warehouse contents.
+func _run_warehouse_foundry() -> void:
+	var service := app.session.workstations
+	var inventory := app.session.inventory
+	var foundry_service: FoundryService = app.session.foundry
+	var origin := Vector3i(8, 0, 42)
+	var warehouse_anchor := Vector3i(11, 0, 45)
+	var foundry_anchor := Vector3i(13, 0, 45)
+	var lone_anchor := Vector3i(11, 0, 48)
+	var cells: Array[Vector3i] = [warehouse_anchor, warehouse_anchor + Vector3i(1, 0, 1), foundry_anchor + Vector3i(1, 0, 0), lone_anchor + Vector3i(1, 0, 0)]
+	var plate_ok := await _wait_levelled(origin, 10, 9, 4, cells)
+	inventory.try_transaction({}, {"warehouse": 1, "foundry": 2, "iron_ore": 3, "coal": 3, "gold_ore": 2})
+	var warehouse_placed := service.try_place("warehouse", warehouse_anchor, app.session.world.query_cell, app.session.player.get_body_aabb())
+	var warehouse_id := str(warehouse_placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	var foundry_placed := service.try_place("foundry", foundry_anchor, app.session.world.query_cell, app.session.player.get_body_aabb())
+	var foundry_id := str(foundry_placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	var lone_placed := service.try_place("foundry", lone_anchor, app.session.world.query_cell, app.session.player.get_body_aabb())
+	var lone_id := str(lone_placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	var stocked: bool = service.container_deposit(warehouse_id, "iron_ore", 3).get("ok", false) and service.container_deposit(warehouse_id, "coal", 3).get("ok", false) and service.container_deposit(warehouse_id, "gold_ore", 2).get("ok", false)
+	var initial_target := str(foundry_service.state(foundry_id).get("target", ""))
+	var adjacent := foundry_service.warehouse_for(foundry_id) == warehouse_id and foundry_service.warehouse_for(lone_id).is_empty()
+	var glow_lit := false
+	var iron_events := 0
+	for _cycle in range(3):
+		iron_events += foundry_service.advance(FoundryService.FOUNDRY_SECONDS + 0.1, false).size()
+		var body: Node3D = app.session._station_visuals.get(foundry_id)
+		var glow: Node3D = body.get_node_or_null("Glow") if body != null else null
+		glow_lit = glow_lit or (glow != null and glow.visible)
+	var iron_done := service.container_count(warehouse_id, "iron_ingot") == 3 and service.container_count(warehouse_id, "gold_ingot") == 0 and service.container_count(warehouse_id, "iron_ore") == 0 and service.container_count(warehouse_id, "coal") == 0 and service.container_count(warehouse_id, "gold_ore") == 2
+	var waiting_status := str(foundry_service.state(foundry_id).get("status", ""))
+	var lone_status := str(foundry_service.state(lone_id).get("status", ""))
+	var warehouse_body: Node3D = app.session._station_visuals.get(warehouse_id)
+	var crates: Node = warehouse_body.get_node_or_null("Crates") if warehouse_body != null else null
+	var crates_ok := crates != null and crates.get_child_count() >= 1
+	var target_set: bool = foundry_service.set_target(foundry_id, "gold_ingot").get("ok", false)
+	inventory.try_transaction({}, {"coal": 2})
+	var coal_added: bool = service.container_deposit(warehouse_id, "coal", 2).get("ok", false)
+	var gold_events := 0
+	for _cycle in range(2):
+		gold_events += foundry_service.advance(FoundryService.FOUNDRY_SECONDS + 0.1, false).size()
+	var gold_done := service.container_count(warehouse_id, "gold_ingot") == 2 and service.container_count(warehouse_id, "gold_ore") == 0 and service.container_count(warehouse_id, "iron_ingot") == 3
+	var made := int(foundry_service.state(foundry_id).get("made", 0))
+	# Save round-trip: the target, the counter and the warehouse contents ride
+	# in the workstation snapshot.
+	var restored_service := WorkstationService.new(app.session.registry, F0Inventory.new(app.session.registry))
+	var restored := restored_service.restore(service.snapshot(), app.session.world.query_cell)
+	var restored_foundry := FoundryService.new(restored_service, app.session.registry)
+	var restored_state := restored_foundry.state(foundry_id)
+	var restore_ok: bool = restored.get("ok", false) and str(restored_state.get("target", "")) == "gold_ingot" and int(restored_state.get("made", 0)) == 5 and restored_service.container_count(warehouse_id, "gold_ingot") == 2 and restored_service.container_count(warehouse_id, "iron_ingot") == 3 and restored_foundry.warehouse_for(foundry_id) == warehouse_id
+	# The modal: title, one button per target with the current one pressed,
+	# the status line; Escape closes it.
+	app.state = app.AppState.PLAYING
+	app._show_workstation(foundry_id, "foundry")
+	var modal_ok := app.state == app.AppState.CRAFTING and app.foundry_card.visible and not app.crafting_inventory_card.visible and app.crafting_title_label.text == "FOUNDRY" and app.foundry_target_buttons.size() == 3 and app.foundry_target_buttons[2].button_pressed and app.foundry_status_label.text.contains("made 5")
+	var escape := InputEventKey.new()
+	escape.pressed = true
+	escape.physical_keycode = KEY_ESCAPE
+	app._input(escape)
+	var modal_closed := app.state == app.AppState.PLAYING and not app.crafting_panel.visible
+	app._show_workstation(warehouse_id, "warehouse")
+	var warehouse_modal_ok := app.state == app.AppState.CRAFTING and app.chest_card.visible and app.crafting_title_label.text == "WAREHOUSE"
+	app._close_crafting()
+	_record("T194_WAREHOUSE_FOUNDRY", plate_ok and warehouse_placed.get("ok", false) and foundry_placed.get("ok", false) and lone_placed.get("ok", false) and stocked and initial_target == "any" and adjacent and iron_events == 3 and iron_done and glow_lit and waiting_status.begins_with("waiting for") and lone_status == FoundryService.STATUS_NO_WAREHOUSE and crates_ok and target_set and coal_added and gold_events == 2 and gold_done and made == 5 and restore_ok and modal_ok and modal_closed and warehouse_modal_ok, "a foundry beside a warehouse smelts one furnace recipe per FOUNDRY_SECONDS from the warehouse into it (any = iron before gold), a lone foundry reports no warehouse, the target and counter survive a save round-trip, and the modals open and close", {"warehouse": warehouse_id, "foundry": foundry_id, "iron_events": iron_events, "waiting": waiting_status, "lone": lone_status, "gold_events": gold_events, "made": made, "restore": restored, "restored_state": restored_state, "modal": modal_ok, "warehouse_modal": warehouse_modal_ok, "slots": service.container_slots(warehouse_id)})
 
 
 func _run_visual() -> void:
@@ -128,6 +196,37 @@ func _slot_for(item_id: String) -> int:
 		if str(app.session.inventory.slots[index].get("item_id", "")) == item_id:
 			return index
 	return -1
+
+
+func _level_ground(origin: Vector3i, width: int, depth: int, height: int) -> void:
+	for x in range(width):
+		for z in range(depth):
+			app.session.world.set_cell(origin + Vector3i(x, -1, z), 3)
+			for y in range(height):
+				app.session.world.set_cell(origin + Vector3i(x, y, z), 0)
+
+
+## A levelled stone plate (the coaster suites' idiom): waits until the plate
+## and the cells it must keep clear are loaded and as set.
+func _wait_levelled(origin: Vector3i, width: int, depth: int, height: int, cells: Array[Vector3i]) -> bool:
+	var deadline := Time.get_ticks_msec() + 10000
+	while Time.get_ticks_msec() < deadline:
+		_level_ground(origin, width, depth, height)
+		var clear := true
+		for cell: Vector3i in cells:
+			var query := app.session.world.query_cell(cell)
+			if query.get("state") != "LOADED" or int(query.get("voxel_id", 1)) != 0:
+				clear = false
+				break
+		for x in range(width):
+			for z in range(depth):
+				var plate := app.session.world.query_cell(origin + Vector3i(x, -1, z))
+				if plate.get("state") != "LOADED" or int(plate.get("voxel_id", 0)) != 3:
+					clear = false
+		if clear:
+			return true
+		await get_tree().process_frame
+	return false
 
 
 func _wait_ready() -> bool:

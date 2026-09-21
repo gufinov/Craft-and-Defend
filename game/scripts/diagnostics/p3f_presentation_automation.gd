@@ -3,7 +3,7 @@ extends Node
 
 const EXPECTED_WORKBENCH_ORDER: Array[String] = [
 	"planks", "sticks", "workbench", "wood_pick", "wood_axe", "stone_pick", "furnace", "castle_stone", "stone_stair", "wall_walk_slab", "parapet_merlon", "tower_platform", "gate_frame", "wood_barricade", "iron_pick", "iron_sword", "ballista_bolt", "stone_shot", "flame_shot", "cannonball", "ballista", "catapult", "turret_catapult", "turret_catapult_mk2", "cannon", "kettle", "chest", "torch", "wall_lantern", "post_lantern", "campfire", "light_block_blue", "light_block_red", "core_of_power", "coastercraft_shop",
-	"miner", "ore_bin",
+	"miner", "ore_bin", "warehouse", "foundry",
 ]
 ## The CoasterCraft Shop's own book (docs/INDUSTRY_PLAN.md wave 1): the coaster
 ## recipes keep their workbench-era orders (194, 204-212) and live only here.
