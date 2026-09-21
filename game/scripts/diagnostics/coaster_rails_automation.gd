@@ -12,7 +12,8 @@ extends Node
 ## track. Runs with `--coaster-rails-automation=gate` (headless: T160-T162, T168,
 ## T173-T174) and `--coaster-rails-automation=visual` (needs a window: T163
 ## renders `coaster-rails.png`, T175 `coaster-curves.png`).
-## T168, T179 track auto-clear, T180 trestle supports, T183 trestle trusses) and
+## T168, T179 track auto-clear, T180 trestle supports, T183 trestle trusses,
+## T185 one track style) and
 ## `--coaster-rails-automation=visual` (needs a window: T163 renders
 ## `coaster-rails.png`, T181 `coaster-supports.png`).
 
@@ -1147,6 +1148,102 @@ func _run_gate() -> void:
 	var un_empty := interaction.undo_last()
 	_record("T184_UNDO", not un_climb_pieces.is_empty() and un_key_used and un_climb_gone and un_visual_gone and un_climb_refund == un_climb_pieces.size() and un_rail_gone and un_rail_undo.get("reason") == "UNDONE" and un_line_cleared and un_line_undo.get("reason") == "UNDONE" and un_bump_back and un_line_gone, "pressing U removes every piece of the climb just laid (records and visuals) and hands back one Rail Climb per piece, popping one undo entry; a single rail placed then undone is gone with its rail back; a rail line that auto-cleared a dirt bump, undone, loses its rails, the bump is back and the mined dirt leaves the pack", {"climb_pieces": un_climb_pieces.size(), "key_used": un_key_used, "climb_gone": un_climb_gone, "visual_gone": un_visual_gone, "climb_refund": un_climb_refund, "rail_gone": un_rail_gone, "rail_undo": un_rail_undo.get("reason"), "line_cleared": un_line_cleared, "line": un_line.get("reason"), "line_undo": un_line_undo.get("reason"), "bump_back": un_bump_back, "line_gone": un_line_gone, "empty": un_empty.get("reason")})
 
+	# T185 one track style (owner playtest 2026-09-21: "I would like them
+	# updated to match the newer 'curvable' pieces ... it would be nice if
+	# curves transitioned smoothly"): on a levelled plate a plain-rail L
+	# corner, a rail-slope-rail run, a rail-curve-rail run (radius 4) and a
+	# rail-loop-rail (true loop, diameter 6). The corner is a round arc (no
+	# RailArms plate, >= 5 sections), no rail / slope carries the old stone
+	# posts or oak deck, and every joint's rail ends meet (`rail_end_gap`).
+	var ts := Vector3i(-40, 0, 84)
+	var ts_loaded := await _wait_levelled(ts + Vector3i(-2, 0, -2), 32, 12, 12, [ts, ts + Vector3i(2, 0, 2), ts + Vector3i(12, 0, 6), ts + Vector3i(24, 0, 3)] as Array[Vector3i])
+	interaction.creative = false
+	app.session.inventory.try_transaction({}, {"rail": 24, "rail_slope": 2, "rail_curve": 24, "rail_loop": 48})
+	var ts_placed := true
+	# The L corner: -x and +z neighbours of the corner cell.
+	var ts_corner := ts + Vector3i(2, 0, 0)
+	for cell: Vector3i in [ts, ts + Vector3i(1, 0, 0), ts_corner, ts_corner + Vector3i(0, 0, 1), ts_corner + Vector3i(0, 0, 2)]:
+		ts_placed = ts_placed and bool(ws.try_place("rail", cell, world.query_cell, AABB(), 0).get("ok", false))
+	# The slope run: two rails, a slope rising +x, two rails on a stone step.
+	var ts_slope_row := ts + Vector3i(0, 0, 5)
+	for x in [3, 4]:
+		world.set_cell(ts_slope_row + Vector3i(x, 0, 0), 3)
+	for x in [0, 1]:
+		ts_placed = ts_placed and bool(ws.try_place("rail", ts_slope_row + Vector3i(x, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+	var ts_slope := ws.try_place("rail_slope", ts_slope_row + Vector3i(2, 0, 0), world.query_cell, AABB(), 1)
+	ts_placed = ts_placed and bool(ts_slope.get("ok", false))
+	for x in [3, 4]:
+		ts_placed = ts_placed and bool(ws.try_place("rail", ts_slope_row + Vector3i(x, 1, 0), world.query_cell, AABB(), 0).get("ok", false))
+	# The curve run: a radius-4 90-degree bend heading +x, rails at both ends.
+	var ts_curve := ts + Vector3i(9, 0, 2)
+	_hotbar_slot_for("rail_curve", 4)
+	interaction.placement_rotation_quarters = 1
+	interaction.begin_curve_at(ts_curve)
+	interaction.set_curve_sweep(90, false)
+	interaction.set_curve_radius(4)
+	var ts_curve_laid := interaction.commit_drag_place()
+	var ts_curve_exit: Vector3i = ts_curve_laid.get("changes", {}).get("exit", ts_curve)
+	for step in [1, 2]:
+		ts_placed = ts_placed and bool(ws.try_place("rail", ts_curve - Vector3i(step, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+		ts_placed = ts_placed and bool(ws.try_place("rail", ts_curve_exit + Vector3i(0, 0, step), world.query_cell, AABB(), 0).get("ok", false))
+	# The true loop: diameter 6 heading +x, rails behind the entry and
+	# beyond the exit one lane right.
+	var ts_loop := ts + Vector3i(23, 0, 2)
+	_hotbar_slot_for("rail_loop", 2)
+	interaction.loop_true = true
+	interaction.begin_coaster_loop_at(ts_loop)
+	interaction.set_loop_diameter(6)
+	var ts_loop_laid := interaction.commit_drag_place()
+	interaction.placement_rotation_quarters = 0
+	var ts_loop_exit: Vector3i = CoasterRails.helix_layout(ts_loop, 1, 6).exit
+	for step in [1, 2]:
+		ts_placed = ts_placed and bool(ws.try_place("rail", ts_loop - Vector3i(step, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+		ts_placed = ts_placed and bool(ws.try_place("rail", ts_loop_exit + Vector3i(step, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+	await get_tree().process_frame
+	# The corner: round, no arms plate.
+	var ts_corner_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(ts_corner))
+	var ts_corner_arms := ts_corner_body != null and ts_corner_body.get_node_or_null("RailArms") != null
+	var ts_corner_plate := ts_corner_body != null and ts_corner_body.find_child("JunctionPlate", true, false) != null
+	var ts_corner_sections := _track_sections(ts_corner_body).size()
+	# The old block style must be gone from every rail and slope on the plate,
+	# and every joint's rail ends must meet.
+	var ts_tracks := CoasterRails.track_records(ws.stations)
+	var ts_posts := 0
+	var ts_decks := 0
+	var ts_pieces := 0
+	var ts_joints := 0
+	var ts_max_gap := 0.0
+	var ts_worst: Array = []
+	for station_id: String in ws.stations.keys():
+		var station_record: Dictionary = ws.stations[station_id]
+		var station_anchor: Vector3i = station_record.get("anchor", Vector3i.MAX)
+		if station_anchor.x < ts.x - 2 or station_anchor.x > ts.x + 30 or station_anchor.z < ts.z - 2 or station_anchor.z > ts.z + 10 or not CoasterRails.is_track_id(str(station_record.get("entity_id", ""))):
+			continue
+		ts_pieces += 1
+		var station_body: Node3D = app.session._station_visuals.get(station_id)
+		if station_body == null:
+			continue
+		if str(station_record.get("entity_id", "")) in ["rail", "rail_slope"]:
+			for mesh_node: Node in station_body.find_children("*", "MeshInstance3D", true, false):
+				var box: BoxMesh = (mesh_node as MeshInstance3D).mesh as BoxMesh
+				if box == null:
+					continue
+				if box.size.is_equal_approx(Vector3(0.22, 0.56, 0.22)) or box.size.is_equal_approx(Vector3(0.22, 1.36, 0.22)):
+					ts_posts += 1
+				if box.size.is_equal_approx(Vector3(0.96, 0.36, 0.96)) or box.size.is_equal_approx(Vector3(0.96, 0.14, 1.36)):
+					ts_decks += 1
+		var own_ends := _track_sections(station_body)
+		for other_cell: Vector3i in CoasterRails.connected_cells(station_record, ts_tracks):
+			var other_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(other_cell))
+			if other_body == null:
+				continue
+			ts_joints += 1
+			var gap := _rail_end_gap(own_ends, _track_sections(other_body))
+			if gap > ts_max_gap:
+				ts_max_gap = gap
+				ts_worst = [station_anchor, other_cell]
+	_record("T185_TRACK_STYLE", ts_loaded and ts_placed and ts_curve_laid.get("reason") == "CURVE_PLACED" and ts_loop_laid.get("reason") == "LOOP_PLACED" and not ts_corner_arms and not ts_corner_plate and ts_corner_sections >= 5 and ts_posts == 0 and ts_decks == 0 and ts_pieces >= 30 and ts_joints >= 30 and ts_max_gap < 0.02, "a plain-rail L corner on a levelled plate draws a round arc (no RailArms plate, at least 5 rail sections), no rail or slope in a rail-slope-rail run carries the old stone posts or oak deck, and across the corner, the slope run, a rail-curve-rail run (radius 4) and a rail-loop-rail true loop (diameter 6) every joined pair's rail ends meet within 0.02 (rail_end_gap)", {"loaded": ts_loaded, "placed": ts_placed, "curve": ts_curve_laid.get("reason"), "loop": ts_loop_laid.get("reason"), "corner_arms": ts_corner_arms, "corner_plate": ts_corner_plate, "corner_sections": ts_corner_sections, "posts": ts_posts, "decks": ts_decks, "pieces": ts_pieces, "joints": ts_joints, "rail_end_gap": ts_max_gap, "worst_joint": ts_worst})
+
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on
 ## the track, beside a slope run climbing a step, in one 1280x720 view.
@@ -1181,6 +1278,10 @@ func _run_visual() -> void:
 	interaction.placement_rotation_quarters = 0
 	for x in range(1, 4):
 		ws.try_place("rail", origin + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+	# One track style (2026-09-21): the lead-in turns a plain-rail corner
+	# toward the camera so the round corner shows beside the loop.
+	for cell: Vector3i in [origin + Vector3i(4, 0, 0), origin + Vector3i(4, 0, 1), origin + Vector3i(4, 0, 2)]:
+		ws.try_place("rail", cell, world.query_cell, AABB(), 0)
 	var cart := ws.try_place("mine_cart", origin + Vector3i(2, 1, 0), world.query_cell, AABB(), 0)
 	# A slope run in front: two rails, a slope, two rails on a stone step.
 	var step_base := origin + Vector3i(2, 0, 5)
@@ -1204,9 +1305,11 @@ func _run_visual() -> void:
 				break
 	for _frame in range(4):
 		await get_tree().physics_frame
-	player.global_position = Vector3(origin) + Vector3(-1.5, 5.0, 14.0)
+	# Closer and looking down a little so the slope run and the corner in
+	# front of the loop are in the frame (one track style, 2026-09-21).
+	player.global_position = Vector3(origin) + Vector3(2.5, 5.5, 14.0)
 	player.rotation = Vector3.ZERO
-	player.look_pitch = 0.05
+	player.look_pitch = -0.3
 	player.apply_mouse_look(Vector2.ZERO)
 	for _frame in range(90):
 		await get_tree().process_frame
@@ -1735,6 +1838,35 @@ func _render_supports() -> void:
 	var supports_image := get_viewport().get_texture().get_image()
 	var supports_error := supports_image.save_png(supports_path) if supports_image != null else ERR_UNAVAILABLE
 	_record("T181_SUPPORTS_RENDERED", line_laid and line_cells.size() >= 6 and line_posts == line_cells.size() and line_reach and loop_posts >= 4 and supports_error == OK, "a straight of rail_loop pieces laid five cells up grows a stone post per piece down to the plate, the true loop's lower pieces carry posts, and both render in coaster-supports.png", {"path": supports_path, "error": supports_error, "line_laid": line_laid, "line_cells": line_cells.size(), "line_posts": line_posts, "line_reach": line_reach, "loop_posts": loop_posts})
+
+
+## The rail sections of a track piece's visual: [start, end] world points
+## of every node carrying the `rail_length` meta (`GameSession._add_track_run`).
+func _track_sections(body: Node3D) -> Array[Array]:
+	var sections: Array[Array] = []
+	if body == null:
+		return sections
+	for node: Node in body.find_children("*", "Node3D", true, false):
+		if not node.has_meta("rail_length"):
+			continue
+		var section := node as Node3D
+		var half: float = float(node.get_meta("rail_length")) * 0.5
+		var along: Vector3 = section.global_transform.basis.z
+		sections.append([section.global_position - along * half, section.global_position + along * half])
+	return sections
+
+
+## The smallest distance between any rail end of one piece and any rail end
+## of another (INF when either has none): joined pieces should meet at one
+## point, so a well-drawn joint reads ~0.
+func _rail_end_gap(own: Array[Array], other: Array[Array]) -> float:
+	var gap := INF
+	for section: Array in own:
+		for end: Vector3 in section:
+			for other_section: Array in other:
+				for other_end: Vector3 in other_section:
+					gap = minf(gap, end.distance_to(other_end))
+	return gap
 
 
 ## World y of the bottom of a Support node's post (-99 without one).

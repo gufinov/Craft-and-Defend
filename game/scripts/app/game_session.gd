@@ -924,9 +924,9 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_build_kettle_visual(body)
 		_wrap_siege_turret(body, definition)
 	elif entity_id == "rail":
-		_build_rail_visual(body, _rail_neighbour_mask(anchor))
+		_build_rail_visual(body, record)
 	elif entity_id == CoasterRails.SLOPE:
-		_build_rail_slope_visual(body)
+		_build_rail_slope_visual(body, record)
 	elif entity_id == CoasterRails.LOOP:
 		_build_rail_loop_visual(body, record)
 	elif entity_id == CoasterRails.SWITCH:
@@ -1336,34 +1336,6 @@ func _build_cannon_visual(parent: Node3D) -> void:
 	barrel.add_child(muzzle)
 
 
-## Rail block from the owner's reference art: castle-stone corner posts with
-## gold studs, an oak plank deck between them and two iron rails along z with
-## small iron ties. Rails chain along a wall top; the kettle rides them.
-## Rail neighbours as a bit mask: 1 +x, 2 -x, 4 +z, 8 -z (world axes; the
-## rail body is never rotated for its shape).
-func _rail_neighbour_mask(anchor: Vector3i) -> int:
-	var station_id := workstations.station_at_cell(anchor)
-	if station_id.is_empty():
-		return 0
-	return _track_arm_mask(workstations.station(station_id))
-
-
-## Arms of a flat-looking track piece from its CoasterRails joints: a joint
-## on the same level or one level down (a slope climbing up to this piece)
-## in direction d sets d's bit.
-func _track_arm_mask(record: Dictionary) -> int:
-	var mask := 0
-	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
-	for joined: Vector3i in CoasterRails.connected_cells(record, CoasterRails.track_records(workstations.stations)):
-		var offset := joined - anchor
-		if offset.y > 0:
-			continue
-		var index := CoasterRails.HORIZONTAL.find(Vector3i(offset.x, 0, offset.z))
-		if index >= 0:
-			mask |= 1 << index
-	return mask
-
-
 ## Rebuilds the track visuals around `anchor` (the 3x3x3 neighbourhood, so
 ## slopes and loop pieces one level up or down re-shape too) when a piece is
 ## laid or removed.
@@ -1389,138 +1361,196 @@ func _refresh_rail_neighbours(anchor: Vector3i) -> void:
 		_spawn_station_visual(workstations.station(above))
 
 
-## Rail block: stone corner posts with gold studs, an oak deck and iron rails
-## laid toward every connected neighbour — a straight, a 90-degree corner, a
-## T or a crossroads follow from the neighbour mask. Ties sit under the rails.
-## Flat rail piece: `mask` (bits +x, -x, +z, -z) or an explicit `arm_list`
-## of horizontal joint offsets, which may be diagonal (the 45-degree steps
-## into and out of a loop, owner 2026-09-20): each arm is a pair of rails
-## with ties from the centre to the cell edge (0.5) or corner (0.707).
-func _build_rail_visual(parent: Node3D, mask: int = 0, arm_list: Array[Vector3i] = []) -> void:
-	_add_collision_box(parent, Vector3(0.98, 0.56, 0.98), Vector3(0.0, -0.22, 0.0))
-	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
-	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")
-	var iron := _visual_material(Color("8a939b"))
-	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
-	_add_mesh_box(parent, Vector3(0.96, 0.36, 0.96), Vector3(0.0, -0.32, 0.0), oak)
-	for x in [-0.38, 0.38]:
-		for z in [-0.38, 0.38]:
-			_add_mesh_box(parent, Vector3(0.22, 0.56, 0.22), Vector3(x, -0.22, z), stone)
-			_add_stud(parent, Vector3(x, 0.02, z), gold, Vector3.ZERO)
-	# The body may carry a placement rotation; undo it so world-axis arms line up.
-	var undo := Node3D.new()
-	undo.name = "RailArms"
-	undo.rotation.y = -parent.rotation.y
-	parent.add_child(undo)
-	var along_x := (mask & 3) != 0
-	var along_z := (mask & 12) != 0
-	if mask == 0 and arm_list.is_empty():
-		along_z = parent.rotation.y == 0.0 or absf(parent.rotation.y) > 3.0
-		along_x = not along_z
-	var arms: Array[Vector3i] = []
-	for arm_offset: Vector3i in arm_list:
-		if arm_offset.y == 0 and arm_offset != Vector3i.ZERO:
-			arms.append(Vector3i(signi(arm_offset.x), 0, signi(arm_offset.z)))
-	for index in range(4):
-		if arms.is_empty() and mask & (1 << index):
-			arms.append([Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)][index])
-	if arms.is_empty():
-		if along_z:
-			arms.append(Vector3i(0, 0, 1))
-			arms.append(Vector3i(0, 0, -1))
-		else:
-			arms.append(Vector3i(1, 0, 0))
-			arms.append(Vector3i(-1, 0, 0))
-	elif arms.size() == 1:
-		arms.append(-arms[0])
-	# Two parallel rails per arm from the centre outward, and a tie.
-	for arm in arms:
-		var direction := Vector3(arm)
-		var length := direction.length() * 0.5
+## One track style for every rail piece (owner playtest 2026-09-21: "I
+## would like them updated to match the newer 'curvable' pieces"): plain
+## rails, slopes and the classic loop's grounded `rail_switch` pieces draw
+## with the loop renderer's style - two iron rails at +/-TRACK_GAUGE_HALF,
+## TRACK_RAIL_SIZE square, an oak tie and a stone spine under each section
+## (`_add_track_run`) - so a rail meets a curve, a climb or a loop in the
+## same gauge, rail size, rail-top height (the ride point) and materials.
+## No oak deck, no stone posts, no studs. Every joint meets at one point
+## (`_track_meeting_point`) computed the same way from both sides.
+const TRACK_GAUGE_HALF := 0.22
+const TRACK_RAIL_SIZE := 0.10
+const TRACK_CORNER_SECTIONS := 6
+const TRACK_SLOPE_SECTIONS := 5
+
+
+## Rail-top height of a flat piece over its cell floor (`CoasterRails.ride_point`).
+const TRACK_RAIL_TOP := 0.55
+
+
+## The materials every track piece is drawn with: {iron, oak, stone}.
+func _track_materials() -> Dictionary:
+	return {"iron": _visual_material(Color("8a939b")), "oak": _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg"), "stone": _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")}
+
+
+## Where a slope's rails end on the side facing `from_cell` (world): the low
+## edge at rail-top height (anchor.y + 0.55) or the high edge one cell
+## higher (anchor.y + 1.55) - the 45-degree line through the slope's ride
+## point (anchor + (0.5, 1.05, 0.5)). Both ends sit at a plain rail's
+## rail-top on their level, so rails on either level meet the slope flush.
+## (`CoasterRails.slope_rail_corner` is the classic ring's tangent height,
+## SLOPE_RAIL_TOP; fit C's lift of 0.5 brings the ring up to this high end.)
+func _slope_rail_end(slope: Dictionary, from_cell: Vector3i) -> Vector3:
+	var anchor: Vector3i = slope.get("anchor", Vector3i.ZERO)
+	var high := CoasterRails.slope_high_direction(int(slope.get("rotation_quarters", 0)))
+	var offset := from_cell - anchor
+	var centre := Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
+	if offset.x * high.x + offset.z * high.z > 0:
+		return centre + Vector3(high) * 0.5 + Vector3.UP * (TRACK_RAIL_TOP + 0.5)
+	return centre - Vector3(high) * 0.5 + Vector3.UP * (TRACK_RAIL_TOP - 0.5)
+
+
+## The world point where `record`'s track toward its joined neighbour
+## `other` ends - and where `other`'s track toward `record` starts, since
+## both sides call this with the roles swapped: a slope's rail end on the
+## other's side, else halfway between the two ride points (the shared edge's
+## midpoint for two flat rails, the cell corner for a diagonal step, the
+## quarter-cell shift of a lane switcher's middle).
+func _track_meeting_point(record: Dictionary, other: Dictionary) -> Vector3:
+	if str(other.get("entity_id", "")) == CoasterRails.SLOPE:
+		return _slope_rail_end(other, record.get("anchor", Vector3i.ZERO))
+	if str(record.get("entity_id", "")) == CoasterRails.SLOPE:
+		return _slope_rail_end(record, other.get("anchor", Vector3i.ZERO))
+	return (CoasterRails.ride_point(record) + CoasterRails.ride_point(other)) * 0.5
+
+
+## One run of track through `points` (world), drawn under `undo` (a node
+## whose rotation cancels the body's, so world directions hold): per section
+## two iron rails spread along `across` (zero = the horizontal perpendicular
+## of each section), a stone spine and an oak tie on the side away from
+## `lean` (below the rails for flat track: lean = a point above; outside the
+## ring for a loop: lean = its centre). Each section node carries the meta
+## `rail_length` (the automation's joint probe reads the rail ends from it).
+func _add_track_run(undo: Node3D, body_origin: Vector3, points: Array[Vector3], across: Vector3, lean: Vector3, materials: Dictionary) -> int:
+	var iron: Material = materials.iron
+	var oak: Material = materials.oak
+	var stone: Material = materials.stone
+	var sections := 0
+	for index in range(1, points.size()):
+		var from_point: Vector3 = points[index - 1]
+		var to_point: Vector3 = points[index]
+		var direction := to_point - from_point
+		var length := direction.length()
+		if length < 0.001:
+			continue
 		direction = direction.normalized()
-		var arm_node := Node3D.new()
-		arm_node.rotation.y = atan2(direction.x, direction.z)
-		undo.add_child(arm_node)
-		for offset in [-0.22, 0.22]:
-			_add_mesh_box(arm_node, Vector3(0.10, 0.10, length), Vector3(offset, 0.0, length * 0.5), iron)
-		_add_mesh_box(arm_node, Vector3(0.52, 0.06, 0.10), Vector3(0.0, -0.11, length * 0.64), iron)
-	# Centre piece: a plate on corners, bends and junctions so the rails join cleanly.
-	if arms.size() >= 2 and not (arms.size() == 2 and arms[0] == -arms[1]):
-		_add_mesh_box(undo, Vector3(0.54, 0.10, 0.54), Vector3(0.0, 0.0, 0.0), iron)
-	elif not along_x or not along_z:
-		var straight := Vector3(arms[0])
-		var tie_size := Vector3(0.10, 0.06, 0.10) + Vector3(absf(straight.z), 0.0, absf(straight.x)) * 0.52
-		_add_mesh_box(undo, tie_size, Vector3(0.0, -0.11, 0.0), iron)
+		var section_across := across
+		if section_across.length() < 0.05 or absf(section_across.normalized().dot(direction)) > 0.95:
+			section_across = direction.cross(Vector3.UP)
+			if section_across.length() < 0.05:
+				section_across = Vector3.RIGHT if absf(direction.x) < 0.95 else Vector3.FORWARD
+		section_across = section_across.normalized()
+		var piece := Node3D.new()
+		piece.position = (from_point + to_point) * 0.5 - body_origin
+		piece.basis = Basis.looking_at(direction, section_across)
+		piece.set_meta("rail_length", length)
+		undo.add_child(piece)
+		for offset in [-TRACK_GAUGE_HALF, TRACK_GAUGE_HALF]:
+			_add_mesh_box(piece, Vector3(TRACK_RAIL_SIZE, TRACK_RAIL_SIZE, length + 0.02), Vector3(0.0, offset, 0.0), iron)
+		var outward := ((from_point + to_point) * 0.5 - lean).normalized()
+		var local_x := piece.basis.x
+		var spine_side := 1.0 if local_x.dot(outward) >= 0.0 else -1.0
+		_add_mesh_box(piece, Vector3(0.16, 0.16, length + 0.02), Vector3(spine_side * 0.30, 0.0, 0.0), stone)
+		_add_mesh_box(piece, Vector3(0.10, 0.54, 0.10), Vector3(spine_side * 0.12, 0.0, 0.0), oak)
+		sections += 1
+	return sections
 
 
-## Lane Switcher piece (owner 2026-09-20). Entry and exit: a straight rail
-## along the travel axis. Middles: the rail base with the track's 45-degree
-## diagonal running through the piece's ride point (entry-side edge centre
-## to the shared edge for mid_a, the shared edge to the exit-side edge
-## centre for mid_b), so the four pieces read as one track shifting a lane.
-func _build_rail_switch_visual(parent: Node3D, record: Dictionary) -> void:
-	var quarters := int(record.get("rotation_quarters", 0))
-	var along := CoasterRails.switch_along(quarters)
-	var role := str(record.get("switch_role", ""))
-	if role != "mid_a" and role != "mid_b":
-		var arms: Array[Vector3i] = [along, -along]
-		_build_rail_visual(parent, 0, arms)
-		return
+## Flat rail piece (`rail`, a flat `rail_loop` piece, a grounded
+## `rail_switch`): the track style along the piece's path. From its ride
+## point a run to the meeting point with every joined neighbour (the shared
+## edge, a diagonal step's corner, a slope's rail end at this level, a lane
+## switcher's shifted midpoint); a piece with no neighbour draws a straight
+## along its placement rotation, one neighbour mirrors it. Exactly two
+## neighbours at right angles on the cell's edges draw a quarter arc of
+## radius 0.5 centred on the inner corner (TRACK_CORNER_SECTIONS sections,
+## no centre plate) so a plain-rail corner is round like a curve piece.
+## Three or four neighbours draw straight arms and a small iron plate at the
+## centre so the rails read as a junction. The collision box is the rail
+## block's (the player walks on rails; carts ride by the service).
+func _build_rail_visual(parent: Node3D, record: Dictionary, node_name: String = "RailTrack") -> void:
 	_add_collision_box(parent, Vector3(0.98, 0.56, 0.98), Vector3(0.0, -0.22, 0.0))
-	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
-	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")
-	var iron := _visual_material(Color("8a939b"))
-	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
-	_add_mesh_box(parent, Vector3(0.96, 0.36, 0.96), Vector3(0.0, -0.32, 0.0), oak)
-	for x in [-0.38, 0.38]:
-		for z in [-0.38, 0.38]:
-			_add_mesh_box(parent, Vector3(0.22, 0.56, 0.22), Vector3(x, -0.22, z), stone)
-			_add_stud(parent, Vector3(x, 0.02, z), gold, Vector3.ZERO)
+	if parent.get_node_or_null("Support") == null:
+		_add_track_supports(parent, record)
+	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	var tracks := CoasterRails.track_records(workstations.stations)
+	var own_point := CoasterRails.ride_point(record)
+	var body_origin := Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
+	var materials := _track_materials()
 	var undo := Node3D.new()
-	undo.name = "SwitchRails"
+	undo.name = node_name
 	undo.rotation.y = -parent.rotation.y
 	parent.add_child(undo)
-	var diagonal := (Vector3(along) + Vector3(CoasterRails.switch_side(quarters))).normalized()
-	var rails := Node3D.new()
-	rails.position = CoasterRails.switch_mid_shift(record)
-	rails.rotation.y = atan2(diagonal.x, diagonal.z)
-	undo.add_child(rails)
-	var length := sqrt(0.5)
-	for offset in [-0.22, 0.22]:
-		_add_mesh_box(rails, Vector3(0.10, 0.10, length), Vector3(offset, 0.0, 0.0), iron)
-	for tie in [-0.22, 0.22]:
-		_add_mesh_box(rails, Vector3(0.52, 0.06, 0.10), Vector3(0.0, -0.11, tie), iron)
+	var ends: Array[Vector3] = []
+	var axes: Array[Vector3i] = []
+	for cell: Vector3i in CoasterRails.connected_cells(record, tracks):
+		var other: Dictionary = tracks.get(cell, {"anchor": cell, "entity_id": CoasterRails.FLAT})
+		if CoasterRails.has_second_curve(other):
+			other = CoasterRails.pair_for(other, anchor)
+		ends.append(_track_meeting_point(record, other))
+		var offset := cell - anchor
+		axes.append(Vector3i(offset.x, 0, offset.z))
+	if ends.is_empty():
+		var along := Vector3(CoasterRails.switch_along(int(record.get("rotation_quarters", 0))))
+		ends.append(own_point + along * 0.5)
+		ends.append(own_point - along * 0.5)
+	elif ends.size() == 1:
+		ends.append(own_point - (ends[0] - own_point))
+	var lean := own_point + Vector3.UP
+	# A round corner: two edge-midpoint ends on perpendicular axes.
+	if ends.size() == 2 and axes.size() == 2 and axes[0].length_squared() == 1 and axes[1].length_squared() == 1 and axes[0].x * axes[1].x + axes[0].z * axes[1].z == 0:
+		var a := Vector3(axes[0])
+		var b := Vector3(axes[1])
+		if ends[0].is_equal_approx(own_point + a * 0.5) and ends[1].is_equal_approx(own_point + b * 0.5):
+			var corner := own_point + (a + b) * 0.5
+			var arc: Array[Vector3] = []
+			for section in range(TRACK_CORNER_SECTIONS + 1):
+				var angle := PI * 0.5 * float(section) / float(TRACK_CORNER_SECTIONS)
+				arc.append(corner - b * 0.5 * cos(angle) - a * 0.5 * sin(angle))
+			_add_track_run(undo, body_origin, arc, Vector3.ZERO, lean, materials)
+			return
+	for end: Vector3 in ends:
+		var run: Array[Vector3] = [own_point, end]
+		_add_track_run(undo, body_origin, run, Vector3.ZERO, lean, materials)
+	if ends.size() >= 3:
+		_add_mesh_box(undo, Vector3(0.54, 0.06, 0.54), own_point - body_origin + Vector3(0.0, -0.02, 0.0), materials.iron, "JunctionPlate")
 
 
-## Coaster rails side project: a rail block climbing one cell toward its
-## front (-z): oak deck and two iron rails inclined 45 degrees with ties, stone
-## corner posts with gold studs at the low end and taller trestle posts at the
-## high end. The low end meets a flat rail's top; the high end tops out one
-## cell higher at the front edge.
-func _build_rail_slope_visual(parent: Node3D) -> void:
+## Lane Switcher piece (owner 2026-09-20; one track style 2026-09-21): the
+## rail renderer along the piece's ride line - the middles' ride point is a
+## quarter cell onto the diagonal (`CoasterRails.switch_mid_shift`), so the
+## four pieces read as one track shifting a lane. The middles' node keeps
+## the name "SwitchRails".
+func _build_rail_switch_visual(parent: Node3D, record: Dictionary) -> void:
+	var role := str(record.get("switch_role", ""))
+	_build_rail_visual(parent, record, "SwitchRails" if role == "mid_a" or role == "mid_b" else "RailTrack")
+
+
+## Rail slope (one track style 2026-09-21): the rails, ties and spine along
+## the 45-degree incline from the low edge (rail-top height of this level) to
+## the high edge (rail-top height one level up), in TRACK_SLOPE_SECTIONS
+## sections (a tie every ~0.3), so the flat rails on both levels meet it
+## flush; a short trestle bent near the high end (`_add_track_supports`). The
+## collision incline lets the player walk up it.
+func _build_rail_slope_visual(parent: Node3D, record: Dictionary) -> void:
 	var incline := _add_collision_box(parent, Vector3(0.90, 0.30, 1.30), Vector3(0.0, 0.55, 0.0))
 	incline.rotation.x = PI / 4.0
-	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
-	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")
-	var iron := _visual_material(Color("8a939b"))
-	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
-	for x in [-0.38, 0.38]:
-		_add_mesh_box(parent, Vector3(0.22, 0.56, 0.22), Vector3(x, -0.22, 0.38), stone)
-		_add_stud(parent, Vector3(x, 0.02, 0.38), gold, Vector3.ZERO)
-		# High-end posts stop under the rails (owner 2026-09-20: taller posts
-		# made the ring look too low where it meets the slope).
-		_add_mesh_box(parent, Vector3(0.22, 1.36, 0.22), Vector3(x, 0.18, -0.38), stone)
-		_add_stud(parent, Vector3(x, 0.88, -0.38), gold, Vector3.ZERO)
-	var deck := _add_mesh_box(parent, Vector3(0.96, 0.14, 1.36), Vector3(0.0, 0.40, 0.0), oak)
-	deck.rotation.x = PI / 4.0
-	for x in [-0.22, 0.22]:
-		var rail := _add_mesh_box(parent, Vector3(0.10, 0.10, 1.42), Vector3(x, 0.55, 0.0), iron)
-		rail.rotation.x = PI / 4.0
-	var climb := Vector3(0.0, 0.7071, -0.7071)
-	var under := Vector3(0.0, -0.7071, -0.7071)
-	for t in [-0.45, -0.15, 0.15, 0.45]:
-		var tie := _add_mesh_box(parent, Vector3(0.60, 0.06, 0.10), Vector3(0.0, 0.55, 0.0) + climb * t + under * 0.08, iron)
-		tie.rotation.x = PI / 4.0
+	_add_track_supports(parent, record)
+	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	var high := CoasterRails.slope_high_direction(int(record.get("rotation_quarters", 0)))
+	var low_end := _slope_rail_end(record, anchor - high)
+	var high_end := _slope_rail_end(record, anchor + high)
+	var body_origin := Vector3(anchor) + Vector3(0.5, 0.5, 0.5)
+	var undo := Node3D.new()
+	undo.name = "RailTrack"
+	undo.rotation.y = -parent.rotation.y
+	parent.add_child(undo)
+	var points: Array[Vector3] = []
+	for section in range(TRACK_SLOPE_SECTIONS + 1):
+		points.append(low_end.lerp(high_end, float(section) / float(TRACK_SLOPE_SECTIONS)))
+	_add_track_run(undo, body_origin, points, Vector3.ZERO, CoasterRails.ride_point(record) + Vector3.UP, _track_materials())
 
 
 ## Coaster rails side project: a loop piece draws a short pair of rails from
@@ -1535,11 +1565,14 @@ const LOOP_ARC_SECTIONS := 4
 
 
 ## A loop-element piece (owner 2026-09-20, "prettier"): two iron rails
-## with wooden ties and a stone spine on the outer side, running from the
-## piece's own point to halfway toward each neighbour - along the true
-## circle for round pieces (short sections), straight for octagon pieces -
-## and all the way to a slope's rail corner so the ring continues the
-## slope's incline without a kink. No posts or blocks.
+## with wooden ties and a stone spine on the outer side (`_add_track_run`),
+## running from the piece's own point to halfway toward each neighbour -
+## along the curve for same-curve pieces, along the true circle for ring
+## pieces (short sections), to the shared meeting point (`_track_meeting_
+## point`) for anything else - and, for the classic ring, all the way to a
+## slope's rail corner so the ring continues the slope's incline without a
+## kink. No posts or blocks. Plain rails, slopes and switches draw with the
+## same run helper (one track style, 2026-09-21).
 ## `record` is the one-curve view to draw (`CoasterRails.pair_for`: a
 ## crossing's shared cell is drawn once per curve, as "LoopTrack" and
 ## "LoopTrackB"); `joined` the joined cells of that curve.
@@ -1548,9 +1581,7 @@ func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[
 	var tracks := CoasterRails.track_records(workstations.stations)
 	if parent.get_node_or_null("LoopTrack") == null:
 		_add_collision_box(parent, Vector3(0.70, 0.70, 0.70), Vector3.ZERO)
-	var iron := _visual_material(Color("8a939b"))
-	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
-	var stone := _visual_material(Color("8b929d"), "res://assets/blocks/castle_stone.svg")
+	var materials := _track_materials()
 	var undo := Node3D.new()
 	undo.name = node_name
 	undo.rotation.y = -parent.rotation.y
@@ -1582,9 +1613,9 @@ func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[
 			# A crossing's shared neighbour: the curve of the pair this cell is on.
 			other = CoasterRails.pair_for(other, anchor, pair_key)
 		var points: Array[Vector3] = [own_point]
-		if str(other.get("entity_id", "")) == CoasterRails.SLOPE:
-			# A raised ring (fit B / C) meets the slope a little above its rail
-			# corner; the last bit of rail bridges the lift.
+		if round and str(other.get("entity_id", "")) == CoasterRails.SLOPE:
+			# The classic ring (fit B / C) meets the slope a little above its
+			# tangent corner; the last bit of rail bridges the lift.
 			points.append(CoasterRails.slope_rail_corner(other) + Vector3.UP * float(record.get("loop_lift", 0.0)))
 			points.append(CoasterRails.slope_rail_corner(other))
 		elif not curve.is_empty() and other.has("curve") and str(JSON.stringify(other.get("curve"))) == str(JSON.stringify(curve)):
@@ -1603,27 +1634,10 @@ func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[
 				var spoke := plane_across * cos(angle) + Vector3.UP * sin(angle)
 				points.append(Vector3(arc.center) + spoke * float(arc.radius))
 		else:
-			points.append((own_point + CoasterRails.ride_point(other)) * 0.5)
-		for index in range(1, points.size()):
-			var from_point: Vector3 = points[index - 1]
-			var to_point: Vector3 = points[index]
-			var direction := to_point - from_point
-			var length := direction.length()
-			if length < 0.001:
-				continue
-			direction = direction.normalized()
-			var piece := Node3D.new()
-			piece.position = (from_point + to_point) * 0.5 - body_origin
-			piece.basis = Basis.looking_at(direction, across)
-			undo.add_child(piece)
-			for offset in [-0.22, 0.22]:
-				_add_mesh_box(piece, Vector3(0.10, 0.10, length + 0.02), Vector3(0.0, offset, 0.0), iron)
-			# Outer spine (away from the loop's centre) and a tie per section.
-			var outward := ((from_point + to_point) * 0.5 - lean).normalized()
-			var local_x := piece.basis.x
-			var spine_side := 1.0 if local_x.dot(outward) >= 0.0 else -1.0
-			_add_mesh_box(piece, Vector3(0.16, 0.16, length + 0.02), Vector3(spine_side * 0.30, 0.0, 0.0), stone)
-			_add_mesh_box(piece, Vector3(0.10, 0.54, 0.10), Vector3(spine_side * 0.12, 0.0, 0.0), oak)
+			# Any other neighbour (a plain rail, a slope's rail end, another
+			# tool's piece): a straight to the shared meeting point.
+			points.append(_track_meeting_point(record, other))
+		_add_track_run(undo, body_origin, points, across, lean, materials)
 
 
 func _build_loop_arc_visual(parent: Node3D, record: Dictionary, joined: Array[Vector3i]) -> void:
@@ -1712,13 +1726,30 @@ var _support_meshes: Dictionary = {}
 ## is CoasterRails.track_records(...) so a neighbour's bent can be found
 ## without building it.
 func _support_bent(record: Dictionary, tracks: Dictionary) -> Dictionary:
-	if str(record.get("entity_id", "")) != CoasterRails.LOOP:
+	var entity_id := str(record.get("entity_id", ""))
+	if not CoasterRails.is_track_id(entity_id):
 		return {}
 	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
 	var curve: Dictionary = record.get("curve", {})
 	var point := CoasterRails.ride_point(record)
 	var up := Vector3.UP
 	var along := Vector3.ZERO
+	if entity_id == CoasterRails.SLOPE:
+		# One track style (2026-09-21): a slope's bent stands near its high
+		# end, on the 45-degree rail line (its low end rests on the ground).
+		var high := Vector3(CoasterRails.slope_high_direction(int(record.get("rotation_quarters", 0))))
+		point += high * 0.3 + Vector3.UP * 0.3
+		along = high
+	elif entity_id != CoasterRails.LOOP and curve.is_empty():
+		# A plain rail or switch piece: along its first horizontal joint, else
+		# its placement rotation (grounded pieces skip the bent anyway).
+		along = Vector3(CoasterRails.switch_along(int(record.get("rotation_quarters", 0))))
+		for cell: Vector3i in CoasterRails.connected_cells(record, tracks):
+			var offset := Vector3(cell - anchor)
+			offset.y = 0.0
+			if offset.length() > 0.5:
+				along = offset.normalized()
+				break
 	if not curve.is_empty():
 		var t := TrackCurve.piece_t(record)
 		up = TrackCurve.up_at(curve, t)
@@ -1934,15 +1965,11 @@ func _build_rail_loop_visual(parent: Node3D, record: Dictionary) -> void:
 	# Straight or cornered on one level: an ordinary rail. A diagonal joint
 	# (the 45-degree step into or out of a loop) or a climb draws arms.
 	var flat := true
-	var flat_arms: Array[Vector3i] = []
 	for cell: Vector3i in joined:
-		var offset := cell - anchor
-		if offset.y != 0:
+		if cell.y != anchor.y:
 			flat = false
-		else:
-			flat_arms.append(offset)
 	if flat:
-		_build_rail_visual(parent, _track_arm_mask(record), flat_arms)
+		_build_rail_visual(parent, record)
 		return
 	_add_collision_box(parent, Vector3(0.70, 0.70, 0.70), Vector3.ZERO)
 	var iron := _visual_material(Color("8a939b"))
