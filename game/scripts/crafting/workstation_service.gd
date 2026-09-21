@@ -1004,6 +1004,32 @@ func container_take(instance_id: String, item_id: String, amount: int) -> Dictio
 	return _result(true, "TAKEN", {"instance_id": instance_id, "item_id": item_id, "moved": moved})
 
 
+## Room for `item_id` in the chest (matching stacks topped up, empty slots).
+func container_room(instance_id: String, item_id: String) -> int:
+	if not is_container(instance_id):
+		return 0
+	var room := 0
+	var max_stack := registry.max_stack(item_id)
+	for stack in stations[instance_id].container_slots:
+		if str(stack.get("item_id", "")) == item_id:
+			room += max_stack - int(stack.get("count", 0))
+		elif str(stack.get("item_id", "")).is_empty():
+			room += max_stack
+	return room
+
+
+## Puts up to `amount` of `item_id` into the chest for another producer (a
+## hauling cart, docs/INDUSTRY.md). Does not touch the player inventory.
+func container_put(instance_id: String, item_id: String, amount: int) -> Dictionary:
+	if not is_container(instance_id):
+		return _result(false, "NOT_CONTAINER")
+	var moved := mini(amount, container_room(instance_id, item_id))
+	if moved <= 0:
+		return _result(false, "CONTAINER_FULL")
+	_container_add(stations[instance_id].container_slots, item_id, moved, registry.max_stack(item_id))
+	return _result(true, "PUT", {"instance_id": instance_id, "item_id": item_id, "moved": moved})
+
+
 func _container_add(slots: Array, item_id: String, amount: int, max_stack: int) -> void:
 	var remaining := amount
 	for stack in slots:
@@ -1235,6 +1261,19 @@ func restore(data: Dictionary, world_query: Callable) -> Dictionary:
 			while clean_container.size() < int(definition.get("container_slots", 0)):
 				clean_container.append(_empty_stack())
 			record["container_slots"] = clean_container
+		if str(record.get("entity_id", "")) == "mine_cart":
+			# Hauling (docs/INDUSTRY.md): the cart's cargo, item_id -> count.
+			var raw_cargo: Variant = record.get("cargo", {})
+			if not raw_cargo is Dictionary:
+				return _result(false, "INVALID_STATION_SNAPSHOT")
+			var clean_cargo: Dictionary = {}
+			for cargo_item in raw_cargo.keys():
+				var cargo_count := int(raw_cargo[cargo_item])
+				if not registry.items.has(str(cargo_item)) or cargo_count < 0:
+					return _result(false, "INVALID_STATION_SNAPSHOT")
+				if cargo_count > 0:
+					clean_cargo[str(cargo_item)] = cargo_count
+			record["cargo"] = clean_cargo
 		if str(record.get("entity_id", "")) == "furnace":
 			var raw_slots: Variant = record.get("furnace_slots", _empty_furnace_slots())
 			if not raw_slots is Dictionary:

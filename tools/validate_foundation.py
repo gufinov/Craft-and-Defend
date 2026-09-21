@@ -278,7 +278,9 @@ def validate_bundle(bundle):
                                  and not isinstance(cart["rail_speed"], bool) and cart["rail_speed"] > 0
                                  and entity.get("mount", {}).get("allowed") == ["rail_mount"]), "invalid cart entity: " + entity["id"])
         station_type = entity.get("station_type")
-        require(station_type is None or station_type == entity["id"] or station_type == "siege" and entity.get("siege") is not None, "invalid station type")
+        # Containers (chest, ore_bin, warehouse — docs/INDUSTRY_PLAN.md) share the chest station type and UI.
+        require(station_type is None or station_type == entity["id"] or station_type == "siege" and entity.get("siege") is not None
+                or station_type == "chest" and entity.get("container_slots") is not None, "invalid station type")
         socket_ids = set()
         for socket in entity.get("mount_sockets", []):
             require(isinstance(socket, dict) and re.fullmatch(r"[a-z][a-z0-9_]*", socket.get("id", ""))
