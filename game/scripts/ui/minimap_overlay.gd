@@ -18,6 +18,8 @@ var generator: P1TerrainGenerator
 var player: Node3D
 var workstations: WorkstationService
 var full_map := false
+## CoasterCraft hides the enemy base (no raids in that mode).
+var show_enemy_base := true
 
 var _heights: Dictionary = {}
 var _texture_rect: TextureRect
@@ -193,8 +195,9 @@ func _draw_markers() -> void:
 	var home := _to_map(Vector2i(int(home_data[0]), int(home_data[1])))
 	_marker_layer.draw_circle(home, maxf(3.0, scale * 2.0), Color("9fd8e8"))
 	# Enemy base.
-	var base := _to_map(Vector2i(generator.enemy_base.x, generator.enemy_base.y))
-	_marker_layer.draw_circle(base, maxf(4.0, scale * 3.0), Color("ff3030"))
+	if show_enemy_base:
+		var base := _to_map(Vector2i(generator.enemy_base.x, generator.enemy_base.y))
+		_marker_layer.draw_circle(base, maxf(4.0, scale * 3.0), Color("ff3030"))
 	# Placed cores.
 	if workstations != null:
 		for record: Dictionary in workstations.stations.values():
