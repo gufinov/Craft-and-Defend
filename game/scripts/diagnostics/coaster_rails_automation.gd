@@ -1244,6 +1244,129 @@ func _run_gate() -> void:
 				ts_worst = [station_anchor, other_cell]
 	_record("T185_TRACK_STYLE", ts_loaded and ts_placed and ts_curve_laid.get("reason") == "CURVE_PLACED" and ts_loop_laid.get("reason") == "LOOP_PLACED" and not ts_corner_arms and not ts_corner_plate and ts_corner_sections >= 5 and ts_posts == 0 and ts_decks == 0 and ts_pieces >= 30 and ts_joints >= 30 and ts_max_gap < 0.02, "a plain-rail L corner on a levelled plate draws a round arc (no RailArms plate, at least 5 rail sections), no rail or slope in a rail-slope-rail run carries the old stone posts or oak deck, and across the corner, the slope run, a rail-curve-rail run (radius 4) and a rail-loop-rail true loop (diameter 6) every joined pair's rail ends meet within 0.02 (rail_end_gap)", {"loaded": ts_loaded, "placed": ts_placed, "curve": ts_curve_laid.get("reason"), "loop": ts_loop_laid.get("reason"), "corner_arms": ts_corner_arms, "corner_plate": ts_corner_plate, "corner_sections": ts_corner_sections, "posts": ts_posts, "decks": ts_decks, "pieces": ts_pieces, "joints": ts_joints, "rail_end_gap": ts_max_gap, "worst_joint": ts_worst})
 
+	# T188 auto-shape (owner playtest 2026-09-21, items 3b + 4: "These 90
+	# degree corners should be created automatically, no piece needed ...
+	# Auto Lane Shift - 6 spaces"): plain rails laid through the interaction
+	# service shape themselves. (a) A line heading +x and single rails
+	# heading -z from its end: when both straights exist the three corner
+	# cells become one radius-1.5 arc of rail_loop pieces, the straights
+	# beyond stay plain, the chain runs end to end, both joins sit at rail
+	# height 0.55 on the shared faces, the pack's rail count only moves by
+	# the rail laid, a cart rides round; undoing the rail that triggered it
+	# restores the plain rails and removes that rail. (b) Three rails in lane
+	# 44 and three in lane 45 one cell further on become one s-bend of six
+	# pieces a cart crosses. (c) A "+" of two lines stays plain rails.
+	var as_anchor := Vector3i(-60, 0, 40)
+	var as_loaded := await _wait_levelled(as_anchor + Vector3i(-3, 0, -6), 12, 20, 9, [as_anchor, as_anchor + Vector3i(3, 0, -4), as_anchor + Vector3i(5, 0, 5), as_anchor + Vector3i(2, 0, 12)] as Array[Vector3i])
+	interaction.creative = false
+	app.session.inventory.try_transaction({}, {"rail": 40, "mine_cart": 2})
+	_hotbar_slot_for("rail", 0)
+	interaction.placement_rotation_quarters = 0
+	# (a) The elbow.
+	interaction.begin_entity_line_at(as_anchor)
+	interaction.set_drag_end(as_anchor + Vector3i(3, 0, 0))
+	var as_line := interaction.commit_drag_place()
+	var as_corner := as_anchor + Vector3i(3, 0, 0)
+	var as_a := as_corner + Vector3i(-1, 0, 0)
+	var as_b := as_corner + Vector3i(0, 0, -1)
+	var as_b2 := as_corner + Vector3i(0, 0, -2)
+	var as_early := true
+	for step in [4, 3, 1]:
+		var single := interaction.try_place_item(as_corner + Vector3i(0, 0, -step), "rail")
+		as_early = as_early and single.get("reason") == "OK"
+	# Every cell still plain: the corner has no straight beyond B yet.
+	for cell: Vector3i in [as_a, as_corner, as_b]:
+		as_early = as_early and str(ws.station(ws.station_at_cell(cell)).get("entity_id", "")) == "rail"
+	var as_rails_before := app.session.inventory.count("rail")
+	var as_trigger := interaction.try_place_item(as_b2, "rail")
+	var as_rails_after := app.session.inventory.count("rail")
+	var as_shaped: Array = as_trigger.get("changes", {}).get("shaped", [])
+	var as_elbow := true
+	var as_curve: Dictionary = {}
+	for cell: Vector3i in [as_a, as_corner, as_b]:
+		var piece := ws.station(ws.station_at_cell(cell))
+		as_elbow = as_elbow and str(piece.get("entity_id", "")) == "rail_loop" and str(piece.get("auto_shaped", "")) == "elbow" and str(piece.get("curve", {}).get("kind", "")) == "arc"
+		if as_curve.is_empty():
+			as_curve = piece.get("curve", {})
+	var as_radius := float(as_curve.get("params", {}).get("radius", 0.0))
+	var as_straights := str(ws.station(ws.station_at_cell(as_a + Vector3i(-1, 0, 0))).get("entity_id", "")) == "rail" and str(ws.station(ws.station_at_cell(as_b2)).get("entity_id", "")) == "rail"
+	var as_chain := CoasterRails.chain(ws.stations, as_anchor)
+	var as_chain_ok := as_chain.size() == 8 and as_chain.has(as_corner + Vector3i(0, 0, -4)) and as_chain.has(as_corner)
+	var as_start := TrackCurve.point(as_curve, 0.0) if not as_curve.is_empty() else Vector3.ZERO
+	var as_end := TrackCurve.point(as_curve, 1.0) if not as_curve.is_empty() else Vector3.ZERO
+	var as_joins_flush := as_start.is_equal_approx(Vector3(as_a) + Vector3(0.0, 0.55, 0.5)) and as_end.is_equal_approx(Vector3(as_b) + Vector3(0.5, 0.55, 0.0))
+	var as_pack_ok := as_rails_after == as_rails_before - 1
+	await get_tree().process_frame
+	var as_tracks := CoasterRails.track_records(ws.stations)
+	var as_max_gap := 0.0
+	for cell: Vector3i in [as_a, as_corner, as_b]:
+		var piece := ws.station(ws.station_at_cell(cell))
+		var own_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(cell))
+		for other_cell: Vector3i in CoasterRails.connected_cells(piece, as_tracks):
+			var other_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(other_cell))
+			as_max_gap = maxf(as_max_gap, _rail_end_gap(_track_sections(own_body), _track_sections(other_body)))
+	var as_cart := ws.try_place("mine_cart", as_anchor + Vector3i(0, 1, 0), world.query_cell, AABB(), 0)
+	var as_cart_id := str(as_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	var as_far := as_corner + Vector3i(0, 0, -4)
+	var as_ride := _ride_cart(as_cart_id, [as_corner, as_far] as Array[Vector3i], 240, as_far)
+	var as_home := _ride_cart(as_cart_id, [as_anchor] as Array[Vector3i], 240, as_anchor)
+	var as_rode := (as_ride.reached as Dictionary).has(as_corner) and (as_ride.reached as Dictionary).has(as_far) and (as_home.reached as Dictionary).has(as_anchor)
+	ws.try_dismantle(as_cart_id, world.query_cell, AABB(), false)
+	# The kettle router (p3c) steps through the elbow too: from A2 toward the
+	# far end its next cell is A, then C, then B, and its rail point on the
+	# corner piece sits on the arc.
+	var as_kettle_chain := app.session.siege_defense._rail_chain(as_anchor)
+	var as_kettle_a := app.session.siege_defense._rail_step(as_kettle_chain, as_a + Vector3i(-1, 0, 0), as_far)
+	var as_kettle_c := app.session.siege_defense._rail_step(as_kettle_chain, as_a, as_far)
+	var as_kettle_b := app.session.siege_defense._rail_step(as_kettle_chain, as_corner, as_far)
+	var as_kettle_point := app.session.siege_defense._rail_point(as_corner)
+	var as_kettle_ok := as_kettle_a == as_a and as_kettle_c == as_corner and as_kettle_b == as_b and as_kettle_point.is_equal_approx(CoasterRails.ride_point(ws.station(ws.station_at_cell(as_corner))) + Vector3(0.0, 0.95, 0.0))
+	# Undo the rail that triggered the elbow: plain rails back, that rail gone.
+	var as_undo := interaction.undo_last()
+	var as_restored := true
+	for cell: Vector3i in [as_a, as_corner, as_b]:
+		as_restored = as_restored and str(ws.station(ws.station_at_cell(cell)).get("entity_id", "")) == "rail"
+	var as_undone: bool = as_undo.get("reason") == "UNDONE" and int(as_undo.get("changes", {}).get("replaced", 0)) == 3 and ws.station_at_cell(as_b2).is_empty() and app.session.inventory.count("rail") == as_rails_before
+	# (b) The lane shift: three rails in lane 44, three in lane 45 one on.
+	var as_shift := as_anchor + Vector3i(0, 0, 4)
+	interaction.begin_entity_line_at(as_shift)
+	interaction.set_drag_end(as_shift + Vector3i(2, 0, 0))
+	var as_lane_a := interaction.commit_drag_place()
+	interaction.begin_entity_line_at(as_shift + Vector3i(3, 0, 1))
+	interaction.set_drag_end(as_shift + Vector3i(5, 0, 1))
+	var as_lane_b := interaction.commit_drag_place()
+	var as_shift_cells: Array[Vector3i] = [as_shift, as_shift + Vector3i(1, 0, 0), as_shift + Vector3i(2, 0, 0), as_shift + Vector3i(3, 0, 1), as_shift + Vector3i(4, 0, 1), as_shift + Vector3i(5, 0, 1)]
+	var as_bend := true
+	var as_bend_curve: Dictionary = {}
+	for cell: Vector3i in as_shift_cells:
+		var piece := ws.station(ws.station_at_cell(cell))
+		as_bend = as_bend and str(piece.get("entity_id", "")) == "rail_loop" and str(piece.get("auto_shaped", "")) == "lane_shift" and str(piece.get("curve", {}).get("kind", "")) == "s_bend"
+		if as_bend_curve.is_empty():
+			as_bend_curve = piece.get("curve", {})
+	var as_bend_flush := not as_bend_curve.is_empty() and TrackCurve.point(as_bend_curve, 0.0).is_equal_approx(Vector3(as_shift) + Vector3(0.0, 0.55, 0.5)) and TrackCurve.point(as_bend_curve, 1.0).is_equal_approx(Vector3(as_shift + Vector3i(5, 0, 1)) + Vector3(1.0, 0.55, 0.5))
+	var as_bend_chain := CoasterRails.chain(ws.stations, as_shift).size() == 6
+	var as_bend_cart := ws.try_place("mine_cart", as_shift + Vector3i(0, 1, 0), world.query_cell, AABB(), 0)
+	var as_bend_cart_id := str(as_bend_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	var as_bend_far := as_shift + Vector3i(5, 0, 1)
+	var as_bend_ride := _ride_cart(as_bend_cart_id, [as_bend_far] as Array[Vector3i], 240, as_bend_far)
+	var as_bend_home := _ride_cart(as_bend_cart_id, [as_shift] as Array[Vector3i], 240, as_shift)
+	var as_bend_rode := (as_bend_ride.reached as Dictionary).has(as_bend_far) and (as_bend_home.reached as Dictionary).has(as_shift)
+	ws.try_dismantle(as_bend_cart_id, world.query_cell, AABB(), false)
+	# (c) A "+" of two lines: a crossroads stays plain rails.
+	var as_cross := as_anchor + Vector3i(0, 0, 10)
+	interaction.begin_entity_line_at(as_cross)
+	interaction.set_drag_end(as_cross + Vector3i(4, 0, 0))
+	var as_cross_a := interaction.commit_drag_place()
+	interaction.begin_entity_line_at(as_cross + Vector3i(2, 0, -2))
+	interaction.set_drag_end(as_cross + Vector3i(2, 0, 2))
+	var as_cross_b := interaction.commit_drag_place()
+	var as_cross_plain: bool = as_cross_a.get("reason") == "LINE_PLACED" and as_cross_b.get("reason") == "LINE_PLACED"
+	for x in range(5):
+		as_cross_plain = as_cross_plain and str(ws.station(ws.station_at_cell(as_cross + Vector3i(x, 0, 0))).get("entity_id", "")) == "rail"
+	for z in [-2, -1, 1, 2]:
+		as_cross_plain = as_cross_plain and str(ws.station(ws.station_at_cell(as_cross + Vector3i(2, 0, z))).get("entity_id", "")) == "rail"
+	_record("T188_AUTO_SHAPE", as_loaded and as_line.get("reason") == "LINE_PLACED" and as_early and as_trigger.get("reason") == "RAILS_SHAPED_ELBOW" and as_shaped == ["elbow"] and as_elbow and is_equal_approx(as_radius, 1.5) and as_straights and as_chain_ok and as_joins_flush and as_pack_ok and as_max_gap < 0.02 and as_cart.get("ok", false) and as_rode and as_kettle_ok and as_restored and as_undone and as_lane_a.get("reason") == "LINE_PLACED" and as_lane_b.get("reason") == "RAILS_SHAPED_LANE_SHIFT" and as_bend and as_bend_flush and as_bend_chain and as_bend_rode and as_cross_plain, "plain rails (-60..-57, 40) then (-57, 36..39) stay plain until the straight beyond the corner exists; that rail turns the three corner cells into rail_loop pieces of one radius-1.5 arc (auto_shaped elbow) starting on A's far face and ending on B's far face at height 0.55, the straights beyond stay plain, the chain runs (-60,40)..(-57,36) as 8 cells, the pack's rails drop by the one laid, every joint's rail ends meet within 0.02, a cart rides round the corner and home, the kettle router steps A2 -> A -> C -> B with its rail point on the corner's arc; undo restores the three plain rails (replaced 3), removes the triggering rail and refunds it; three rails in lane 44 then three in lane 45 one cell on become one six-piece s_bend (auto_shaped lane_shift) from (-60,44)'s west face to (-55,45)'s east face that a cart crosses and returns; a '+' of two rail lines stays nine plain rails", {"loaded": as_loaded, "line": as_line.get("reason"), "early": as_early, "trigger": as_trigger.get("reason"), "shaped": as_shaped, "elbow": as_elbow, "radius": as_radius, "straights": as_straights, "chain": as_chain.size(), "start": as_start, "end": as_end, "joins_flush": as_joins_flush, "rails": [as_rails_before, as_rails_after], "rail_end_gap": as_max_gap, "cart": as_cart.get("reason"), "rode": as_rode, "ride": as_ride.reached, "kettle": as_kettle_ok, "kettle_steps": [as_kettle_a, as_kettle_c, as_kettle_b], "undo": as_undo.get("reason"), "replaced": as_undo.get("changes", {}).get("replaced"), "restored": as_restored, "undone": as_undone, "lane_a": as_lane_a.get("reason"), "lane_b": as_lane_b.get("reason"), "bend": as_bend, "bend_flush": as_bend_flush, "bend_chain": as_bend_chain, "bend_rode": as_bend_rode, "cross": as_cross_plain})
+
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on
 ## the track, beside a slope run climbing a step, in one 1280x720 view.
@@ -1336,6 +1459,7 @@ func _run_visual() -> void:
 	await _render_climb()
 	await _render_curves()
 	await _render_supports()
+	await _render_auto_shape()
 
 
 ## T172: a Smooth Switch and a Crossing with lead-in / exit rails and a
@@ -1405,6 +1529,76 @@ func _render_smooth_pieces() -> void:
 	var bend_cell := app.session.coaster_carts.rider_cell(bend_cart_id) if app.session.coaster_carts != null else Vector3i(0, -9999, 0)
 	var cross_cell := app.session.coaster_carts.rider_cell(cross_cart_id) if app.session.coaster_carts != null else Vector3i(0, -9999, 0)
 	_record("T172_SMOOTH_RENDERED", bend.get("reason") == "BEND_PLACED" and cross.get("reason") == "CROSS_PLACED" and bend_cart.get("ok", false) and cross_cart.get("ok", false) and error == OK and image.get_size() == Vector2i(1280, 720) and track_parts >= 80 and two_track_cells >= 1 and bend_cell.x > bend_entry.x and cross_cell.x > cross_entry.x, "a six-long smooth switch and an eight-long two-lane crossing render with lead-in and exit rails and a mine cart riding each, the shared cells drawing both tracks, in one 1280x720 view", {"path": path, "size": image.get_size(), "error": error, "bend": bend.get("reason"), "cross": cross.get("reason"), "bend_cart": bend_cart.get("reason"), "cross_cart": cross_cart.get("reason"), "track_parts": track_parts, "two_track_cells": two_track_cells, "bend_cell": bend_cell, "cross_cell": cross_cell})
+
+## T188 rendered: an auto-shaped elbow (rails laid as an L) and an auto
+## lane shift (three rails, then three one lane over), each with a mine
+## cart, seen from above and behind (`coaster-auto-shape.png`).
+func _render_auto_shape() -> void:
+	var player := app.session.player
+	var ws := app.session.workstations
+	var world := app.session.world
+	var interaction := app.session.interaction
+	var ap := Vector3i(-26, 0, 66)
+	_level_ground(ap + Vector3i(-6, 0, -6), 22, 18, 9)
+	app.session.inventory.try_transaction({}, {"rail": 24, "mine_cart": 2})
+	_hotbar_slot_for("rail", 0)
+	interaction.creative = false
+	interaction.placement_rotation_quarters = 0
+	# The elbow: five rails heading +x, then five heading +z from the end.
+	interaction.begin_entity_line_at(ap)
+	interaction.set_drag_end(ap + Vector3i(4, 0, 0))
+	interaction.commit_drag_place()
+	_hotbar_slot_for("rail", 0)
+	interaction.begin_entity_line_at(ap + Vector3i(4, 0, 1))
+	interaction.set_drag_end(ap + Vector3i(4, 0, 5))
+	var elbow := interaction.commit_drag_place()
+	var elbow_cart := ws.try_place("mine_cart", ap + Vector3i(0, 1, 0), world.query_cell, AABB(), 0)
+	# The lane shift: three rails in one lane, three in the next lane on.
+	var sp := ap + Vector3i(0, 0, 8)
+	# (The pack holds rails in several stacks: pick a stack before each line.)
+	_hotbar_slot_for("rail", 0)
+	interaction.begin_entity_line_at(sp)
+	interaction.set_drag_end(sp + Vector3i(2, 0, 0))
+	interaction.commit_drag_place()
+	_hotbar_slot_for("rail", 0)
+	interaction.begin_entity_line_at(sp + Vector3i(3, 0, 1))
+	interaction.set_drag_end(sp + Vector3i(5, 0, 1))
+	var shift := interaction.commit_drag_place()
+	for x in range(1, 3):
+		ws.try_place("rail", sp + Vector3i(-x, 0, 0), world.query_cell, AABB(), 0)
+		ws.try_place("rail", sp + Vector3i(5 + x, 0, 1), world.query_cell, AABB(), 0)
+	var shift_cart := ws.try_place("mine_cart", sp + Vector3i(-2, 1, 0), world.query_cell, AABB(), 0)
+	if app.session.coaster_carts != null:
+		for _frame in range(50):
+			app.session.coaster_carts.advance(1.0 / 30.0, false)
+	for _frame in range(4):
+		await get_tree().physics_frame
+	player.global_position = Vector3(ap) + Vector3(3.0, 5.0, 13.0)
+	player.rotation = Vector3.ZERO
+	player.look_pitch = -0.55
+	player.apply_mouse_look(Vector2.ZERO)
+	for _frame in range(90):
+		await get_tree().process_frame
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+	var shape_texture := get_viewport().get_texture()
+	var shape_image := shape_texture.get_image() if shape_texture != null else null
+	var shape_path := app.data_root.path_join("coaster-auto-shape.png")
+	if shape_image == null:
+		_record("T188_AUTO_SHAPE_RENDERED", false, "an auto-shaped elbow and lane shift render in one 1280x720 view", {"path": shape_path, "reason": "NO_RENDERED_VIEWPORT"})
+		return
+	var shape_error := shape_image.save_png(shape_path)
+	var shaped_parts := 0
+	var shaped_pieces := 0
+	for station_id: String in ws.stations.keys():
+		var record: Dictionary = ws.stations[station_id]
+		if record.has("auto_shaped"):
+			shaped_pieces += 1
+			var body: Node3D = app.session._station_visuals.get(station_id)
+			if body != null:
+				shaped_parts += body.find_children("*", "MeshInstance3D", true, false).size()
+	_record("T188_AUTO_SHAPE_RENDERED", elbow.get("reason") == "RAILS_SHAPED_ELBOW" and shift.get("reason") == "RAILS_SHAPED_LANE_SHIFT" and elbow_cart.get("ok", false) and shift_cart.get("ok", false) and shape_error == OK and shape_image.get_size() == Vector2i(1280, 720) and shaped_pieces == 9 and shaped_parts >= 36, "an L of plain rails shaped into an elbow and two three-rail runs shaped into a lane shift, a mine cart on each, render in one 1280x720 view (nine auto-shaped pieces)", {"path": shape_path, "size": shape_image.get_size(), "error": shape_error, "elbow": elbow.get("reason"), "shift": shift.get("reason"), "elbow_cart": elbow_cart.get("reason"), "shift_cart": shift_cart.get("reason"), "shaped_pieces": shaped_pieces, "shaped_parts": shaped_parts})
+
 
 
 func _hotbar_slot_for(item_id: String, fallback: int) -> int:

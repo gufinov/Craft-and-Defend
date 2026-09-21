@@ -574,6 +574,17 @@ func _chain_end_farthest(chain: Dictionary, from: Vector3i) -> Vector3i:
 	return farthest
 
 
+## The rail cell of every kettle riding a chain right now (the auto-shape
+## pass leaves those rails alone).
+func rail_rider_cells() -> Array[Vector3i]:
+	var cells: Array[Vector3i] = []
+	for instance_id: String in _rail_riders.keys():
+		var rider: Dictionary = _rail_riders[instance_id]
+		if rider.has("cell"):
+			cells.append(rider.cell)
+	return cells
+
+
 ## Where a rider currently sits on its chain (diagnostics).
 func rail_rider_cell(instance_id: String) -> Vector3i:
 	var rider: Dictionary = _rail_riders.get(instance_id, {})

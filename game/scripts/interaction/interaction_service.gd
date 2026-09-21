@@ -148,9 +148,11 @@ func _undo_record(snapshot: Dictionary, label: String) -> void:
 	for item_id: String in after_pack:
 		if not before_pack.has(item_id):
 			items[item_id] = int(after_pack[item_id])
+	var restore: Array[Dictionary] = _undo_restore
+	_undo_restore = []
 	if created.is_empty() and voxels.is_empty():
 		return
-	_undo.append({"label": label, "stations": created, "voxels": voxels, "items": items})
+	_undo.append({"label": label, "stations": created, "voxels": voxels, "items": items, "restore": restore})
 	while _undo.size() > UNDO_DEPTH:
 		_undo.pop_front()
 
@@ -171,6 +173,13 @@ func undo_last() -> Dictionary:
 		var gone := workstations.try_dismantle(instance_id, world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB(), false)
 		if gone.get("ok", false):
 			removed += 1
+	# Plain rails an auto-shape replaced (docs/COASTER_RAILS.md, Auto-shape):
+	# back in place, free, once the shaped pieces are gone.
+	var replaced := 0
+	for record: Dictionary in entry.get("restore", []):
+		var back := workstations.try_place(str(record.get("entity_id", CoasterRails.FLAT)), record.get("anchor", Vector3i.ZERO), world.query_cell, player_body_aabb.call() if player_body_aabb.is_valid() else AABB(), int(record.get("rotation_quarters", 0)), {"_free": true})
+		if back.get("ok", false):
+			replaced += 1
 	var restored := 0
 	for change: Dictionary in entry.get("voxels", []):
 		var cell: Vector3i = change.cell
@@ -196,7 +205,7 @@ func undo_last() -> Dictionary:
 				amount -= 1
 			if amount > 0:
 				inventory.try_transaction({}, {item_id: amount})
-	return _finish(true, "UNDONE", {"label": str(entry.get("label", "")), "removed": removed, "restored": restored, "refunds": refunds, "taken_back": take_back, "remaining": _undo.size()})
+	return _finish(true, "UNDONE", {"label": str(entry.get("label", "")), "removed": removed, "restored": restored, "replaced": replaced, "refunds": refunds, "taken_back": take_back, "remaining": _undo.size()})
 
 
 func try_place_item(cell: Vector3i, item_id: String, expected_world_revision: int = -1, rotation_quarters: int = -1) -> Dictionary:
@@ -208,6 +217,8 @@ func try_place_item(cell: Vector3i, item_id: String, expected_world_revision: in
 	var snapshot := _undo_snapshot(touched)
 	var placed := _try_place_item(cell, item_id, expected_world_revision, rotation_quarters)
 	if placed.get("ok", false):
+		if str(registry.item(item_id).get("places_entity", "")) == CoasterRails.FLAT:
+			_auto_shape_result(placed, _auto_shape_rails([cell] as Array[Vector3i]))
 		_undo_record(snapshot, item_id)
 	return placed
 
@@ -656,9 +667,16 @@ func commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 			if clear_cell is Vector3i:
 				touched.append(clear_cell)
 	var label := str(_drag.get("mode", "drag"))
+	var line_entity := str(_drag.get("entity_id", "")) if label == "entity_line" else ""
 	var snapshot := _undo_snapshot(touched)
 	var committed := _commit_drag_place(expected_world_revision)
 	if committed.get("ok", false):
+		if line_entity == CoasterRails.FLAT:
+			var laid: Array[Vector3i] = []
+			for laid_cell in committed.get("changes", {}).get("cells", []):
+				if laid_cell is Vector3i:
+					laid.append(laid_cell)
+			_auto_shape_result(committed, _auto_shape_rails(laid))
 		_undo_record(snapshot, label)
 	return committed
 
@@ -748,6 +766,303 @@ func _commit_entity_line() -> Dictionary:
 	if placed == 0:
 		return _finish(false, "PLACEMENT_FAILED")
 	return _finish(true, "LINE_PLACED", {"cells": cells, "count": placed, "entity_id": entity_id, "items": {item_id: -placed}, "cleared": int(clearing.cleared), "drops": clearing.drops})
+
+
+# ---------------------------------------------------------------------------
+# Auto-shape (owner playtest 2026-09-21, items 3b + 4: "These 90 degree
+# corners should be created automatically, no piece needed ... Any time 2
+# rail blocks touch, we should be able to auto course correct and make them
+# merge"). Plain `rail` pieces stay the wire the player lays; after every
+# plain-rail placement (a single rail, or a rail line) `_auto_shape_rails`
+# looks at the plain-rail graph around the laid cells and, where a pattern
+# matches, replaces the matching plain rails IN PLACE with curve pieces
+# (`rail_loop` records carrying a TrackCurve, laid free exactly like the
+# curve tools), the plain rails dismantled without refund: the cell count
+# never changes, the pack never changes, the rails are simply "course
+# corrected". Always on; no item, no setting.
+#
+# Patterns (AUTO_SHAPE_PATTERNS, tried in that order; flat, one level, plain
+# rails only - never a curve piece, a slope, a junction cell with three or
+# more joins, or a rail carrying a kettle / cart):
+# - "elbow": a corner cell C joined to exactly two plain rails A and B at a
+#   right angle, each continuing straight one more plain rail (A2 beyond A,
+#   B2 beyond B). A, C, B become a quarter arc of radius 1.5 centred on the
+#   corner of the 2x2 block opposite C (the owner's sketch: the arc enters
+#   through A's far edge, crosses C, leaves through B's far edge; the
+#   fourth cell of the block stays empty). It needs the straights: a corner
+#   laid alone stays plain until both straights exist.
+# - "lane_shift": a plain-rail run ending at E and a run in the next lane
+#   over starting at S diagonally ahead of E (S = E + along + side), both
+#   at least three cells long and straight: the three cells ending at E and
+#   the three starting at S become one s-bend (TrackCurve.make_s_bend over
+#   six cells, one lane), joining the rails beyond both ends.
+# Nothing else auto-shapes: a "+" of two lines stays a crossroads, a T stays
+# a T. To add a pattern: append its name here and a `_auto_shape_<name>`
+# branch in `_auto_shape_match` returning {kind, cells, pieces}.
+# Undo: the pass runs inside the placement's undo window; the dismantled
+# plain rails are kept on the entry ("restore") and re-laid free by
+# `undo_last` after the shaped pieces are removed.
+# ---------------------------------------------------------------------------
+
+const AUTO_SHAPE_PATTERNS: Array[String] = ["elbow", "lane_shift"]
+const AUTO_SHAPE_ELBOW_RADIUS := 1.5
+const AUTO_SHAPE_SHIFT_RUN := 3
+## Plain rails the last auto-shape dismantled, attached to the next undo entry.
+var _undo_restore: Array[Dictionary] = []
+## Optional: returns the track cells riders (carts, kettles) are on right now
+## (Array[Vector3i]); a rail under a rider is never reshaped.
+var rider_cells: Callable = Callable()
+
+
+## Marks a placement result with what the pass did (the feedback line).
+func _auto_shape_result(result: Dictionary, shaping: Dictionary) -> void:
+	var kinds: Array = shaping.get("shaped", [])
+	if kinds.is_empty():
+		return
+	var changes: Dictionary = result.get("changes", {})
+	changes["shaped"] = kinds.duplicate()
+	changes["shaped_cells"] = shaping.get("cells", [])
+	result["changes"] = changes
+	result["reason"] = "RAILS_SHAPED_LANE_SHIFT" if str(kinds[kinds.size() - 1]) == "lane_shift" else "RAILS_SHAPED_ELBOW"
+
+
+## The pass: every pattern, on every plain rail within two cells of what was
+## just laid (a pattern must include at least one laid cell). Returns
+## {shaped: [kinds], cells: [replaced cells], count}.
+func _auto_shape_rails(laid: Array[Vector3i]) -> Dictionary:
+	var shaped: Array[String] = []
+	var replaced: Array[Vector3i] = []
+	if workstations == null or laid.is_empty():
+		return {"shaped": shaped, "cells": replaced, "count": 0}
+	var candidates: Array[Vector3i] = []
+	for cell: Vector3i in laid:
+		for dx in range(-2, 3):
+			for dz in range(-2, 3):
+				var near := cell + Vector3i(dx, 0, dz)
+				if not candidates.has(near):
+					candidates.append(near)
+	for pattern: String in AUTO_SHAPE_PATTERNS:
+		for cell: Vector3i in candidates:
+			if replaced.has(cell):
+				continue
+			var found := _auto_shape_match(pattern, cell, laid)
+			if found.is_empty():
+				continue
+			if _auto_shape_apply(found):
+				shaped.append(str(found.kind))
+				for done: Vector3i in found.cells:
+					replaced.append(done)
+	return {"shaped": shaped, "cells": replaced, "count": replaced.size()}
+
+
+## The plain-rail record at `cell` ({} for anything else).
+func _plain_rail_at(cell: Vector3i, tracks: Dictionary) -> Dictionary:
+	var record: Dictionary = tracks.get(cell, {})
+	if str(record.get("entity_id", "")) != CoasterRails.FLAT:
+		return {}
+	return record
+
+
+## True when a kettle, cart or car stands or rides on the rail at `cell`.
+func _rail_carries_rider(cell: Vector3i) -> bool:
+	if not workstations.station_at_cell(cell + Vector3i.UP).is_empty():
+		return true
+	if rider_cells.is_valid():
+		var riding: Variant = rider_cells.call()
+		if riding is Array and (riding as Array).has(cell):
+			return true
+	return false
+
+
+## A plain rail at `cell` whose joins (mutual rule) are exactly `expected`,
+## carrying no rider: the record, or {}.
+func _plain_rail_joined(cell: Vector3i, expected: Array[Vector3i], tracks: Dictionary) -> Dictionary:
+	var record := _plain_rail_at(cell, tracks)
+	if record.is_empty() or _rail_carries_rider(cell):
+		return {}
+	var joined := CoasterRails.connected_cells(record, tracks)
+	if joined.size() != expected.size():
+		return {}
+	for other: Vector3i in expected:
+		if not joined.has(other):
+			return {}
+	return record
+
+
+## A straight plain-rail run: `cell` joins `next` and, if it has a second
+## join, that join is `behind` (the run continuing straight, never a branch).
+func _plain_rail_straight(cell: Vector3i, next: Vector3i, behind: Vector3i, tracks: Dictionary) -> bool:
+	var record := _plain_rail_at(cell, tracks)
+	if record.is_empty():
+		return false
+	var joined := CoasterRails.connected_cells(record, tracks)
+	if not joined.has(next) or joined.size() > 2:
+		return false
+	for other: Vector3i in joined:
+		if other != next and other != behind:
+			return false
+	return true
+
+
+static func _quarters_along(direction: Vector3i) -> int:
+	for quarters in range(4):
+		if CoasterRails.switch_along(quarters) == direction:
+			return quarters
+	return 0
+
+
+## `rail_loop` pieces of `curve` restricted to `wanted` (the curve starts and
+## ends on cell faces, so a sample on a face may land in the cell beyond;
+## those zero-width spans are dropped and the end pieces' ranges stretched
+## to the curve's ends). [] unless the pieces cover exactly `wanted`.
+func _curve_pieces_within(curve: Dictionary, wanted: Array[Vector3i], rotation: int, before: Vector3i, after: Vector3i) -> Array[Dictionary]:
+	var spans: Array[Dictionary] = []
+	for span: Dictionary in TrackCurve.cells(curve, 720):
+		var cell: Vector3i = span.cell
+		if not wanted.has(cell):
+			continue
+		if not spans.is_empty() and Vector3i(spans[spans.size() - 1].cell) == cell:
+			spans[spans.size() - 1].t1 = float(span.t1)
+			continue
+		spans.append({"cell": cell, "t0": float(span.t0), "t1": float(span.t1)})
+	if spans.size() != wanted.size():
+		return []
+	for cell: Vector3i in wanted:
+		var present := false
+		for span: Dictionary in spans:
+			if Vector3i(span.cell) == cell:
+				present = true
+		if not present:
+			return []
+	spans[0].t0 = 0.0
+	spans[spans.size() - 1].t1 = 1.0
+	var out: Array[Dictionary] = []
+	for index in range(spans.size()):
+		var span: Dictionary = spans[index]
+		var joints: Array[Vector3i] = []
+		joints.append(Vector3i(spans[index - 1].cell) if index > 0 else before)
+		joints.append(Vector3i(spans[index + 1].cell) if index + 1 < spans.size() else after)
+		out.append({"cell": Vector3i(span.cell), "entity_id": CoasterRails.LOOP, "rotation": rotation, "joints": joints, "extra": {"curve": curve, "t0": float(span.t0), "t1": float(span.t1)}})
+	return out
+
+
+## One pattern at one candidate cell: {kind, cells (the plain rails to
+## replace, in ride order), pieces (their curve pieces)} or {}.
+func _auto_shape_match(pattern: String, cell: Vector3i, laid: Array[Vector3i]) -> Dictionary:
+	var tracks := CoasterRails.track_records(workstations.stations)
+	match pattern:
+		"elbow":
+			return _auto_shape_elbow(cell, laid, tracks)
+		"lane_shift":
+			return _auto_shape_lane_shift(cell, laid, tracks)
+	return {}
+
+
+func _auto_shape_elbow(corner: Vector3i, laid: Array[Vector3i], tracks: Dictionary) -> Dictionary:
+	var record := _plain_rail_at(corner, tracks)
+	if record.is_empty() or _rail_carries_rider(corner):
+		return {}
+	var joined := CoasterRails.connected_cells(record, tracks)
+	if joined.size() != 2:
+		return {}
+	var a: Vector3i = joined[0]
+	var b: Vector3i = joined[1]
+	var along := corner - a
+	var side := b - corner
+	if along.y != 0 or side.y != 0 or along.length_squared() != 1 or side.length_squared() != 1 or along.x * side.x + along.z * side.z != 0:
+		return {}
+	var a2 := a - along
+	var b2 := b + side
+	if _plain_rail_joined(a, [corner, a2] as Array[Vector3i], tracks).is_empty() or _plain_rail_joined(b, [corner, b2] as Array[Vector3i], tracks).is_empty():
+		return {}
+	if _plain_rail_at(a2, tracks).is_empty() or _plain_rail_at(b2, tracks).is_empty():
+		return {}
+	var involved := false
+	for cell: Vector3i in [a2, a, corner, b, b2]:
+		if laid.has(cell):
+			involved = true
+	if not involved:
+		return {}
+	var centre := Vector3(corner) + Vector3(0.5, 0.55, 0.5) - Vector3(along) * AUTO_SHAPE_ELBOW_RADIUS + Vector3(side) * AUTO_SHAPE_ELBOW_RADIUS
+	var curve := TrackCurve.make_arc(centre, Vector3(along), Vector3(side), AUTO_SHAPE_ELBOW_RADIUS, 0.0, 90.0)
+	var cells: Array[Vector3i] = [a, corner, b]
+	var pieces := _curve_pieces_within(curve, cells, _quarters_along(along), a2, b2)
+	if pieces.is_empty():
+		return {}
+	return {"kind": "elbow", "cells": cells, "pieces": pieces}
+
+
+func _auto_shape_lane_shift(end: Vector3i, laid: Array[Vector3i], tracks: Dictionary) -> Dictionary:
+	for along: Vector3i in CoasterRails.HORIZONTAL:
+		var right := Vector3i(Vector3(along).cross(Vector3.UP).round())
+		for side: Vector3i in [right, -right]:
+			var start := end + along + side
+			# The two run ends: E joins only the cell behind it, S only the
+			# cell ahead (plain rails never join diagonally).
+			if _plain_rail_joined(end, [end - along] as Array[Vector3i], tracks).is_empty() or _plain_rail_joined(start, [start + along] as Array[Vector3i], tracks).is_empty():
+				continue
+			if _plain_rail_joined(end - along, [end, end - along * 2] as Array[Vector3i], tracks).is_empty() or _plain_rail_joined(start + along, [start, start + along * 2] as Array[Vector3i], tracks).is_empty():
+				continue
+			if not _plain_rail_straight(end - along * 2, end - along, end - along * 3, tracks) or not _plain_rail_straight(start + along * 2, start + along, start + along * 3, tracks):
+				continue
+			if _rail_carries_rider(end - along * 2) or _rail_carries_rider(start + along * 2):
+				continue
+			var cells: Array[Vector3i] = [end - along * 2, end - along, end, start, start + along, start + along * 2]
+			var involved := false
+			for cell: Vector3i in cells:
+				if laid.has(cell):
+					involved = true
+			if not involved:
+				continue
+			var origin := Vector3(cells[0]) + Vector3(0.5, 0.55, 0.5) - Vector3(along) * 0.5
+			var curve := TrackCurve.make_s_bend(origin, Vector3(along), Vector3(side), float(AUTO_SHAPE_SHIFT_RUN * 2), 1.0, 0.0)
+			var pieces := _curve_pieces_within(curve, cells, _quarters_along(along), end - along * 3, start + along * 3)
+			if pieces.is_empty():
+				continue
+			return {"kind": "lane_shift", "cells": cells, "pieces": pieces}
+	return {}
+
+
+## Replaces the match's plain rails with its pieces: dismantle (no refund),
+## lay free; on any failure the plain rails go back and nothing changes.
+func _auto_shape_apply(found: Dictionary) -> bool:
+	var aabb: AABB = player_body_aabb.call() if player_body_aabb.is_valid() else AABB()
+	var removed: Array[Dictionary] = []
+	for cell: Vector3i in found.cells:
+		var station_id := workstations.station_at_cell(cell)
+		var record := workstations.station(station_id).duplicate(true)
+		var gone := workstations.try_dismantle(station_id, world.query_cell, aabb, false)
+		if not gone.get("ok", false):
+			_auto_shape_restore(removed, aabb)
+			return false
+		removed.append(record)
+	var laid: Array[String] = []
+	for piece: Dictionary in found.pieces:
+		var cell: Vector3i = piece.cell
+		var joints: Array = []
+		for joint in piece.get("joints", []):
+			if joint is Vector3i:
+				var offset: Vector3i = joint - cell
+				joints.append([offset.x, offset.y, offset.z])
+		var extra: Dictionary = (piece.get("extra", {}) as Dictionary).duplicate()
+		extra["coaster_joints"] = joints
+		extra["auto_shaped"] = str(found.kind)
+		extra["_free"] = true
+		var result := workstations.try_place(str(piece.entity_id), cell, world.query_cell, aabb, int(piece.rotation), extra)
+		if not result.get("ok", false):
+			for placed_id: String in laid:
+				workstations.try_dismantle(placed_id, world.query_cell, aabb, false)
+			_auto_shape_restore(removed, aabb)
+			return false
+		laid.append(str(result.get("details", {}).get("station", {}).get("instance_id", "")))
+	for record: Dictionary in removed:
+		_undo_restore.append({"entity_id": str(record.get("entity_id", CoasterRails.FLAT)), "anchor": record.get("anchor", Vector3i.ZERO), "rotation_quarters": int(record.get("rotation_quarters", 0))})
+	return true
+
+
+func _auto_shape_restore(records: Array[Dictionary], aabb: AABB) -> void:
+	for record: Dictionary in records:
+		workstations.try_place(str(record.get("entity_id", CoasterRails.FLAT)), record.get("anchor", Vector3i.ZERO), world.query_cell, aabb, int(record.get("rotation_quarters", 0)), {"_free": true})
 
 
 # ---------------------------------------------------------------------------
