@@ -13,9 +13,9 @@ extends Node
 ## T173-T174) and `--coaster-rails-automation=visual` (needs a window: T163
 ## renders `coaster-rails.png`, T175 `coaster-curves.png`).
 ## T168, T179 track auto-clear, T180 trestle supports, T183 trestle trusses,
-## T185 one track style) and
+## T185 one track style, T186 smooth sweep) and
 ## `--coaster-rails-automation=visual` (needs a window: T163 renders
-## `coaster-rails.png`, T181 `coaster-supports.png`).
+## `coaster-rails.png`, T181 `coaster-supports.png`, T186 `coaster-sweep-*.png`).
 
 var app: CraftAndDefendApp
 var failures: Array[String] = []

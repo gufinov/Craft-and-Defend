@@ -1503,59 +1503,85 @@ func _add_track_run(undo: Node3D, body_origin: Vector3, points: Array[Vector3], 
 ## cross-section swept through `points` with the frame (tangents[i],
 ## across[i], up[i] = across[i] x tangents[i]) at every point; the spine
 ## sits 0.30 along up x `spine_up`. Flat-shaded faces (four side strips
-## plus end caps) whose ring vertices coincide, so the twist is continuous.
+## plus end caps) built as indexed arrays: every strip shares its two
+## vertices per ring between the segments on either side, so the rings
+## coincide and the twist is continuous.
 func _add_track_sweep(undo: Node3D, body_origin: Vector3, points: Array[Vector3], tangents: Array[Vector3], across: Array[Vector3], spine_up: float, materials: Dictionary) -> MeshInstance3D:
 	var mesh := ArrayMesh.new()
 	var half_rail := TRACK_RAIL_SIZE * 0.5
 	var profiles: Array[Array] = [[-TRACK_GAUGE_HALF, 0.0, half_rail, half_rail, materials.iron], [TRACK_GAUGE_HALF, 0.0, half_rail, half_rail, materials.iron], [0.0, spine_up * 0.30, 0.08, 0.08, materials.stone]]
 	var count := points.size()
-	var distances: Array[float] = [0.0]
-	for index in range(1, count):
-		distances.append(distances[index - 1] + points[index - 1].distance_to(points[index]))
+	var ups: Array[Vector3] = []
+	var distances: PackedFloat32Array = [0.0]
+	for index in range(count):
+		ups.append(across[index].cross(tangents[index]))
+		if index > 0:
+			distances.append(distances[index - 1] + points[index - 1].distance_to(points[index]))
+	# Godot's front faces wind clockwise seen from the front: the strip
+	# order is fixed by the frame's handedness, checked once on the first
+	# segment's top face.
+	var flip := false
+	if count >= 2:
+		var a := points[0] + across[0] * half_rail + ups[0] * half_rail
+		var b := points[0] - across[0] * half_rail + ups[0] * half_rail
+		var c := points[1] + across[1] * half_rail + ups[1] * half_rail
+		flip = (c - a).cross(b - a).dot(ups[0]) > 0.0
 	for profile: Array in profiles:
 		var centre_across := float(profile[0])
 		var centre_up := float(profile[1])
 		var half_across := float(profile[2])
 		var half_up := float(profile[3])
-		var st := SurfaceTool.new()
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		st.set_material(profile[4] as Material)
-		# Ring corners in (across, up) order: +a+u, -a+u, -a-u, +a-u; the
-		# side faces run between consecutive corners, each with its own
-		# outward normal (up, -across, -up, across).
 		var corners: Array[Vector2] = [Vector2(half_across, half_up), Vector2(-half_across, half_up), Vector2(-half_across, -half_up), Vector2(half_across, -half_up)]
+		var vertices := PackedVector3Array()
+		var normals := PackedVector3Array()
+		var uvs := PackedVector2Array()
+		var indices := PackedInt32Array()
+		# Four side strips: two vertices per ring each, quads between rings.
 		for face in range(4):
 			var next_corner := (face + 1) % 4
-			for index in range(1, count):
-				var quad: Array[Vector3] = []
-				var normals: Array[Vector3] = []
-				var uvs: Array[Vector2] = []
-				for ring: int in [index - 1, index]:
-					var up: Vector3 = across[ring].cross(tangents[ring])
-					var normal: Vector3 = [up, -across[ring], -up, across[ring]][face]
-					var origin: Vector3 = points[ring] - body_origin + across[ring] * centre_across + up * centre_up
-					quad.append(origin + across[ring] * corners[face].x + up * corners[face].y)
-					quad.append(origin + across[ring] * corners[next_corner].x + up * corners[next_corner].y)
-					normals.append(normal)
-					normals.append(normal)
-					uvs.append(Vector2(distances[ring], 0.0))
-					uvs.append(Vector2(distances[ring], 1.0))
-				# quad: [ring0 corner a, ring0 corner b, ring1 corner a, ring1 corner b]
-				_add_sweep_triangle(st, quad[0], quad[2], quad[1], normals[0], uvs[0], uvs[2], uvs[1])
-				_add_sweep_triangle(st, quad[1], quad[2], quad[3], normals[1], uvs[1], uvs[2], uvs[3])
+			var base := vertices.size()
+			for ring in range(count):
+				var origin: Vector3 = points[ring] - body_origin + across[ring] * centre_across + ups[ring] * centre_up
+				var normal: Vector3 = [ups[ring], -across[ring], -ups[ring], across[ring]][face]
+				vertices.append(origin + across[ring] * corners[face].x + ups[ring] * corners[face].y)
+				vertices.append(origin + across[ring] * corners[next_corner].x + ups[ring] * corners[next_corner].y)
+				normals.append(normal)
+				normals.append(normal)
+				uvs.append(Vector2(distances[ring], 0.0))
+				uvs.append(Vector2(distances[ring], 1.0))
+			for ring in range(1, count):
+				var a := base + (ring - 1) * 2
+				var b := a + 1
+				var c := base + ring * 2
+				var d := c + 1
+				if flip:
+					indices.append_array(PackedInt32Array([a, b, c, b, d, c]))
+				else:
+					indices.append_array(PackedInt32Array([a, c, b, b, c, d]))
 		# End caps.
 		for cap: Array in [[0, -1.0], [count - 1, 1.0]]:
 			var ring: int = cap[0]
 			var cap_sign: float = cap[1]
-			var up: Vector3 = across[ring].cross(tangents[ring])
-			var origin: Vector3 = points[ring] - body_origin + across[ring] * centre_across + up * centre_up
+			var origin: Vector3 = points[ring] - body_origin + across[ring] * centre_across + ups[ring] * centre_up
 			var normal: Vector3 = tangents[ring] * cap_sign
-			var ring_points: Array[Vector3] = []
+			var base := vertices.size()
 			for corner: Vector2 in corners:
-				ring_points.append(origin + across[ring] * corner.x + up * corner.y)
-			_add_sweep_triangle(st, ring_points[0], ring_points[1], ring_points[2], normal, corners[0], corners[1], corners[2])
-			_add_sweep_triangle(st, ring_points[0], ring_points[2], ring_points[3], normal, corners[0], corners[2], corners[3])
-		st.commit(mesh)
+				vertices.append(origin + across[ring] * corner.x + ups[ring] * corner.y)
+				normals.append(normal)
+				uvs.append(corner)
+			var outward: bool = (vertices[base + 1] - vertices[base]).cross(vertices[base + 2] - vertices[base]).dot(normal) > 0.0
+			if outward:
+				indices.append_array(PackedInt32Array([base, base + 2, base + 1, base, base + 3, base + 2]))
+			else:
+				indices.append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
+		var arrays: Array = []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = vertices
+		arrays[Mesh.ARRAY_NORMAL] = normals
+		arrays[Mesh.ARRAY_TEX_UV] = uvs
+		arrays[Mesh.ARRAY_INDEX] = indices
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		mesh.surface_set_material(mesh.get_surface_count() - 1, profile[4] as Material)
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.name = "TrackSweep"
 	mesh_instance.mesh = mesh
@@ -1563,20 +1589,6 @@ func _add_track_sweep(undo: Node3D, body_origin: Vector3, points: Array[Vector3]
 	undo.add_child(mesh_instance)
 	return mesh_instance
 
-
-## One flat-shaded triangle wound to face `normal` (Godot's front faces
-## wind clockwise seen from the front, so the corner order is swapped when
-## the cross product points along the normal).
-func _add_sweep_triangle(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, normal: Vector3, uv_a: Vector2, uv_b: Vector2, uv_c: Vector2) -> void:
-	var order: Array[Vector3] = [a, b, c]
-	var uvs: Array[Vector2] = [uv_a, uv_b, uv_c]
-	if (b - a).cross(c - a).dot(normal) > 0.0:
-		order = [a, c, b]
-		uvs = [uv_a, uv_c, uv_b]
-	for index in range(3):
-		st.set_normal(normal)
-		st.set_uv(uvs[index])
-		st.add_vertex(order[index])
 
 
 ## Flat rail piece (`rail`, a flat `rail_loop` piece, a grounded
