@@ -40,6 +40,8 @@ const REASON_TEXT := {
 	"CURVE_PLACED": "Curve laid. Rails join its entry (behind) and its exit (ahead in the new direction); a 45 or 135 curve ends on a diagonal that only another curve continues.",
 	"CURVE_BLOCKED": "The curve does not fit here: a red cell is in the way (ground, tree, hill or block). Move, turn (W / R) or resize (4-9, Shift-aim).",
 	"TRACK_SNAPPED": "Snapped to the track end — release to join.",
+	"RAILS_SHAPED_ELBOW": "Rails laid. Rails shaped into an elbow.",
+	"RAILS_SHAPED_LANE_SHIFT": "Rails laid. Rails shaped into a lane shift.",
 	"COASTER_BOARDED": "Boarded the coaster car — 1-9 sets the speed, Shift or Escape leaves.",
 	"COASTER_LEFT": "Left the coaster car.",
 	"ALREADY_RIDING": "Already riding.",
@@ -216,6 +218,7 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	interaction = InteractionService.new(world, inventory, player.get_body_aabb, registry, workstations, _raycast_station, _defense_interact)
 	interaction.restore_stamps(open_data.get("snapshot", {}).get("blueprints", {}).get("stamps", []))
 	interaction.auto_clear = track_auto_clear
+	interaction.rider_cells = _rider_cells
 	player.interaction = interaction
 	player.primary_action = _player_primary_action
 	world.spawn_area_ready.connect(_on_spawn_area_ready)
@@ -400,6 +403,8 @@ func select_hotbar(index: int) -> Dictionary:
 		# the loop gesture without them).
 		if item_id == CoasterRails.LOOP:
 			_on_interaction_feedback("RAIL LOOP: aim at the ground where the entry goes, HOLD Right Mouse — the loop ghost appears; hold Shift and aim further away to size it (or 4-9 / X / C), W / R turn it, L classic loop; let go to build it (red = does not fit) — it heads the way you face; U / Ctrl+Z undoes")
+		elif item_id == CoasterRails.FLAT:
+			_on_interaction_feedback("RAIL: right-drag lays a line; rails shape themselves — two straights meeting at a corner become an elbow, three rails then three one lane over become a lane shift (no extra piece); U / Ctrl+Z undoes")
 		elif item_id == CoasterRails.SLOPE:
 			_on_interaction_feedback("RAIL SLOPE: the arrow end climbs one block — W / R turns it; put a Rail on the block it climbs to")
 		elif item_id == CoasterRails.CLIMB:
@@ -720,6 +725,17 @@ func undo_last_placement() -> Dictionary:
 	_on_interaction_feedback("Undone: %s (%d more to undo; U or Ctrl+Z)" % [", ".join(parts) if not parts.is_empty() else "nothing changed", int(changes.get("remaining", 0))])
 	_emit_hud()
 	return undone
+
+
+## The track cells every cart and rail-riding kettle is on (the auto-shape
+## pass never reshapes a rail under a rider).
+func _rider_cells() -> Array[Vector3i]:
+	var cells: Array[Vector3i] = []
+	if coaster_carts != null:
+		cells.append_array(coaster_carts.rider_cells())
+	if siege_defense != null:
+		cells.append_array(siege_defense.rail_rider_cells())
+	return cells
 
 
 func _on_interaction_feedback(message: String) -> void:
@@ -1417,7 +1433,44 @@ func _track_meeting_point(record: Dictionary, other: Dictionary) -> Vector3:
 		return _slope_rail_end(other, record.get("anchor", Vector3i.ZERO))
 	if str(record.get("entity_id", "")) == CoasterRails.SLOPE:
 		return _slope_rail_end(record, other.get("anchor", Vector3i.ZERO))
+	# An auto-shaped curve (elbow, lane shift) starts and ends ON the face it
+	# shares with the plain rail beyond: both sides meet at the curve's end.
+	var record_end := _curve_face_end(record, other)
+	if record_end >= 0.0:
+		return TrackCurve.point(record.get("curve", {}), record_end)
+	var other_end := _curve_face_end(other, record)
+	if other_end >= 0.0:
+		return TrackCurve.point(other.get("curve", {}), other_end)
 	return (CoasterRails.ride_point(record) + CoasterRails.ride_point(other)) * 0.5
+
+
+## The parameter (0.0 or 1.0) of `record`'s curve end that lies on the face
+## it shares with `other`, when `other` is the joint recorded at that end
+## and the end point sits on that face (within 0.01); -1.0 otherwise (the
+## curve tools' curves start and end at cell centres, so they never match).
+func _curve_face_end(record: Dictionary, other: Dictionary) -> float:
+	var curve: Dictionary = record.get("curve", {})
+	if curve.is_empty() or other.has("curve"):
+		return -1.0
+	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	var other_anchor: Vector3i = other.get("anchor", Vector3i.ZERO)
+	var offset := other_anchor - anchor
+	if offset.y != 0 or absi(offset.x) + absi(offset.z) != 1:
+		return -1.0
+	var joints: Array = record.get("coaster_joints", [])
+	for index in range(mini(2, joints.size())):
+		var joint: Variant = joints[index]
+		if not (joint is Array) or (joint as Array).size() != 3 or Vector3i(int(joint[0]), int(joint[1]), int(joint[2])) != offset:
+			continue
+		var end_t := 0.0 if index == 0 else 1.0
+		if (index == 0 and float(record.get("t0", 1.0)) > 0.001) or (index == 1 and float(record.get("t1", 0.0)) < 0.999):
+			continue
+		var end_point := TrackCurve.point(curve, end_t)
+		var face := float(anchor.x + (1 if offset.x > 0 else 0)) if offset.x != 0 else float(anchor.z + (1 if offset.z > 0 else 0))
+		var along_face := end_point.x if offset.x != 0 else end_point.z
+		if absf(along_face - face) < 0.01:
+			return end_t
+	return -1.0
 
 
 ## One run of track through `points` (world), drawn under `undo` (a node
@@ -1796,9 +1849,20 @@ func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[
 		else:
 			# Any other neighbour (a plain rail, a slope's rail end, another
 			# tool's piece): a straight to the shared meeting point, met
-			# upright (the flat binormal there, as the neighbour draws it).
-			points.append(_track_meeting_point(record, other))
-			frames.append(across if round or curve.is_empty() else Vector3.ZERO)
+			# upright (the flat binormal there, as the neighbour draws it) -
+			# along the curve first when it ends on the shared face
+			# (auto-shaped elbows and lane shifts).
+			var face_end := _curve_face_end(record, other) if not curve.is_empty() else -1.0
+			if face_end >= 0.0:
+				var own_t := TrackCurve.piece_t(record)
+				for section in range(1, LOOP_ARC_SECTIONS + 1):
+					var t := own_t + (face_end - own_t) * float(section) / float(LOOP_ARC_SECTIONS)
+					points.append(TrackCurve.point(curve, t))
+					var binormal := TrackCurve.tangent(curve, t).cross(TrackCurve.up_at(curve, t))
+					frames.append(binormal.normalized() if binormal.length() > 0.05 else across)
+			else:
+				points.append(_track_meeting_point(record, other))
+				frames.append(across if round or curve.is_empty() else Vector3.ZERO)
 		runs.append([points, frames])
 	if runs.size() == 2:
 		var merged_points: Array[Vector3] = []

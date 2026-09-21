@@ -126,6 +126,16 @@ func rider_cell(instance_id: String) -> Vector3i:
 	return rider.get("cell", Vector3i(0, -9999, 0))
 
 
+## The track cell of every cart (the auto-shape pass leaves those rails alone).
+func rider_cells() -> Array[Vector3i]:
+	var cells: Array[Vector3i] = []
+	for instance_id: String in _bodies.keys():
+		var rider: Dictionary = _riders.get(instance_id, {})
+		var record := workstations.station(instance_id) if workstations != null else {}
+		cells.append(rider.get("cell", Vector3i(record.get("anchor", Vector3i.ZERO)) + Vector3i.DOWN))
+	return cells
+
+
 ## Every track cell a cart has reached since it was placed (diagnostics).
 func trail(instance_id: String) -> Dictionary:
 	var rider: Dictionary = _riders.get(instance_id, {})
