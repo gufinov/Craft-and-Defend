@@ -293,9 +293,67 @@ const DRAG_MAX_SPAN := 16
 
 var _drag: Dictionary = {}
 
+## Snap to a track end (owner playtest 2026-09-21 item 2: "give the piece it
+## is going to attach to a color highlight ... indicating that a connect was
+## made"): while a track ghost follows the aim, an aimed cell within this
+## many cells (horizontal, same level or one up / down) of an open track
+## end's free joint cell moves the ghost's entry onto that cell and turns it
+## to leave the end; `drag_state().snap` names the piece for the highlight.
+## A 45-degree curve end has no placement rotation and is never snapped to.
+const SNAP_REACH := 1.6
+
 
 func drag_active() -> bool:
 	return not _drag.is_empty()
+
+
+## True when the held item lays track that can join an open end.
+func is_track_item(item_id: String) -> bool:
+	var item := registry.item(item_id)
+	if item.is_empty() or not item.has("places_entity"):
+		return false
+	var entity_id := str(item.places_entity)
+	return CoasterRails.is_track_id(entity_id) or not str(registry.entity(entity_id).get("coaster_tool", "")).is_empty()
+
+
+## The nearest open track end whose free joint cell lies within SNAP_REACH
+## of `raw` ({instance_id, cell, next, along}), or {} when none is in reach.
+func find_snap(raw: Vector3i) -> Dictionary:
+	if workstations == null or raw == Vector3i.MAX:
+		return {}
+	var best: Dictionary = {}
+	var best_distance := SNAP_REACH
+	for end: Dictionary in CoasterRails.open_ends(CoasterRails.track_records(workstations.stations)):
+		var next: Vector3i = end.next
+		if absi(next.y - raw.y) > 1:
+			continue
+		var along: Vector3 = end.along
+		if absf(along.x) > 0.3 and absf(along.z) > 0.3:
+			continue
+		var distance := Vector2(float(next.x - raw.x), float(next.z - raw.z)).length()
+		if distance < best_distance:
+			best_distance = distance
+			best = end
+	return best
+
+
+## Moves the active ghost's entry to `raw`, or onto the open end it snaps
+## to (turning the piece to leave that end); returns true when the entry,
+## the rotation or the snap changed so the caller replans.
+func _follow_anchor(raw: Vector3i) -> bool:
+	if raw == Vector3i.MAX:
+		return false
+	var snap := find_snap(raw)
+	var anchor := raw
+	var snapped: Dictionary = {}
+	if not snap.is_empty():
+		anchor = snap.next
+		snapped = {"instance_id": str(snap.instance_id), "cell": snap.cell, "next": snap.next}
+		placement_rotation_quarters = facing_quarters(snap.along)
+	var changed: bool = anchor != _drag.anchor or snapped != _drag.get("snap", {}) or placement_rotation_quarters != int(_drag.get("rotation", placement_rotation_quarters))
+	_drag.anchor = anchor
+	_drag.snap = snapped
+	return changed
 
 
 func begin_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
@@ -312,17 +370,29 @@ func begin_drag_place(origin: Vector3, direction: Vector3) -> Dictionary:
 			# faces, so the ghost is seen from its entry; W / R still turn it
 			# and a Shift-drag re-aims it.
 			placement_rotation_quarters = facing_quarters(direction)
+		# Snap to a track end: a press near an open end starts the piece on
+		# the end's free joint cell, heading out of it (a rail line too: its
+		# entry snaps, its end follows the aim as before).
+		var snap := find_snap(anchor) if is_track_item(item_id) else {}
+		if not snap.is_empty():
+			anchor = snap.next
+			placement_rotation_quarters = facing_quarters(snap.along)
+		var started: Dictionary
 		if is_coaster_loop_item(item_id):
-			return begin_coaster_loop_at(anchor)
-		if is_curve_item(item_id):
-			return begin_curve_at(anchor)
-		if is_lane_switch_item(item_id):
-			return begin_lane_switch_at(anchor)
-		if is_climb_item(item_id):
-			return begin_climb_at(anchor)
-		if is_curve_tool_item(item_id):
-			return begin_curve_tool_at(anchor)
-		return begin_entity_line_at(anchor)
+			started = begin_coaster_loop_at(anchor)
+		elif is_curve_item(item_id):
+			started = begin_curve_at(anchor)
+		elif is_lane_switch_item(item_id):
+			started = begin_lane_switch_at(anchor)
+		elif is_climb_item(item_id):
+			started = begin_climb_at(anchor)
+		elif is_curve_tool_item(item_id):
+			started = begin_curve_tool_at(anchor)
+		else:
+			started = begin_entity_line_at(anchor)
+		if not snap.is_empty() and not _drag.is_empty():
+			_drag.snap = {"instance_id": str(snap.instance_id), "cell": snap.cell, "next": snap.next}
+		return started
 	if item.is_empty() or not item.has("places_block"):
 		return _finish(false, "NOT_PLACEABLE")
 	var hit := world.raycast(origin, direction)
@@ -457,9 +527,7 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 		return drag_state()
 	if str(_drag.get("mode", "drag")) == "lane_switch":
 		# The four-piece ghost follows the aim; W / R turn it (replanned there).
-		var switch_anchor := placement_anchor_from_view(origin, direction, 12.0)
-		if switch_anchor != Vector3i.MAX and switch_anchor != _drag.anchor:
-			_drag.anchor = switch_anchor
+		if _follow_anchor(placement_anchor_from_view(origin, direction, 12.0)):
 			_replan_lane_switch()
 		return drag_state()
 	if str(_drag.get("mode", "drag")) == "climb":
@@ -481,10 +549,9 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 				var along := CoasterRails.switch_along(placement_rotation_quarters)
 				set_climb(span.x * along.x + span.z * along.z, span.y)
 			return drag_state()
-		var climb_anchor := placement_anchor_from_view(origin, direction, 12.0)
-		if climb_anchor != Vector3i.MAX and climb_anchor != _drag.anchor:
-			_drag.anchor = climb_anchor
+		if _follow_anchor(placement_anchor_from_view(origin, direction, 12.0)):
 			_replan_climb()
+		return drag_state()
 	if CURVE_TOOL_MODES.has(str(_drag.get("mode", "drag"))):
 		# Smooth Switch / Crossing (CoasterCraft cards 2-3): the ghost follows
 		# the aim; Shift held: the entry stays put and the aim's offset from it
@@ -508,9 +575,7 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 				var sideways: int = span.x * side.x + span.z * side.z
 				set_curve_size(forward, sideways)
 			return drag_state()
-		var curve_anchor := placement_anchor_from_view(origin, direction, 12.0)
-		if curve_anchor != Vector3i.MAX and curve_anchor != _drag.anchor:
-			_drag.anchor = curve_anchor
+		if _follow_anchor(placement_anchor_from_view(origin, direction, 12.0)):
 			_replan_curve_tool()
 		return drag_state()
 	if str(_drag.get("mode", "drag")) == "loop_element":
@@ -531,9 +596,7 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 				set_loop_diameter(int(round(span.length())))
 				_replan_loop_element()
 			return drag_state()
-		var loop_anchor := placement_anchor_from_view(origin, direction, 12.0)
-		if loop_anchor != Vector3i.MAX and loop_anchor != _drag.anchor:
-			_drag.anchor = loop_anchor
+		if _follow_anchor(placement_anchor_from_view(origin, direction, 12.0)):
 			_replan_loop_element()
 		return drag_state()
 	if str(_drag.get("mode", "drag")) == "curve":
@@ -561,9 +624,7 @@ func update_drag_place(origin: Vector3, direction: Vector3, vertical: bool = fal
 					curve_radius = curve_radius_limit(roundi(span.length() * 0.5))
 					_replan_curve()
 			return drag_state()
-		var curve_anchor := placement_anchor_from_view(origin, direction, 12.0)
-		if curve_anchor != Vector3i.MAX and curve_anchor != _drag.anchor:
-			_drag.anchor = curve_anchor
+		if _follow_anchor(placement_anchor_from_view(origin, direction, 12.0)):
 			_replan_curve()
 		return drag_state()
 	if str(_drag.get("mode", "drag")) == "entity_line":
@@ -636,7 +697,7 @@ func drag_state() -> Dictionary:
 		if str(entry.state) in ["ok", "clear"]:
 			var entry_item := str(entry.get("item_id", _drag.get("item_id", "")))
 			costs[entry_item] = int(costs.get(entry_item, 0)) + 1
-	return {"active": true, "snapped": bool(_drag.get("snapped", false)), "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single"), "loop_size": loop_diameter if loop_true else loop_size, "loop_true": loop_true, "loop_radius": float(_drag.get("radius", 0.0)), "loop_cells": int(_drag.get("loop_cells", 0)), "climb_length": climb_length, "climb_rise": climb_rise, "curve_length": int(_drag.get("curve_length", 0)), "curve_lanes": int(_drag.get("curve_lanes", 0)), "curve_cells": int(_drag.get("curve_cells", 0)), "curve_radius": curve_radius, "curve_sweep": curve_sweep, "curve_left": curve_left, "curve_exit": _drag.get("curve_exit", _drag.anchor), "curve_diagonal_entry": bool(_drag.get("diagonal_entry", false))}
+	return {"active": true, "snapped": bool(_drag.get("snapped", false)), "mode": str(_drag.get("mode", "drag")), "blueprint_id": str(_drag.get("blueprint_id", "")), "rotation_quarters": int(_drag.get("rotation", 0)), "item_id": str(_drag.get("item_id", "")), "voxel_id": int(_drag.get("voxel_id", 0)), "anchor": _drag.anchor, "end": _drag.get("end", _drag.anchor), "cells": _drag.cells.duplicate(true), "affordable": affordable, "costs": costs, "shape": _drag.get("shape", "single"), "loop_size": loop_diameter if loop_true else loop_size, "loop_true": loop_true, "loop_radius": float(_drag.get("radius", 0.0)), "loop_cells": int(_drag.get("loop_cells", 0)), "climb_length": climb_length, "climb_rise": climb_rise, "curve_length": int(_drag.get("curve_length", 0)), "curve_lanes": int(_drag.get("curve_lanes", 0)), "curve_cells": int(_drag.get("curve_cells", 0)), "curve_radius": curve_radius, "curve_sweep": curve_sweep, "curve_left": curve_left, "curve_exit": _drag.get("curve_exit", _drag.anchor), "curve_diagonal_entry": bool(_drag.get("diagonal_entry", false)), "snap": (_drag.get("snap", {}) as Dictionary).duplicate()}
 
 
 func cancel_drag_place() -> Dictionary:
