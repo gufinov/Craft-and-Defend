@@ -214,6 +214,90 @@ func _run_gate() -> void:
 	_record("T166_HERO_MODEL_AND_THIRD_PERSON", plain_ok and plated_ok and walks and seated_ok and first_person and toggled and chase and eye_ok and back and armor_result.get("ok", false) and persisted and applied and not player.hero.armored and button_ok, "the hero model has hair, face, tunic, lion crest, scarf, belt, bracers, boots and a sword; armoured it swaps to breastplate, pauldrons with shoulder diamonds, tabard, greaves and vambraces; walking swings legs and arms; seated hides the legs and puts the arms on the bar; V moves the camera 3.5 m behind and above with the hero visible and the aim ray still from the eye; the pause-menu Hero: Armour toggle persists in settings.cfg and re-dresses the hero", {"plain_parts": plain.size(), "plain_ok": plain_ok, "plated_ok": plated_ok, "walks": walks, "seated": seated_ok, "first_person": first_person, "toggled": toggled, "chase": chase, "camera": player.camera.position, "eye_ok": eye_ok, "back": back, "armor_saved": armor_result.get("reason"), "persisted": persisted, "applied": applied, "button": button_ok})
 
 
+	await _run_hauling()
+
+
+## T195 hauling (docs/INDUSTRY.md): a mine cart on a straight loads from an
+## ore bin beside cell 3 and unloads into a warehouse beside cell 9; a bin
+## with 20 gives up 16 (CART_CARGO) and keeps 4; a mid-haul save keeps the
+## cargo; the coaster car hauls nothing.
+func _run_hauling() -> void:
+	var session := app.session
+	var player := session.player
+	var ws := session.workstations
+	var world := session.world
+	var anchor := Vector3i(-40, 0, 60)
+	_level_ground(anchor + Vector3i(-4, 0, -4), 20, 10, 6)
+	session.inventory.try_transaction({}, {"rail": 12, "mine_cart": 1, CAR: 1})
+	var rails_ok := true
+	for x in range(12):
+		rails_ok = rails_ok and ws.try_place("rail", anchor + Vector3i(x, 0, 0), world.query_cell, AABB(), 0).get("ok", false)
+	var cart := ws.try_place("mine_cart", anchor + Vector3i(0, 1, 0), world.query_cell, AABB(), 0)
+	var cart_id := str(cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	# The bin and the warehouse are placed free of an item (their cards add
+	# the items; the entities here are the shared contract).
+	var bin := ws.try_place(CoasterCartService.ORE_BIN, anchor + Vector3i(3, 0, 1), world.query_cell, AABB(), 0, {"_free": true})
+	var bin_id := str(bin.get("details", {}).get("station", {}).get("instance_id", ""))
+	var warehouse := ws.try_place(CoasterCartService.WAREHOUSE, anchor + Vector3i(9, 0, 1), world.query_cell, AABB(), 0, {"_free": true})
+	var warehouse_id := str(warehouse.get("details", {}).get("station", {}).get("instance_id", ""))
+	var stocked := ws.container_put(bin_id, "iron_ore", 10)
+	var carts := session.coaster_carts
+	var fixture_ok: bool = rails_ok and cart.get("ok", false) and bin.get("ok", false) and warehouse.get("ok", false) and stocked.get("ok", false) and carts != null and ws.container_slots(bin_id).size() == 9 and ws.container_slots(warehouse_id).size() == 27
+	if not fixture_ok:
+		_record("T195_HAULING", false, "fixture", {"rails": rails_ok, "cart": cart.get("reason"), "bin": bin.get("reason"), "warehouse": warehouse.get("reason"), "stocked": stocked.get("reason"), "carts": carts != null})
+		return
+	# The player stands by the track so the HUD reports the docks.
+	player.global_position = Vector3(anchor) + Vector3(6.5, 0.0, 4.5)
+	var lines: Array[String] = []
+	var collect := func(message: String) -> void:
+		lines.append(message)
+	session.feedback_changed.connect(collect)
+	var body: Node3D = session._station_visuals.get(cart_id)
+	var heap: Node3D = body.get_node_or_null("CartRig/Cargo") if body != null else null
+	var heap_hidden_before := heap != null and not heap.visible and heap.get_child_count() >= 3
+	# Pass 1: 10 iron ore ride from the bin to the warehouse.
+	var reached_mid := _advance_until_x(carts, cart_id, anchor, 6)
+	var loaded_ten: bool = carts.cargo(cart_id) == {"iron_ore": 10} and ws.container_count(bin_id, "iron_ore") == 0 and ws.container_count(warehouse_id, "iron_ore") == 0
+	var heap_shown := heap != null and heap.visible
+	var load_line := lines.has("Cart loaded 10 iron ore")
+	session._haul_notice_msec = -100000
+	var reached_end := _advance_until_x(carts, cart_id, anchor, 11)
+	var unloaded_ten: bool = carts.cargo(cart_id).is_empty() and ws.container_count(warehouse_id, "iron_ore") == 10 and ws.container_count(bin_id, "iron_ore") == 0
+	var heap_hidden_after := heap != null and not heap.visible
+	var unload_line := lines.has("Cart unloaded 10 iron ore")
+	# Pass 2 (the cart turns around at the end and rides back): 20 in the bin,
+	# the cart takes 16 and 4 stay; the cargo survives a mid-haul save.
+	ws.container_put(bin_id, "iron_ore", 20)
+	var reached_home := _advance_until_x(carts, cart_id, anchor, 0)
+	var took_sixteen: bool = carts.cargo(cart_id) == {"iron_ore": 16} and ws.container_count(bin_id, "iron_ore") == 4
+	var saved: Variant = JSON.parse_string(JSON.stringify(ws.snapshot()))
+	var restored := ws.restore(saved, world.query_cell) if saved is Dictionary else {"ok": false, "reason": "SNAPSHOT_NOT_JSON"}
+	var round_trip: bool = restored.get("ok", false) and ws.station(cart_id).get("cargo", {}) == {"iron_ore": 16} and ws.container_count(bin_id, "iron_ore") == 4
+	# Back past the bin (no second load: it holds 4, the cart is full anyway
+	# and the bin cell was the last dock) to the warehouse.
+	var reached_end_again := _advance_until_x(carts, cart_id, anchor, 11)
+	var unloaded_sixteen: bool = carts.cargo(cart_id).is_empty() and ws.container_count(warehouse_id, "iron_ore") == 26 and ws.container_count(bin_id, "iron_ore") == 4
+	# The coaster car rides the same straight and hauls nothing.
+	carts.set_parked(cart_id, true)
+	var car := ws.try_place(CAR, anchor + Vector3i(5, 1, 0), world.query_cell, AABB(), 0)
+	var car_id := str(car.get("details", {}).get("station", {}).get("instance_id", ""))
+	carts.set_parked(car_id, false)
+	var car_reached := _advance_until_x(carts, car_id, anchor, 11) and _advance_until_x(carts, car_id, anchor, 0)
+	var car_hauls_nothing: bool = car.get("ok", false) and car_reached and carts.cargo(car_id).is_empty() and ws.container_count(bin_id, "iron_ore") == 4 and ws.container_count(warehouse_id, "iron_ore") == 26
+	session.feedback_changed.disconnect(collect)
+	_record("T195_HAULING", heap_hidden_before and reached_mid and loaded_ten and heap_shown and load_line and reached_end and unloaded_ten and heap_hidden_after and unload_line and reached_home and took_sixteen and round_trip and reached_end_again and unloaded_sixteen and car_hauls_nothing, "a mine cart passing an ore bin (10 iron ore) beside cell 3 loads it all (HUD: Cart loaded 10 iron ore, the Cargo heap shows) and unloads it into the warehouse beside cell 9 (HUD: Cart unloaded 10 iron ore, heap hidden); from a bin with 20 it takes 16 and 4 stay; a mid-haul save round-trip keeps the 16; the warehouse ends with 26; a coaster car riding the same straight hauls nothing", {"heap_hidden_before": heap_hidden_before, "reached_mid": reached_mid, "loaded_ten": loaded_ten, "heap_shown": heap_shown, "load_line": load_line, "reached_end": reached_end, "unloaded_ten": unloaded_ten, "heap_hidden_after": heap_hidden_after, "unload_line": unload_line, "reached_home": reached_home, "took_sixteen": took_sixteen, "round_trip": round_trip, "restored": restored.get("reason"), "reached_end_again": reached_end_again, "unloaded_sixteen": unloaded_sixteen, "car_hauls_nothing": car_hauls_nothing, "lines": lines})
+
+
+## Advances the cart service until the cart's rider cell is `anchor + x`
+## (at most 20 s of 1/30 s steps); true when it got there.
+func _advance_until_x(carts: CoasterCartService, cart_id: String, anchor: Vector3i, x: int) -> bool:
+	for _frame in range(600):
+		if carts.rider_cell(cart_id) == anchor + Vector3i(x, 0, 0):
+			return true
+		carts.advance(1.0 / 30.0, false)
+	return carts.rider_cell(cart_id) == anchor + Vector3i(x, 0, 0)
+
+
 ## Rendered evidence: the hero riding the coaster car over the sandbox loop
 ## from the ride camera, 1280x720.
 func _run_visual() -> void:

@@ -122,6 +122,10 @@ var _placement_preview_key := ""
 ## Snap to a track end: the end last announced ("Snapped to the track end"),
 ## so the line shows once per snap.
 var _snap_announced := ""
+## Hauling (docs/INDUSTRY.md): the HUD reports a cart docking within
+## HAUL_NOTICE_RANGE m of the player, one line per second at most.
+const HAUL_NOTICE_RANGE := 12.0
+var _haul_notice_msec := -100000
 var _held_item_view: HeldItemView
 var fire_service: FireService
 ## Industry wave 1 (docs/INDUSTRY.md): miners fill ore bins.
@@ -1171,7 +1175,7 @@ func _spawn_station_visual(record: Dictionary) -> void:
 	elif entity_id == CoasterRails.SWITCH:
 		_build_rail_switch_visual(body, record)
 	elif entity_id == "mine_cart":
-		_build_mine_cart_visual(body)
+		_build_mine_cart_visual(body, record.get("cargo", {}))
 	elif entity_id == CoasterRails.CAR:
 		_build_coaster_car_visual(body)
 	elif entity_id == "core_of_power":
@@ -1208,6 +1212,7 @@ func _spawn_station_visual(record: Dictionary) -> void:
 			coaster_carts = CoasterCartService.new()
 			coaster_carts.name = "CoasterCartService"
 			coaster_carts.initialize(workstations)
+			coaster_carts.cargo_changed.connect(_on_cart_cargo_changed)
 			add_child(coaster_carts)
 		# A coaster car waits, parked, for a rider (docs/COASTER_CAR_AND_HERO.md).
 		coaster_carts.register_cart(instance_id, body, entity_id == CoasterRails.CAR)
@@ -2679,7 +2684,7 @@ func _build_rail_loop_visual(parent: Node3D, record: Dictionary) -> void:
 ## Coaster rails side project: an oak-and-iron mine cart on four wheels under
 ## a "CartRig" node that CoasterCartService moves along the track. The rig's
 ## origin is the wheel contact point; the model faces -z.
-func _build_mine_cart_visual(parent: Node3D) -> void:
+func _build_mine_cart_visual(parent: Node3D, cargo: Dictionary = {}) -> void:
 	_add_collision_box(parent, Vector3(0.90, 0.90, 0.90), Vector3(0.0, -0.30, 0.0))
 	var rig := Node3D.new()
 	rig.name = "CartRig"
@@ -2690,7 +2695,6 @@ func _build_mine_cart_visual(parent: Node3D) -> void:
 	var iron := _visual_material(Color("7b838c"))
 	var dark_iron := _visual_material(Color("2f353b"))
 	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
-	var ore := _visual_material(Color("8f969d"), "res://assets/blocks/iron_ore.svg")
 	for x in [-0.26, 0.26]:
 		for z in [-0.28, 0.28]:
 			_add_mesh_cylinder(rig, 0.12, 0.08, Vector3(x, 0.12, z), Vector3(0.0, 0.0, PI / 2.0), dark_iron, "CartWheel")
@@ -2707,9 +2711,64 @@ func _build_mine_cart_visual(parent: Node3D) -> void:
 	for x in [-0.42, 0.42]:
 		for z in [-0.30, 0.30]:
 			_add_stud(rig, Vector3(x, 0.72, z), gold, Vector3(0.0, 0.0, PI / 2.0))
-	for lump in [Vector3(-0.14, 0.62, -0.16), Vector3(0.12, 0.66, 0.10), Vector3(0.02, 0.60, -0.02)]:
-		var stone := _add_mesh_box(rig, Vector3(0.22, 0.22, 0.22), lump, ore)
+	# The cargo heap (docs/INDUSTRY.md): under the rig so it rides along.
+	var heap := Node3D.new()
+	heap.name = "Cargo"
+	heap.position = Vector3(0.0, 0.44, 0.0)
+	rig.add_child(heap)
+	_fill_cart_cargo_visual(heap, cargo)
+
+
+## Ore colours for the cargo heap, by the dominant item; other items grey.
+const CARGO_COLORS := {"iron_ore": Color("8a6f5c"), "gold_ore": Color("d9b23a"), "coal": Color("232528")}
+
+
+## Rebuilds the heap's lumps for `cargo` ({item_id: count}): colour from the
+## dominant item, size from the fill (0..CART_CARGO); hidden when empty. The
+## three lumps stay as nodes even when empty so the cart's part count holds.
+func _fill_cart_cargo_visual(heap: Node3D, cargo: Dictionary) -> void:
+	for child in heap.get_children():
+		heap.remove_child(child)
+		child.queue_free()
+	var total := 0
+	var dominant := ""
+	var dominant_count := 0
+	for item_id: String in cargo.keys():
+		var count := int(cargo[item_id])
+		total += count
+		if count > dominant_count:
+			dominant = item_id
+			dominant_count = count
+	var fill := clampf(float(total) / float(CoasterCartService.CART_CARGO), 0.0, 1.0)
+	var color: Color = CARGO_COLORS.get(dominant, Color("7d8288"))
+	var texture := "res://assets/blocks/iron_ore.svg" if dominant == "iron_ore" else ""
+	var ore := _visual_material(color, texture)
+	var scale := 0.55 + 0.45 * fill
+	for lump in [Vector3(-0.14, 0.18, -0.16), Vector3(0.12, 0.22, 0.10), Vector3(0.02, 0.16, -0.02)]:
+		var stone := _add_mesh_box(heap, Vector3(0.22, 0.22, 0.22), Vector3(lump.x, lump.y * scale, lump.z), ore, "CargoLump")
 		stone.rotation = Vector3(0.4, 0.6, 0.2)
+		stone.scale = Vector3.ONE * scale
+	heap.visible = total > 0
+
+
+## A cart loaded or unloaded (CoasterCartService.cargo_changed): rebuild the
+## heap and, near the player, say so on the HUD (one line per second).
+func _on_cart_cargo_changed(instance_id: String, moved: Dictionary, loaded: bool, cell: Vector3i) -> void:
+	var body: Node3D = _station_visuals.get(instance_id)
+	if body != null and is_instance_valid(body):
+		var heap: Node3D = body.get_node_or_null("CartRig/Cargo")
+		if heap != null:
+			_fill_cart_cargo_visual(heap, workstations.station(instance_id).get("cargo", {}))
+	if player == null or (Vector3(cell) + Vector3(0.5, 0.5, 0.5)).distance_to(player.global_position) > HAUL_NOTICE_RANGE:
+		return
+	var now := Time.get_ticks_msec()
+	if now - _haul_notice_msec < 1000:
+		return
+	_haul_notice_msec = now
+	var parts: Array[String] = []
+	for item_id: String in moved.keys():
+		parts.append("%d %s" % [int(moved[item_id]), registry.display_name(item_id).to_lower()])
+	_on_interaction_feedback("Cart %s %s" % ["loaded" if loaded else "unloaded", ", ".join(parts)])
 
 
 ## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md), from the owner's

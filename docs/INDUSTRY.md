@@ -86,3 +86,23 @@ Workbench → craft Warehouse and Foundry (Iron Ingots from the Furnace) → pla
 
 ### Deferred
 - Power / fuel for the Foundry (wave 2), a progress bar in the modal, live status while the modal is open (the simulation pauses under modals), refunding a Warehouse's contents on dismantle, a wider adjacency (diagonals, other levels).
+
+## Hauling
+
+Branch `feature/hauling` (`CoasterCartService`). Suite: `--coaster-car-automation=gate` (T195).
+
+A **mine cart** (`mine_cart`) is a hauler; the rideable `coaster_car` never hauls. Its station record carries `"cargo": {item_id: count}` (saved with `workstations.snapshot()`, validated on restore: known item ids, counts ≥ 0, empty entries dropped), at most `CoasterCartService.CART_CARGO` = 16 items in total, any mix.
+
+Docking happens the moment the cart's rider reaches a track cell (`_dock`, from `_ride` when the target cell is reached): the four horizontal neighbours of that cell, on the same level and one level below, are looked up through `WorkstationService.footprints.owner_at`. An **`ore_bin`** there is a source: the cart takes what the bin holds, stack by stack, up to its free space (`container_take`). A **`warehouse`** there is a sink: the cart puts everything that fits (`container_put`, the new counterpart of `container_take`; `container_room` measures free space). Unloading runs before loading, so a cell with both beside it empties the cart before refilling it. Nothing ever goes from a cart into a bin. Loading and unloading are instant.
+
+One transfer per pass: after a transfer the cell is remembered as the rider's `last_dock`, and no dock is attempted until the cart's cell is at least `REDOCK_CELLS` = 3 cells (straight-line distance) from it. A cart that turns around at a dead end therefore reloads from a bin it left ≥ 3 cells behind, but does not double-dock on a 2 × 2 warehouse that touches two consecutive cells. `last_dock` is rider state (not saved): a loaded game starts the cart at its home cell with a clean slate.
+
+Feedback: `cargo_changed(instance_id, moved, loaded, cell)` is emitted per transfer (unload and load separately). `GameSession._on_cart_cargo_changed` rebuilds the heap and, when the dock cell is within `HAUL_NOTICE_RANGE` = 12 m of the player, puts "Cart loaded 10 iron ore" / "Cart unloaded 10 iron ore" (several items comma-joined, display names lower-cased) on the HUD through the ordinary feedback line, throttled to one line per second (`_haul_notice_msec`). An open Chest panel on the bin or warehouse does not refresh live while the cart docks (it refreshes on the next click); deferred.
+
+Visual: the cart bed's three ore lumps became a `Cargo` node (a `Node3D` under `CartRig`, so it rides; the lumps are `CargoLump` meshes inside it). `_fill_cart_cargo_visual` rebuilds it on every change: colour by the dominant item (iron ore grey-brown with the ore texture, gold ore yellow, coal black, anything else grey), lump scale 0.55 + 0.45 × fill (fill = items / 16), hidden when empty. The lumps stay as nodes when empty so the cart's mesh count (T163's `cart_parts ≥ 18`) holds. `cargo(id)` / `cargo_count(id)` read the cargo for diagnostics.
+
+Placeholders: the hauling branch carried `_wave1_placeholder` `ore_bin` / `warehouse` entities so its test could run alone; integration dropped them (the Mining and Warehouse sections above own the real entries, same ids and slot counts) and `tools/validate_foundation.py` keeps one container rule (`CONTAINER_STATION_TYPES`).
+
+Test: **T195_HAULING** in `--coaster-car-automation=gate` (plate at (−40, 0, 60), a 12-cell straight, the bin beside cell 3, the warehouse beside cell 9): 10 iron ore ride bin → cart (HUD line, heap shown) → warehouse (HUD line, heap hidden); a bin with 20 gives 16 and keeps 4; a mid-haul snapshot/restore keeps the 16; the warehouse ends at 26; a coaster car riding the same straight moves nothing.
+
+Not done (wave 2+): routing choices at junctions, station stop signals, a dispatcher, per-item filters on bins/warehouses, live Chest-panel refresh while a cart docks.
