@@ -1353,7 +1353,8 @@ func _run_gate() -> void:
 	# one cell beside and one short of the run's end snaps its entry onto the
 	# end's free cell heading +x, names the last rail (SnapHint on the ghost),
 	# clears when aimed three cells away, and the snapped lay joins the run.
-	var sn := Vector3i(46, 0, 66)
+	# (46, 0, 0): clear of T186's plate at (48, 0, 62), which overlapped the old (46, 0, 66).
+	var sn := Vector3i(46, 0, 0)
 	var sn_loaded := await _wait_levelled(sn + Vector3i(-3, 0, -4), 16, 14, 8, [sn, sn + Vector3i(2, 0, 0), sn + Vector3i(6, 0, 4)] as Array[Vector3i])
 	interaction.creative = false
 	app.session.inventory.try_transaction({}, {"rail": 8, "rail_curve": 24, "mine_cart": 1})
