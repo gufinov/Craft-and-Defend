@@ -2,7 +2,12 @@ class_name P3FPresentationAutomation
 extends Node
 
 const EXPECTED_WORKBENCH_ORDER: Array[String] = [
-	"planks", "sticks", "workbench", "wood_pick", "wood_axe", "stone_pick", "furnace", "castle_stone", "stone_stair", "wall_walk_slab", "parapet_merlon", "tower_platform", "gate_frame", "wood_barricade", "iron_pick", "iron_sword", "ballista_bolt", "stone_shot", "flame_shot", "cannonball", "ballista", "catapult", "turret_catapult", "turret_catapult_mk2", "cannon", "rail", "kettle", "chest", "torch", "wall_lantern", "post_lantern", "campfire", "light_block_blue", "light_block_red", "core_of_power", "rail_slope", "rail_loop", "mine_cart", "coaster_car", "rail_switch", "rail_cross", "rail_curve", "rail_climb",
+	"planks", "sticks", "workbench", "wood_pick", "wood_axe", "stone_pick", "furnace", "castle_stone", "stone_stair", "wall_walk_slab", "parapet_merlon", "tower_platform", "gate_frame", "wood_barricade", "iron_pick", "iron_sword", "ballista_bolt", "stone_shot", "flame_shot", "cannonball", "ballista", "catapult", "turret_catapult", "turret_catapult_mk2", "cannon", "kettle", "chest", "torch", "wall_lantern", "post_lantern", "campfire", "light_block_blue", "light_block_red", "core_of_power", "coastercraft_shop",
+]
+## The CoasterCraft Shop's own book (docs/INDUSTRY_PLAN.md wave 1): the coaster
+## recipes keep their workbench-era orders (194, 204-212) and live only here.
+const EXPECTED_COASTERCRAFT_SHOP_ORDER: Array[String] = [
+	"rail", "rail_slope", "rail_loop", "mine_cart", "coaster_car", "rail_switch", "rail_cross", "rail_curve", "rail_climb",
 ]
 const VISUAL_ITEMS: Array[String] = [
 	"wood_pick", "iron_sword", "wood_axe", "stick",
@@ -146,6 +151,50 @@ func _run_gate() -> void:
 	var placed_skin_ok := _body_has_albedo_texture(gate_body) and _body_has_albedo_texture(slab_body)
 	_record("T105_CASTLE_ENTITY_SKINS", gate_placed.get("ok", false) and slab_placed.get("ok", false) and placed_skin_ok, "placed Gate Frame and Wall Walk Slab mesh parts use the Castle Stone skin instead of flat gray material", {"gate": gate_placed, "slab": slab_placed, "gate_parts": gate_body.get_child_count() if gate_body != null else 0, "slab_parts": slab_body.get_child_count() if slab_body != null else 0, "textured": placed_skin_ok})
 
+	# T192 CoasterCraft Shop book: the shop lists exactly the coaster recipes
+	# in order, the workbench book no longer lists them (and offers the shop
+	# itself); a placed shop opens the crafting modal under its own title and
+	# crafts a rail there, while the workbench refuses the same recipe.
+	app._crafting_station_type = "coastercraft_shop"
+	var shop_ids: Array[String] = []
+	var shop_orders: Array[int] = []
+	for recipe in app._available_crafting_recipes():
+		shop_ids.append(str(recipe.id))
+		shop_orders.append(int(recipe.get("recipe_book_order", -1)))
+	var shop_monotonic := true
+	for index in range(1, shop_orders.size()):
+		shop_monotonic = shop_monotonic and shop_orders[index] > shop_orders[index - 1]
+	app._crafting_station_type = "workbench"
+	var bench_ids: Array[String] = []
+	for recipe in app._available_crafting_recipes():
+		bench_ids.append(str(recipe.id))
+	var bench_clean := bench_ids == EXPECTED_WORKBENCH_ORDER and bench_ids.has("coastercraft_shop") and bench_ids.has("kettle")
+	for shop_id: String in EXPECTED_COASTERCRAFT_SHOP_ORDER:
+		bench_clean = bench_clean and not bench_ids.has(shop_id)
+	app._crafting_station_type = "hand"
+	var shop_recipe := app.session.registry.recipe("coastercraft_shop")
+	var shop_recipe_ok: bool = str(shop_recipe.get("station", "")) == "workbench" and int(shop_recipe.get("recipe_book_order", -1)) == 213 and int(shop_recipe.get("inputs", {}).get("iron_ingot", 0)) == 4 and int(shop_recipe.get("outputs", {}).get("coastercraft_shop", 0)) == 1
+	var shop_entity := app.session.registry.entity("coastercraft_shop")
+	var shop_entity_ok: bool = str(shop_entity.get("station_type", "")) == "coastercraft_shop" and (shop_entity.get("occupied_offsets", []) as Array).size() == 2 and int(app.session.registry.max_stack("coastercraft_shop")) == 4 and ItemIconCatalog.missing_item_ids(["coastercraft_shop"]).is_empty()
+	app.session.inventory.try_transaction({}, {"coastercraft_shop": 1, "workbench": 1, "planks": 16, "iron_ingot": 8})
+	var bench_placed := app.session.workstations.try_place("workbench", Vector3i(5, 0, 45), app.session.world.query_cell, AABB(), 0)
+	var workbench_id := str(bench_placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	var shop_placed := app.session.workstations.try_place("coastercraft_shop", Vector3i(2, 0, 45), app.session.world.query_cell, AABB(), 0)
+	var shop_id := str(shop_placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	var shop_body: Node = app.session._station_visuals.get(shop_id, null)
+	var shop_visual_ok := shop_body != null and shop_body.has_node("ShopCart")
+	app._show_workstation(shop_id, "coastercraft_shop")
+	await _settle_frames(4)
+	var shop_title := app.crafting_title_label.text
+	var shop_modal_ok := app.state == app.AppState.CRAFTING and app._crafting_station_type == "coastercraft_shop" and shop_title == "COASTERCRAFT SHOP" and app.crafting_recipe_page_label.text == "Page 1 / 1"
+	app._close_crafting()
+	var rails_before := app.session.inventory.count("rail")
+	var crafted_rail := app.session.try_craft("rail", "coastercraft_shop", shop_id)
+	var rails_after := app.session.inventory.count("rail")
+	var bench_refused := app.session.try_craft("rail", "workbench", workbench_id)
+	var craft_ok: bool = crafted_rail.get("ok", false) and rails_after == rails_before + 4 and not bench_refused.get("ok", false) and str(bench_refused.get("reason", "")) == "WRONG_WORKSTATION"
+	_record("T192_COASTERCRAFT_SHOP_BOOK", shop_ids == EXPECTED_COASTERCRAFT_SHOP_ORDER and shop_monotonic and bench_clean and shop_recipe_ok and shop_entity_ok and bench_placed.get("ok", false) and shop_placed.get("ok", false) and shop_visual_ok and shop_modal_ok and craft_ok, "the CoasterCraft Shop's book lists exactly rail, rail_slope, rail_loop, mine_cart, coaster_car, rail_switch, rail_cross, rail_curve, rail_climb in order; the Workbench book no longer lists them and ends with the shop (order 213); a placed shop opens the crafting modal titled COASTERCRAFT SHOP on one page and crafts 4 rails, which the Workbench refuses (WRONG_WORKSTATION)", {"shop_ids": shop_ids, "shop_orders": shop_orders, "bench_ids": bench_ids, "shop_recipe": shop_recipe, "entity_ok": shop_entity_ok, "placed": shop_placed.get("ok", false), "bench_placed": bench_placed.get("ok", false), "visual_ok": shop_visual_ok, "title": shop_title, "page": app.crafting_recipe_page_label.text, "crafted": crafted_rail, "bench_refused": bench_refused, "rails": [rails_before, rails_after]})
+
 
 func _run_visual() -> void:
 	app._on_start_pressed()
@@ -215,7 +264,7 @@ func _run_visual() -> void:
 	await _settle_frames(8)
 	var page_two_path := app.data_root.path_join("p3f-workbench-page-2.png")
 	var page_two_ok := await _save_viewport(page_two_path)
-	_record("T103_ATLAS_CARD_ALIGNMENT", placed.get("ok", false) and page_one_ok and page_two_ok and app.crafting_recipe_page_label.text == "Page 2 / 4", "both rendered Workbench pages keep each icon entirely inside its own recipe card with complete bottom-row tools and no neighboring fragments", {"page_one_path": page_one_path, "page_two_path": page_two_path, "page": app.crafting_recipe_page_label.text, "size": get_viewport().get_visible_rect().size})
+	_record("T103_ATLAS_CARD_ALIGNMENT", placed.get("ok", false) and page_one_ok and page_two_ok and app.crafting_recipe_page_label.text == "Page 2 / 3", "both rendered Workbench pages keep each icon entirely inside its own recipe card with complete bottom-row tools and no neighboring fragments", {"page_one_path": page_one_path, "page_two_path": page_two_path, "page": app.crafting_recipe_page_label.text, "size": get_viewport().get_visible_rect().size})
 
 	app._close_crafting()
 	app.session.inventory.try_transaction({}, {"gate_frame": 1, "wall_walk_slab": 1})
@@ -227,6 +276,25 @@ func _run_visual() -> void:
 	var castle_path := app.data_root.path_join("p3h3-placed-castle-skins.png")
 	var castle_ok := await _save_viewport(castle_path)
 	_record("T106_CASTLE_SKIN_PRESENTATION", gate.get("ok", false) and slab.get("ok", false) and castle_ok, "rendered evidence shows the Castle Stone skin on the placed Gate Frame and Wall Walk Slab", {"path": castle_path, "gate": gate.get("ok", false), "slab": slab.get("ok", false), "size": get_viewport().get_visible_rect().size})
+
+	# T192 rendered: the CoasterCraft Shop's own book page and the placed
+	# 2 x 1 machine (stone base, oak bench, rail and cart body, gold studs).
+	app.session.inventory.try_transaction({}, {"coastercraft_shop": 1})
+	var shop := app.session.workstations.try_place("coastercraft_shop", Vector3i(2, 0, 45), app.session.world.query_cell, AABB(), 0)
+	var shop_id := str(shop.get("details", {}).get("station", {}).get("instance_id", ""))
+	app._show_workstation(shop_id, "coastercraft_shop")
+	await _settle_frames(8)
+	var shop_book_path := app.data_root.path_join("p3f-coastercraft-shop-book.png")
+	var shop_book_ok := await _save_viewport(shop_book_path)
+	var shop_title: String = app.crafting_title_label.text
+	app._close_crafting()
+	app.session.player.global_position = Vector3(3.0, 2.0, 41.5)
+	app.session.player.look_at(Vector3(3.0, 0.6, 45.5), Vector3.UP)
+	await _settle_frames(12)
+	var shop_path := app.data_root.path_join("p3f-coastercraft-shop.png")
+	var shop_ok := await _save_viewport(shop_path)
+	_record("T192_COASTERCRAFT_SHOP_RENDERED", shop.get("ok", false) and shop_book_ok and shop_ok and shop_title == "COASTERCRAFT SHOP", "rendered evidence shows the CoasterCraft Shop's own recipe book (titled COASTERCRAFT SHOP) and the placed 2 x 1 shop machine", {"book_path": shop_book_path, "path": shop_path, "title": shop_title, "placed": shop.get("ok", false)})
+
 
 
 func _move_to_hotbar(item_id: String, target: int) -> void:

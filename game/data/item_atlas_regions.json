@@ -500,6 +500,15 @@
         194
       ]
     },
+    "coastercraft_shop": {
+      "atlas": "derived",
+      "rect": [
+        536,
+        1054,
+        209,
+        193
+      ]
+    },
     "gold_ore": {
       "atlas": "gold",
       "rect": [

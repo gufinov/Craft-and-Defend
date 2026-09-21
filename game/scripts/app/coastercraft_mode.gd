@@ -13,7 +13,7 @@ extends Node
 const SAVE_DIR := "coastercraft"
 const TOP_UP_SECONDS := 1.0
 ## Hotbar order, then the rest of the pack.
-const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "rail_switch", "rail_cross", "rail_curve", "rail_climb", "mine_cart", "coaster_car", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone"]
+const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "rail_switch", "rail_cross", "rail_curve", "rail_climb", "mine_cart", "coaster_car", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone", "coastercraft_shop"]
 ## The plate: x -29..30, z 22..121, floor at y 0 (stone), cleared above.
 const PLATE_ORIGIN := Vector3i(-29, 0, 22)
 const PLATE_WIDTH := 60

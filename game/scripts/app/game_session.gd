@@ -1074,6 +1074,8 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_build_workbench_visual(body)
 	elif entity_id == "furnace":
 		_build_furnace_visual(body)
+	elif entity_id == "coastercraft_shop":
+		_build_coastercraft_shop_visual(body)
 	elif entity_id == "ballista":
 		_build_ballista_visual(body)
 		_wrap_siege_turret(body, definition)
@@ -1200,6 +1202,57 @@ func _build_furnace_visual(parent: Node3D) -> void:
 	_add_mesh_box(parent, Vector3(0.30, 0.12, 0.05), Vector3(0.0, 0.10, 0.455), dark)
 	_add_mesh_box(parent, Vector3(0.40, 0.14, 0.06), Vector3(0.0, -0.22, 0.462), ember)
 	_add_mesh_box(parent, Vector3(0.18, 0.10, 0.07), Vector3(0.0, -0.10, 0.466), flame)
+
+
+## CoasterCraft Shop (docs/INDUSTRY_PLAN.md, wave 1): the coaster parts
+## foundry, a 2 x 1 machine in the coaster style - a castle-stone base under
+## an oak bench on dark-oak legs, a short length of iron rail on oak sleepers
+## along the bench with a small cart body parked on it, gold studs at the
+## bench corners. The body sits at the anchor cell; +x is the second cell.
+func _build_coastercraft_shop_visual(parent: Node3D) -> void:
+	_add_collision_box(parent, Vector3(1.90, 0.90, 0.90), Vector3(0.5, 0.0, 0.0))
+	var stone := _visual_material(Color("8c9298"), "res://assets/blocks/castle_stone.svg")
+	var stone_dark := _visual_material(Color("5d646b"))
+	var oak := _visual_material(Color("b9783f"), "res://assets/blocks/planks.svg")
+	var dark_oak := _visual_material(Color("744326"), "res://assets/blocks/log.svg")
+	var iron := _visual_material(Color("7b838c"))
+	var dark_iron := _visual_material(Color("2f353b"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	# Stone base slab with a darker plinth line.
+	_add_mesh_box(parent, Vector3(1.92, 0.30, 0.92), Vector3(0.5, -0.35, 0.0), stone)
+	_add_mesh_box(parent, Vector3(1.96, 0.06, 0.96), Vector3(0.5, -0.47, 0.0), stone_dark)
+	# Bench: four dark-oak legs and an oak top.
+	for x in [-0.34, 1.34]:
+		for z in [-0.34, 0.34]:
+			_add_mesh_box(parent, Vector3(0.14, 0.40, 0.14), Vector3(x, -0.02, z), dark_oak)
+	_add_mesh_box(parent, Vector3(1.94, 0.14, 0.94), Vector3(0.5, 0.22, 0.0), oak)
+	for x in [-0.40, 1.40]:
+		for z in [-0.38, 0.38]:
+			_add_stud(parent, Vector3(x, 0.30, z), gold, Vector3(0.0, 0.0, PI / 2.0))
+	# A short length of track along the bench: sleepers, two rails.
+	for x in [-0.20, 0.30, 0.80, 1.20]:
+		_add_mesh_box(parent, Vector3(0.12, 0.05, 0.70), Vector3(x, 0.315, 0.0), dark_oak)
+	for z in [-0.22, 0.22]:
+		_add_mesh_box(parent, Vector3(1.60, 0.06, 0.07), Vector3(0.5, 0.36, z), iron)
+	# A small cart body parked on the rail (open top, iron rim, two wheels a side).
+	var cart := Node3D.new()
+	cart.name = "ShopCart"
+	cart.position = Vector3(0.95, 0.40, 0.0)
+	parent.add_child(cart)
+	for x in [-0.16, 0.16]:
+		for z in [-0.24, 0.24]:
+			_add_mesh_cylinder(cart, 0.07, 0.05, Vector3(x, 0.0, z), Vector3(PI / 2.0, 0.0, 0.0), dark_iron, "ShopCartWheel")
+	_add_mesh_box(cart, Vector3(0.50, 0.06, 0.34), Vector3(0.0, 0.05, 0.0), dark_iron)
+	_add_mesh_box(cart, Vector3(0.46, 0.22, 0.30), Vector3(0.0, 0.18, 0.0), oak)
+	_add_mesh_box(cart, Vector3(0.52, 0.04, 0.36), Vector3(0.0, 0.30, 0.0), iron)
+	_add_stud(cart, Vector3(0.0, 0.33, 0.0), gold, Vector3(0.0, 0.0, PI / 2.0))
+	# Bench tools: a hammer and a spare rail end waiting on the near end.
+	var hammer := Node3D.new()
+	hammer.position = Vector3(-0.10, 0.34, 0.30)
+	hammer.rotation = Vector3(0.0, 0.42, 0.0)
+	parent.add_child(hammer)
+	_add_mesh_box(hammer, Vector3(0.06, 0.06, 0.34), Vector3.ZERO, dark_oak)
+	_add_mesh_box(hammer, Vector3(0.24, 0.10, 0.10), Vector3(0.0, 0.0, -0.14), iron)
 
 
 func _build_ballista_visual(parent: Node3D) -> void:

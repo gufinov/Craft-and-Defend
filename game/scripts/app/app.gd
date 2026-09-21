@@ -113,8 +113,10 @@ var crafting_message: Label
 var craft_selected_button: Button
 var crafting_clear_button: Button
 ## P4a-2: the modal's middle/right cards swap by station type. The crafting
-## grid + recipe book serve hand/workbench/furnace; a siege weapon shows the
-## weapon panel + munition legend; a Chest shows its 3 x 3 container grid.
+## grid + recipe book serve hand/workbench/furnace and the CoasterCraft Shop
+## (docs/INDUSTRY_PLAN.md: the coaster parts foundry with its own book); a
+## siege weapon shows the weapon panel + munition legend; a Chest shows its
+## 3 x 3 container grid.
 var crafting_grid_card: PanelContainer
 var crafting_grid_column: VBoxContainer
 var crafting_recipe_card: PanelContainer
@@ -129,7 +131,7 @@ var chest_panel: ChestPanel
 var cursor_stack_panel: PanelContainer
 var cursor_stack_icon: TextureRect
 var cursor_stack_count: Label
-const CRAFTING_STATION_TYPES: Array[String] = ["workbench", "furnace", "siege", "chest"]
+const CRAFTING_STATION_TYPES: Array[String] = ["workbench", "furnace", "siege", "chest", "coastercraft_shop"]
 var _crafting_station_id := ""
 var _crafting_station_type := "hand"
 var _selected_recipe_id := ""
@@ -1867,6 +1869,11 @@ func _refresh_crafting_panel() -> void:
 		grid_capacity = 9
 		crafting_title_label.text = "WORKBENCH"
 		crafting_context_label.text = "3 × 3 CRAFTING  ·  BASIC + ADVANCED RECIPES  ·  RIGHT-CLICK ACCESS ONLY"
+	elif _crafting_station_type == "coastercraft_shop":
+		grid_size = 3
+		grid_capacity = 9
+		crafting_title_label.text = "COASTERCRAFT SHOP"
+		crafting_context_label.text = "3 × 3 CRAFTING  ·  RAILS, TRACK PIECES AND CARTS  ·  RIGHT-CLICK ACCESS ONLY"
 	elif _crafting_station_type == "furnace":
 		grid_size = 3
 		grid_capacity = 3

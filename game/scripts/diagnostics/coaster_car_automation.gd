@@ -50,7 +50,7 @@ func _run_gate() -> void:
 	var item: Dictionary = registry.item(CAR)
 	var missing_icons := ItemIconCatalog.missing_item_ids([CAR])
 	var recipe: Dictionary = {}
-	for candidate in registry.recipes_for("workbench"):
+	for candidate in registry.recipes_for("coastercraft_shop"):
 		if str(candidate.get("id", "")) == CAR:
 			recipe = candidate
 	var inputs: Dictionary = recipe.get("inputs", {})
@@ -58,7 +58,7 @@ func _run_gate() -> void:
 	var entity_ok: bool = float(car.get("cart", {}).get("rail_speed", 0.0)) == 3.0 and car.get("mount", {}).get("allowed", []) == ["rail_mount"] and str(car.get("attributes", {}).get("role", "")) == "rail" and not car.has("siege")
 	var item_ok: bool = int(item.get("max_stack", 0)) == 2 and str(item.get("places_entity", "")) == CAR
 	var ids_ok := CoasterRails.CAR == CAR and not CoasterRails.is_track_id(CAR)
-	_record("T164_COASTER_CAR_CONTENT", missing_icons.is_empty() and recipe_ok and entity_ok and item_ok and ids_ok, "coaster_car is a stackable (2) building item placing a rail-mounted cart entity (rail speed 3, role rail) with an owner-art icon and a Workbench recipe at order 207 (4 planks + 2 iron ingot + 1 castle stone -> 1)", {"missing_icons": missing_icons, "recipe": recipe, "entity_ok": entity_ok, "item_ok": item_ok, "ids_ok": ids_ok})
+	_record("T164_COASTER_CAR_CONTENT", missing_icons.is_empty() and recipe_ok and entity_ok and item_ok and ids_ok, "coaster_car is a stackable (2) building item placing a rail-mounted cart entity (rail speed 3, role rail) with an owner-art icon and a CoasterCraft Shop recipe at order 207 (4 planks + 2 iron ingot + 1 castle stone -> 1)", {"missing_icons": missing_icons, "recipe": recipe, "entity_ok": entity_ok, "item_ok": item_ok, "ids_ok": ids_ok})
 
 	# T165 ride: a parked car on a loop fixture waits; Shift boards it; 1-9
 	# set the speed (measured in cells per second); Shift leaves beside it.
