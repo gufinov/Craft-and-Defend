@@ -1001,7 +1001,41 @@ func container_take(instance_id: String, item_id: String, amount: int) -> Dictio
 	if moved <= 0:
 		return _result(false, "NO_RESOURCE")
 	_container_remove(stations[instance_id].container_slots, item_id, moved)
-	return _result(true, "TAKEN", {"instance_id": instance_id, "item_id": item_id, "moved": moved})
+	var result := _result(true, "TAKEN", {"instance_id": instance_id, "item_id": item_id, "moved": moved, "container_slots": container_slots(instance_id)})
+	station_changed.emit(result)
+	return result
+
+
+## Room for `item_id` in the container: what matching stacks still take plus
+## a full stack per empty slot.
+func container_room(instance_id: String, item_id: String) -> int:
+	if not is_container(instance_id):
+		return 0
+	var room := 0
+	var max_stack := registry.max_stack(item_id)
+	for stack in stations[instance_id].container_slots:
+		if str(stack.get("item_id", "")) == item_id:
+			room += max_stack - int(stack.get("count", 0))
+		elif str(stack.get("item_id", "")).is_empty():
+			room += max_stack
+	return room
+
+
+## Puts up to `amount` of `item_id` into the container from another producer
+## (industry wave 1: the foundry's ingots, a cart's cargo). Does not touch the
+## player inventory. Moves what fits; CONTAINER_FULL when nothing does.
+func container_put(instance_id: String, item_id: String, amount: int) -> Dictionary:
+	if not is_container(instance_id):
+		return _result(false, "NOT_CONTAINER")
+	if item_id.is_empty() or registry.item(item_id).is_empty():
+		return _result(false, "UNKNOWN_ITEM")
+	var moved := mini(amount, container_room(instance_id, item_id))
+	if moved <= 0:
+		return _result(false, "CONTAINER_FULL")
+	_container_add(stations[instance_id].container_slots, item_id, moved, registry.max_stack(item_id))
+	var result := _result(true, "PUT", {"instance_id": instance_id, "item_id": item_id, "moved": moved, "container_slots": container_slots(instance_id)})
+	station_changed.emit(result)
+	return result
 
 
 func _container_add(slots: Array, item_id: String, amount: int, max_stack: int) -> void:

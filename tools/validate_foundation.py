@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTAINER_STATION_TYPES = ("chest", "warehouse", "ore_bin")
 REPORT_SHA = "f238c37f3f9509b2a152e632503b7a4e16ab8fd4377dcc32122717e30c13cebd"
 ITEM_CATEGORIES = {"resource", "building", "tool", "station", "food"}
 NAVIGATION_SCENARIOS = {"corridor_detour", "trench", "two_step_stair", "bridge_removal", "two_cell_tunnel", "capability_blocked_wall"}
@@ -314,7 +315,9 @@ def validate_bundle(bundle):
                 require(type(siege.get("rail_speed")) in (int, float) and siege["rail_speed"] > 0
                         and entity.get("mount", {}).get("allowed") == ["rail_mount"], "invalid rail weapon")
         if entity.get("container_slots") is not None:
-            require(integer(entity["container_slots"], 1) and entity.get("station_type") == "chest", "invalid container entity")
+            # Industry wave 1: warehouses and ore bins are chest-style containers
+            # (same slot list, same modal) under their own station type.
+            require(integer(entity["container_slots"], 1) and entity.get("station_type") in CONTAINER_STATION_TYPES, "invalid container entity")
         defense = entity.get("defense")
         if defense is not None:
             navigation = entity.get("navigation", {})
