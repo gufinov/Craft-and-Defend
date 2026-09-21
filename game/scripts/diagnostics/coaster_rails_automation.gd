@@ -59,14 +59,16 @@ func _run_gate() -> void:
 	var world := app.session.world
 	var interaction := app.session.interaction
 
-	# T160 content: the three pieces, their icons and workbench recipes.
+	# T160 content: the three pieces, their icons and CoasterCraft Shop
+	# recipes (wave 1, docs/INDUSTRY_PLAN.md: every coaster recipe lives in
+	# the shop's book, none at the workbench).
 	var slope: Dictionary = registry.entity("rail_slope")
 	var loop: Dictionary = registry.entity("rail_loop")
 	var cart: Dictionary = registry.entity("mine_cart")
 	var missing_icons := ItemIconCatalog.missing_item_ids(["rail_slope", "rail_loop", "mine_cart"])
 	var recipe_orders: Dictionary = {}
 	var recipe_outputs: Dictionary = {}
-	for recipe in registry.recipes_for("workbench"):
+	for recipe in registry.recipes_for("coastercraft_shop"):
 		var recipe_id := str(recipe.get("id", ""))
 		if recipe_id in ["rail_slope", "rail_loop", "mine_cart"]:
 			recipe_orders[recipe_id] = int(recipe.get("recipe_book_order", -1))
@@ -76,7 +78,13 @@ func _run_gate() -> void:
 	var loop_ok: bool = str(loop.get("coaster_tool", "")) == "loop" and (loop.get("support_offsets", [1]) as Array).is_empty() and interaction.is_coaster_loop_item("rail_loop") and not interaction.is_linear_entity_item("rail_loop")
 	var cart_ok: bool = float(cart.get("cart", {}).get("rail_speed", 0.0)) == 3.0 and cart.get("mount", {}).get("allowed", []) == ["rail_mount"] and not cart.has("siege")
 	var tracks_ok := CoasterRails.is_track_id("rail") and CoasterRails.is_track_id("rail_slope") and CoasterRails.is_track_id("rail_loop") and not CoasterRails.is_track_id("mine_cart")
-	_record("T160_COASTER_CONTENT", missing_icons.is_empty() and recipes_ok and slope_ok and loop_ok and cart_ok and tracks_ok, "rail_slope (slope 1, not linear), rail_loop (loop tool, no support) and mine_cart (rail speed 3, rail mount) are registered with icons and workbench recipes at orders 204-206 (4 slopes, 2 loops, 1 cart)", {"missing_icons": missing_icons, "orders": recipe_orders, "outputs": recipe_outputs, "slope_ok": slope_ok, "loop_ok": loop_ok, "cart_ok": cart_ok, "tracks_ok": tracks_ok})
+	var shop_stations: Dictionary = {}
+	var shop_ok := str(registry.entity("coastercraft_shop").get("station_type", "")) == "coastercraft_shop" and str(registry.recipe("coastercraft_shop").get("station", "")) == "workbench"
+	for coaster_id: String in ["rail", "rail_slope", "rail_loop", "rail_switch", "rail_cross", "rail_curve", "rail_climb", "mine_cart", "coaster_car"]:
+		shop_stations[coaster_id] = str(registry.recipe(coaster_id).get("station", ""))
+		shop_ok = shop_ok and shop_stations[coaster_id] == "coastercraft_shop"
+	shop_ok = shop_ok and str(registry.recipe("kettle").get("station", "")) == "workbench"
+	_record("T160_COASTER_CONTENT", missing_icons.is_empty() and recipes_ok and slope_ok and loop_ok and cart_ok and tracks_ok and shop_ok, "rail_slope (slope 1, not linear), rail_loop (loop tool, no support) and mine_cart (rail speed 3, rail mount) are registered with icons and CoasterCraft Shop recipes at orders 204-206 (4 slopes, 2 loops, 1 cart); every coaster recipe's station is coastercraft_shop (the kettle stays at the workbench) and the shop itself is a workbench recipe", {"missing_icons": missing_icons, "orders": recipe_orders, "outputs": recipe_outputs, "slope_ok": slope_ok, "loop_ok": loop_ok, "cart_ok": cart_ok, "tracks_ok": tracks_ok, "shop_stations": shop_stations, "shop_ok": shop_ok})
 
 	# T161 slope chain: two flat rails, a slope rising +x and three flat rails
 	# one level up form one chain; a rail on the upper level beside a lower
@@ -399,7 +407,7 @@ func _run_gate() -> void:
 	var climb_item: Dictionary = registry.item("rail_climb")
 	var climb_entity: Dictionary = registry.entity("rail_climb")
 	var climb_recipe: Dictionary = {}
-	for recipe: Dictionary in registry.recipes_for("workbench"):
+	for recipe: Dictionary in registry.recipes_for("coastercraft_shop"):
 		if str(recipe.get("id", "")) == "rail_climb":
 			climb_recipe = recipe
 	var climb_content := not climb_item.is_empty() and str(climb_entity.get("coaster_tool", "")) == "climb" and (climb_entity.get("support_offsets", [1]) as Array).is_empty() and int(climb_recipe.get("recipe_book_order", 0)) == 212 and int((climb_recipe.get("outputs", {}) as Dictionary).get("rail_climb", 0)) == 8 and ItemIconCatalog.missing_item_ids(["rail_climb"]).is_empty() and interaction.is_climb_item("rail_climb") and not interaction.is_linear_entity_item("rail_climb")
@@ -637,7 +645,7 @@ func _run_gate() -> void:
 	var curve_entity: Dictionary = registry.entity("rail_curve")
 	var curve_content := str(curve_entity.get("coaster_tool", "")) == "curve" and (curve_entity.get("support_offsets", [1]) as Array).is_empty() and interaction.is_curve_item("rail_curve") and ItemIconCatalog.missing_item_ids(["rail_curve"]).is_empty()
 	var curve_recipe_ok := false
-	for recipe in registry.recipes_for("workbench"):
+	for recipe in registry.recipes_for("coastercraft_shop"):
 		if str(recipe.get("id", "")) == "rail_curve":
 			curve_recipe_ok = int(recipe.get("recipe_book_order", -1)) == 211 and int(recipe.get("outputs", {}).get("rail_curve", 0)) == 8
 	# Travel +x (rotation 1): right of travel is +z.
@@ -1858,7 +1866,7 @@ func _test_smooth_switch() -> void:
 	var bend: Dictionary = registry.entity("rail_switch")
 	var bend_order := -1
 	var bend_output := 0
-	for recipe in registry.recipes_for("workbench"):
+	for recipe in registry.recipes_for("coastercraft_shop"):
 		if str(recipe.get("id", "")) == "rail_switch":
 			bend_order = int(recipe.get("recipe_book_order", -1))
 			bend_output = int(recipe.get("outputs", {}).get("rail_switch", 0))
@@ -1964,7 +1972,7 @@ func _test_crossing() -> void:
 	var cross: Dictionary = registry.entity("rail_cross")
 	var cross_order := -1
 	var cross_output := 0
-	for recipe in registry.recipes_for("workbench"):
+	for recipe in registry.recipes_for("coastercraft_shop"):
 		if str(recipe.get("id", "")) == "rail_cross":
 			cross_order = int(recipe.get("recipe_book_order", -1))
 			cross_output = int(recipe.get("outputs", {}).get("rail_cross", 0))

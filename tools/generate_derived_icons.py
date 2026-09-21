@@ -42,6 +42,9 @@ DERIVED = [
     "rail_cross",
     # CoasterCraft tracks (docs/COASTERCRAFT_TRACKS.md): drawn placeholders.
     "rail_curve",
+    # Industry wave 1 (docs/INDUSTRY_PLAN.md): drawn placeholders, appended in
+    # the plan's fixed order: coastercraft_shop, miner, ore_bin, warehouse, foundry.
+    "coastercraft_shop",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -340,6 +343,38 @@ def icon_mine_cart() -> Image.Image:
     return canvas
 
 
+def icon_coastercraft_shop() -> Image.Image:
+    """The coaster parts foundry: an oak bench on a stone base with a short
+    rail and a small cart body on top, seen from the side."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    stone = (118, 126, 134, 255)
+    stone_dark = (78, 84, 92, 255)
+    wood = (139, 82, 38, 255)
+    wood_dark = (92, 52, 24, 255)
+    iron = (110, 118, 126, 255)
+    gold = (226, 170, 44, 255)
+    # Stone base and oak bench top with two legs.
+    draw.rectangle([28, 182, 228, 222], fill=stone, outline=stone_dark, width=5)
+    draw.rectangle([48, 124, 76, 184], fill=wood_dark)
+    draw.rectangle([180, 124, 208, 184], fill=wood_dark)
+    draw.rectangle([24, 104, 232, 128], fill=wood, outline=wood_dark, width=5)
+    # A short rail on the bench: two iron rails over three oak sleepers.
+    for x in (70, 128, 186):
+        draw.rectangle([x - 9, 78, x + 9, 106], fill=wood_dark)
+    draw.rectangle([40, 82, 216, 90], fill=iron)
+    draw.rectangle([40, 96, 216, 104], fill=iron)
+    # A small cart body sitting on the rail.
+    draw.polygon([(88, 34), (168, 34), (158, 80), (98, 80)], fill=wood, outline=wood_dark)
+    draw.rectangle([84, 30, 172, 42], fill=iron)
+    for x in (100, 156):
+        draw.ellipse([x - 12, 70, x + 12, 94], fill=(58, 62, 68, 255), outline=(30, 32, 36, 255), width=3)
+    for x in (44, 212):
+        draw.rectangle([x - 6, 110, x + 6, 122], fill=gold)
+    draw.rectangle([122, 48, 134, 60], fill=gold)
+    return canvas
+
+
 BUILDERS = {
     "flame_shot": icon_flame_shot, "chest": icon_chest, "cannon": icon_cannon, "cannonball": icon_cannonball,
     "turret_catapult": icon_turret_catapult, "hot_oil": icon_hot_oil, "kettle": icon_kettle, "rail": icon_rail,
@@ -352,6 +387,7 @@ BUILDERS = {
     "coaster_car": lambda: owner_icon("coaster_car"), "rail_climb": icon_rail_climb,
     "rail_cross": icon_rail_cross,
     "rail_curve": icon_rail_curve,
+    "coastercraft_shop": icon_coastercraft_shop,
 }
 
 

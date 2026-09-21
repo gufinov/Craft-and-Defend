@@ -336,7 +336,7 @@ def validate_bundle(bundle):
         require(recipe["station"] == "hand" or recipe["station"] in entities, "unknown recipe station")
         require(type(recipe["duration_seconds"]) in (int, float) and recipe["duration_seconds"] >= 0, "invalid recipe time")
         require("recipe_book_order" not in recipe or integer(recipe["recipe_book_order"]), "invalid recipe book order")
-        require(recipe["station"] != "workbench" or sum(recipe["inputs"].values()) <= 9, "workbench recipe must fit the 3x3 grid: " + recipe["id"])
+        require(recipe["station"] not in ("workbench", "coastercraft_shop") or sum(recipe["inputs"].values()) <= 9, "3x3 station recipe must fit the grid: " + recipe["id"])
         for field in ("inputs", "outputs"):
             require(recipe[field], "recipe cannot have empty inputs or outputs")
             require(all(i in items and integer(n, 1) for i, n in recipe[field].items()), "invalid recipe item/count")

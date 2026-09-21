@@ -9,7 +9,7 @@ extends Node
 
 const TOP_UP_SECONDS := 1.0
 ## Hotbar order, then the rest of the pack.
-const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "rail_switch", "rail_cross", "rail_curve", "rail_climb", "mine_cart", "coaster_car", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone"]
+const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "rail_switch", "rail_cross", "rail_curve", "rail_climb", "mine_cart", "coaster_car", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone", "coastercraft_shop"]
 
 var app: CraftAndDefendApp
 var loop_car_id := ""
