@@ -363,22 +363,83 @@ func _input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	_update_cursor_stack_visual()
-	if state == AppState.CRAFTING and _crafting_station_type == "furnace" and session != null and session.workstations != null:
-		var completed := session.workstations.advance(delta, false)
-		if completed.is_empty():
-			_refresh_furnace_live_status()
-		else:
-			_refresh_crafting_panel()
-	elif state == AppState.CRAFTING and _crafting_station_type == "siege" and session != null and session.workstations != null:
-		# P4a-2: ammo, cooldown and supply change while the panel is open (the
-		# weapon fires or auto-reloads), so the weapon column refreshes live.
-		_refresh_siege_panel_state()
+	_advance_live_panel(delta)
 	if not display_confirm_panel.visible:
 		return
 	_display_confirm_remaining = maxf(0.0, _display_confirm_remaining - delta)
 	display_confirm_label.text = "Keep these display settings?\nReverting automatically in %d seconds." % ceili(_display_confirm_remaining)
 	if _display_confirm_remaining <= 0.0:
 		_rollback_display_preview("Display settings reverted automatically.")
+
+
+## The world runs under every menu (owner 2026-09-22), so an open station panel
+## is a window on a live machine: the furnace bar and timer move every frame,
+## the siege column follows shots and reloads, and the container / foundry /
+## shop panels re-read their station every LIVE_PANEL_REFRESH_SECONDS (carts
+## dock, miners fill bins, the foundry smelts). A finished furnace job and any
+## station change on the open station rebuild the panel (see
+## _on_session_station_changed / _on_session_job_completed).
+const LIVE_PANEL_REFRESH_SECONDS := 0.25
+var _live_panel_elapsed := 0.0
+
+
+func _advance_live_panel(delta: float) -> void:
+	if state != AppState.CRAFTING or session == null or session.workstations == null:
+		_live_panel_elapsed = 0.0
+		return
+	match _crafting_station_type:
+		"furnace":
+			_refresh_furnace_live_status()
+		"siege":
+			# P4a-2: ammo, cooldown and supply change while the panel is open (the
+			# weapon fires or auto-reloads), so the weapon column refreshes live.
+			_refresh_siege_panel_state()
+	_live_panel_elapsed += delta
+	if _live_panel_elapsed < LIVE_PANEL_REFRESH_SECONDS:
+		return
+	_live_panel_elapsed = 0.0
+	match _crafting_station_type:
+		"chest":
+			_refresh_chest_panel_state()
+		"foundry":
+			_refresh_foundry_panel_state()
+
+
+## A station changed while its panel is open (a cart docked, a miner filled the
+## bin, the furnace consumed its input): rebuild the panel so the grid is true.
+func _on_session_station_changed(result: Dictionary) -> void:
+	if state != AppState.CRAFTING or not result.get("ok", false) or _crafting_station_id.is_empty():
+		return
+	var details: Dictionary = result.get("details", {})
+	var changed_id := str(details.get("instance_id", details.get("station", {}).get("instance_id", "")))
+	if changed_id == _crafting_station_id and (details.has("container_slots") or details.has("furnace_slots")):
+		_refresh_crafting_panel()
+
+
+func _on_session_job_completed(_result: Dictionary) -> void:
+	if state == AppState.CRAFTING and _crafting_station_type == "furnace":
+		_refresh_crafting_panel()
+
+
+## Death with a menu open: the menu closes (the held stack stays on the cursor,
+## it persists), the respawn already ran in the session.
+func _on_session_player_died() -> void:
+	if state == AppState.INVENTORY:
+		inventory_panel.hide()
+		hud_layer.show()
+		session.set_menu_open(false)
+		state = AppState.PLAYING
+		_inventory_move_source = -1
+	elif state == AppState.CRAFTING:
+		crafting_panel.hide()
+		hud_layer.show()
+		session.set_menu_open(false)
+		state = AppState.PLAYING
+		_crafting_station_id = ""
+		_crafting_station_type = "hand"
+		_selected_recipe_id = ""
+		_craft_grid_items.clear()
+		_crafting_selected_inventory_item = ""
 
 
 func _resolve_data_root() -> String:
@@ -1447,10 +1508,14 @@ func _open_session(continue_existing: bool) -> void:
 	session.feedback_changed.connect(_set_feedback)
 	session.inventory_changed.connect(_on_session_inventory_changed)
 	session.workstation_requested.connect(_show_workstation)
+	session.player_died.connect(_on_session_player_died)
 	var initialize_result := session.initialize(open_result)
 	if not initialize_result.get("ok", false):
 		_show_error(initialize_result.get("reason", "SESSION_INITIALIZE_FAILED"))
 		return
+	# The services exist after initialize: an open panel follows its station.
+	session.workstations.station_changed.connect(_on_session_station_changed)
+	session.workstations.job_completed.connect(_on_session_job_completed)
 	session.apply_input_settings(settings)
 
 
@@ -1577,11 +1642,14 @@ func _start_siege_drill() -> void:
 func _show_inventory() -> void:
 	if state != AppState.PLAYING or session == null:
 		return
+	if session.is_riding():
+		# The seat moves the body every frame; a menu over the ride would desync.
+		_set_feedback("Leave the coaster car first (Shift).")
+		return
 	_inventory_move_source = -1
 	_inventory_filter = "all"
 	state = AppState.INVENTORY
-	session.pause_game(true)
-	get_tree().paused = true
+	session.set_menu_open(true)
 	hud_layer.hide()
 	_refresh_inventory_panel()
 	inventory_panel.show()
@@ -1607,6 +1675,10 @@ func _show_workstation(instance_id: String, station_type: String) -> void:
 func _show_crafting(station_id: String = "", station_type: String = "hand") -> void:
 	if state != AppState.PLAYING or session == null:
 		return
+	if session.is_riding():
+		_set_feedback("Leave the coaster car first (Shift).")
+		return
+	_live_panel_elapsed = 0.0
 	_crafting_station_id = station_id
 	_crafting_station_type = station_type if station_type in CRAFTING_STATION_TYPES else "hand"
 	_selected_recipe_id = ""
@@ -1616,8 +1688,7 @@ func _show_crafting(station_id: String = "", station_type: String = "hand") -> v
 	_crafting_recipe_page = 0
 	crafting_recipe_search.clear()
 	state = AppState.CRAFTING
-	session.pause_game(true)
-	get_tree().paused = true
+	session.set_menu_open(true)
 	hud_layer.hide()
 	crafting_message.text = ""
 	_refresh_crafting_panel()
@@ -1632,8 +1703,7 @@ func _close_inventory() -> void:
 		return
 	inventory_panel.hide()
 	hud_layer.show()
-	get_tree().paused = false
-	session.pause_game(false)
+	session.set_menu_open(false)
 	state = AppState.PLAYING
 	_inventory_move_source = -1
 
@@ -1645,8 +1715,7 @@ func _close_crafting() -> void:
 		return
 	crafting_panel.hide()
 	hud_layer.show()
-	get_tree().paused = false
-	session.pause_game(false)
+	session.set_menu_open(false)
 	state = AppState.PLAYING
 	_crafting_station_id = ""
 	_crafting_station_type = "hand"
@@ -3443,6 +3512,13 @@ func _capture_gameplay_screenshot() -> void:
 
 func _set_feedback(text: String) -> void:
 	feedback_label.text = text
+	# The HUD is hidden under a menu but the world is live: a raider's hit
+	# still reaches the player through the menu's own message line.
+	if text.contains(" hit you "):
+		if state == AppState.INVENTORY and inventory_message != null:
+			inventory_message.text = text
+		elif state == AppState.CRAFTING and crafting_message != null:
+			crafting_message.text = text
 
 
 func _on_quit_pressed() -> void:

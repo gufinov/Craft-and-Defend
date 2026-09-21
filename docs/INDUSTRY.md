@@ -85,7 +85,7 @@ Branch `feature/storage-foundry`. Suite: `--p3e-container-automation=gate` (T194
 Workbench → craft Warehouse and Foundry (Iron Ingots from the Furnace) → place the Warehouse on flat ground, the Foundry touching one of its sides → right-click the Warehouse, store Iron Ore and Coal → right-click the Foundry, pick Iron Ingot (or leave Any) → Close; the mouth glows and every 10 s an ingot appears in the Warehouse (crates stack up outside its door). Save, reload: the target and the "made" count are kept.
 
 ### Deferred
-- Power / fuel for the Foundry (wave 2), a progress bar in the modal, live status while the modal is open (the simulation pauses under modals), refunding a Warehouse's contents on dismantle, a wider adjacency (diagonals, other levels).
+- Power / fuel for the Foundry (wave 2), a progress bar in the modal, refunding a Warehouse's contents on dismantle, a wider adjacency (diagonals, other levels). (Live status while the modal is open landed with "Machines run while you are in a menu" below.)
 
 ## Hauling
 
@@ -105,4 +105,16 @@ Placeholders: the hauling branch carried `_wave1_placeholder` `ore_bin` / `wareh
 
 Test: **T195_HAULING** in `--coaster-car-automation=gate` (plate at (−40, 0, 60), a 12-cell straight, the bin beside cell 3, the warehouse beside cell 9): 10 iron ore ride bin → cart (HUD line, heap shown) → warehouse (HUD line, heap hidden); a bin with 20 gives 16 and keeps 4; a mid-haul snapshot/restore keeps the 16; the warehouse ends at 26; a coaster car riding the same straight moves nothing.
 
-Not done (wave 2+): routing choices at junctions, station stop signals, a dispatcher, per-item filters on bins/warehouses, live Chest-panel refresh while a cart docks.
+Not done (wave 2+): routing choices at junctions, station stop signals, a dispatcher, per-item filters on bins/warehouses. (Live Chest-panel refresh while a cart docks landed with "Machines run while you are in a menu" below.)
+
+## Machines run while you are in a menu
+
+Branch `feature/live-modals`. Owner (2026-09-22): "The furnace does not run when I am inside another menu ... all actions and world events stop when I am in a menu. But they should not stop. Only the game menu should stop the world from continuing."
+
+- **What changed**: the inventory (Tab), the hand-build modal (B) and every station panel no longer pause the simulation or the scene tree. `GameSession.menu_open` (set by `set_menu_open`) freezes the player body (`player.deactivate()`, pointer freed, placement preview hidden, world input swallowed) while `simulation_paused` stays false: the clock ticks, furnace jobs finish, miners fill bins, carts haul, the foundry smelts, fires burn, raiders walk and hit. Only the pause menu (`pause_game(true)`), saving (`saving`) and the error screens pause. The app used to advance the furnace itself while its panel was open (`app._process`); the session does that now, the app only refreshes panels.
+- **Live panels** (`app._advance_live_panel`): the furnace bar / timer and the siege column refresh every frame; the Chest / Warehouse / Ore Bin grid and the Foundry status re-read their station every `LIVE_PANEL_REFRESH_SECONDS` (0.25 s); a `station_changed` on the open station with `container_slots` / `furnace_slots` and a `job_completed` on an open furnace rebuild the panel at once.
+- **Safety**: no placement / breaking / held-item use / boarding from a menu (the body is inactive, `_unhandled_input` returns while `menu_open`). A raider's hit shows in the open panel's message row (the HUD is hidden under menus); when health reaches 0 the session emits `player_died`, the menu closes (a held cursor stack stays held — it persists) and the respawn runs. **Tab / B are ignored while riding a Coaster Car** ("Leave the coaster car first (Shift).") — the seat moves the body every frame and a menu over the ride would desync it.
+- **Calls made**: the message-row mirror only carries damage lines (" hit you "), not every world line, so a panel's own feedback ("Placed the held stack.") is not overwritten by machine chatter. The Shop panel has no timed state and gets no poll. Nothing new is saved: `menu_open` is UI state.
+- **Tests**: T199 in `--p3e-container-automation=gate`; T14 (f1), T31 (f5) and T96 (p3g) now assert the new contract (tree not paused, `menu_open`, body inactive).
+- **Owner test path**: load a furnace with ore and coal, open the inventory (Tab), wait — the ingot appears and the clock on the HUD has moved when you close; open the furnace panel and watch the bar move; press Escape in the open world — the pause menu freezes everything.
+

@@ -44,11 +44,11 @@ func _run_phase1() -> void:
 	var minute_stable := sun_rotation_before.is_equal_approx(app.session._sun.rotation)
 	_record("T35_SHADOW_STABILITY", shadow_tuning and minute_stable, "directional shadows use four blended near-field splits and do not reproject within the same game minute", {"shadow_tuning": shadow_tuning, "minute_stable": minute_stable, "max_distance": app.session._sun.directional_shadow_max_distance})
 	app._show_inventory()
-	var inventory_only := app.state == app.AppState.INVENTORY and app.inventory_panel.visible and not app.crafting_panel.visible and get_tree().paused and not app.session.player.active
+	var inventory_only := app.state == app.AppState.INVENTORY and app.inventory_panel.visible and not app.crafting_panel.visible and not get_tree().paused and app.session.menu_open and not app.session.player.active
 	app._close_inventory()
 	app.session.inventory.try_transaction({}, {"log": 2, "planks": 4, "stick": 2})
 	app._show_crafting()
-	var hand_only := app.state == app.AppState.CRAFTING and app.crafting_panel.visible and not app.inventory_panel.visible and app.crafting_grid.columns == 2 and app.crafting_grid.get_child_count() == 4 and app.crafting_inventory_slots.size() == F0Inventory.SLOT_COUNT and app.crafting_recipe_search != null and get_tree().paused and not app.session.player.active
+	var hand_only := app.state == app.AppState.CRAFTING and app.crafting_panel.visible and not app.inventory_panel.visible and app.crafting_grid.columns == 2 and app.crafting_grid.get_child_count() == 4 and app.crafting_inventory_slots.size() == F0Inventory.SLOT_COUNT and app.crafting_recipe_search != null and not get_tree().paused and app.session.menu_open and not app.session.player.active
 	app._select_crafting_recipe("planks")
 	var recipe_autofill := app._selected_recipe_id == "planks" and app._grid_counts(app._craft_grid_items) == {"log": 1}
 	app._clear_crafting_grid()
@@ -58,7 +58,7 @@ func _run_phase1() -> void:
 	app._on_crafting_recipe_search_submitted("work")
 	var search_autofill := app._selected_recipe_id == "workbench" and app._grid_counts(app._craft_grid_items) == {"planks": 4}
 	app._close_crafting()
-	_record("T31_CONTEXTS", inventory_only and hand_only and app.state == app.AppState.PLAYING and not get_tree().paused and app.session.player.active, "Tab inventory and three-panel hand crafting are separate paused UI contexts and return cleanly to play", {"inventory_only": inventory_only, "hand_only": hand_only, "state": app.state})
+	_record("T31_CONTEXTS", inventory_only and hand_only and app.state == app.AppState.PLAYING and not get_tree().paused and app.session.player.active, "Tab inventory and three-panel hand crafting are separate UI contexts (the world keeps running under them) and return cleanly to play", {"inventory_only": inventory_only, "hand_only": hand_only, "state": app.state})
 	_record("T36_CRAFTING_INPUT", recipe_autofill and manual_grid and search_autofill, "inventory-to-grid staging, manual recognition and Enter-to-autofill recipe search all work", {"recipe_autofill": recipe_autofill, "manual_grid": manual_grid, "search_autofill": search_autofill})
 	app._show_crafting("furnace_diagnostic", "furnace")
 	var furnace_only := app.state == app.AppState.CRAFTING and app.crafting_title_label.text == "FURNACE" and app.crafting_grid.columns == 3 and app.crafting_grid.get_child_count() == 3 and app.craft_selected_button.text == "Start Processing" and app.crafting_inventory_slots.size() == F0Inventory.SLOT_COUNT and app.crafting_clear_button.text == "Return Input + Fuel"

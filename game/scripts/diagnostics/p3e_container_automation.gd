@@ -97,6 +97,7 @@ func _run_gate() -> void:
 	app._close_crafting()
 	_record("T88_MANUAL_DISCOVERY", manual_ok, "manual grid patterns remain recognized without selecting or searching the recipe book", {"selected_recipe": app._selected_recipe_id, "recognized": manual_ok})
 	await _run_warehouse_foundry()
+	await _run_live_under_modals()
 
 
 ## Industry wave 1 (docs/INDUSTRY.md): a Foundry beside a Warehouse smelts on
@@ -164,6 +165,104 @@ func _run_warehouse_foundry() -> void:
 	var warehouse_modal_ok := app.state == app.AppState.CRAFTING and app.chest_card.visible and app.crafting_title_label.text == "WAREHOUSE"
 	app._close_crafting()
 	_record("T194_WAREHOUSE_FOUNDRY", plate_ok and warehouse_placed.get("ok", false) and foundry_placed.get("ok", false) and lone_placed.get("ok", false) and stocked and initial_target == "any" and adjacent and iron_events == 3 and iron_done and glow_lit and waiting_status.begins_with("waiting for") and lone_status == FoundryService.STATUS_NO_WAREHOUSE and crates_ok and target_set and coal_added and gold_events == 2 and gold_done and made == 5 and restore_ok and modal_ok and modal_closed and warehouse_modal_ok, "a foundry beside a warehouse smelts one furnace recipe per FOUNDRY_SECONDS from the warehouse into it (any = iron before gold), a lone foundry reports no warehouse, the target and counter survive a save round-trip, and the modals open and close", {"warehouse": warehouse_id, "foundry": foundry_id, "iron_events": iron_events, "waiting": waiting_status, "lone": lone_status, "gold_events": gold_events, "made": made, "restore": restored, "restored_state": restored_state, "modal": modal_ok, "warehouse_modal": warehouse_modal_ok, "slots": service.container_slots(warehouse_id)})
+
+
+## Owner 2026-09-22: "all actions and world events stop when I am in a menu
+## ... only the game menu should stop the world." A furnace job finishes and
+## the clock ticks while the inventory, the workbench and the hand-build modal
+## are open; the pause menu still stops the clock; a raider keeps approaching
+## while the inventory is open.
+func _run_live_under_modals() -> void:
+	var service := app.session.workstations
+	var inventory := app.session.inventory
+	var clock := app.session.clock
+	var anchors: Array[Vector3i] = [Vector3i(16, 0, 43), Vector3i(16, 0, 46), Vector3i(16, 0, 49)]
+	var plate_ok := await _wait_levelled(Vector3i(8, 0, 42), 10, 9, 4, anchors)
+	app.state = app.AppState.PLAYING
+	app.session.simulation_paused = false
+	var bench_id := ""
+	for record: Dictionary in service.stations.values():
+		if str(record.get("entity_id", "")) == "workbench":
+			bench_id = str(record.get("instance_id", ""))
+	var evidence: Dictionary = {"plate": plate_ok, "bench": bench_id}
+	var all_ok := plate_ok and not bench_id.is_empty()
+	var modals: Array[String] = ["inventory", "workbench", "hand"]
+	for index in range(modals.size()):
+		var modal := modals[index]
+		inventory.try_transaction({}, {"furnace": 1, "iron_ore": 1, "coal": 1})
+		var placed := service.try_place("furnace", anchors[index], app.session.world.query_cell, AABB())
+		var furnace_id := str(placed.get("details", {}).get("station", {}).get("instance_id", ""))
+		var loaded: bool = service.try_transfer_inventory_stack_to_furnace(furnace_id, _slot_for("iron_ore")).get("ok", false) and service.try_transfer_inventory_stack_to_furnace(furnace_id, _slot_for("coal")).get("ok", false)
+		var started := service.try_start_furnace(furnace_id, "iron_ingot")
+		# A 3 s job (the recipe takes 5): the modal stays open for 4 s of real
+		# frames, after which the ingot sits in the output (leftover ore from the
+		# earlier tests may already have started the next job).
+		if service.jobs.has(furnace_id):
+			service.jobs[furnace_id]["remaining_seconds"] = 3.0
+		var phase_before := float(clock.phase) + float(clock.day_index)
+		match modal:
+			"inventory":
+				app._show_inventory()
+			"workbench":
+				app._show_workstation(bench_id, "workbench")
+			"hand":
+				app._show_crafting()
+		var opened := app.state == (app.AppState.INVENTORY if modal == "inventory" else app.AppState.CRAFTING) and app.session.menu_open and not app.session.simulation_paused and not get_tree().paused and not app.session.player.active
+		await _wait_seconds(4.0)
+		var job_after := service.furnace_job_status(furnace_id)
+		var output_after: Dictionary = service.furnace_slots(furnace_id).get("output", {})
+		var clock_moved := float(clock.phase) + float(clock.day_index) > phase_before
+		var still_open := app.state != app.AppState.PLAYING
+		if modal == "inventory":
+			app._close_inventory()
+		else:
+			app._close_crafting()
+		var closed := app.state == app.AppState.PLAYING and not app.session.menu_open and app.session.player.active
+		var ok: bool = placed.get("ok", false) and loaded and started.get("ok", false) and opened and still_open and int(output_after.get("count", 0)) >= 1 and str(output_after.get("item_id", "")) == "iron_ingot" and clock_moved and closed
+		all_ok = all_ok and ok
+		evidence[modal] = {"ok": ok, "placed": placed.get("reason"), "loaded": loaded, "started": started.get("reason"), "opened": opened, "still_open": still_open, "job_after": job_after, "output": output_after, "clock_moved": clock_moved, "closed": closed}
+	# The pause menu is the one menu that stops the world.
+	var paused_phase_before := float(clock.phase) + float(clock.day_index)
+	app._pause_game()
+	var pause_opened := app.state == app.AppState.PAUSED and app.session.simulation_paused and get_tree().paused
+	await _wait_seconds(1.0)
+	var pause_clock_still := float(clock.phase) + float(clock.day_index) == paused_phase_before
+	app._resume_game()
+	var pause_closed := app.state == app.AppState.PLAYING and not app.session.simulation_paused and not get_tree().paused
+	evidence["pause_menu"] = {"opened": pause_opened, "clock_still": pause_clock_still, "closed": pause_closed}
+	all_ok = all_ok and pause_opened and pause_clock_still and pause_closed
+	# A raider keeps walking at the core while the inventory is open.
+	var core := app.session.core_defense
+	var drill := core.start_prototype()
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var waited := 0
+	while (not is_instance_valid(core.raider) or core.last_route_reason == "WAITING_FOR_TERRAIN") and waited < 600:
+		await get_tree().process_frame
+		waited += 1
+	var raider_ok := false
+	var raider_evidence: Dictionary = {"drill": drill.get("reason"), "route": core.last_route_reason, "waited": waited}
+	if is_instance_valid(core.raider):
+		var core_point := Vector3(core.arena_center + Vector3i(0, 0, 5)) + Vector3(0.5, 0.0, 0.5)
+		var distance_before := Vector2(core.raider.global_position.x - core_point.x, core.raider.global_position.z - core_point.z).length()
+		app._show_inventory()
+		var inventory_open := app.state == app.AppState.INVENTORY
+		await _wait_seconds(2.0)
+		var distance_after := Vector2(core.raider.global_position.x - core_point.x, core.raider.global_position.z - core_point.z).length()
+		app._close_inventory()
+		raider_ok = inventory_open and distance_after < distance_before - 0.5
+		raider_evidence.merge({"inventory_open": inventory_open, "before": distance_before, "after": distance_after, "state": core.state}, true)
+	evidence["raider"] = raider_evidence
+	core.clear_for_other_mode()
+	app.session.simulation_paused = true
+	app.session.player.deactivate()
+	_record("T199_LIVE_UNDER_MODALS", all_ok and raider_ok, "a furnace job finishes and the clock ticks while the inventory, the workbench and the hand-build modal are open; the pause menu stops the clock; a raider keeps approaching while the inventory is open", evidence)
+
+
+func _wait_seconds(seconds: float) -> void:
+	var deadline := Time.get_ticks_msec() + int(seconds * 1000.0)
+	while Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
 
 
 func _run_visual() -> void:

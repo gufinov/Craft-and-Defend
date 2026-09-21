@@ -9,6 +9,8 @@ signal inventory_changed(snapshot: Dictionary)
 signal workstation_requested(instance_id: String, station_type: String)
 signal navigation_changed(text: String)
 signal defense_changed(text: String)
+## The player's health reached zero (the respawn already ran): an open menu closes.
+signal player_died
 
 const REASON_TEXT := {
 	"OK": "Edit complete.",
@@ -114,6 +116,10 @@ var open_data: Dictionary
 var world_ready := false
 var saving := false
 var simulation_paused := true
+## A UI menu (inventory, hand build, a station panel) is open: the body stands
+## still and the pointer belongs to the UI, but the world keeps running - only
+## the pause menu (simulation_paused) and saving stop it (owner 2026-09-22).
+var menu_open := false
 var _pending_workstation_snapshot: Dictionary = {}
 var _station_visuals: Dictionary = {}
 var _station_visual_materials: Dictionary = {}
@@ -271,7 +277,7 @@ func initialize(session_data: Dictionary) -> Dictionary:
 
 func _process(delta: float) -> void:
 	if _held_item_view != null:
-		_held_item_view.set_gameplay_visible(world_ready and not simulation_paused and not saving and not player.third_person and not is_riding())
+		_held_item_view.set_gameplay_visible(world_ready and not simulation_paused and not saving and not menu_open and not player.third_person and not is_riding())
 	_update_placement_preview()
 	if defense != null:
 		defense.advance(delta, simulation_paused or saving)
@@ -547,12 +553,30 @@ func pause_game(paused: bool) -> void:
 		player.deactivate()
 	else:
 		simulation_paused = false
-		if is_riding():
-			# The rider stays seated: the body stays parked, only the pointer returns.
-			if not DisplayServer.get_name().contains("headless"):
-				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-		else:
-			player.activate(not DisplayServer.get_name().contains("headless"))
+		_release_player()
+
+
+## A menu (Tab inventory, B hand build, any station panel) opened or closed:
+## the body freezes and the pointer is freed, the simulation keeps running -
+## machines finish, raiders keep coming, the clock ticks. Compare pause_game.
+func set_menu_open(open: bool) -> void:
+	if player == null or saving:
+		return
+	menu_open = open
+	if open:
+		player.deactivate()
+		_hide_placement_preview()
+	elif not simulation_paused:
+		_release_player()
+
+
+func _release_player() -> void:
+	if is_riding():
+		# The rider stays seated: the body stays parked, only the pointer returns.
+		if not DisplayServer.get_name().contains("headless"):
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	else:
+		player.activate(not DisplayServer.get_name().contains("headless"))
 
 
 # --- Coaster car and hero (docs/COASTER_CAR_AND_HERO.md). ---------------------
@@ -693,6 +717,7 @@ func _on_player_died() -> void:
 	player.global_position = respawn
 	player.velocity = Vector3.ZERO
 	player.restore_health()
+	player_died.emit()
 
 
 func _emit_navigation() -> void:
@@ -918,7 +943,7 @@ func _on_boundary_feedback(message: String) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not world_ready or simulation_paused or saving:
+	if not world_ready or simulation_paused or saving or menu_open:
 		return
 	if is_riding():
 		# Coaster car: the mouse turns the head in the seat, the number keys
@@ -3507,7 +3532,7 @@ func _vector3_from_array(value: Variant, fallback: Vector3) -> Vector3:
 
 
 func _update_placement_preview() -> void:
-	if not world_ready or simulation_paused or saving or player == null or player.camera == null:
+	if not world_ready or simulation_paused or saving or menu_open or player == null or player.camera == null:
 		_hide_placement_preview()
 		return
 	if interaction.drag_active():

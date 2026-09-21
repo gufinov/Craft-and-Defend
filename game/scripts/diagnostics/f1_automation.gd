@@ -98,14 +98,16 @@ func _test_keybind_editor() -> void:
 func _test_input_contexts() -> void:
 	var before_inventory := _mutation_snapshot()
 	app._show_inventory()
-	var inventory_open := app.state == app.AppState.INVENTORY and get_tree().paused and not app.session.player.active and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE
+	# Menus no longer pause the world (owner 2026-09-22): the tree runs, the
+	# session is not paused, only the body is frozen and the pointer freed.
+	var inventory_open := app.state == app.AppState.INVENTORY and not get_tree().paused and not app.session.simulation_paused and app.session.menu_open and not app.session.player.active and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE
 	var primary_event := InputEventMouseButton.new()
 	primary_event.pressed = true
 	primary_event.button_index = MOUSE_BUTTON_LEFT
 	app.session.player._unhandled_input(primary_event)
-	_record("T14_INVENTORY_CONTEXT", inventory_open and before_inventory == _mutation_snapshot(), "inventory pauses and blocks world actions", {"state": app.state, "player_active": app.session.player.active})
+	_record("T14_INVENTORY_CONTEXT", inventory_open and before_inventory == _mutation_snapshot(), "inventory freezes the body and blocks world actions while the world keeps running", {"state": app.state, "player_active": app.session.player.active})
 	app._close_inventory()
-	_record("T14_INVENTORY_CLOSE", app.state == app.AppState.PLAYING and not get_tree().paused and app.session.player.active, "Tab/close returns to active play", app.state)
+	_record("T14_INVENTORY_CLOSE", app.state == app.AppState.PLAYING and not get_tree().paused and not app.session.menu_open and app.session.player.active, "Tab/close returns to active play", app.state)
 
 	# T14 tests the focus-loss rules themselves, so lift the diagnostic guard
 	# that otherwise ignores host focus changes during automation.

@@ -75,15 +75,21 @@ func _run_gate() -> void:
 	app._on_crafting_stack_gesture("inventory", _slot_for(app.session.inventory, "coal"), MOUSE_BUTTON_LEFT, false, false, true)
 	app._selected_recipe_id = "iron_ingot"
 	app._craft_selected_recipe()
+	# The session advances the furnace under the open modal (the world runs
+	# under menus, owner 2026-09-22); the app only refreshes the panel.
+	app.session.simulation_paused = false
+	app.session._process(2.5)
 	app._process(2.5)
 	var modal_half := app.session.workstations.furnace_job_status(furnace_id)
 	var progress_value := float(app.furnace_progress_bar.value)
+	app.session._process(2.5)
 	app._process(2.5)
+	app.session.simulation_paused = true
 	var modal_slots := app.session.workstations.furnace_slots(furnace_id)
 	var modal_next := app.session.workstations.furnace_job_status(furnace_id)
-	var modal_ok := get_tree().paused and app.furnace_controls.visible and absf(progress_value - 50.0) < 1.0 and int(modal_slots.output.count) == 1 and bool(modal_next.active)
+	var modal_ok := not get_tree().paused and app.session.menu_open and app.furnace_controls.visible and absf(progress_value - 50.0) < 1.0 and int(modal_slots.output.count) == 1 and bool(modal_next.active)
 	app._close_crafting()
-	_record("T96_MODAL_LIVE_PROCESSING", placed.get("ok", false) and modal_ok and absf(float(modal_half.progress) - 0.5) < 0.01, "the Furnace clock and progress bar advance while its modal is open even though world simulation remains paused", {"halfway": modal_half, "progress_bar": progress_value, "slots": modal_slots, "next_job": modal_next})
+	_record("T96_MODAL_LIVE_PROCESSING", placed.get("ok", false) and modal_ok and absf(float(modal_half.progress) - 0.5) < 0.01, "the Furnace clock and progress bar advance while its modal is open (the world runs under menus)", {"halfway": modal_half, "progress_bar": progress_value, "slots": modal_slots, "next_job": modal_next})
 
 	app.session.inventory.try_transaction({}, {"catapult": 1})
 	_level_catapult_ground(Vector3i(7, 0, 38))
