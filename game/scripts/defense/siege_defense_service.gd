@@ -3,6 +3,9 @@ extends Node3D
 
 signal state_changed(message: String)
 signal feedback(message: String)
+## Storage network card: a weapon took munitions from the storage beside it
+## (GameSession puts "reloaded from storage" on the HUD near the player).
+signal storage_reloaded(instance_id: String, anchor: Vector3i, message: String)
 
 const ARC_SEGMENTS := 18
 ## Turntable turn rate toward the target, radians per second.
@@ -36,6 +39,13 @@ var _rail_riders: Dictionary = {}
 
 ## Seconds between auto-reload attempts for an empty weapon.
 const RELOAD_POLL_SECONDS := 1.0
+## Storage network card: a weapon below its clip tops up from the container
+## network touching its footprint (a chest beside a catapult holds its shot)
+## once per SIEGE_AUTO_RELOAD_SECONDS, one clip at most per reload.
+const SIEGE_AUTO_RELOAD_SECONDS := 2.0
+
+var storage: StorageNetwork
+var _storage_reload_timers: Dictionary = {}
 
 
 func initialize(station_service: WorkstationService, core_service: CoreDefenseService, fire_service: FireService = null, world_adapter: WorldAdapter = null) -> void:
@@ -43,6 +53,7 @@ func initialize(station_service: WorkstationService, core_service: CoreDefenseSe
 	core_defense = core_service
 	fire = fire_service
 	world = world_adapter
+	storage = StorageNetwork.new(station_service)
 
 
 func register_visual(instance_id: String, body: CollisionObject3D) -> void:
@@ -70,6 +81,9 @@ func advance(delta: float, paused: bool = false) -> void:
 		var target := _target_for(instance_id, details) if any_target else Vector3.INF
 		var has_target := target.is_finite()
 		var rides_rails := float(details.get("definition", {}).get("rail_speed", 0.0)) > 0.0
+		if int(details.get("ammo", 0)) < int(details.get("capacity", 1)):
+			if _poll_storage_reload(instance_id, details, delta):
+				details = workstations.siege_status(instance_id).get("details", details)
 		if int(details.get("ammo", 0)) <= 0:
 			_poll_auto_reload(instance_id, delta)
 			if rides_rails:
@@ -99,6 +113,45 @@ func _poll_auto_reload(instance_id: String, delta: float) -> void:
 	if reloaded.get("ok", false):
 		var details: Dictionary = reloaded.get("details", {})
 		feedback.emit("%s reloaded %d %s from a nearby chest." % [_display(instance_id), int(details.get("moved", 0)), str(details.get("item_id", "")).replace("_", " ")])
+
+
+## Storage network card: a weapon below its clip asks the containers touching
+## it (StorageNetwork) for its munition once per SIEGE_AUTO_RELOAD_SECONDS -
+## the loaded kind when any is loaded, else the first of its ammo_items the
+## storage holds. Returns true when something was loaded.
+func _poll_storage_reload(instance_id: String, details: Dictionary, delta: float) -> bool:
+	var timer := float(_storage_reload_timers.get(instance_id, SIEGE_AUTO_RELOAD_SECONDS)) - delta
+	if timer > 0.0:
+		_storage_reload_timers[instance_id] = timer
+		return false
+	_storage_reload_timers[instance_id] = SIEGE_AUTO_RELOAD_SECONDS
+	if storage == null:
+		return false
+	var network := storage.network_of(instance_id)
+	if network.is_empty():
+		return false
+	var definition: Dictionary = details.get("definition", {})
+	var candidates: Array[String] = []
+	if int(details.get("ammo", 0)) > 0:
+		candidates.append(str(details.get("ammo_item", "")))
+	else:
+		for allowed in definition.get("ammo_items", [definition.get("ammo_item", "")]):
+			candidates.append(str(allowed))
+	var item_id := storage.first_present(network, candidates)
+	if item_id.is_empty():
+		return false
+	var room := int(details.get("capacity", 1)) - int(details.get("ammo", 0))
+	var moved := storage.take(network, item_id, room)
+	if moved <= 0:
+		return false
+	var received := workstations.siege_receive_ammo(instance_id, item_id, moved)
+	if not received.get("ok", false):
+		# The weapon refused (type changed under us): hand the munition back.
+		storage.put(network, item_id, moved)
+		return false
+	var message := "%s reloaded from storage: %d %s." % [_display(instance_id), moved, item_id.replace("_", " ")]
+	storage_reloaded.emit(instance_id, details.get("anchor", Vector3i.ZERO), message)
+	return true
 
 
 func _display(instance_id: String) -> String:

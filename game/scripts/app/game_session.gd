@@ -242,6 +242,7 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	add_child(siege_defense)
 	siege_defense.initialize(workstations, core_defense, fire_service, world)
 	siege_defense.feedback.connect(_on_interaction_feedback)
+	siege_defense.storage_reloaded.connect(_on_storage_reloaded)
 	siege_defense.state_changed.connect(_on_defense_state_changed)
 	miner_service = MinerService.new()
 	miner_service.name = "MinerService"
@@ -2774,6 +2775,14 @@ func _fill_cart_cargo_visual(heap: Node3D, cargo: Dictionary) -> void:
 		stone.rotation = Vector3(0.4, 0.6, 0.2)
 		stone.scale = Vector3.ONE * scale
 	heap.visible = total > 0
+
+
+## Storage network card: a siege weapon took munitions from the storage beside
+## it - say so on the HUD when the weapon is near the player (once per reload).
+func _on_storage_reloaded(_instance_id: String, anchor: Vector3i, message: String) -> void:
+	if player == null or (Vector3(anchor) + Vector3(0.5, 0.5, 0.5)).distance_to(player.global_position) > HAUL_NOTICE_RANGE:
+		return
+	_on_interaction_feedback(message)
 
 
 ## A cart loaded or unloaded (CoasterCartService.cargo_changed): rebuild the
