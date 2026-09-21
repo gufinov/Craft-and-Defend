@@ -180,6 +180,60 @@ static func connected_cells(record: Dictionary, tracks: Dictionary) -> Array[Vec
 	return joined
 
 
+## Snap-to-track-end (owner playtest 2026-09-21 item 2): every place a next
+## piece would join the laid track, given {anchor: record} (`track_records`):
+## [{cell: the piece's cell, next: the free joint cell, along: unit Vector3
+## from the piece toward the joint (a curve piece's end tangent, so a 45
+## degree end reports its diagonal), instance_id}]. A joint whose cell holds
+## a track is not open. A slope end offers one open end (its same-level
+## joint; the one-lower alternative is the same end). A plain rail with no
+## explicit joints has two implied ends: straight on from its one connected
+## neighbour, or both cells along its placement axis when it stands alone;
+## a rail joined on two sides (a run or a corner) has none. A loop piece
+## placed by hand (no recorded joints) reports none.
+static func open_ends(tracks: Dictionary) -> Array[Dictionary]:
+	var ends: Array[Dictionary] = []
+	for anchor_key: Variant in tracks.keys():
+		var record: Dictionary = tracks[anchor_key]
+		var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+		var entity_id := str(record.get("entity_id", ""))
+		var instance_id := str(record.get("instance_id", ""))
+		var candidates: Array[Vector3i] = []
+		var joined := connected_cells(record, tracks)
+		if entity_id == FLAT:
+			if joined.size() == 1:
+				var toward: Vector3i = joined[0] - anchor
+				toward.y = 0
+				if toward != Vector3i.ZERO:
+					candidates.append(anchor - toward)
+			elif joined.is_empty():
+				var axis := switch_along(int(record.get("rotation_quarters", 0)))
+				candidates.append(anchor + axis)
+				candidates.append(anchor - axis)
+		elif entity_id == LOOP and not (record.get("coaster_joints") is Array and not (record.get("coaster_joints") as Array).is_empty()):
+			continue
+		else:
+			var offered := connections(record)
+			for cell: Vector3i in offered:
+				# A one-lower joint (a slope's low end, a rail's slope reach) is
+				# the same end as its same-level joint: the level cell stands for it.
+				if cell.y == anchor.y - 1 and offered.has(cell + Vector3i.UP):
+					continue
+				candidates.append(cell)
+		for next: Vector3i in candidates:
+			# Taken, or already joined through its one-lower alternative (a
+			# slope's low end meeting the slope below it).
+			if tracks.has(next) or joined.has(next + Vector3i.DOWN):
+				continue
+			var along := curve_end_heading(record, next) if record.has("curve") else Vector3.ZERO
+			if along.length() < 0.5:
+				along = Vector3(next.x - anchor.x, 0.0, next.z - anchor.z)
+			if along.length() < 0.5:
+				continue
+			ends.append({"cell": anchor, "next": next, "along": along.normalized(), "instance_id": instance_id})
+	return ends
+
+
 ## The connected track reachable from `start`: {cell: Array[Vector3i] of the
 ## cells it joins}. A start with no track piece yields {start: []} so riders
 ## keep a one-cell chain exactly as before.

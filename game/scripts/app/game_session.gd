@@ -39,6 +39,7 @@ const REASON_TEXT := {
 	"CROSS_BLOCKED": "The crossing does not fit here: a red cell is in the way. Move, turn (W / R) or resize (Shift-aim, X / C, 4-9).",
 	"CURVE_PLACED": "Curve laid. Rails join its entry (behind) and its exit (ahead in the new direction); a 45 or 135 curve ends on a diagonal that only another curve continues.",
 	"CURVE_BLOCKED": "The curve does not fit here: a red cell is in the way (ground, tree, hill or block). Move, turn (W / R) or resize (4-9, Shift-aim).",
+	"TRACK_SNAPPED": "Snapped to the track end — release to join.",
 	"COASTER_BOARDED": "Boarded the coaster car — 1-9 sets the speed, Shift or Escape leaves.",
 	"COASTER_LEFT": "Left the coaster car.",
 	"ALREADY_RIDING": "Already riding.",
@@ -104,6 +105,9 @@ var _station_visuals: Dictionary = {}
 var _station_visual_materials: Dictionary = {}
 var _placement_preview: Node3D
 var _placement_preview_key := ""
+## Snap to a track end: the end last announced ("Snapped to the track end"),
+## so the line shows once per snap.
+var _snap_announced := ""
 var _held_item_view: HeldItemView
 var fire_service: FireService
 ## Set by the app before initialize(): Settings > Graphics terrain view distance.
@@ -2998,9 +3002,19 @@ func _update_placement_preview() -> void:
 ## count, red blocked — so the player sees exactly what release will build.
 func _update_drag_preview(drag: Dictionary) -> void:
 	if not drag.get("active", false):
+		_snap_announced = ""
 		_hide_placement_preview()
 		return
-	var key := "drag|%s|%d|%s|%s|%d|%d" % [str(drag.get("blueprint_id", "")), int(drag.voxel_id), drag.anchor, drag.end, int(drag.get("rotation_quarters", 0)), int(drag.affordable)]
+	var snap: Dictionary = drag.get("snap", {})
+	var snap_key := ""
+	if not snap.is_empty():
+		snap_key = "%s@%s" % [str(snap.get("instance_id", "")), str(snap.get("next", Vector3i.ZERO))]
+	if snap_key.is_empty():
+		_snap_announced = ""
+	elif snap_key != _snap_announced:
+		_snap_announced = snap_key
+		_on_interaction_feedback("TRACK_SNAPPED")
+	var key := "drag|%s|%d|%s|%s|%d|%d|%s" % [str(drag.get("blueprint_id", "")), int(drag.voxel_id), drag.anchor, drag.end, int(drag.get("rotation_quarters", 0)), int(drag.affordable), snap_key]
 	for entry in drag.cells:
 		key += "|" + str(entry.state)[0]
 	if key == _placement_preview_key:
@@ -3008,6 +3022,8 @@ func _update_drag_preview(drag: Dictionary) -> void:
 	_hide_placement_preview()
 	_placement_preview = Node3D.new()
 	_placement_preview.name = "DragPreview"
+	if not snap.is_empty():
+		_add_snap_hint(_placement_preview, str(snap.get("instance_id", "")))
 	# P3K: plans may mix block types (blueprints), so "ok" materials are keyed
 	# by the cell's own voxel so each ghost shows the block it will become.
 	var materials := {}
@@ -3055,6 +3071,20 @@ func _update_drag_preview(drag: Dictionary) -> void:
 		_add_visual_parts(holder, [{"offset": [0.0, 0.0, 0.0], "size": [0.9, 0.9, 0.9]}], materials[state_key], false)
 	add_child(_placement_preview)
 	_placement_preview_key = key
+
+
+## Snap to a track end (owner playtest 2026-09-21 item 2): a translucent
+## yellow glow around the piece the ghost will join, under the preview root
+## (never under the piece's body, so it is not baked into the piece).
+func _add_snap_hint(parent: Node3D, instance_id: String) -> void:
+	var record := workstations.station(instance_id)
+	if record.is_empty():
+		return
+	var material := _visual_material(Color(1.0, 0.86, 0.2, 0.45), "", Color(1.0, 0.78, 0.1))
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var hint := _add_mesh_box(parent, Vector3(1.04, 0.7, 1.04), CoasterRails.ride_point(record), material, "SnapHint")
+	hint.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 func _hide_placement_preview() -> void:

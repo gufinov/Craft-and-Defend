@@ -13,7 +13,7 @@ extends Node
 ## T173-T174) and `--coaster-rails-automation=visual` (needs a window: T163
 ## renders `coaster-rails.png`, T175 `coaster-curves.png`).
 ## T168, T179 track auto-clear, T180 trestle supports, T183 trestle trusses,
-## T185 one track style, T186 smooth sweep) and
+## T185 one track style, T186 smooth sweep, T187 snap to a track end) and
 ## `--coaster-rails-automation=visual` (needs a window: T163 renders
 ## `coaster-rails.png`, T181 `coaster-supports.png`, T186 `coaster-sweep-*.png`).
 
@@ -1346,6 +1346,75 @@ func _run_gate() -> void:
 	var sm_joints_ok: bool = sm_joints >= 20 and sm_max_gap < 0.02 and sm_max_angle < 2.0
 	var sm_swept_ok: bool = sm_max_surfaces > 0 and sm_max_surfaces <= 3 and sm_box_rails == 0
 	_record("T186_SMOOTH_TRACK", sm_loaded and sm_placed and sm_curve_laid.get("reason") == "CURVE_PLACED" and sm_bend_laid.get("reason") == "BEND_PLACED" and sm_bend_ok and sm_arc_ok and sm_joints_ok and sm_swept_ok, "a 4 x 1 smooth switch between plain rails leans (TrackCurve.up_at) within 1 degree of upright at t 0, 0.02, 0.5 and 1, peaks between 3 degrees and the full bank and never steps more than 2 degrees per 0.01 t; a radius-4 curve leans the full bank at its middle and none at its ends; at every joint of both runs the two pieces' end rings coincide (point within 0.02, across within 2 degrees); every piece's rails and spine are one swept ArrayMesh of at most three surfaces with no rail boxes", {"loaded": sm_loaded, "placed": sm_placed, "curve": sm_curve_laid.get("reason"), "bend": sm_bend_laid.get("reason"), "bend_tilt_at_0_002_05_1": sm_bend_ends, "bend_max_tilt": snappedf(sm_max_tilt, 0.01), "bend_max_step": snappedf(sm_max_step, 0.001), "full_bank": snappedf(sm_full_bank, 0.01), "arc_middle": snappedf(sm_arc_middle, 0.01), "arc_ends": [snappedf(sm_arc_start, 0.001), snappedf(sm_arc_end, 0.001)], "pieces": sm_pieces, "joints": sm_joints, "joint_gap": snappedf(sm_max_gap, 0.0001), "joint_angle": snappedf(sm_max_angle, 0.01), "worst_joint": sm_worst, "max_surfaces": sm_max_surfaces, "box_rails": sm_box_rails})
+	# T187 snap to a track end (owner playtest 2026-09-21 item 2: "give the
+	# piece it is going to attach to a color highlight, like yellow,
+	# indicating that a connect was made"): three plain rails heading +x on a
+	# levelled plate report exactly two open ends; a Rail Curve press aimed
+	# one cell beside and one short of the run's end snaps its entry onto the
+	# end's free cell heading +x, names the last rail (SnapHint on the ghost),
+	# clears when aimed three cells away, and the snapped lay joins the run.
+	var sn := Vector3i(46, 0, 66)
+	var sn_loaded := await _wait_levelled(sn + Vector3i(-3, 0, -4), 16, 14, 8, [sn, sn + Vector3i(2, 0, 0), sn + Vector3i(6, 0, 4)] as Array[Vector3i])
+	interaction.creative = false
+	app.session.inventory.try_transaction({}, {"rail": 8, "rail_curve": 24, "mine_cart": 1})
+	var sn_placed := true
+	var sn_rail_ids: Array[String] = []
+	for x in range(3):
+		var sn_rail := ws.try_place("rail", sn + Vector3i(x, 0, 0), world.query_cell, AABB(), 0)
+		sn_placed = sn_placed and bool(sn_rail.get("ok", false))
+		sn_rail_ids.append(str(sn_rail.get("details", {}).get("station", {}).get("instance_id", ws.station_at_cell(sn + Vector3i(x, 0, 0)))))
+	var sn_last_id := ws.station_at_cell(sn + Vector3i(2, 0, 0))
+	var sn_next := sn + Vector3i(3, 0, 0)
+	# Open ends of the run: exactly its two ends, west of the first rail and
+	# east of the last, heading out of the run.
+	var sn_ends: Array = []
+	for end: Dictionary in CoasterRails.open_ends(CoasterRails.track_records(ws.stations)):
+		if sn_rail_ids.has(str(end.instance_id)):
+			sn_ends.append({"cell": end.cell, "next": end.next, "along": end.along})
+	var sn_west := false
+	var sn_east := false
+	for end: Dictionary in sn_ends:
+		if Vector3i(end.next) == sn - Vector3i(1, 0, 0) and Vector3i(end.cell) == sn and Vector3(end.along).is_equal_approx(Vector3(-1, 0, 0)):
+			sn_west = true
+		if Vector3i(end.next) == sn_next and Vector3i(end.cell) == sn + Vector3i(2, 0, 0) and Vector3(end.along).is_equal_approx(Vector3(1, 0, 0)):
+			sn_east = true
+	var sn_two_ends: bool = sn_ends.size() == 2 and sn_west and sn_east
+	# The press: straight down onto the cell one beside (+z) and one short (-x)
+	# of the free cell, with the build orientation north (0).
+	_hotbar_slot_for("rail_curve", 4)
+	interaction.placement_rotation_quarters = 0
+	interaction.set_curve_sweep(90, false)
+	interaction.set_curve_radius(4)
+	var sn_raw := sn_next + Vector3i(-1, 0, 1)
+	var sn_press := interaction.begin_drag_place(Vector3(sn_raw) + Vector3(0.5, 3.0, 0.5), Vector3.DOWN)
+	var sn_state := interaction.drag_state()
+	var sn_snap: Dictionary = sn_state.get("snap", {})
+	var sn_snapped: bool = str(sn_state.get("mode", "")) == "curve" and str(sn_snap.get("instance_id", "")) == sn_last_id and Vector3i(sn_snap.get("next", Vector3i.MAX)) == sn_next and Vector3i(sn_state.get("anchor", Vector3i.MAX)) == sn_next and int(sn_state.get("rotation_quarters", -1)) == 1
+	app.session._update_drag_preview(sn_state)
+	var sn_hint_shown: bool = app.session._placement_preview != null and app.session._placement_preview.get_node_or_null("SnapHint") != null
+	# Aimed three cells away: the snap clears and the hint goes.
+	var sn_far := sn_next + Vector3i(3, 0, 3)
+	sn_state = interaction.update_drag_place(Vector3(sn_far) + Vector3(0.5, 3.0, 0.5), Vector3.DOWN, false)
+	var sn_cleared: bool = (sn_state.get("snap", {}) as Dictionary).is_empty() and Vector3i(sn_state.get("anchor", Vector3i.MAX)) == sn_far
+	app.session._update_drag_preview(sn_state)
+	var sn_hint_gone: bool = app.session._placement_preview != null and app.session._placement_preview.get_node_or_null("SnapHint") == null
+	# Aimed back: snapped again; release lays the curve joined to the run.
+	sn_state = interaction.update_drag_place(Vector3(sn_raw) + Vector3(0.5, 3.0, 0.5), Vector3.DOWN, false)
+	var sn_resnapped: bool = str((sn_state.get("snap", {}) as Dictionary).get("instance_id", "")) == sn_last_id and Vector3i(sn_state.get("anchor", Vector3i.MAX)) == sn_next and int(sn_state.get("rotation_quarters", -1)) == 1
+	var sn_laid := interaction.commit_drag_place()
+	interaction.placement_rotation_quarters = 0
+	var sn_exit: Vector3i = sn_laid.get("changes", {}).get("exit", sn_next)
+	for step in [1, 2]:
+		sn_placed = sn_placed and bool(ws.try_place("rail", sn_exit + Vector3i(0, 0, step), world.query_cell, AABB(), 0).get("ok", false))
+	var sn_chain := CoasterRails.chain(ws.stations, sn)
+	var sn_joined: bool = sn_chain.has(sn_next) and sn_chain.has(sn_exit) and sn_chain.has(sn_exit + Vector3i(0, 0, 2)) and (sn_chain.get(sn + Vector3i(2, 0, 0), []) as Array).has(sn_next)
+	var sn_cart := ws.try_place("mine_cart", sn + Vector3i(0, 1, 0), world.query_cell, AABB(), 0)
+	var sn_cart_id := str(sn_cart.get("details", {}).get("station", {}).get("instance_id", ""))
+	var sn_ride := _ride_cart(sn_cart_id, [sn_exit, sn_exit + Vector3i(0, 0, 2)] as Array[Vector3i], 900, sn_exit + Vector3i(0, 0, 2))
+	var sn_rode: bool = (sn_ride.reached as Dictionary).has(sn_exit) and (sn_ride.reached as Dictionary).has(sn_exit + Vector3i(0, 0, 2))
+	if sn_cart.get("ok", false):
+		ws.try_dismantle(sn_cart_id, world.query_cell, AABB())
+	_record("T187_SNAP_TO_END", sn_loaded and sn_placed and sn_two_ends and sn_press.get("reason") == "DRAG_STARTED" and sn_snapped and sn_hint_shown and sn_cleared and sn_hint_gone and sn_resnapped and sn_laid.get("reason") == "CURVE_PLACED" and sn_joined and sn_cart.get("ok", false) and sn_rode, "three plain rails heading +x report exactly two open ends (west of the first, east of the last, heading out); a Rail Curve right-press aimed one cell beside and one short of the run's free cell snaps: the entry is that cell, the heading +x (rotation 1), drag_state().snap names the last rail and the ghost carries a SnapHint; aimed three cells away the snap and hint clear; aimed back it re-snaps and release lays the curve (CURVE_PLACED) joined to the run, and a cart from the first rail rides through the curve past its exit", {"loaded": sn_loaded, "placed": sn_placed, "ends": str(sn_ends), "two_ends": sn_two_ends, "press": sn_press.get("reason"), "snap": str(sn_snap), "snapped": sn_snapped, "hint_shown": sn_hint_shown, "cleared": sn_cleared, "hint_gone": sn_hint_gone, "resnapped": sn_resnapped, "laid": sn_laid.get("reason"), "exit": sn_exit, "joined": sn_joined, "cart": sn_cart.get("reason"), "reached": str(sn_ride.reached)})
 
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on
