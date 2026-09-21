@@ -500,6 +500,24 @@
         194
       ]
     },
+    "miner": {
+      "atlas": "derived",
+      "rect": [
+        540,
+        1068,
+        201,
+        193
+      ]
+    },
+    "ore_bin": {
+      "atlas": "derived",
+      "rect": [
+        804,
+        1072,
+        185,
+        181
+      ]
+    },
     "gold_ore": {
       "atlas": "gold",
       "rect": [

@@ -1447,6 +1447,9 @@ func _show_workstation(instance_id: String, station_type: String) -> void:
 		var service_type: String = session.workstations.station_type(instance_id)
 		if service_type in CRAFTING_STATION_TYPES:
 			resolved = service_type
+		elif session.workstations.is_container(instance_id):
+			# Industry containers (ore_bin, warehouse) open the Chest grid.
+			resolved = "chest"
 	_show_crafting(instance_id, resolved)
 
 

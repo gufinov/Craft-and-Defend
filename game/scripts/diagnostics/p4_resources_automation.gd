@@ -1,7 +1,8 @@
 class_name P4ResourcesAutomation
 extends Node
 
-## P4b-1 resource distribution and gold chain gate (T137–T140).
+## P4b-1 resource distribution and gold chain gate (T137–T140), plus the
+## industry miner (T193, docs/INDUSTRY.md).
 ## See docs/P4B_RESOURCE_DISTRIBUTION.md for the contract under test.
 
 const GOLD_ORE := P1TerrainGenerator.GOLD_ORE
@@ -42,6 +43,7 @@ func _run_gate() -> void:
 	app.session.simulation_paused = true
 	_test_gold_mining()
 	_test_gold_smelting()
+	await _test_miner()
 
 
 ## T137: sampled columns across the world obey the depth bands and rarity order
@@ -224,6 +226,106 @@ func _test_gold_smelting() -> void:
 		and int(finished.get("input", {}).get("count", 0)) == 0 and idle and bool(collected.get("ok", false)) and inventory.count("gold_ingot") == 2
 	_record("T140_GOLD_SMELTING", ok, "two Gold Ore and one Coal auto-start the gold_ingot recipe and yield two collectable Gold Ingots after two recipe durations",
 		{"placed": placed.get("ok", false), "started": started, "halfway": halfway, "finished": finished, "idle": idle, "collected": collected, "recipe_ok": recipe_ok, "duration": duration})
+
+
+## T193: on a levelled plate a miner beside an ore bin drills three iron ore
+## voxels within radius 3 into the bin, one per MINER_SECONDS; the voxels
+## become stone; with no ore left it idles ("no ore"); a bin-less miner
+## reports "no bin"; a save round-trip keeps the bin contents and the count.
+func _test_miner() -> void:
+	var session := app.session
+	var ws := session.workstations
+	var world := session.world
+	var miners: MinerService = session.miner_service
+	var origin := Vector3i(18, 0, 30)
+	var loaded := await _wait_levelled(origin + Vector3i(-6, 0, -6), 14, 14, 6)
+	if not loaded or miners == null:
+		_record("T193_MINER", false, "the miner fixture plate is loaded", {"loaded": loaded, "service": miners != null})
+		return
+	# Three iron ore voxels in the plate within radius 3 of the miner (one
+	# level down), a fourth well outside it, and a stone cell in between.
+	var ores: Array[Vector3i] = [origin + Vector3i(2, -1, 0), origin + Vector3i(-2, -1, 1), origin + Vector3i(0, -1, 3)]
+	for cell: Vector3i in ores:
+		world.set_cell(cell, IRON_ORE)
+	var far_ore := origin + Vector3i(5, -1, 0)
+	world.set_cell(far_ore, IRON_ORE)
+	session.inventory.try_transaction({}, {"miner": 2, "ore_bin": 1})
+	var placed_miner := ws.try_place("miner", origin, world.query_cell, AABB(Vector3(100.0, 100.0, 100.0), Vector3.ONE))
+	var miner_id := str(placed_miner.get("details", {}).get("station", {}).get("instance_id", ""))
+	var placed_bin := ws.try_place("ore_bin", origin + Vector3i(1, 0, 0), world.query_cell, AABB(Vector3(100.0, 100.0, 100.0), Vector3.ONE))
+	var bin_id := str(placed_bin.get("details", {}).get("station", {}).get("instance_id", ""))
+	var content_ok := ws.station_type(miner_id) == "miner" and ws.is_container(bin_id) and ws.container_slots(bin_id).size() == 9 \
+		and str(session.registry.recipe("miner").get("station", "")) == "workbench" and int(session.registry.recipe("miner").get("recipe_book_order", 0)) == 214 \
+		and int(session.registry.recipe("ore_bin").get("recipe_book_order", 0)) == 215 \
+		and ItemIconCatalog.is_measured("miner") and ItemIconCatalog.is_measured("ore_bin")
+	var visuals_ok := session._station_visuals.has(miner_id) and session._station_visuals[miner_id].get_node_or_null("Drill") != null \
+		and session._station_visuals.has(bin_id) and session._station_visuals[bin_id].get_node_or_null("OreHeap") != null
+	# Nothing happens before the first tick.
+	miners.advance(MinerService.MINER_SECONDS * 0.5, false)
+	var early := ws.container_count(bin_id, "iron_ore")
+	var counts: Array[int] = []
+	var statuses: Array[String] = []
+	for _tick in range(3):
+		miners.advance(MinerService.MINER_SECONDS + 0.1, false)
+		counts.append(ws.container_count(bin_id, "iron_ore"))
+		statuses.append(str(miners.miner_state(miner_id).get("status", "")))
+	var ores_stone := true
+	for cell: Vector3i in ores:
+		if int(world.query_cell(cell).get("voxel_id", -1)) != STONE:
+			ores_stone = false
+	var far_kept := int(world.query_cell(far_ore).get("voxel_id", -1)) == IRON_ORE
+	var mined_three := int(miners.miner_state(miner_id).get("mined", 0)) == 3
+	var drilling := statuses.size() == 3 and statuses[0].begins_with("drilling iron ore") and statuses[2].begins_with("drilling iron ore")
+	# Fourth tick: no ore left in range, nothing changes.
+	miners.advance(MinerService.MINER_SECONDS + 0.1, false)
+	var after_fourth := ws.container_count(bin_id, "iron_ore")
+	var no_ore := str(miners.miner_state(miner_id).get("status", "")) == MinerService.STATUS_NO_ORE
+	var status_line := session.miner_status_line(miner_id)
+	var bin_body: Node = session._station_visuals[bin_id]
+	var heap_shown: bool = bin_body.get_node("OreHeap").get_child_count() > 0
+	# A bin-less miner beside ore reports "no bin" and leaves the ore alone.
+	var lone := origin + Vector3i(0, 0, -5)
+	var lone_ore := lone + Vector3i(1, -1, 0)
+	world.set_cell(lone_ore, IRON_ORE)
+	var placed_lone := ws.try_place("miner", lone, world.query_cell, AABB(Vector3(100.0, 100.0, 100.0), Vector3.ONE))
+	var lone_id := str(placed_lone.get("details", {}).get("station", {}).get("instance_id", ""))
+	miners.advance(MinerService.MINER_SECONDS + 0.1, false)
+	var no_bin := str(miners.miner_state(lone_id).get("status", "")) == MinerService.STATUS_NO_BIN and int(world.query_cell(lone_ore).get("voxel_id", -1)) == IRON_ORE
+	var no_bin_line := session.miner_status_line(lone_id)
+	# Save round-trip (JSON, as the save file does) keeps the bin and the counter.
+	var saved: Variant = JSON.parse_string(JSON.stringify(ws.snapshot()))
+	var restored_ws := WorkstationService.new(session.registry, F0Inventory.new(session.registry))
+	var restored := restored_ws.restore(saved, world.query_cell) if saved is Dictionary else {"ok": false, "reason": "SNAPSHOT_NOT_JSON"}
+	var restored_miner: Dictionary = restored_ws.station(miner_id).get("miner", {})
+	var round_trip: bool = restored.get("ok", false) and restored_ws.container_count(bin_id, "iron_ore") == 3 \
+		and int(restored_miner.get("mined", 0)) == 3 and str(restored_miner.get("status", "")) == MinerService.STATUS_NO_ORE \
+		and restored_ws.container_slots(bin_id).size() == 9
+	var ok: bool = bool(placed_miner.get("ok", false)) and bool(placed_bin.get("ok", false)) and content_ok and visuals_ok and early == 0 \
+		and counts == ([1, 2, 3] as Array[int]) and ores_stone and far_kept and mined_three and drilling and after_fourth == 3 and no_ore \
+		and status_line.begins_with("Miner: 3 ore mined, no ore.") and heap_shown and bool(placed_lone.get("ok", false)) and no_bin \
+		and no_bin_line.begins_with("Miner: 0 ore mined, no bin.") and round_trip
+	_record("T193_MINER", ok, "a miner beside an ore bin drills the three iron ore voxels within radius 3 into the bin one per MINER_SECONDS (the voxels become stone, the far ore stays), then idles with 'no ore'; a bin-less miner reports 'no bin'; the status lines read as documented; a save round-trip keeps the bin's three ore and the miner's count",
+		{"placed_miner": placed_miner.get("reason"), "placed_bin": placed_bin.get("reason"), "content_ok": content_ok, "visuals_ok": visuals_ok, "early": early, "counts": counts, "statuses": statuses, "ores_stone": ores_stone, "far_kept": far_kept, "mined_three": mined_three, "after_fourth": after_fourth, "no_ore": no_ore, "status_line": status_line, "heap_shown": heap_shown, "no_bin": no_bin, "no_bin_line": no_bin_line, "round_trip": round_trip, "restored": restored.get("reason")})
+
+
+## Levels a stone plate (top at y -1, air above) and waits until it is
+## editable; terrain streams in over a few seconds.
+func _wait_levelled(origin: Vector3i, width: int, depth: int, height: int) -> bool:
+	var deadline := Time.get_ticks_msec() + 10000
+	while Time.get_ticks_msec() < deadline:
+		var clear := true
+		for x in range(width):
+			for z in range(depth):
+				app.session.world.set_cell(origin + Vector3i(x, -1, z), STONE)
+				for y in range(height):
+					app.session.world.set_cell(origin + Vector3i(x, y, z), AIR)
+				var plate := app.session.world.query_cell(origin + Vector3i(x, -1, z))
+				if plate.get("state") != "LOADED" or int(plate.get("voxel_id", 0)) != STONE:
+					clear = false
+		if clear:
+			return true
+		await get_tree().process_frame
+	return false
 
 
 func _fixture_world_query(cell: Vector3i) -> Dictionary:

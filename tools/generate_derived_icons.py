@@ -42,6 +42,9 @@ DERIVED = [
     "rail_cross",
     # CoasterCraft tracks (docs/COASTERCRAFT_TRACKS.md): drawn placeholders.
     "rail_curve",
+    # Industry wave 1 (docs/INDUSTRY.md): fixed order coastercraft_shop, miner,
+    # ore_bin, warehouse, foundry (integration reconciles the cards).
+    "miner", "ore_bin",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -327,6 +330,50 @@ def icon_rail_curve() -> Image.Image:
     return canvas
 
 
+def icon_miner() -> Image.Image:
+    """Miner: an iron drill cone pointing down from a steel frame on a stone base, gold studs."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    stone = (128, 134, 140, 255)
+    steel = (110, 118, 126, 255)
+    dark = (58, 62, 68, 255)
+    gold = (226, 170, 44, 255)
+    # Stone base slab with gold studs at the corners.
+    draw.rectangle([28, 196, 228, 236], fill=stone, outline=dark, width=5)
+    for x in (48, 208):
+        draw.rectangle([x - 9, 206, x + 9, 224], fill=gold)
+    # Two frame posts and the crossbar carrying the drill.
+    for x in (64, 192):
+        draw.rectangle([x - 12, 60, x + 12, 200], fill=steel, outline=dark, width=4)
+    draw.rectangle([44, 44, 212, 76], fill=steel, outline=dark, width=4)
+    # The motor block hanging from the crossbar, then the drill cone.
+    draw.rectangle([98, 76, 158, 118], fill=dark)
+    draw.polygon([(88, 118), (168, 118), (128, 196)], fill=steel, outline=dark)
+    for y in (134, 152, 170):
+        half = (196 - y) * 40 // 78
+        draw.line([(128 - half, y), (128 + half, y)], fill=dark, width=5)
+    return canvas
+
+
+def icon_ore_bin() -> Image.Image:
+    """Ore Bin: an open oak crate with iron bands, heaped with iron ore lumps."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    wood = (139, 82, 38, 255)
+    dark = (92, 52, 24, 255)
+    iron = (110, 118, 126, 255)
+    ore = (150, 156, 162, 255)
+    rust = (196, 120, 70, 255)
+    draw.polygon([(40, 112), (216, 112), (204, 228), (52, 228)], fill=wood, outline=dark)
+    for x in (72, 128, 184):
+        draw.rectangle([x - 7, 112, x + 7, 228], fill=iron)
+    draw.rectangle([36, 104, 220, 122], fill=dark)
+    for cx, cy, r in ((72, 100, 30), (128, 84, 36), (184, 100, 30), (100, 114, 24), (156, 114, 24)):
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=ore, outline=(70, 74, 80, 255), width=4)
+        draw.ellipse([cx - r // 2, cy - r // 2, cx + r // 3, cy + r // 3], fill=rust)
+    return canvas
+
+
 def icon_mine_cart() -> Image.Image:
     """An oak cart with iron bands on two wheels, seen from the side."""
     canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
@@ -352,6 +399,7 @@ BUILDERS = {
     "coaster_car": lambda: owner_icon("coaster_car"), "rail_climb": icon_rail_climb,
     "rail_cross": icon_rail_cross,
     "rail_curve": icon_rail_curve,
+    "miner": icon_miner, "ore_bin": icon_ore_bin,
 }
 
 
