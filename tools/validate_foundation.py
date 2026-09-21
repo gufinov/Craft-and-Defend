@@ -16,7 +16,11 @@ NAVIGATION_SCENARIOS = {"corridor_detour", "trench", "two_step_stair", "bridge_r
 ATTRIBUTE_ENTITIES = {"core_of_power", "enemy_core", "torch", "wall_lantern", "post_lantern", "campfire", "light_block_blue", "light_block_red"}
 ATTRIBUTE_ROLES = {"core", "light", "decor", "rail"}
 # Coaster rails side project (docs/COASTER_RAILS.md): track pieces and the cart.
-COASTER_TOOLS = {"loop", "switch", "climb", "bend", "cross", "curve"}
+COASTER_TOOLS = {"loop", "climb", "bend", "cross", "curve"}
+# `rail_switch` is both the Rail Switch tool (coaster_tool "bend", laying floating
+# `rail_loop` curve pieces) and the grounded blocky lane-shift piece the loop
+# element lays, so it alone keeps its support.
+GROUNDED_COASTER_TOOL_ENTITIES = {"rail_switch"}
 ATTRIBUTE_MOUNTS = {"ground", "wall", "ceiling", "any_solid_top", "any_solid_top_or_wall", "block"}
 
 
@@ -267,7 +271,7 @@ def validate_bundle(bundle):
         # is a 1x1 floating piece (no support) with its own drag tool; a cart
         # carries a positive rail speed and mounts on rails only.
         require("slope" not in entity or (entity["slope"] == 1 and len(entity["occupied_offsets"]) == 1 and "linear" not in entity), "slope rails are 1x1, rise 1 and are not linear: " + entity["id"])
-        require("coaster_tool" not in entity or (entity["coaster_tool"] in COASTER_TOOLS and len(entity["occupied_offsets"]) == 1 and (entity["support_offsets"] == [] or entity["coaster_tool"] == "switch") and "linear" not in entity), "invalid coaster tool entity: " + entity["id"])
+        require("coaster_tool" not in entity or (entity["coaster_tool"] in COASTER_TOOLS and len(entity["occupied_offsets"]) == 1 and (entity["support_offsets"] == [] or entity["id"] in GROUNDED_COASTER_TOOL_ENTITIES) and "linear" not in entity), "invalid coaster tool entity: " + entity["id"])
         require(("slope" in entity) + ("coaster_tool" in entity) <= 1, "an entity is a slope or a coaster tool, not both: " + entity["id"])
         cart = entity.get("cart")
         require(cart is None or (isinstance(cart, dict) and set(cart) == {"rail_speed"} and type(cart["rail_speed"]) in (int, float)
