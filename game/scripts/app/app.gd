@@ -135,6 +135,10 @@ var foundry_card: PanelContainer
 var foundry_column: VBoxContainer
 var foundry_target_buttons: Array[Button] = []
 var foundry_status_label: Label
+## Storage network card: the foundry panel refreshes itself while open
+## (slots fill from the storage, the bar runs) every FOUNDRY_POLL_SECONDS.
+const FOUNDRY_POLL_SECONDS := 0.25
+var _foundry_poll_remaining := 0.0
 var cursor_stack_panel: PanelContainer
 var cursor_stack_icon: TextureRect
 var cursor_stack_count: Label
@@ -373,6 +377,14 @@ func _process(delta: float) -> void:
 		# P4a-2: ammo, cooldown and supply change while the panel is open (the
 		# weapon fires or auto-reloads), so the weapon column refreshes live.
 		_refresh_siege_panel_state()
+	elif state == AppState.CRAFTING and _crafting_station_type == "foundry" and session != null and session.foundry != null:
+		# Storage network card: poll the foundry (slots, bar, status) while the
+		# panel is open; the world runs (or not) on its own - nothing is
+		# advanced from here.
+		_foundry_poll_remaining -= delta
+		if _foundry_poll_remaining <= 0.0:
+			_foundry_poll_remaining = FOUNDRY_POLL_SECONDS
+			_refresh_foundry_live()
 	if not display_confirm_panel.visible:
 		return
 	_display_confirm_remaining = maxf(0.0, _display_confirm_remaining - delta)
@@ -1172,13 +1184,13 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	foundry_column.add_theme_constant_override("separation", 8)
 	foundry_card.add_child(foundry_column)
 	var foundry_help := Label.new()
-	foundry_help.text = "Smelts from the Warehouse it touches"
+	foundry_help.text = "Fed by the storage it touches: Coal and ore fill the slots, ingots go back"
 	foundry_help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	foundry_help.add_theme_font_size_override("font_size", 14)
 	foundry_help.add_theme_color_override("font_color", Color("9fd8e8"))
 	foundry_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	foundry_help.mouse_filter = Control.MOUSE_FILTER_STOP
-	foundry_help.tooltip_text = "Every 10 seconds the Foundry takes one ore and one Coal from the Warehouse beside it and puts the ingot back. Any = the first ingot whose ore is there (iron before gold)."
+	foundry_help.tooltip_text = "Coal and the chosen ore move from the storage beside the Foundry (a Warehouse, the chests beside it, chained warehouses) into its slots, up to 64 each; every ingot smelted goes back into that storage. Any = the first ingot whose ore is there (iron before gold). You can also load the slots by hand like a Furnace."
 	foundry_column.add_child(foundry_help)
 	foundry_status_label = Label.new()
 	foundry_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1899,11 +1911,6 @@ func _refresh_crafting_panel() -> void:
 			crafting_context_label.text = "STORE AND TAKE ITEMS  ·  SIEGE WEAPONS IN SUPPLY RANGE RELOAD FROM HERE  ·  ESC CLOSES"
 		_refresh_chest_panel_state()
 		return
-	if _crafting_station_type == "foundry":
-		crafting_title_label.text = "FOUNDRY"
-		crafting_context_label.text = "PICK THE INGOT  ·  SMELTS FROM THE WAREHOUSE BESIDE IT  ·  ESC CLOSES"
-		_refresh_foundry_panel_state()
-		return
 	var recipes := _available_crafting_recipes()
 	var grid_size := 2
 	var grid_capacity := 4
@@ -1928,7 +1935,19 @@ func _refresh_crafting_panel() -> void:
 		crafting_context_label.text = "INPUT + FUEL → RETAINED OUTPUT  ·  SHIFT+CLICK MOVES ALL  ·  RIGHT-CLICK SPLITS"
 		crafting_grid_help.text = "Click ore or Coal, then Raw Input / Fuel adds 1 (Shift+Click 5)"
 		crafting_grid_help.tooltip_text = "Real Furnace storage: input, fuel and finished output persist with this placed Furnace. Drag, double-click and right-click gestures also work."
-	furnace_controls.visible = _crafting_station_type == "furnace"
+	elif _crafting_station_type == "foundry":
+		# Storage network card: the foundry shows its three slots like the
+		# Furnace (same widgets and gestures), a bar and a time for the job.
+		grid_size = 3
+		grid_capacity = 3
+		crafting_title_label.text = "FOUNDRY"
+		crafting_context_label.text = "ORE + FUEL FROM THE STORAGE BESIDE IT  ·  INGOTS GO BACK  ·  PICK THE INGOT  ·  ESC CLOSES"
+		crafting_grid_help.text = "Fills itself from the storage it touches; click ore or Coal, then Ore / Fuel adds 1 (Shift+Click 5)"
+		crafting_grid_help.tooltip_text = "Ore, fuel and output persist with this placed Foundry. Storage beside it (Warehouse, chests, chained warehouses) tops the slots up to 64 and takes the ingots. Drag, double-click and right-click gestures also work."
+	furnace_controls.visible = _uses_furnace_slots()
+	furnace_auto_load_label.visible = _crafting_station_type == "furnace"
+	furnace_auto_load_slider.visible = _crafting_station_type == "furnace"
+	craft_selected_button.visible = _crafting_station_type != "foundry"
 	_ensure_crafting_grid_capacity(grid_capacity)
 	crafting_grid.columns = grid_size
 	for child in crafting_grid.get_children():
@@ -1968,12 +1987,12 @@ func _refresh_crafting_panel() -> void:
 		var item_id := _craft_grid_items[index]
 		var item_count := 0
 		var empty_label := "Empty"
-		if _crafting_station_type == "furnace":
+		if _uses_furnace_slots():
 			var slot_name: String = ["input", "fuel", "output"][index]
 			var furnace_stack: Dictionary = session.workstations.furnace_slots(_crafting_station_id).get(slot_name, {"item_id": "", "count": 0})
 			item_id = str(furnace_stack.get("item_id", ""))
 			item_count = int(furnace_stack.get("count", 0))
-			empty_label = ["Raw Input", "Fuel", "Output"][index]
+			empty_label = _furnace_slot_labels()[index]
 			cell.tooltip_text = "%s · click with a selected item adds one, Shift+Click adds five; double-click collects; right-click picks half or deposits one" % empty_label
 			cell.configure_source("furnace", index, item_id)
 			cell.configure_target("furnace", index)
@@ -2005,7 +2024,10 @@ func _refresh_crafting_panel() -> void:
 		crafting_grid_slots.append(cell)
 		crafting_grid.add_child(cell)
 	craft_selected_button.text = "Load ×1  ·  Shift+Click ×5" if _crafting_station_type == "furnace" else "Craft ×1  ·  Shift+Click ×5"
-	crafting_clear_button.text = "Return Input + Fuel" if _crafting_station_type == "furnace" else "Clear Grid"
+	crafting_clear_button.text = "Return Input + Fuel" if _crafting_station_type == "furnace" else ("Return Ore + Fuel" if _crafting_station_type == "foundry" else "Clear Grid")
+	if _crafting_station_type == "foundry":
+		_refresh_foundry_panel_state()
+		return
 	var selected_recipe := session.registry.recipe(_selected_recipe_id)
 	if _crafting_station_type == "furnace":
 		if selected_recipe.is_empty():
@@ -2041,9 +2063,9 @@ func _apply_crafting_card_layout() -> void:
 		crafting_inventory_help.text = "Drag onto the chest, or select then click a chest tile"
 	else:
 		crafting_inventory_help.text = "Drag into the grid, or select then choose a cell"
-	crafting_grid_card.visible = not siege and not chest and not foundry
+	crafting_grid_card.visible = not siege and not chest
 	crafting_recipe_card.visible = not siege and not chest and not foundry
-	crafting_inventory_card.visible = not foundry
+	crafting_inventory_card.visible = true
 	siege_card.visible = siege
 	siege_legend_card.visible = siege
 	chest_card.visible = chest
@@ -2249,6 +2271,57 @@ func _refresh_foundry_panel_state() -> void:
 	for index in range(targets.size()):
 		foundry_target_buttons[index].set_pressed_no_signal(targets[index] == current)
 	foundry_status_label.text = "%s  ·  made %d" % [str(foundry_state.get("status", "")).capitalize(), int(foundry_state.get("made", 0))]
+	_refresh_foundry_progress()
+
+
+## The foundry's bar, time label and output line (the furnace's widgets).
+func _refresh_foundry_progress() -> void:
+	if session == null or session.foundry == null or _crafting_station_type != "foundry" or _crafting_station_id.is_empty():
+		return
+	var job: Dictionary = session.foundry.job_status(_crafting_station_id)
+	var progress := clampf(float(job.get("progress", 0.0)), 0.0, 1.0)
+	furnace_progress_bar.value = progress * 100.0
+	var slots: Dictionary = session.workstations.furnace_slots(_crafting_station_id)
+	var output_stack: Dictionary = slots.get("output", {"item_id": "", "count": 0})
+	var retained_text := "Empty" if str(output_stack.get("item_id", "")).is_empty() else "%s ×%d — goes back to storage" % [session.registry.display_name(str(output_stack.item_id)), int(output_stack.count)]
+	if bool(job.get("active", false)):
+		var recipe := session.registry.recipe(str(job.get("recipe_id", "")))
+		var output_name := "Ingot"
+		if not recipe.is_empty() and not recipe.get("outputs", {}).is_empty():
+			output_name = session.registry.display_name(str(recipe.outputs.keys()[0]))
+		furnace_progress_label.text = "%s  ·  %d%%  ·  %.1f s" % [output_name, roundi(progress * 100.0), float(job.get("remaining_seconds", 0.0))]
+		crafting_output_label.text = "OUTPUT: %s\nSMELTING %s — %d%%" % [retained_text, output_name, roundi(progress * 100.0)]
+	else:
+		furnace_progress_label.text = "IDLE · %s" % str(session.foundry.state(_crafting_station_id).get("status", "")).capitalize()
+		crafting_output_label.text = "OUTPUT: %s\nRuns on its own once Coal and ore are in the slots" % retained_text
+
+
+## The 0.25 s poll while the panel is open: the three slot cells in place,
+## then the status, bar and time.
+func _refresh_foundry_live() -> void:
+	if session == null or _crafting_station_type != "foundry" or _crafting_station_id.is_empty() or crafting_grid_slots.size() < 3:
+		return
+	var slots: Dictionary = session.workstations.furnace_slots(_crafting_station_id)
+	for index in range(3):
+		var slot_name: String = ["input", "fuel", "output"][index]
+		var stack: Dictionary = slots.get(slot_name, {"item_id": "", "count": 0})
+		var item_id := str(stack.get("item_id", ""))
+		var cell: CraftingItemSlot = crafting_grid_slots[index]
+		cell.configure_source("furnace", index, item_id)
+		cell.set_presentation(_furnace_slot_labels()[index] if item_id.is_empty() else session.registry.display_name(item_id), int(stack.get("count", 0)))
+	_refresh_foundry_panel_state()
+
+
+## Furnace and Foundry share the three-slot widgets and gestures (the
+## foundry's ore slot reads as the furnace's "input" in WorkstationService).
+func _uses_furnace_slots() -> bool:
+	return _crafting_station_type in ["furnace", "foundry"]
+
+
+func _furnace_slot_labels() -> Array[String]:
+	if _crafting_station_type == "foundry":
+		return ["Ore", "Fuel", "Output"]
+	return ["Raw Input", "Fuel", "Output"]
 
 
 func _on_foundry_target_pressed(target: String) -> void:
@@ -2587,16 +2660,16 @@ func _selection_message(item_id: String) -> String:
 		return "%s is not ammunition for this weapon. Select %s." % [display_name, " or ".join(names)]
 	if _crafting_station_type == "chest":
 		return "%s selected — click a chest tile to store 1, Shift+Click stores 5, double-click stores all" % display_name
-	if _crafting_station_type != "furnace":
+	if not _uses_furnace_slots():
 		return "%s selected. Choose a crafting-grid cell." % display_name
 	var role := session.workstations._furnace_role_for_item(item_id)
 	if role.is_empty():
-		return "%s cannot go into a Furnace. Select an ore or Coal." % display_name
-	return "%s selected — click %s to add 1, Shift+Click adds 5" % [display_name, "Raw Input" if role == "input" else "Fuel"]
+		return "%s cannot go into a %s. Select an ore or Coal." % [display_name, _crafting_station_type.capitalize()]
+	return "%s selected — click %s to add 1, Shift+Click adds 5" % [display_name, _furnace_slot_labels()[0] if role == "input" else "Fuel"]
 
 
 func _on_crafting_grid_slot_pressed(index: int) -> void:
-	if _crafting_station_type == "furnace":
+	if _uses_furnace_slots():
 		# P3I.1: select an ore or Coal in the inventory, then click Raw Input /
 		# Fuel to add one at a time (Shift+click adds five via the gesture path).
 		if index in [0, 1] and not _crafting_selected_inventory_item.is_empty():
@@ -2628,7 +2701,7 @@ func _on_crafting_item_dropped(target_kind: String, target_index: int, payload: 
 			var stack := _chest_stack(source_index)
 			_withdraw_from_chest(str(stack.get("item_id", "")), int(stack.get("count", 0)))
 		return
-	if _crafting_station_type == "furnace":
+	if _uses_furnace_slots():
 		var furnace_result: Dictionary = {"ok": false, "reason": "INVALID_SLOT"}
 		if source_kind == "inventory" and target_kind == "furnace" and target_index in [0, 1]:
 			furnace_result = session.transfer_inventory_stack_to_furnace(_crafting_station_id, source_index)
@@ -2664,7 +2737,7 @@ func _on_crafting_stack_gesture(source_kind: String, source_index: int, mouse_bu
 	if _crafting_station_type == "chest":
 		_on_chest_stack_gesture(source_kind, source_index, mouse_button, double_click, dragging, shift_pressed)
 		return
-	if _crafting_station_type != "furnace":
+	if not _uses_furnace_slots():
 		if source_kind == "inventory":
 			crafting_message.text = "Workbench cells are a one-item pattern. Drag or click ingredients to arrange a recipe manually."
 		return
@@ -2722,7 +2795,7 @@ func _add_selected_item_to_furnace(slot_index: int, amount: int) -> void:
 	var slot_name: String = ["input", "fuel"][slot_index]
 	var role := session.workstations._furnace_role_for_item(item_id)
 	if role != slot_name:
-		crafting_message.text = "%s belongs in the %s slot." % [session.registry.display_name(item_id), "Raw Input" if role == "input" else "Fuel"] if not role.is_empty() else "%s cannot go into a Furnace." % session.registry.display_name(item_id)
+		crafting_message.text = "%s belongs in the %s slot." % [session.registry.display_name(item_id), _furnace_slot_labels()[0] if role == "input" else "Fuel"] if not role.is_empty() else "%s cannot go into a %s." % [session.registry.display_name(item_id), _crafting_station_type.capitalize()]
 		return
 	var result := session.workstations.try_transfer_inventory_item_to_furnace(_crafting_station_id, item_id, amount)
 	if result.get("ok", false):
@@ -2755,7 +2828,7 @@ func _clear_crafting_grid_slot(index: int) -> void:
 
 
 func _clear_crafting_grid(refresh: bool = true, announce: bool = true) -> void:
-	if _crafting_station_type == "furnace" and session != null:
+	if _uses_furnace_slots() and session != null:
 		var returned_any := false
 		for slot_name in ["input", "fuel"]:
 			var result := session.collect_furnace_stack(_crafting_station_id, slot_name)

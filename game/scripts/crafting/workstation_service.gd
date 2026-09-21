@@ -110,6 +110,10 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		record["furnace_fuel_operations"] = 0
 		record["furnace_fuel_burning"] = false
 		record["fuel_model"] = 2
+	if entity_id == "foundry":
+		# Storage network card (docs/INDUSTRY.md): the foundry smelts from its
+		# own three slots, fed from the storage beside it.
+		record["foundry_slots"] = _empty_foundry_slots()
 	var defense_definition: Dictionary = definition.get("defense", {})
 	if not defense_definition.is_empty():
 		record["integrity"] = maxi(1, int(defense_definition.get("max_integrity", 1)))
@@ -264,11 +268,33 @@ func try_load_furnace_recipe(instance_id: String, recipe_id: String) -> Dictiona
 	return result
 
 
+## The three hand-loadable slots of a Furnace - or of a Foundry, whose record
+## keeps them under `foundry_slots` as {ore, fuel, output}; here the ore slot
+## reads as "input" so the furnace slot gestures (collect, cursor pick and
+## deposit, inventory transfer) serve both stations unchanged.
 func furnace_slots(instance_id: String) -> Dictionary:
 	var record: Dictionary = stations.get(instance_id, {})
-	if str(record.get("entity_id", "")) != "furnace":
+	var entity_id := str(record.get("entity_id", ""))
+	if entity_id == "foundry":
+		var raw: Variant = record.get("foundry_slots", null)
+		var foundry_slots: Dictionary = raw if raw is Dictionary else _empty_foundry_slots()
+		return {"input": foundry_slots.get("ore", _empty_stack()).duplicate(true), "fuel": foundry_slots.get("fuel", _empty_stack()).duplicate(true), "output": foundry_slots.get("output", _empty_stack()).duplicate(true)}
+	if entity_id != "furnace":
 		return _empty_furnace_slots()
 	return record.get("furnace_slots", _empty_furnace_slots()).duplicate(true)
+
+
+## Writes slots read through `furnace_slots` back to the station record.
+func _write_furnace_slots(instance_id: String, slots: Dictionary) -> void:
+	var record: Dictionary = stations.get(instance_id, {})
+	if str(record.get("entity_id", "")) == "foundry":
+		record["foundry_slots"] = {"ore": slots.get("input", _empty_stack()), "fuel": slots.get("fuel", _empty_stack()), "output": slots.get("output", _empty_stack())}
+		return
+	record["furnace_slots"] = slots
+
+
+func _has_furnace_slots(instance_id: String) -> bool:
+	return str(stations.get(instance_id, {}).get("entity_id", "")) in ["furnace", "foundry"]
 
 
 func furnace_fuel_status(instance_id: String) -> Dictionary:
@@ -555,7 +581,7 @@ func try_collect_furnace_stack(instance_id: String, slot_name: String) -> Dictio
 		return added
 	var remaining := amount - transferable
 	slots[slot_name] = {"item_id": item_id, "count": remaining} if remaining > 0 else _empty_stack()
-	stations[instance_id]["furnace_slots"] = slots
+	_write_furnace_slots(instance_id, slots)
 	var result := _result(true, "STACK_COLLECTED", {"instance_id": instance_id, "slot": slot_name, "item_id": item_id, "count": transferable})
 	station_changed.emit(result)
 	return result
@@ -576,7 +602,7 @@ func cursor_pick_furnace_stack(instance_id: String, slot_name: String, half: boo
 		return received
 	var remaining := stack_count - amount
 	slots[slot_name] = {"item_id": item_id, "count": remaining} if remaining > 0 else _empty_stack()
-	stations[instance_id]["furnace_slots"] = slots
+	_write_furnace_slots(instance_id, slots)
 	var result := _result(true, "CURSOR_PICKED", {"instance_id": instance_id, "slot": slot_name, "item_id": item_id, "count": amount})
 	station_changed.emit(result)
 	return result
@@ -786,6 +812,30 @@ func siege_load(instance_id: String, item_id: String, amount: int) -> Dictionary
 	stations[instance_id]["siege_ammo_item"] = item_id
 	stations[instance_id]["siege_ammo"] = loaded + moved
 	var result := _result(true, "AMMO_LOADED", {"instance_id": instance_id, "item_id": item_id, "moved": moved, "ammo": loaded + moved})
+	station_changed.emit(result)
+	return result
+
+
+## Storage network card: ammunition that arrived from adjacent storage (no
+## inventory involved). Same munition rules as siege_load; returns
+## AMMO_RELOADED with the amount, capped at the weapon's capacity.
+func siege_receive_ammo(instance_id: String, item_id: String, amount: int) -> Dictionary:
+	var status := siege_status(instance_id)
+	if not status.get("ok", false):
+		return status
+	var details: Dictionary = status.get("details", {})
+	var allowed: Array = details.get("definition", {}).get("ammo_items", [details.get("definition", {}).get("ammo_item", "")])
+	if item_id not in allowed:
+		return _result(false, "WRONG_AMMUNITION", {"item_id": item_id})
+	var loaded := int(details.get("ammo", 0))
+	if loaded > 0 and str(details.get("ammo_item", "")) != item_id:
+		return _result(false, "AMMO_TYPE_LOADED", {"loaded": str(details.get("ammo_item", ""))})
+	var moved := mini(amount, int(details.get("capacity", 1)) - loaded)
+	if moved <= 0:
+		return _result(false, "WEAPON_FULL")
+	stations[instance_id]["siege_ammo_item"] = item_id
+	stations[instance_id]["siege_ammo"] = loaded + moved
+	var result := _result(true, "AMMO_RELOADED", {"instance_id": instance_id, "item_id": item_id, "moved": moved, "ammo": loaded + moved, "from": "storage"})
 	station_changed.emit(result)
 	return result
 
@@ -1286,6 +1336,22 @@ func restore(data: Dictionary, world_query: Callable) -> Dictionary:
 				if cargo_count > 0:
 					clean_cargo[str(cargo_item)] = cargo_count
 			record["cargo"] = clean_cargo
+		if str(record.get("entity_id", "")) == "foundry":
+			# Storage network card: a record from before the slots existed gets
+			# empty ones; a present block must hold valid stacks in their roles.
+			var raw_foundry: Variant = record.get("foundry_slots", _empty_foundry_slots())
+			if not raw_foundry is Dictionary:
+				return _result(false, "INVALID_STATION_SNAPSHOT")
+			var clean_foundry := _empty_foundry_slots()
+			for slot_name in ["ore", "fuel", "output"]:
+				var clean_stack := _validated_stack(raw_foundry.get(slot_name, _empty_stack()))
+				if clean_stack.is_empty():
+					return _result(false, "INVALID_STATION_SNAPSHOT")
+				var role := _furnace_role_for_item(str(clean_stack.get("item_id", "")))
+				if not str(clean_stack.get("item_id", "")).is_empty() and slot_name != "output" and role != ("input" if slot_name == "ore" else slot_name):
+					return _result(false, "INVALID_STATION_SNAPSHOT")
+				clean_foundry[slot_name] = clean_stack
+			record["foundry_slots"] = clean_foundry
 		if str(record.get("entity_id", "")) == "furnace":
 			var raw_slots: Variant = record.get("furnace_slots", _empty_furnace_slots())
 			if not raw_slots is Dictionary:
@@ -1499,7 +1565,7 @@ func _release_exhausted_fuel(instance_id: String) -> void:
 
 
 func _can_add_to_furnace(instance_id: String, slot_name: String, item_id: String, amount: int) -> Dictionary:
-	if not stations.has(instance_id) or str(stations[instance_id].get("entity_id", "")) != "furnace":
+	if not _has_furnace_slots(instance_id):
 		return _result(false, "WRONG_WORKSTATION")
 	if amount <= 0 or slot_name not in ["input", "fuel"] or _furnace_role_for_item(item_id) != slot_name:
 		return _result(false, "INVALID_FURNACE_INPUT")
@@ -1516,7 +1582,7 @@ func _add_to_furnace_unchecked(instance_id: String, slot_name: String, item_id: 
 	var slots := furnace_slots(instance_id)
 	var target: Dictionary = slots.get(slot_name, _empty_stack())
 	slots[slot_name] = {"item_id": item_id, "count": int(target.get("count", 0)) + amount}
-	stations[instance_id]["furnace_slots"] = slots
+	_write_furnace_slots(instance_id, slots)
 
 
 func _store_furnace_outputs(instance_id: String, outputs: Dictionary) -> Dictionary:
@@ -1568,3 +1634,7 @@ static func _empty_stack() -> Dictionary:
 
 static func _empty_furnace_slots() -> Dictionary:
 	return {"input": _empty_stack(), "fuel": _empty_stack(), "output": _empty_stack()}
+
+
+static func _empty_foundry_slots() -> Dictionary:
+	return {"ore": _empty_stack(), "fuel": _empty_stack(), "output": _empty_stack()}

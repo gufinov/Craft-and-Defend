@@ -30,8 +30,9 @@ extends Node
 ## Hauling (docs/INDUSTRY.md): a `mine_cart` carries `cargo` ({item_id: count},
 ## saved in its station record, `CART_CARGO` items at most). When it reaches a
 ## track cell with an `ore_bin` beside it (the four sides, same level or one
-## below) it loads what the bin holds up to the limit; beside a `warehouse` it
-## unloads everything that fits. Bins are sources and warehouses are sinks:
+## below) it loads what the bin holds up to the limit; beside any other
+## container (a `warehouse`, a chest - and what they chain to, StorageNetwork)
+## it unloads everything that fits. Bins are sources and the rest are sinks:
 ## nothing goes back into a bin. One transfer per pass: the cell of the last
 ## transfer is remembered (`last_dock`) and no dock happens until the cart is
 ## at least `REDOCK_CELLS` cells from it. The rideable `coaster_car` never hauls.
@@ -50,11 +51,13 @@ const DEFAULT_SPEED := 3.0
 const CART_CARGO := 16
 const HAULER := "mine_cart"
 const ORE_BIN := "ore_bin"
-const WAREHOUSE := "warehouse"
+const WAREHOUSE := "warehouse" # kept for callers; any container is a sink now
 const REDOCK_CELLS := 3
 const DOCK_SIDES: Array[Vector3i] = [Vector3i.LEFT, Vector3i.RIGHT, Vector3i.FORWARD, Vector3i.BACK]
 
 var workstations: WorkstationService
+## Storage network card: the sinks beside a track cell.
+var storage: StorageNetwork
 ## instance_id -> the placed cart body (its "CartRig" child is moved).
 var _bodies: Dictionary = {}
 ## instance_id -> {cell, previous, target, visited, trail, up}.
@@ -69,6 +72,7 @@ var _directions: Dictionary = {}
 
 func initialize(station_service: WorkstationService) -> void:
 	workstations = station_service
+	storage = StorageNetwork.new(station_service)
 
 
 func register_cart(instance_id: String, body: Node3D, parked: bool = false) -> void:
@@ -271,7 +275,6 @@ func _dock(instance_id: String, record: Dictionary, cell: Vector3i, rider: Dicti
 	if last_dock != Vector3i.MAX and Vector3(cell - last_dock).length() < float(REDOCK_CELLS):
 		return
 	var bins: Array[String] = []
-	var warehouses: Array[String] = []
 	for side: Vector3i in DOCK_SIDES:
 		for level: Vector3i in [Vector3i.ZERO, Vector3i.DOWN]:
 			var owner := workstations.footprints.owner_at(cell + side + level)
@@ -280,21 +283,27 @@ func _dock(instance_id: String, record: Dictionary, cell: Vector3i, rider: Dicti
 			var entity_id := str(workstations.stations.get(owner, {}).get("entity_id", ""))
 			if entity_id == ORE_BIN and not bins.has(owner):
 				bins.append(owner)
-			elif entity_id == WAREHOUSE and not warehouses.has(owner):
-				warehouses.append(owner)
-	if bins.is_empty() and warehouses.is_empty():
+	# Storage network card: the sinks are every container beside the track
+	# cell that is not a bin (chests too) and what they chain to; the cart
+	# unloads through StorageNetwork.put so a full warehouse overflows.
+	var sinks: Array[String] = []
+	if storage != null:
+		var dock_cells: Array[Vector3i] = [cell]
+		for container_id: String in storage.network_for(dock_cells):
+			if str(workstations.stations.get(container_id, {}).get("entity_id", "")) != ORE_BIN and not sinks.has(container_id):
+				sinks.append(container_id)
+	if bins.is_empty() and sinks.is_empty():
 		return
 	var live: Dictionary = workstations.stations[instance_id]
 	var held: Dictionary = live.get("cargo", {})
 	# Unload first (sinks), then load (sources), so a cell with both beside it
 	# empties the cart before refilling it.
 	var unloaded: Dictionary = {}
-	for warehouse_id: String in warehouses:
+	if not sinks.is_empty():
 		for item_id: String in held.keys():
-			var put := workstations.container_put(warehouse_id, item_id, int(held[item_id]))
-			if not put.get("ok", false):
+			var moved := int(held[item_id]) - storage.put(sinks, item_id, int(held[item_id]))
+			if moved <= 0:
 				continue
-			var moved := int(put.details.moved)
 			held[item_id] = int(held[item_id]) - moved
 			if int(held[item_id]) <= 0:
 				held.erase(item_id)

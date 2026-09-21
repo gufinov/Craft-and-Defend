@@ -11,7 +11,9 @@ extends Node
 ## with `WorkstationService.snapshot()`:
 ##   {"cooldown": seconds to the next tick, "mined": ore mined so far,
 ##    "status": "drilling …" | "no ore" | "no bin" | "bin full"}
-## Miners need no fuel in wave 1 (wave 2: power).
+## Miners need no fuel in wave 1 (wave 2: power). Storage network card: with
+## no bin beside it, the miner drops the ore into any container touching it
+## (a chest, a warehouse - StorageNetwork); bins keep priority.
 
 signal mined(instance_id: String, cell: Vector3i, item_id: String, bin_id: String)
 
@@ -31,6 +33,7 @@ const ORE_ITEMS: Array[String] = ["iron_ore", "gold_ore", "coal"]
 var world: WorldAdapter
 var workstations: WorkstationService
 var registry: ContentRegistry
+var storage: StorageNetwork
 ## voxel id -> drop item id, for every block whose drop is in ORE_ITEMS.
 var ore_voxels: Dictionary = {}
 
@@ -39,6 +42,7 @@ func initialize(world_adapter: WorldAdapter, station_service: WorkstationService
 	world = world_adapter
 	workstations = station_service
 	registry = content
+	storage = StorageNetwork.new(station_service)
 	ore_voxels.clear()
 	for voxel_id: int in registry.blocks_by_voxel.keys():
 		var drop := str(registry.blocks_by_voxel[voxel_id].get("drop", ""))
@@ -91,6 +95,9 @@ func _tick(instance_id: String, record: Dictionary) -> void:
 		state["status"] = STATUS_NO_ORE
 		return
 	var bins := bins_beside(anchor)
+	if bins.is_empty():
+		# No bin: any container touching the miner (chest, warehouse) takes the ore.
+		bins = storage.network_of(instance_id)
 	if bins.is_empty():
 		state["status"] = STATUS_NO_BIN
 		return
