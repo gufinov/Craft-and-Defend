@@ -20,7 +20,7 @@
       "file": "derived_atlas_p4.png",
       "size": [
         1536,
-        1280
+        1536
       ]
     },
     "gold": {
@@ -507,6 +507,42 @@
         1054,
         209,
         193
+      ]
+    },
+    "miner": {
+      "atlas": "derived",
+      "rect": [
+        796,
+        1068,
+        201,
+        193
+      ]
+    },
+    "ore_bin": {
+      "atlas": "derived",
+      "rect": [
+        1060,
+        1072,
+        185,
+        181
+      ]
+    },
+    "warehouse": {
+      "atlas": "derived",
+      "rect": [
+        1300,
+        1068,
+        217,
+        181
+      ]
+    },
+    "foundry": {
+      "atlas": "derived",
+      "rect": [
+        40,
+        1280,
+        197,
+        231
       ]
     },
     "gold_ore": {
