@@ -1377,6 +1377,33 @@ func _refresh_rail_neighbours(anchor: Vector3i) -> void:
 					continue
 				_remove_station_visual(neighbour)
 				_spawn_station_visual(workstations.station(neighbour))
+	# A bent that closes a hole in the truss: the last bent before the hole
+	# bridges to this one - walk back along the joints to it and re-draw it.
+	var placed_id := workstations.station_at_cell(anchor)
+	if not placed_id.is_empty():
+		var tracks := CoasterRails.track_records(workstations.stations)
+		var placed: Dictionary = workstations.station(placed_id)
+		if placed.has("curve") and not _support_bent(placed, tracks).is_empty():
+			var current := placed
+			for _step in range(SUPPORT_BRIDGE_SPAN):
+				var joints: Variant = current.get("coaster_joints")
+				if not (joints is Array) or (joints as Array).is_empty():
+					break
+				var back: Variant = (joints as Array)[0]
+				if not (back is Array) or (back as Array).size() != 3:
+					break
+				var back_cell := Vector3i(current.get("anchor", Vector3i.ZERO)) + Vector3i(int(back[0]), int(back[1]), int(back[2]))
+				var previous: Dictionary = tracks.get(back_cell, {})
+				if previous.is_empty():
+					break
+				if not _support_bent(previous, tracks).is_empty():
+					if _step > 0:
+						var previous_id := workstations.station_at_cell(back_cell)
+						if not previous_id.is_empty():
+							_remove_station_visual(previous_id)
+							_spawn_station_visual(workstations.station(previous_id))
+					break
+				current = previous
 	# Trestle supports: a floating piece higher in this column may have
 	# grown (or now needs) a post that lands on this cell.
 	for drop in range(2, SUPPORT_MAX_DROP + 1):
@@ -1961,6 +1988,9 @@ func _build_loop_arc_visual(parent: Node3D, record: Dictionary, joined: Array[Ve
 ## `Stringer`, `Pad`) so dismantling removes it. One BoxMesh is shared per
 ## strut size (`_support_meshes`).
 const SUPPORT_MAX_DROP := 24
+## Pieces a stringer may walk to bridge a hole in the truss (track below);
+## a steep cell stacks two pieces, so this is about six cells.
+const SUPPORT_BRIDGE_SPAN := 12
 const SUPPORT_BRACE_EVERY := 2
 const SUPPORT_LEG_OFFSET := 0.32
 const SUPPORT_SPLAY_MIN_HEIGHT := 4.0
@@ -2024,14 +2054,29 @@ func _support_bent(record: Dictionary, tracks: Dictionary) -> Dictionary:
 		along = Vector3(-side.z, 0.0, side.x)
 	var column := Vector3i(floori(point.x), anchor.y, floori(point.z))
 	var floor_y := INF
+	var own_curve := JSON.stringify(curve) if not curve.is_empty() else ""
 	for drop in range(1, SUPPORT_MAX_DROP + 1):
 		var cell := column + Vector3i(0, -drop, 0)
 		var other: Dictionary = tracks.get(cell, {})
 		if not other.is_empty():
-			if drop <= 2 and not curve.is_empty() and other.has("curve") and str(JSON.stringify(other.get("curve"))) == str(JSON.stringify(curve)):
+			if drop <= 2 and not curve.is_empty() and other.has("curve") and str(JSON.stringify(other.get("curve"))) == own_curve:
 				return {}
-			floor_y = float(cell.y) + 0.6
-			break
+			# Owner 2026-09-21: a track below is bridged, never stood on - no
+			# bent here (a hole in the truss); the bents either side carry
+			# the stringers across (`_support_next_bent` walks past it).
+			return {}
+		# The same for track within a cell sideways of the column (a cart
+		# and rider need the room), unless it is this piece's own curve.
+		for dx in [-1, 0, 1]:
+			for dz in [-1, 0, 1]:
+				if dx == 0 and dz == 0:
+					continue
+				var beside: Dictionary = tracks.get(cell + Vector3i(dx, 0, dz), {})
+				if beside.is_empty():
+					continue
+				if beside.has("curve") and str(JSON.stringify(beside.get("curve"))) == own_curve:
+					continue
+				return {}
 		var query := world.query_cell(cell)
 		if query.get("state") != "LOADED":
 			return {}
@@ -2150,18 +2195,27 @@ func _support_name(names: Dictionary, base: String) -> String:
 ## The bent of the piece at `record`'s forward joint (the curve's next cell,
 ## the second recorded joint), or {} when it has none / gets no support.
 func _support_next_bent(record: Dictionary, tracks: Dictionary) -> Dictionary:
-	var joints: Variant = record.get("coaster_joints")
-	if not (joints is Array) or (joints as Array).size() < 2:
-		return {}
-	var forward: Variant = (joints as Array)[1]
-	if not (forward is Array) or (forward as Array).size() != 3:
-		return {}
-	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
-	var next_cell := anchor + Vector3i(int(forward[0]), int(forward[1]), int(forward[2]))
-	var next_record: Dictionary = tracks.get(next_cell, {})
-	if next_record.is_empty():
-		return {}
-	return _support_bent(next_record, tracks)
+	# Walks forward up to SUPPORT_BRIDGE_SPAN pieces so a hole in the truss
+	# (pieces over another track) is bridged from the bent before it to the
+	# first bent after it.
+	var current := record
+	for _step in range(SUPPORT_BRIDGE_SPAN):
+		var joints: Variant = current.get("coaster_joints")
+		if not (joints is Array) or (joints as Array).size() < 2:
+			return {}
+		var forward: Variant = (joints as Array)[1]
+		if not (forward is Array) or (forward as Array).size() != 3:
+			return {}
+		var anchor: Vector3i = current.get("anchor", Vector3i.ZERO)
+		var next_cell := anchor + Vector3i(int(forward[0]), int(forward[1]), int(forward[2]))
+		var next_record: Dictionary = tracks.get(next_cell, {})
+		if next_record.is_empty():
+			return {}
+		var bent := _support_bent(next_record, tracks)
+		if not bent.is_empty():
+			return bent
+		current = next_record
+	return {}
 
 
 ## One BoxMesh per strut size for the trestles (a tall climb is ~1000 struts).

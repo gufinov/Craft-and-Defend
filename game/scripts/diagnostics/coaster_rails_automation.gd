@@ -1532,6 +1532,72 @@ func _run_gate() -> void:
 		as_cross_plain = as_cross_plain and str(ws.station(ws.station_at_cell(as_cross + Vector3i(2, 0, z))).get("entity_id", "")) == "rail"
 	_record("T188_AUTO_SHAPE", as_loaded and as_line.get("reason") == "LINE_PLACED" and as_early and as_trigger.get("reason") == "RAILS_SHAPED_ELBOW" and as_shaped == ["elbow"] and as_elbow and is_equal_approx(as_radius, 1.5) and as_straights and as_chain_ok and as_joins_flush and as_pack_ok and as_max_gap < 0.02 and as_cart.get("ok", false) and as_rode and as_kettle_ok and as_restored and as_undone and as_lane_a.get("reason") == "LINE_PLACED" and as_lane_b.get("reason") == "RAILS_SHAPED_LANE_SHIFT" and as_bend and as_bend_flush and as_bend_chain and as_bend_rode and as_cross_plain, "plain rails (-60..-57, 40) then (-57, 36..39) stay plain until the straight beyond the corner exists; that rail turns the three corner cells into rail_loop pieces of one radius-1.5 arc (auto_shaped elbow) starting on A's far face and ending on B's far face at height 0.55, the straights beyond stay plain, the chain runs (-60,40)..(-57,36) as 8 cells, the pack's rails drop by the one laid, every joint's rail ends meet within 0.02, a cart rides round the corner and home, the kettle router steps A2 -> A -> C -> B with its rail point on the corner's arc; undo restores the three plain rails (replaced 3), removes the triggering rail and refunds it; three rails in lane 44 then three in lane 45 one cell on become one six-piece s_bend (auto_shaped lane_shift) from (-60,44)'s west face to (-55,45)'s east face that a cart crosses and returns; a '+' of two rail lines stays nine plain rails", {"loaded": as_loaded, "line": as_line.get("reason"), "early": as_early, "trigger": as_trigger.get("reason"), "shaped": as_shaped, "elbow": as_elbow, "radius": as_radius, "straights": as_straights, "chain": as_chain.size(), "start": as_start, "end": as_end, "joins_flush": as_joins_flush, "rails": [as_rails_before, as_rails_after], "rail_end_gap": as_max_gap, "cart": as_cart.get("reason"), "rode": as_rode, "ride": as_ride.reached, "kettle": as_kettle_ok, "kettle_steps": [as_kettle_a, as_kettle_c, as_kettle_b], "undo": as_undo.get("reason"), "replaced": as_undo.get("changes", {}).get("replaced"), "restored": as_restored, "undone": as_undone, "lane_a": as_lane_a.get("reason"), "lane_b": as_lane_b.get("reason"), "bend": as_bend, "bend_flush": as_bend_flush, "bend_chain": as_bend_chain, "bend_rode": as_bend_rode, "cross": as_cross_plain})
 
+	# T189 a truss bridges other track (owner 2026-09-21: "when the Rail
+	# Climb goes over a track piece, it should create a hole in its truss
+	# system and not place supports on the track"): a climb of length 12 /
+	# rise 6 crossing a plain-rail line under its middle - the pieces over
+	# the line (and one cell either side) carry no Support; the bent before
+	# the hole carries a Stringer reaching the first bent after it.
+	var br := Vector3i(20, 0, 0)
+	var br_loaded := await _wait_levelled(br + Vector3i(-3, 0, -5), 20, 11, 12, [br, br + Vector3i(6, 3, 0), br + Vector3i(12, 6, 0)] as Array[Vector3i])
+	app.session.inventory.try_transaction({}, {"rail_climb": 40, "rail": 12})
+	for z in range(-3, 4):
+		ws.try_place("rail", br + Vector3i(6, 0, z), world.query_cell, AABB(), 0)
+	_hotbar_slot_for("rail_climb", 7)
+	interaction.placement_rotation_quarters = 1
+	interaction.begin_climb_at(br)
+	interaction.set_climb(12, 6)
+	var br_laid := interaction.commit_drag_place()
+	interaction.placement_rotation_quarters = 0
+	interaction.set_climb(CoasterRails.CLIMB_LENGTH_DEFAULT, CoasterRails.CLIMB_RISE_DEFAULT)
+	await get_tree().process_frame
+	var br_pieces: Dictionary = {}
+	for station_id: String in ws.stations.keys():
+		var station_record: Dictionary = ws.stations[station_id]
+		if station_record.has("curve") and Vector3i(station_record.get("anchor", Vector3i.MAX)).z == br.z and Vector3i(station_record.get("anchor", Vector3i.MAX)).y > br.y:
+			# One piece per column: the lowest (a steep cell stacks two pieces;
+			# the upper one never carries a bent).
+			var piece_anchor: Vector3i = station_record.get("anchor", Vector3i.ZERO)
+			var kept: String = br_pieces.get(piece_anchor.x, "")
+			if kept.is_empty() or Vector3i(ws.stations[kept].get("anchor", Vector3i.ZERO)).y > piece_anchor.y:
+				br_pieces[piece_anchor.x] = station_id
+	var hole_ok := true
+	var hole_checked := 0
+	for x in [br.x + 5, br.x + 6, br.x + 7]:
+		if not br_pieces.has(x):
+			continue
+		hole_checked += 1
+		var body: Node3D = app.session._station_visuals.get(br_pieces[x])
+		if body != null and body.find_child("Support", true, false) != null:
+			hole_ok = false
+	var br_supported: Array[int] = []
+	for x: int in br_pieces:
+		var piece_body: Node3D = app.session._station_visuals.get(br_pieces[x])
+		if piece_body != null and piece_body.find_child("Support", true, false) != null:
+			br_supported.append(x)
+	br_supported.sort()
+	var before_id: String = br_pieces.get(br.x + 4, "")
+	var after_x := -1
+	for x in range(br.x + 8, br.x + 13):
+		if br_pieces.has(x) and after_x < 0:
+			var after_body: Node3D = app.session._station_visuals.get(br_pieces[x])
+			if after_body != null and after_body.find_child("Support", true, false) != null:
+				after_x = x
+	var before_body: Node3D = app.session._station_visuals.get(before_id) if not before_id.is_empty() else null
+	var before_support: Node = before_body.find_child("Support", true, false) if before_body != null else null
+	var bridged := false
+	var br_stringers: Array[float] = []
+	var br_children: Array[String] = []
+	if before_support != null and after_x > 0:
+		for child in before_support.get_children():
+			br_children.append(str(child.name))
+			if str(child.name).begins_with("Stringer"):
+				var centre_x := (child as Node3D).global_position.x
+				br_stringers.append(centre_x)
+				if centre_x > float(br.x + 5) + 0.5:
+					bridged = true
+	_record("T189_TRUSS_BRIDGE", br_loaded and br_laid.get("reason") == "CLIMB_PLACED" and hole_checked == 3 and hole_ok and before_support != null and after_x > 0 and bridged, "a climb (12 / 6) crossing a plain-rail line under its middle: the three pieces over the line and beside it carry no Support (a hole in the truss); the bent before the hole carries a Stringer whose centre lies past the hole's first cell, reaching the first bent after it", {"loaded": br_loaded, "laid": br_laid.get("reason"), "pieces": br_pieces.size(), "supported_x": str(br_supported), "piece_x": str(br_pieces.keys()), "stringers": str(br_stringers), "hole_checked": hole_checked, "hole_ok": hole_ok, "before": before_support != null, "after_x": after_x, "bridged": bridged})
+
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on
 ## the track, beside a slope run climbing a step, in one 1280x720 view.
@@ -2008,6 +2074,10 @@ func _render_climb() -> void:
 		app.session.inventory.swap_slots(climb_slot, 4)
 		climb_slot = 4
 	app.session.inventory.select_hotbar(climb_slot)
+	# A plain-rail line crossing under the climb's middle: the truss leaves
+	# a hole over it and bridges it (T189).
+	for z in range(-3, 4):
+		ws.try_place("rail", climb_origin + Vector3i(6, 0, z), world.query_cell, AABB(), 0)
 	interaction.placement_rotation_quarters = 1
 	interaction.begin_climb_at(climb_origin)
 	interaction.set_climb(12, 6)
