@@ -49,6 +49,14 @@ func select_hotbar(index: int) -> Dictionary:
 	return {"ok": true, "reason": "OK", "slot": index, "item_id": active_item_id()}
 
 
+## Empty hands (owner 2026-09-21: the held slot's key again): no slot is
+## selected, `active_item_id` is "".
+func deselect_hotbar() -> Dictionary:
+	selected_hotbar = -1
+	changed.emit(snapshot())
+	return {"ok": true, "reason": "OK", "slot": -1, "item_id": ""}
+
+
 func swap_slots(first: int, second: int) -> Dictionary:
 	if first < 0 or second < 0 or first >= SLOT_COUNT or second >= SLOT_COUNT:
 		return {"ok": false, "reason": "INVALID_SLOT"}

@@ -32,6 +32,13 @@ func run(application: CraftAndDefendApp, mode: String) -> void:
 		_:
 			failures.append("unknown mode " + mode)
 	_write_json(app.data_root.path_join("coaster_rails_results.json"), {"failures": failures, "records": records})
+	# Quitting while the terrain streams around a far-teleported player
+	# crashed the engine on exit (T190 ended the gate far from the spawn):
+	# walk the player home and let the streaming settle first.
+	if app.session != null and app.session.player != null:
+		app.session.player.global_position = WorldAdapter.SPAWN_FEET
+		for _settle in range(90):
+			await get_tree().process_frame
 	if failures.is_empty():
 		print("COASTER_RAILS_AUTOMATION_PASS")
 		get_tree().quit(0)
@@ -657,16 +664,17 @@ func _run_gate() -> void:
 	var cv_shape: bool = cv_exit == cv + Vector3i(4, 0, 4) and Vector3i(cv_ghost.get("curve_exit", Vector3i.ZERO)) == cv_exit and Vector3i(cv_layout.exit_cell_ahead) == cv_exit + Vector3i(0, 0, 1) and Vector3i(cv_layout.before) == cv + Vector3i(-1, 0, 0)
 	var default_count := cv_ghost_cells.size()
 	# Shift-aim (from above): 12 cells straight right of travel snaps a
-	# 135-degree bend of radius 6; 12 cells ahead-left a 90-degree LEFT bend.
+	# 90-degree bend of radius 6 (only 90 / 180 exist since 2026-09-21); 12
+	# cells ahead-left a 90-degree LEFT bend.
 	interaction.update_drag_place(Vector3(cv) + Vector3(0.5, 6.0, 0.5 + 12.0), Vector3.DOWN, true)
-	var aimed_135 := int(interaction.drag_state().get("curve_sweep", 0)) == 135 and int(interaction.drag_state().get("curve_radius", 0)) == 6 and not bool(interaction.drag_state().get("curve_left", true))
+	var aimed_135 := int(interaction.drag_state().get("curve_sweep", 0)) == 90 and int(interaction.drag_state().get("curve_radius", 0)) == 6 and not bool(interaction.drag_state().get("curve_left", true))
 	interaction.update_drag_place(Vector3(cv) + Vector3(0.5 + 8.5, 6.0, 0.5 - 8.5), Vector3.DOWN, true)
 	var aimed_left := int(interaction.drag_state().get("curve_sweep", 0)) == 90 and int(interaction.drag_state().get("curve_radius", 0)) == 6 and bool(interaction.drag_state().get("curve_left", false))
 	var left_exit: Vector3i = interaction.drag_state().get("curve_exit", Vector3i.ZERO)
 	var left_mirrored := left_exit == cv + Vector3i(6, 0, -6)
-	# Straight ahead snaps 45 degrees; straight behind a U-turn.
+	# Straight ahead stays a 90 (no 45); straight behind a U-turn.
 	interaction.update_drag_place(Vector3(cv) + Vector3(0.5 + 8.0, 6.0, 0.5), Vector3.DOWN, true)
-	var aimed_45 := int(interaction.drag_state().get("curve_sweep", 0)) == 45
+	var aimed_45 := int(interaction.drag_state().get("curve_sweep", 0)) == 90
 	interaction.update_drag_place(Vector3(cv) + Vector3(0.5 - 8.0, 6.0, 0.5), Vector3.DOWN, true)
 	var aimed_180 := int(interaction.drag_state().get("curve_sweep", 0)) == 180
 	# Number keys and X / C set the radius; the pack (40 curves) caps it.
@@ -747,7 +755,7 @@ func _run_gate() -> void:
 	var cv_restored := ws.restore(cv_saved, world.query_cell) if cv_saved is Dictionary else {"ok": false, "reason": "SNAPSHOT_NOT_JSON"}
 	var cv_restored_chain := CoasterRails.chain(ws.stations, cv)
 	var cv_round_trip: bool = cv_restored.get("ok", false) and cv_restored_chain.size() == cv_chain.size() and ws.station(ws.station_at_cell(cv_mid_cell)).has("curve") and CoasterRails.ride_point(ws.station(ws.station_at_cell(cv_exit))).is_equal_approx(Vector3(cv_exit) + Vector3(0.5, 0.55, 0.5))
-	_record("T173_CURVE_90", curve_content and curve_recipe_ok and cv_press.get("reason") == "DRAG_STARTED" and cv_press_mode == "curve" and cv_started.get("ok", false) and cv_ghost_ok and cv_ghost_flat and cv_shape and default_count >= 6 and aimed_135 and aimed_left and left_mirrored and aimed_45 and aimed_180 and five and six and five_again and cv_capped_ok and cv_laid.get("reason") == "CURVE_PLACED" and int(cv_laid.get("changes", {}).get("count", 0)) == default_count and cv_paid and cv_rails and cv_joined and cv_ends_flush and cv_drawn and cv_lean and cv_cart.get("ok", false) and cv_far > 0 and cv_home > cv_far and cv_rig_lean and cv_red > 0 and cv_nothing_laid and cv_round_trip, "rail_curve (curve tool, no support, icon, recipe 211 -> 8) is registered; with Curve held a right-press ghosts a flat 90-degree arc of rail_loop pieces bending right with radius 4 (entry heading +x exits 4 on and 4 right, heading +z); Shift-aim straight right snaps 135 degrees at half the distance, ahead-left a mirrored 90-degree LEFT bend, ahead 45, behind 180; 5 by key, C 6, X 5, 30 caps at what 40 curves pay for; release lays every piece for one item each; three rails behind and three beyond the exit chain through it with flush ends; the pieces draw the curve track and lean toward the centre by the bank; a cart rides to the far rail leaning into the bend and comes home; a stone block on the arc shows red and lays nothing; the laid curve survives a save round-trip", {"content": curve_content, "recipe": curve_recipe_ok, "press": cv_press.get("reason"), "press_mode": cv_press_mode, "started": cv_started.get("reason"), "ghost": cv_ghost_ok, "flat": cv_ghost_flat, "shape": cv_shape, "exit": cv_exit, "count": default_count, "aimed_135": aimed_135, "aimed_left": aimed_left, "left_exit": left_exit, "aimed_45": aimed_45, "aimed_180": aimed_180, "five": five, "six": six, "five_again": five_again, "capped_radius": capped_radius, "capped_ok": cv_capped_ok, "laid": cv_laid.get("reason"), "paid": cv_paid, "rails": cv_rails, "chain": cv_chain.size(), "joined": cv_joined, "flush": cv_ends_flush, "drawn": cv_drawn, "mid_up": cv_mid_up, "lean": cv_lean, "cart": cv_cart.get("reason"), "far": cv_far, "home": cv_home, "rig_lean": cv_rig_lean, "red": cv_red, "nothing_laid": cv_nothing_laid, "refused": cv_refused.get("reason"), "round_trip": cv_round_trip})
+	_record("T173_CURVE_90", curve_content and curve_recipe_ok and cv_press.get("reason") == "DRAG_STARTED" and cv_press_mode == "curve" and cv_started.get("ok", false) and cv_ghost_ok and cv_ghost_flat and cv_shape and default_count >= 6 and aimed_135 and aimed_left and left_mirrored and aimed_45 and aimed_180 and five and six and five_again and cv_capped_ok and cv_laid.get("reason") == "CURVE_PLACED" and int(cv_laid.get("changes", {}).get("count", 0)) == default_count and cv_paid and cv_rails and cv_joined and cv_ends_flush and cv_drawn and cv_lean and cv_cart.get("ok", false) and cv_far > 0 and cv_home > cv_far and cv_rig_lean and cv_red > 0 and cv_nothing_laid and cv_round_trip, "rail_curve (curve tool, no support, icon, recipe 211 -> 8) is registered; with Curve held a right-press ghosts a flat 90-degree arc of rail_loop pieces bending right with radius 4 (entry heading +x exits 4 on and 4 right, heading +z); Shift-aim straight right snaps a 90 of radius 6 (half the distance), ahead-left a mirrored 90-degree LEFT bend, ahead stays 90, behind 180 (only 90 / 180 exist); 5 by key, C 6, X 5, 30 caps at what 40 curves pay for; release lays every piece for one item each; three rails behind and three beyond the exit chain through it with flush ends; the pieces draw the curve track and lean toward the centre by the bank; a cart rides to the far rail leaning into the bend and comes home; a stone block on the arc shows red and lays nothing; the laid curve survives a save round-trip", {"content": curve_content, "recipe": curve_recipe_ok, "press": cv_press.get("reason"), "press_mode": cv_press_mode, "started": cv_started.get("reason"), "ghost": cv_ghost_ok, "flat": cv_ghost_flat, "shape": cv_shape, "exit": cv_exit, "count": default_count, "aimed_135": aimed_135, "aimed_left": aimed_left, "left_exit": left_exit, "aimed_45": aimed_45, "aimed_180": aimed_180, "five": five, "six": six, "five_again": five_again, "capped_radius": capped_radius, "capped_ok": cv_capped_ok, "laid": cv_laid.get("reason"), "paid": cv_paid, "rails": cv_rails, "chain": cv_chain.size(), "joined": cv_joined, "flush": cv_ends_flush, "drawn": cv_drawn, "mid_up": cv_mid_up, "lean": cv_lean, "cart": cv_cart.get("reason"), "far": cv_far, "home": cv_home, "rig_lean": cv_rig_lean, "red": cv_red, "nothing_laid": cv_nothing_laid, "refused": cv_refused.get("reason"), "round_trip": cv_round_trip})
 
 	# T174 the U-turn and two 45s: a 180-degree curve of radius 3 exits on
 	# the lane 2R to the right heading back, joins rails at both ends and a
@@ -791,53 +799,13 @@ func _run_gate() -> void:
 				break
 	if ut_cart.get("ok", false):
 		ws.try_dismantle(ut_cart_id, world.query_cell, AABB())
-	# Two 45s: the first travelling -x bends right to a diagonal (-x, -z)
-	# end; the second, pressed on that diagonal cell, takes the diagonal
-	# heading and bends right to -z.
-	var fa := Vector3i(-42, 0, 26)
-	_level_ground(fa + Vector3i(-12, 0, -10), 18, 14, 9)
-	interaction.placement_rotation_quarters = 3
-	interaction.begin_curve_at(fa)
+	# Since 2026-09-21 the tool offers only 90 and 180: asking for 45 gives 90.
 	interaction.set_curve_sweep(45, false)
-	interaction.set_curve_radius(6)
-	var fa_laid := interaction.commit_drag_place()
-	var fa_layout := CoasterRails.curve_layout(fa, 3, 6.0, 45.0)
-	var fa_exit: Vector3i = fa_layout.exit
-	var fa_ahead: Vector3i = fa_layout.exit_cell_ahead
-	var fa_diagonal := fa_ahead - fa_exit == Vector3i(-1, 0, -1)
-	# A plain rail on the diagonal cell does not join (documented limit).
-	var fa_rail := ws.try_place("rail", fa_ahead, world.query_cell, AABB(), 0)
-	var fa_rail_alone := CoasterRails.chain(ws.stations, fa_ahead).size() == 1
-	if fa_rail.get("ok", false):
-		ws.try_dismantle(str(fa_rail.get("details", {}).get("station", {}).get("instance_id", "")), world.query_cell, AABB())
-	interaction.placement_rotation_quarters = 0
-	interaction.begin_curve_at(fa_ahead)
-	var fb_state := interaction.drag_state()
-	var fb_diagonal_entry := bool(fb_state.get("curve_diagonal_entry", false))
-	var fb_laid := interaction.commit_drag_place()
-	var fb_exit: Vector3i = fb_state.get("curve_exit", Vector3i.ZERO)
-	var fb_layout := CoasterRails.curve_layout(fa_ahead, 0, 6.0, 45.0, false, Vector3(-1.0, 0.0, -1.0).normalized())
-	var fb_heading: Vector3 = fb_layout.exit_heading
-	var fb_turns_to_z := fb_heading.is_equal_approx(Vector3(0.0, 0.0, -1.0)) and Vector3i(fb_layout.exit_cell_ahead) == fb_exit + Vector3i(0, 0, -1)
-	var fb_rails := true
-	for x in range(1, 4):
-		fb_rails = fb_rails and bool(ws.try_place("rail", fa + Vector3i(x, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
-	for z in range(1, 4):
-		fb_rails = fb_rails and bool(ws.try_place("rail", fb_exit + Vector3i(0, 0, -z), world.query_cell, AABB(), 0).get("ok", false))
-	var fb_chain := CoasterRails.chain(ws.stations, fa)
-	var fb_joined := fb_chain.has(fa_exit) and fb_chain.has(fa_ahead) and fb_chain.has(fb_exit) and fb_chain.has(fb_exit + Vector3i(0, 0, -3)) and fb_chain.has(fa + Vector3i(3, 0, 0)) and fb_chain.size() == int(fa_laid.get("changes", {}).get("count", 0)) + int(fb_laid.get("changes", {}).get("count", 0)) + 6
-	var fb_cart := ws.try_place("mine_cart", fa + Vector3i(3, 1, 0), world.query_cell, AABB(), 0)
-	var fb_cart_id := str(fb_cart.get("details", {}).get("station", {}).get("instance_id", ""))
-	var fb_far := -1
-	if app.session.coaster_carts != null:
-		for frame in range(600):
-			app.session.coaster_carts.advance(1.0 / 30.0, false)
-			if app.session.coaster_carts.rider_cell(fb_cart_id) == fb_exit + Vector3i(0, 0, -3):
-				fb_far = frame
-				break
-	if fb_cart.get("ok", false):
-		ws.try_dismantle(fb_cart_id, world.query_cell, AABB())
-	_record("T174_UTURN_AND_45S", ut_ghost_ok and ut_laid.get("reason") == "CURVE_PLACED" and ut_shape and ut_rails and ut_joined and ut_cart.get("ok", false) and ut_far > 0 and ut_home > ut_far and fa_laid.get("reason") == "CURVE_PLACED" and fa_diagonal and fa_rail.get("ok", false) and fa_rail_alone and fb_diagonal_entry and fb_laid.get("reason") == "CURVE_PLACED" and fb_turns_to_z and fb_rails and fb_joined and fb_cart.get("ok", false) and fb_far > 0, "a 180-degree curve of radius 3 entered heading +x exits 6 cells to the right (2R) heading -x and joins three rails at each end; a cart rides to the far rail and home; a 45-degree curve of radius 6 ends on the diagonal (-x, -z) cell, which a plain rail cannot join; a Curve pressed on that cell takes the diagonal heading and its 45 bends to -z, and the two 45s with rails behind and beyond chain as one track a cart rides to the far end", {"ghost": ut_ghost_ok, "laid": ut_laid.get("reason"), "exit": ut_exit, "shape": ut_shape, "rails": ut_rails, "chain": ut_chain.size(), "joined": ut_joined, "cart": ut_cart.get("reason"), "far": ut_far, "home": ut_home, "fa_laid": fa_laid.get("reason"), "fa_exit": fa_exit, "fa_ahead": fa_ahead, "fa_diagonal": fa_diagonal, "fa_rail": fa_rail.get("reason"), "fa_rail_alone": fa_rail_alone, "fb_diagonal_entry": fb_diagonal_entry, "fb_laid": fb_laid.get("reason"), "fb_exit": fb_exit, "fb_heading": fb_heading, "fb_turns_to_z": fb_turns_to_z, "fb_rails": fb_rails, "fb_chain": fb_chain.size(), "fb_joined": fb_joined, "fb_cart": fb_cart.get("reason"), "fb_far": fb_far})
+	var no_45: bool = interaction.curve_sweep == 90
+	interaction.set_curve_sweep(135, false)
+	var no_135: bool = interaction.curve_sweep == 180
+	interaction.set_curve_sweep(90, false)
+	_record("T174_UTURN_AND_45S", ut_ghost_ok and ut_laid.get("reason") == "CURVE_PLACED" and ut_shape and ut_rails and ut_joined and ut_cart.get("ok", false) and ut_far > 0 and ut_home > ut_far and no_45 and no_135, "a Shift-aimed U-turn of radius 3 (heading +x) ghosts all-ok, lays, exits 6 lanes over heading -x, joins three plain rails at each end in one chain and a cart rides out and back; asking the tool for 45 or 135 degrees gives 90 / 180 (diagonal ends were dropped 2026-09-21)", {"ut_ghost": ut_ghost.size(), "laid": ut_laid.get("reason"), "shape": ut_shape, "rails": ut_rails, "joined": ut_joined, "cart": ut_cart.get("reason"), "far": ut_far, "home": ut_home, "no_45": no_45, "no_135": no_135})
 	# T179 track auto-clear (CoasterCraft card 6): with the setting off a
 	# loop ghost over stone, water and castle stone shows those cells red and
 	# is refused; on, the stone cell alone turns amber ("clear"), water and
@@ -1073,7 +1041,7 @@ func _run_gate() -> void:
 				if centre_x > minf(middle_x, next_x) and centre_x < maxf(middle_x, next_x):
 					tr_stringer_between = true
 		tr_post_reaches = absf(_post_bottom(tr_support) - float(tr.y)) < 0.05
-	_record("T183_TRESTLE_TRUSS", tr_loaded and tr_laid.get("reason") == "CLIMB_PLACED" and tr_legs == 2 and tr_ties >= 1 and tr_diagonals >= 2 and tr_stringers >= 1 and tr_stringer_between and tr_post_reaches, "the middle piece of a climb (length 12, rise 6) carries a Support bent with two legs (Post, Post2) reaching the plate, at least one Tie, at least two Diagonal braces and at least one Stringer whose centre lies between this bent and the next piece's bent", {"loaded": tr_loaded, "laid": tr_laid.get("reason"), "middle": tr_middle.get("anchor"), "next": tr_next.get("anchor"), "legs": tr_legs, "ties": tr_ties, "diagonals": tr_diagonals, "stringers": tr_stringers, "stringer_between": tr_stringer_between, "post_reaches": tr_post_reaches})
+	_record("T183_TRESTLE_TRUSS", tr_loaded and tr_laid.get("reason") == "CLIMB_PLACED" and tr_legs == 2 and tr_ties >= 1 and tr_diagonals >= 2 and tr_stringers == 0 and tr_post_reaches, "the middle piece of a climb (length 12, rise 6) carries a Support bent with two legs (Post, Post2) reaching the plate, at least one Tie, at least two Diagonal braces and no Stringer (longitudinal bracing dropped 2026-09-21) whose centre lies between this bent and the next piece's bent", {"loaded": tr_loaded, "laid": tr_laid.get("reason"), "middle": tr_middle.get("anchor"), "next": tr_next.get("anchor"), "legs": tr_legs, "ties": tr_ties, "diagonals": tr_diagonals, "stringers": tr_stringers, "stringer_between": tr_stringer_between, "post_reaches": tr_post_reaches})
 
 	# T184 undo (owner 2026-09-20: "when I place something big improperly, it
 	# takes forever to chop it down"): U / Ctrl+Z takes back the newest
@@ -1536,8 +1504,8 @@ func _run_gate() -> void:
 	# Climb goes over a track piece, it should create a hole in its truss
 	# system and not place supports on the track"): a climb of length 12 /
 	# rise 6 crossing a plain-rail line under its middle - the pieces over
-	# the line (and one cell either side) carry no Support; the bent before
-	# the hole carries a Stringer reaching the first bent after it.
+	# the line (and one cell either side) carry no Support; the pieces
+	# either side keep their bents.
 	var br := Vector3i(20, 0, 0)
 	var br_loaded := await _wait_levelled(br + Vector3i(-3, 0, -5), 20, 11, 12, [br, br + Vector3i(6, 3, 0), br + Vector3i(12, 6, 0)] as Array[Vector3i])
 	app.session.inventory.try_transaction({}, {"rail_climb": 40, "rail": 12})
@@ -1576,27 +1544,41 @@ func _run_gate() -> void:
 		if piece_body != null and piece_body.find_child("Support", true, false) != null:
 			br_supported.append(x)
 	br_supported.sort()
-	var before_id: String = br_pieces.get(br.x + 4, "")
-	var after_x := -1
-	for x in range(br.x + 8, br.x + 13):
-		if br_pieces.has(x) and after_x < 0:
-			var after_body: Node3D = app.session._station_visuals.get(br_pieces[x])
-			if after_body != null and after_body.find_child("Support", true, false) != null:
-				after_x = x
-	var before_body: Node3D = app.session._station_visuals.get(before_id) if not before_id.is_empty() else null
-	var before_support: Node = before_body.find_child("Support", true, false) if before_body != null else null
-	var bridged := false
-	var br_stringers: Array[float] = []
-	var br_children: Array[String] = []
-	if before_support != null and after_x > 0:
-		for child in before_support.get_children():
-			br_children.append(str(child.name))
-			if str(child.name).begins_with("Stringer"):
-				var centre_x := (child as Node3D).global_position.x
-				br_stringers.append(centre_x)
-				if centre_x > float(br.x + 5) + 0.5:
-					bridged = true
-	_record("T189_TRUSS_BRIDGE", br_loaded and br_laid.get("reason") == "CLIMB_PLACED" and hole_checked == 3 and hole_ok and before_support != null and after_x > 0 and bridged, "a climb (12 / 6) crossing a plain-rail line under its middle: the three pieces over the line and beside it carry no Support (a hole in the truss); the bent before the hole carries a Stringer whose centre lies past the hole's first cell, reaching the first bent after it", {"loaded": br_loaded, "laid": br_laid.get("reason"), "pieces": br_pieces.size(), "supported_x": str(br_supported), "piece_x": str(br_pieces.keys()), "stringers": str(br_stringers), "hole_checked": hole_checked, "hole_ok": hole_ok, "before": before_support != null, "after_x": after_x, "bridged": bridged})
+	var sides_supported: bool = br_supported.has(br.x + 4) and br_supported.has(br.x + 8)
+	_record("T189_TRUSS_BRIDGE", br_loaded and br_laid.get("reason") == "CLIMB_PLACED" and hole_checked == 3 and hole_ok and sides_supported, "a climb (12 / 6) crossing a plain-rail line under its middle: the three pieces over the line and beside it carry no Support (a hole in the truss); the pieces either side of the hole keep their bents", {"loaded": br_loaded, "laid": br_laid.get("reason"), "pieces": br_pieces.size(), "hole_checked": hole_checked, "hole_ok": hole_ok, "supported_x": str(br_supported), "sides_supported": sides_supported})
+
+	# T190 empty hands and drops (owner 2026-09-21): the held slot's key
+	# again empties the hands (no active item, HUD says so); Y drops one of
+	# the held item ahead of the player and walking onto it picks it up;
+	# Shift+Y drops the stack; drops survive a snapshot round-trip.
+	var hd_rail_slot := _hotbar_slot_for("rail", 0)
+	var held_before := app.session.inventory.active_item_id()
+	app.session.inventory.deselect_hotbar()
+	var hands_empty: bool = app.session.inventory.active_item_id().is_empty() and app.session.inventory.selected_hotbar == -1
+	app.session.inventory.select_hotbar(hd_rail_slot)
+	var rails_before := app.session.inventory.count("rail")
+	var slot_before := int(app.session.inventory.slots[hd_rail_slot].get("count", 0))
+	# On the plate.
+	app.session.player.global_position = Vector3(br) + Vector3(-2.5, 1.2, 2.5)
+	app.session.player.rotation = Vector3.ZERO
+	app.session.player.look_pitch = 0.0
+	app.session.player.apply_mouse_look(Vector2.ZERO)
+	var dropped := app.session.drop_held_item(false)
+
+	var drop_count := app.session.drops_snapshot().size()
+	var drop_took_one: bool = dropped.get("reason") == "DROPPED" and app.session.inventory.count("rail") == rails_before - 1 and drop_count == 1
+	var drop_at: Array = app.session.drops_snapshot()[0].position if drop_count == 1 else [0, 0, 0]
+	var drop_ahead: bool = drop_count == 1 and Vector3(float(drop_at[0]), 0.0, float(drop_at[2])).distance_to(Vector3(Vector3(br).x - 2.5, 0.0, Vector3(br).z + 2.5)) > 0.8
+	var snapshot_drops: Array = app.session.snapshot().get("drops", [])
+	var snapshot_ok: bool = snapshot_drops.size() == 1 and str(snapshot_drops[0].get("item_id", "")) == "rail"
+	app.session.player.global_position = Vector3(float(drop_at[0]), float(drop_at[1]) + 0.2, float(drop_at[2]))
+	app.session._advance_drops(0.1)
+	var picked_up: bool = app.session.drops_snapshot().is_empty() and app.session.inventory.count("rail") == rails_before
+	var stack_dropped := app.session.drop_held_item(true)
+	var stack_ok: bool = stack_dropped.get("reason") == "DROPPED" and app.session.inventory.count("rail") == rails_before - slot_before and app.session.drops_snapshot().size() == 1 and int(app.session.drops_snapshot()[0].get("count", 0)) == slot_before
+	app.session._advance_drops(0.1)
+	var stack_back: bool = app.session.inventory.count("rail") == rails_before and app.session.drops_snapshot().is_empty()
+	_record("T190_HANDS_AND_DROPS", not held_before.is_empty() and hands_empty and drop_took_one and drop_ahead and snapshot_ok and picked_up and stack_ok and stack_back, "deselecting the held slot leaves no active item (slot -1); Y drops one rail ahead of the player (the pack loses one, one drop exists, the session snapshot lists it); standing on the drop picks it up; Shift+Y drops the whole stack and standing on it takes it all back", {"held_before": held_before, "hands_empty": hands_empty, "slot_before": slot_before, "dropped": dropped.get("reason"), "drop_took_one": drop_took_one, "drop_ahead": drop_ahead, "drop_at": str(drop_at), "snapshot_ok": snapshot_ok, "picked_up": picked_up, "stack_ok": stack_ok, "stack_back": stack_back})
 
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on
@@ -2167,15 +2149,16 @@ func _render_curves() -> void:
 	for x in range(1, 3):
 		ws.try_place("rail", up + Vector3i(-x, 0, 0), world.query_cell, AABB(), 0)
 		ws.try_place("rail", uturn_exit + Vector3i(-x, 0, 0), world.query_cell, AABB(), 0)
-	# The S: a 45 right then a 45 left from the diagonal end, radius 5.
+	# The S: a 90 right then a 90 left, radius 5 (45s were dropped 2026-09-21).
 	var sp := cp + Vector3i(0, 0, -5)
 	interaction.begin_curve_at(sp)
-	interaction.set_curve_sweep(45, false)
+	interaction.set_curve_sweep(90, false)
 	interaction.set_curve_radius(5)
 	var s_first := interaction.commit_drag_place()
-	var s_first_layout := CoasterRails.curve_layout(sp, 1, 5.0, 45.0)
+	var s_first_layout := CoasterRails.curve_layout(sp, 1, 5.0, 90.0)
+	interaction.placement_rotation_quarters = 2
 	interaction.begin_curve_at(s_first_layout.exit_cell_ahead)
-	interaction.set_curve_sweep(45, true)
+	interaction.set_curve_sweep(90, true)
 	var s_second := interaction.commit_drag_place()
 	var s_exit: Vector3i = s_second.get("changes", {}).get("exit", sp)
 	for x in range(1, 3):

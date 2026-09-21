@@ -36,6 +36,19 @@ func run(application: CraftAndDefendApp) -> void:
 			spawn_clear = false
 	print("COASTER_SANDBOX spawn clear=%s player=%s" % [spawn_clear, app.session.player.global_position])
 	print("COASTER_SANDBOX_READY")
+	if OS.get_cmdline_user_args().has("--coaster-sandbox-drop-check"):
+		# Windowed drop / pickup round-trip (the drop icon is a Sprite3D).
+		app.session.inventory.select_hotbar(0)
+		var dropped := app.session.drop_held_item(false)
+		await get_tree().process_frame
+		var drop_at: Array = app.session.drops_snapshot()[0].position if app.session.drops_snapshot().size() == 1 else [0, 0, 0]
+		app.session.player.global_position = Vector3(float(drop_at[0]), float(drop_at[1]) + 0.2, float(drop_at[2]))
+		for _frame in range(5):
+			await get_tree().process_frame
+		print("DROP_CHECK dropped=%s picked_up=%s" % [dropped.get("reason"), app.session.drops_snapshot().is_empty()])
+		await get_tree().process_frame
+		get_tree().quit(0)
+		return
 	if OS.get_cmdline_user_args().has("--coaster-sandbox-ride-shot"):
 		# Seat-view pictures: boarding, mid-climb, head turned left.
 		var shots: Array[Dictionary] = [{"wait": 0.2, "name": "ride-start.png"}, {"wait": 0.6, "name": "view-front.png", "view": "front"}, {"wait": 0.6, "name": "view-left.png", "view": "left"}, {"wait": 0.6, "name": "view-right.png", "view": "right"}, {"wait": 0.6, "name": "view-back.png", "view": "back"}, {"wait": 0.6, "name": "view-seat.png", "view": "back"}, {"wait": 1.6, "name": "ride-climb.png"}, {"wait": 1.2, "name": "ride-left.png", "yaw": Vector2(-400.0, 0.0)}, {"wait": 0.4, "name": "view-front-turned.png", "view": "front"}]

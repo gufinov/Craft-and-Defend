@@ -473,17 +473,17 @@ static func climb_layout(entry: Vector3i, quarters: int, length: int, rise: int)
 
 const CURVE_RADIUS_MIN := 2
 const CURVE_RADIUS_MAX := 30
-const CURVE_SWEEPS: Array[int] = [45, 90, 135, 180]
+## Owner 2026-09-21: only 90 and 180 - a 45 / 135 curve ends on a diagonal
+## that plain rails cannot join ("causing a connection problem").
+## `curve_layout` still draws any sweep for the pieces that need it.
+const CURVE_SWEEPS: Array[int] = [90, 180]
 
 
-## Snaps any turn to the nearest laid sweep (45 / 90 / 135 / 180 degrees).
+## Snaps any turn to the nearest laid sweep: up to 135 degrees from the
+## travel direction a 90-degree bend, beyond it a U-turn.
 static func curve_sweep_snap(degrees: float) -> int:
-	if degrees <= 22.5:
-		return 45
-	if degrees <= 67.5:
+	if degrees < 135.0:
 		return 90
-	if degrees <= 112.5:
-		return 135
 	return 180
 
 

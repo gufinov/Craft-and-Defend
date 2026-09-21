@@ -217,6 +217,7 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	siege_defense.state_changed.connect(_on_defense_state_changed)
 	interaction = InteractionService.new(world, inventory, player.get_body_aabb, registry, workstations, _raycast_station, _defense_interact)
 	interaction.restore_stamps(open_data.get("snapshot", {}).get("blueprints", {}).get("stamps", []))
+	_restore_drops(open_data.get("snapshot", {}).get("drops", []))
 	interaction.auto_clear = track_auto_clear
 	interaction.rider_cells = _rider_cells
 	player.interaction = interaction
@@ -258,6 +259,8 @@ func _process(delta: float) -> void:
 		coaster_ride.advance(delta)
 	if fire_service != null:
 		fire_service.advance(delta, simulation_paused or saving)
+	if not simulation_paused and not saving and world_ready:
+		_advance_drops(delta)
 	if not simulation_paused:
 		_melee_cooldown = maxf(0.0, _melee_cooldown - delta)
 		if player != null and world_ready:
@@ -597,6 +600,7 @@ func snapshot() -> Dictionary:
 		"core_defense": core_defense.snapshot(),
 		"blueprints": {"stamps": interaction.stamps_snapshot()} if interaction != null else {"stamps": []},
 		"clock": clock.snapshot(),
+		"drops": drops_snapshot(),
 		"player": _player_snapshot(),
 		"session_id": open_data.get("session_id", ""),
 	}
@@ -628,6 +632,9 @@ func _emit_hud() -> void:
 	var health_text := "HP %d/%d   |   " % [player.health, PlayerController.MAX_HEALTH] if player != null else ""
 	if is_riding():
 		hud_changed.emit("%s%s   |   %s · %s%s" % [health_text, coaster_ride.hud_text(), clock.period_label(), clock.time_label(), cycle_text])
+		return
+	if inventory.selected_hotbar < 0:
+		hud_changed.emit("%sHands empty   |   %s · %s%s" % [health_text, clock.period_label(), clock.time_label(), cycle_text])
 		return
 	hud_changed.emit("%sSlot %d: %s   |   %s · %s%s" % [health_text, inventory.selected_hotbar + 1, selected_text, clock.period_label(), clock.time_label(), cycle_text])
 
@@ -701,6 +708,118 @@ func _update_sun_visual() -> void:
 		return
 	_sun_visual.visible = clock.sun_is_visible()
 	_sun_visual.global_position = player.global_position + clock.sun_direction() * 180.0
+
+
+## Dropped items (owner 2026-09-21, "drop an item is needed, use Y"): Y
+## drops one of the held item (Shift+Y the stack) a little ahead of the
+## player, as a bobbing icon on the ground; walking within DROP_PICKUP_REACH
+## picks it up (what fits in the pack). Drops are saved with the session.
+const DROP_PICKUP_REACH := 1.3
+const DROP_AHEAD := 1.2
+const DROP_ICON_HEIGHT := 0.45
+var _drops: Array[Dictionary] = []
+var _drop_nodes: Dictionary = {}
+var _next_drop := 1
+var _drop_spin := 0.0
+
+
+func drops_snapshot() -> Array:
+	var out: Array = []
+	for drop: Dictionary in _drops:
+		out.append(drop.duplicate())
+	return out
+
+
+func _restore_drops(saved: Array) -> void:
+	for entry in saved:
+		if not (entry is Dictionary):
+			continue
+		var drop: Dictionary = entry
+		var position: Variant = drop.get("position")
+		if not (position is Array) or (position as Array).size() != 3 or str(drop.get("item_id", "")).is_empty():
+			continue
+		_add_drop(str(drop.item_id), int(drop.get("count", 1)), Vector3(float(position[0]), float(position[1]), float(position[2])))
+
+
+func drop_held_item(whole_stack: bool = false) -> Dictionary:
+	if is_riding():
+		return {"ok": false, "reason": "RIDING"}
+	var slot := inventory.selected_hotbar
+	var item_id := inventory.active_item_id()
+	if slot < 0 or item_id.is_empty():
+		_on_interaction_feedback("Nothing in hand to drop.")
+		return {"ok": false, "reason": "NOTHING_HELD"}
+	var in_slot := int(inventory.slots[slot].get("count", 0))
+	var amount := in_slot if whole_stack else 1
+	var taken := inventory.take_from_slot(slot, amount)
+	if not taken.get("ok", false):
+		return taken
+	var forward := -player.camera.global_basis.z
+	forward.y = 0.0
+	if forward.length() < 0.05:
+		forward = Vector3.FORWARD
+	var target := player.global_position + forward.normalized() * DROP_AHEAD
+	var landing := target
+	var hit := world.raycast(target + Vector3.UP * 1.5, Vector3.DOWN, 6.0)
+	if hit != null:
+		landing = Vector3(target.x, float(hit.previous_position.y), target.z)
+	var drop := _add_drop(item_id, amount, landing)
+	_on_interaction_feedback("Dropped %d %s (walk over it to pick it up)." % [amount, registry.display_name(item_id)])
+	_emit_hud()
+	return {"ok": true, "reason": "DROPPED", "drop": drop}
+
+
+func _add_drop(item_id: String, count: int, position: Vector3) -> Dictionary:
+	var drop := {"id": "drop_%04d" % _next_drop, "item_id": item_id, "count": count, "position": [position.x, position.y, position.z]}
+	_next_drop += 1
+	_drops.append(drop)
+	var node := Node3D.new()
+	node.name = str(drop.id)
+	node.position = position + Vector3.UP * (DROP_ICON_HEIGHT * 0.6)
+	var texture := ItemIconCatalog.texture_for(item_id) if DisplayServer.get_name() != "headless" else null
+	if texture != null:
+		var sprite := Sprite3D.new()
+		sprite.texture = texture
+		sprite.pixel_size = DROP_ICON_HEIGHT / maxf(1.0, texture.get_size().y)
+		sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+		sprite.shaded = false
+		node.add_child(sprite)
+	add_child(node)
+	_drop_nodes[str(drop.id)] = node
+	return drop
+
+
+func _advance_drops(delta: float) -> void:
+	if _drops.is_empty() or player == null:
+		return
+	_drop_spin += delta
+	var feet := player.global_position
+	var index := _drops.size() - 1
+	while index >= 0:
+		var drop: Dictionary = _drops[index]
+		var node: Node3D = _drop_nodes.get(str(drop.id))
+		var position: Array = drop.position
+		var at := Vector3(float(position[0]), float(position[1]), float(position[2]))
+		if node != null:
+			node.position.y = at.y + DROP_ICON_HEIGHT * 0.6 + sin(_drop_spin * 2.0) * 0.05
+		if not is_riding() and feet.distance_to(at) <= DROP_PICKUP_REACH:
+			var item_id := str(drop.item_id)
+			var count := int(drop.count)
+			var fits := count
+			while fits > 0 and not inventory.can_transaction({}, {item_id: fits}):
+				fits -= 1
+			if fits > 0 and inventory.try_transaction({}, {item_id: fits}).get("ok", false):
+				if fits >= count:
+					_drops.remove_at(index)
+					_drop_nodes.erase(str(drop.id))
+					if node != null:
+						node.queue_free()
+				else:
+					drop.count = count - fits
+				_on_interaction_feedback("Picked up %d %s." % [fits, registry.display_name(item_id)])
+				_emit_hud()
+		index -= 1
 
 
 ## U / Ctrl+Z: reverse the newest placement (InteractionService.undo_last).
@@ -852,9 +971,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	for index in range(F0Inventory.HOTBAR_COUNT):
 		if event.is_action_pressed("hotbar_%d" % (index + 1)):
-			select_hotbar(index)
+			if inventory.selected_hotbar == index:
+				# The held slot's key again empties the hands (owner 2026-09-21).
+				inventory.deselect_hotbar()
+				_on_interaction_feedback("Hands empty (press a slot key to hold something).")
+				_emit_hud()
+			else:
+				select_hotbar(index)
 			get_viewport().set_input_as_handled()
 			return
+	if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_Y or event.keycode == KEY_Y):
+		# Y drops one of the held item in front of the player (Shift+Y the
+		# whole stack); walking over a drop picks it up.
+		drop_held_item(event.shift_pressed)
+		get_viewport().set_input_as_handled()
+		return
 
 
 func _on_interaction_result(result: Dictionary) -> void:
@@ -1377,33 +1508,6 @@ func _refresh_rail_neighbours(anchor: Vector3i) -> void:
 					continue
 				_remove_station_visual(neighbour)
 				_spawn_station_visual(workstations.station(neighbour))
-	# A bent that closes a hole in the truss: the last bent before the hole
-	# bridges to this one - walk back along the joints to it and re-draw it.
-	var placed_id := workstations.station_at_cell(anchor)
-	if not placed_id.is_empty():
-		var tracks := CoasterRails.track_records(workstations.stations)
-		var placed: Dictionary = workstations.station(placed_id)
-		if placed.has("curve") and not _support_bent(placed, tracks).is_empty():
-			var current := placed
-			for _step in range(SUPPORT_BRIDGE_SPAN):
-				var joints: Variant = current.get("coaster_joints")
-				if not (joints is Array) or (joints as Array).is_empty():
-					break
-				var back: Variant = (joints as Array)[0]
-				if not (back is Array) or (back as Array).size() != 3:
-					break
-				var back_cell := Vector3i(current.get("anchor", Vector3i.ZERO)) + Vector3i(int(back[0]), int(back[1]), int(back[2]))
-				var previous: Dictionary = tracks.get(back_cell, {})
-				if previous.is_empty():
-					break
-				if not _support_bent(previous, tracks).is_empty():
-					if _step > 0:
-						var previous_id := workstations.station_at_cell(back_cell)
-						if not previous_id.is_empty():
-							_remove_station_visual(previous_id)
-							_spawn_station_visual(workstations.station(previous_id))
-					break
-				current = previous
 	# Trestle supports: a floating piece higher in this column may have
 	# grown (or now needs) a post that lands on this cell.
 	for drop in range(2, SUPPORT_MAX_DROP + 1):
@@ -1988,9 +2092,6 @@ func _build_loop_arc_visual(parent: Node3D, record: Dictionary, joined: Array[Ve
 ## `Stringer`, `Pad`) so dismantling removes it. One BoxMesh is shared per
 ## strut size (`_support_meshes`).
 const SUPPORT_MAX_DROP := 24
-## Pieces a stringer may walk to bridge a hole in the truss (track below);
-## a steep cell stacks two pieces, so this is about six cells.
-const SUPPORT_BRIDGE_SPAN := 12
 const SUPPORT_BRACE_EVERY := 2
 const SUPPORT_LEG_OFFSET := 0.32
 const SUPPORT_SPLAY_MIN_HEIGHT := 4.0
@@ -2061,9 +2162,8 @@ func _support_bent(record: Dictionary, tracks: Dictionary) -> Dictionary:
 		if not other.is_empty():
 			if drop <= 2 and not curve.is_empty() and other.has("curve") and str(JSON.stringify(other.get("curve"))) == own_curve:
 				return {}
-			# Owner 2026-09-21: a track below is bridged, never stood on - no
-			# bent here (a hole in the truss); the bents either side carry
-			# the stringers across (`_support_next_bent` walks past it).
+			# Owner 2026-09-21: a track below is never stood on - no bent here
+			# (a hole in the truss with room for a cart and rider).
 			return {}
 		# The same for track within a cell sideways of the column (a cart
 		# and rider need the room), unless it is this piece's own curve.
@@ -2146,42 +2246,9 @@ func _add_track_supports(parent: Node3D, record: Dictionary) -> void:
 			_add_support_strut(rig, _bent_leg_point(bent, -1.0, previous) - body_origin, _bent_leg_point(bent, 1.0, level) - body_origin, SUPPORT_BRACE_SIZE, steel, _support_name(names, "Diagonal"), along)
 			_add_support_strut(rig, _bent_leg_point(bent, 1.0, previous) - body_origin, _bent_leg_point(bent, -1.0, level) - body_origin, SUPPORT_BRACE_SIZE, steel, _support_name(names, "Diagonal"), along)
 		previous = level
-	# Longitudinal bracing to the next bent along the curve (the forward
-	# joint, the t1 side), drawn from this piece only so each bay is drawn
-	# once.
-	var next_bent := _support_next_bent(record, tracks)
-	if next_bent.is_empty():
-		return
-	var next_side: Vector3 = next_bent.side
-	var flip := 1.0 if next_side.dot(side) >= 0.0 else -1.0
-	var next_height: float = next_bent.height
-	var next_floor: float = next_bent.floor_y
-	var floor_y: float = bent.floor_y
-	for lateral: float in [-1.0, 1.0]:
-		# The rungs: [this end, next end] per level that both bents reach,
-		# the floor first (not drawn - it carries the first diagonal).
-		var rungs: Array[Array] = []
-		rungs.append([_bent_leg_point(bent, lateral, 0.0), _bent_leg_point(next_bent, lateral * flip, 0.0)])
-		for index in range(levels.size()):
-			var level: float = levels[index]
-			var from := _bent_leg_point(bent, lateral, level)
-			var to: Vector3
-			if index == levels.size() - 1:
-				# The cap stringer follows the grade to the next cap.
-				to = _bent_leg_point(next_bent, lateral * flip, next_height - SUPPORT_CAP_DROP)
-			else:
-				var next_rise := floor_y + level - next_floor
-				if next_rise < 0.3 or next_rise > next_height - 0.4:
-					continue
-				to = _bent_leg_point(next_bent, lateral * flip, next_rise)
-			_add_support_strut(rig, from - body_origin, to - body_origin, SUPPORT_BRACE_SIZE, steel, _support_name(names, "Stringer"), side)
-			rungs.append([from, to])
-		for bay in range(rungs.size() - 1):
-			var low: Array = rungs[bay]
-			var high: Array = rungs[bay + 1]
-			var a: Vector3 = low[0] if bay % 2 == 0 else low[1]
-			var b: Vector3 = high[1] if bay % 2 == 0 else high[0]
-			_add_support_strut(rig, a - body_origin, b - body_origin, SUPPORT_BRACE_SIZE, steel, _support_name(names, "Diagonal"), side)
+	# No longitudinal bracing (owner 2026-09-21: "stick to vertical truss
+	# only") - each bent stands alone; a piece over other track has none.
+
 
 
 ## Unique child names for a bent's struts: "Tie", "Tie2", "Tie3"... (a
@@ -2190,32 +2257,6 @@ func _support_name(names: Dictionary, base: String) -> String:
 	var count := int(names.get(base, 0)) + 1
 	names[base] = count
 	return base if count == 1 else base + str(count)
-
-
-## The bent of the piece at `record`'s forward joint (the curve's next cell,
-## the second recorded joint), or {} when it has none / gets no support.
-func _support_next_bent(record: Dictionary, tracks: Dictionary) -> Dictionary:
-	# Walks forward up to SUPPORT_BRIDGE_SPAN pieces so a hole in the truss
-	# (pieces over another track) is bridged from the bent before it to the
-	# first bent after it.
-	var current := record
-	for _step in range(SUPPORT_BRIDGE_SPAN):
-		var joints: Variant = current.get("coaster_joints")
-		if not (joints is Array) or (joints as Array).size() < 2:
-			return {}
-		var forward: Variant = (joints as Array)[1]
-		if not (forward is Array) or (forward as Array).size() != 3:
-			return {}
-		var anchor: Vector3i = current.get("anchor", Vector3i.ZERO)
-		var next_cell := anchor + Vector3i(int(forward[0]), int(forward[1]), int(forward[2]))
-		var next_record: Dictionary = tracks.get(next_cell, {})
-		if next_record.is_empty():
-			return {}
-		var bent := _support_bent(next_record, tracks)
-		if not bent.is_empty():
-			return bent
-		current = next_record
-	return {}
 
 
 ## One BoxMesh per strut size for the trestles (a tall climb is ~1000 struts).

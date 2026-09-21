@@ -1611,10 +1611,7 @@ func set_curve_radius(radius: int) -> Dictionary:
 
 ## 45 / 90 / 135 / 180 degrees; `left` mirrors the bend to the left of travel.
 func set_curve_sweep(sweep: int, left: bool = false) -> Dictionary:
-	curve_sweep = CoasterRails.CURVE_SWEEPS[0]
-	for candidate: int in CoasterRails.CURVE_SWEEPS:
-		if absi(candidate - sweep) < absi(curve_sweep - sweep):
-			curve_sweep = candidate
+	curve_sweep = CoasterRails.curve_sweep_snap(float(sweep))
 	curve_left = left
 	if not _drag.is_empty() and str(_drag.get("mode", "")) == "curve":
 		curve_radius = curve_radius_limit(curve_radius)
