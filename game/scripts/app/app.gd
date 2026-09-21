@@ -35,9 +35,17 @@ var settings: SettingsStore
 var saves: SaveCoordinator
 var screenshots: GameplayScreenshotService
 var session: GameSession
+## CoasterCraft (docs/COASTERCRAFT_MODE.md): the coaster building mode with
+## its own saves; `coastercraft.active` while a session of it is open.
+var coastercraft: CoasterCraftMode
 
 var menu_panel: Control
 var pause_panel: Control
+var coastercraft_menu_panel: Control
+var coastercraft_continue_button: Button
+var coastercraft_pause_panel: Control
+var coastercraft_hero_armor_button: Button
+var coastercraft_track_auto_clear_button: Button
 ## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): pause-menu toggle.
 var hero_armor_button: Button
 var track_auto_clear_button: Button
@@ -165,6 +173,7 @@ var _print_screen_pressed_msec := -PRINT_SCREEN_FOCUS_WINDOW_MSEC
 var _screenshot_focus_suspended := false
 var _screenshot_resume_generation := 0
 var _failed_save_quit_after := false
+var _failed_save_restart := false
 var _hud_state_text := ""
 
 
@@ -178,6 +187,10 @@ func _ready() -> void:
 	_apply_runtime_graphics()
 	saves = SaveCoordinator.new(data_root)
 	screenshots = GameplayScreenshotService.new(data_root)
+	coastercraft = CoasterCraftMode.new()
+	coastercraft.name = "CoasterCraftMode"
+	add_child(coastercraft)
+	coastercraft.setup(self)
 	_build_interface()
 	_show_main_menu()
 	print("DATA_ROOT %s" % data_root)
@@ -297,10 +310,18 @@ func _ready() -> void:
 		add_child(p4_resources_automation)
 		p4_resources_automation.call_deferred("run", self, p4_resources_mode)
 	if OS.get_cmdline_user_args().has("--coaster-sandbox"):
-		# Owner sandbox: premade coaster track + infinite stock (not a diagnostic).
+		# Owner sandbox: CoasterCraft plus the premade demo tracks (not a diagnostic).
 		var coaster_sandbox := CoasterSandbox.new()
 		add_child(coaster_sandbox)
 		coaster_sandbox.call_deferred("run", self)
+	elif OS.get_cmdline_user_args().has("--coastercraft-check"):
+		# Headless check of the CoasterCraft mode (docs/COASTERCRAFT_MODE.md).
+		var coastercraft_check := CoasterCraftCheck.new()
+		add_child(coastercraft_check)
+		coastercraft_check.call_deferred("run", self)
+	elif OS.get_cmdline_user_args().has("--coastercraft"):
+		# START_COASTERCRAFT.cmd: straight into CoasterCraft's New.
+		call_deferred("_on_coastercraft_new_pressed")
 	var coaster_rails_mode := _argument_value("--coaster-rails-automation=")
 	if not coaster_rails_mode.is_empty():
 		var coaster_rails_automation := CoasterRailsAutomation.new()
@@ -320,7 +341,7 @@ func _input(event: InputEvent) -> void:
 	if not _is_escape_press(event):
 		return
 	if capture_action.is_empty() and state == AppState.MAIN_MENU \
-		and not keybind_panel.visible and not settings_panel.visible and not display_confirm_panel.visible:
+		and not keybind_panel.visible and not settings_panel.visible and not display_confirm_panel.visible and not coastercraft_menu_panel.visible:
 		return
 	get_viewport().set_input_as_handled()
 	if not capture_action.is_empty():
@@ -376,8 +397,10 @@ func _build_interface() -> void:
 	canvas.layer = 20
 	add_child(canvas)
 	_build_main_menu(canvas)
+	_build_coastercraft_menu(canvas)
 	_build_loading(canvas)
 	_build_pause(canvas)
+	_build_coastercraft_pause(canvas)
 	_build_keybinds(canvas)
 	_build_settings(canvas)
 	_build_inventory(canvas)
@@ -441,10 +464,33 @@ func _build_main_menu(canvas: CanvasLayer) -> void:
 	menu.add_child(start_button)
 	continue_button = _button("Continue", _on_continue_pressed)
 	menu.add_child(continue_button)
+	menu.add_child(_button("CoasterCraft", _show_coastercraft_menu))
 	menu.add_child(_button("Settings", _show_settings))
 	menu.add_child(_button("Keybinds", _show_keybinds))
 	menu.add_child(_button("Quit", _on_quit_pressed))
 	var root_hint := _centered_label("Local saves: %s" % data_root)
+	root_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	root_hint.custom_minimum_size = Vector2(620, 0)
+	menu.add_child(root_hint)
+
+
+## CoasterCraft submenu (docs/COASTERCRAFT_MODE.md): Continue (when the
+## mode has a save), New (a fresh bare plate), Back.
+func _build_coastercraft_menu(canvas: CanvasLayer) -> void:
+	coastercraft_menu_panel = _full_panel(Color("17222c"))
+	canvas.add_child(coastercraft_menu_panel)
+	var menu := _centered_box(coastercraft_menu_panel, Vector2(700, 480))
+	menu.add_child(_title("COASTERCRAFT", 34))
+	var subtitle := _centered_label("Coaster building mode · a bare 60 × 100 stone plate · infinite rails, carts and cars · no raids")
+	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	subtitle.custom_minimum_size = Vector2(620, 0)
+	menu.add_child(subtitle)
+	menu.add_child(_spacer(12))
+	coastercraft_continue_button = _button("Continue", _on_coastercraft_continue_pressed)
+	menu.add_child(coastercraft_continue_button)
+	menu.add_child(_button("New", _on_coastercraft_new_pressed))
+	menu.add_child(_button("Back", _show_main_menu))
+	var root_hint := _centered_label("CoasterCraft saves: %s" % coastercraft.data_root())
 	root_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	root_hint.custom_minimum_size = Vector2(620, 0)
 	menu.add_child(root_hint)
@@ -502,6 +548,26 @@ func _build_pause(canvas: CanvasLayer) -> void:
 	drill_column.add_child(_button("Start Drill (NEAR): single raider", _start_core_defense_prototype, Vector2(520, 44)))
 	drill_column.add_child(_button("Start Wave Drill (4 orcs + 1 brute + 1 troll, far spawn)", _start_wave_drill, Vector2(520, 44)))
 	drill_column.add_child(_button("Start Siege Drill (6 orcs + 3 brutes + 3 trolls, farthest spawn)", _start_siege_drill, Vector2(520, 44)))
+
+
+## CoasterCraft's pause menu: one column, no drills (no monsters in this mode).
+func _build_coastercraft_pause(canvas: CanvasLayer) -> void:
+	coastercraft_pause_panel = _full_panel(Color(0.04, 0.06, 0.08, 0.92))
+	canvas.add_child(coastercraft_pause_panel)
+	var pause_box := _centered_box(coastercraft_pause_panel, Vector2(660, 560))
+	pause_box.add_child(_title("COASTERCRAFT · PAUSED", 30))
+	pause_box.add_child(_button("Resume", _resume_game))
+	pause_box.add_child(_button("Save", _coastercraft_save))
+	pause_box.add_child(_button("Save and Restart (new bare plate)", _coastercraft_save_and_restart))
+	pause_box.add_child(_button("Save and Exit to Menu", _save_and_exit_to_menu))
+	pause_box.add_child(_button("Save and Quit", _save_and_quit))
+	pause_box.add_child(_spacer(6))
+	pause_box.add_child(_button("Settings", _show_settings))
+	pause_box.add_child(_button("Keybinds", _show_keybinds))
+	coastercraft_hero_armor_button = _button("Hero: Armour off", _toggle_hero_armor)
+	pause_box.add_child(coastercraft_hero_armor_button)
+	coastercraft_track_auto_clear_button = _button("Track auto-clear: off", _toggle_track_auto_clear)
+	pause_box.add_child(coastercraft_track_auto_clear_button)
 
 
 func _build_keybinds(canvas: CanvasLayer) -> void:
@@ -1240,10 +1306,39 @@ func _build_display_confirmation(canvas: CanvasLayer) -> void:
 func _show_main_menu() -> void:
 	state = AppState.MAIN_MENU
 	get_tree().paused = false
+	coastercraft.leave()
 	_hide_all_panels()
 	menu_panel.show()
 	_refresh_slot_ui()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _show_coastercraft_menu() -> void:
+	if state != AppState.MAIN_MENU:
+		return
+	_hide_all_panels()
+	coastercraft_continue_button.disabled = not coastercraft.has_save()
+	coastercraft_continue_button.tooltip_text = "Resume the last CoasterCraft checkpoint" if coastercraft.has_save() else "No CoasterCraft save yet"
+	coastercraft_menu_panel.show()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _on_coastercraft_new_pressed() -> void:
+	if state != AppState.MAIN_MENU:
+		return
+	coastercraft.begin(false)
+
+
+func _on_coastercraft_continue_pressed() -> void:
+	if state != AppState.MAIN_MENU or not coastercraft.has_save():
+		return
+	coastercraft.begin(true)
+
+
+## The coordinator the open session saves to: CoasterCraft's while the mode
+## is active, otherwise the real game's slots.
+func active_saves() -> SaveCoordinator:
+	return coastercraft.saves if coastercraft != null and coastercraft.active else saves
 
 
 func _on_slot_selected(index: int) -> void:
@@ -1289,16 +1384,18 @@ func _open_session(continue_existing: bool) -> void:
 		return
 	state = AppState.LOADING
 	menu_panel.hide()
+	coastercraft_menu_panel.hide()
 	loading_panel.show()
 	loading_back_button.hide()
 	loading_retry_button.hide()
 	loading_return_button.hide()
 	status_label.text = "Opening checkpoint…" if continue_existing else "Creating working session…"
-	var open_result := saves.open_session(continue_existing)
+	var open_result := active_saves().open_session(continue_existing)
 	if not open_result.get("ok", false):
 		_show_error(open_result.get("reason", "OPEN_FAILED"))
 		return
 	session = GameSession.new()
+	session.coastercraft = coastercraft.active
 	session.settings_view_distance = settings.view_distance
 	session.hero_armored = settings.hero_armored
 	session.track_auto_clear = settings.track_auto_clear
@@ -1324,6 +1421,11 @@ func _open_session(continue_existing: bool) -> void:
 func _on_session_ready() -> void:
 	if minimap != null and session != null and session.world != null and session.world.terrain != null and session.world.terrain.generator is P1TerrainGenerator:
 		minimap.configure(session.world.terrain.generator, session.player, session.workstations)
+	if coastercraft.active:
+		coastercraft.on_session_ready(not bool(session.open_data.get("continued", false)))
+	if minimap != null:
+		minimap.show_enemy_base = not coastercraft.active
+	defense_label.visible = not coastercraft.active
 	state = AppState.PLAYING
 	loading_panel.hide()
 	hud_layer.show()
@@ -1338,13 +1440,19 @@ func _pause_game() -> void:
 	session.pause_game(true)
 	get_tree().paused = true
 	hud_layer.hide()
-	pause_panel.show()
+	_active_pause_panel().show()
+
+
+## The pause menu of the open session: CoasterCraft's (no drills) or the game's.
+func _active_pause_panel() -> Control:
+	return coastercraft_pause_panel if coastercraft.active else pause_panel
 
 
 func _resume_game() -> void:
 	if state != AppState.PAUSED:
 		return
 	pause_panel.hide()
+	coastercraft_pause_panel.hide()
 	hud_layer.show()
 	get_tree().paused = false
 	session.pause_game(false)
@@ -1362,8 +1470,11 @@ func _toggle_hero_armor() -> void:
 
 
 func _refresh_hero_armor_button() -> void:
-	if hero_armor_button != null and settings != null:
-		hero_armor_button.text = "Hero: Armour %s" % ("on" if settings.hero_armored else "off")
+	if settings == null:
+		return
+	for button: Button in [hero_armor_button, coastercraft_hero_armor_button]:
+		if button != null:
+			button.text = "Hero: Armour %s" % ("on" if settings.hero_armored else "off")
 
 
 ## Pause menu: track tools clear natural terrain in their way (persisted in
@@ -1378,8 +1489,11 @@ func _toggle_track_auto_clear() -> void:
 
 
 func _refresh_track_auto_clear_button() -> void:
-	if track_auto_clear_button != null and settings != null:
-		track_auto_clear_button.text = "Track auto-clear: %s" % ("on" if settings.track_auto_clear else "off")
+	if settings == null:
+		return
+	for button: Button in [track_auto_clear_button, coastercraft_track_auto_clear_button]:
+		if button != null:
+			button.text = "Track auto-clear: %s" % ("on" if settings.track_auto_clear else "off")
 
 
 func _start_defense_drill() -> void:
@@ -3032,6 +3146,8 @@ func _handle_escape_recovery() -> void:
 		_close_keybinds()
 	elif settings_panel.visible:
 		_close_settings()
+	elif state == AppState.MAIN_MENU and coastercraft_menu_panel.visible:
+		_show_main_menu()
 	elif state == AppState.INVENTORY:
 		_close_inventory()
 	elif state == AppState.CRAFTING:
@@ -3063,7 +3179,38 @@ func _save_and_quit() -> void:
 	_save_then(true)
 
 
-func _save_then(quit_after: bool) -> void:
+## CoasterCraft pause menu: Save and Restart — checkpoint this plate, then
+## open a fresh bare one (the mode's Continue resumes whichever plate was
+## saved last).
+func _coastercraft_save_and_restart() -> void:
+	_save_then(false, true)
+
+
+## CoasterCraft pause menu: Save — checkpoint and stay in the paused game.
+## The checkpoint closes the world stream, so the session comes back through
+## the same recovery the failed-save path uses (the stream reattaches to the
+## working database, which holds everything just saved).
+func _coastercraft_save() -> void:
+	if session == null or state != AppState.PAUSED:
+		return
+	state = AppState.SAVING
+	get_tree().paused = false
+	_hide_all_panels()
+	loading_panel.show()
+	status_label.text = "Saving the CoasterCraft checkpoint…"
+	var result := await active_saves().save_session(session)
+	if not result.get("ok", false):
+		_failed_save_quit_after = false
+		_failed_save_restart = false
+		_show_error("Save failed: %s" % result.get("reason", "UNKNOWN"), true)
+		return
+	print("CHECKPOINT %s" % JSON.stringify(result))
+	session.recover_from_failed_save()
+	_return_to_paused_game()
+	_set_feedback("Saved CoasterCraft checkpoint %d." % int(result.get("revision", 0)))
+
+
+func _save_then(quit_after: bool, restart_coastercraft: bool = false) -> void:
 	if session == null or state == AppState.SAVING:
 		return
 	state = AppState.SAVING
@@ -3071,9 +3218,10 @@ func _save_then(quit_after: bool) -> void:
 	_hide_all_panels()
 	loading_panel.show()
 	status_label.text = "Saving coherent terrain and inventory checkpoint…"
-	var result := await saves.save_session(session)
+	var result := await active_saves().save_session(session)
 	if not result.get("ok", false):
 		_failed_save_quit_after = quit_after
+		_failed_save_restart = restart_coastercraft
 		_show_error("Save failed: %s" % result.get("reason", "UNKNOWN"), true)
 		return
 	print("CHECKPOINT %s" % JSON.stringify(result))
@@ -3081,6 +3229,10 @@ func _save_then(quit_after: bool) -> void:
 	session = null
 	if quit_after:
 		get_tree().quit(0)
+	elif restart_coastercraft:
+		# A new plate without passing through the menu (the mode stays active).
+		state = AppState.MAIN_MENU
+		coastercraft.begin(false)
 	else:
 		_show_main_menu()
 
@@ -3099,19 +3251,25 @@ func _show_error(message: String, recoverable_session: bool = false) -> void:
 
 func _retry_failed_save() -> void:
 	if session != null and state == AppState.ERROR:
-		_save_then(_failed_save_quit_after)
+		_save_then(_failed_save_quit_after, _failed_save_restart)
 
 
 func _return_from_save_error() -> void:
 	if session == null or state != AppState.ERROR:
 		return
+	_return_to_paused_game()
+
+
+## Back to the paused game after a save (failed and recovered, or
+## CoasterCraft's in-place Save).
+func _return_to_paused_game() -> void:
 	loading_panel.hide()
 	loading_retry_button.hide()
 	loading_return_button.hide()
 	state = AppState.PAUSED
 	get_tree().paused = true
 	session.pause_game(true)
-	pause_panel.show()
+	_active_pause_panel().show()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
@@ -3147,7 +3305,8 @@ func _set_navigation(text: String) -> void:
 
 func _set_defense(text: String) -> void:
 	if defense_label != null:
-		defense_label.text = text
+		# CoasterCraft has no raids: the drill / core line stays blank.
+		defense_label.text = "" if coastercraft != null and coastercraft.active else text
 
 
 func _refresh_hud() -> void:
@@ -3248,7 +3407,7 @@ func _handle_close_request() -> void:
 
 
 func _hide_all_panels() -> void:
-	for panel in [menu_panel, pause_panel, keybind_panel, settings_panel, inventory_panel, crafting_panel, display_confirm_panel, loading_panel, hud_layer]:
+	for panel in [menu_panel, coastercraft_menu_panel, pause_panel, coastercraft_pause_panel, keybind_panel, settings_panel, inventory_panel, crafting_panel, display_confirm_panel, loading_panel, hud_layer]:
 		if panel != null:
 			panel.hide()
 

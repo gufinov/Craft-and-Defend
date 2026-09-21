@@ -75,6 +75,11 @@ const REASON_TEXT := {
 
 const STARTER_IRON_MARKER := Vector3(-6.5, 0.0, 36.5)
 
+## CoasterCraft (docs/COASTERCRAFT_MODE.md), set by the app before
+## initialize(): no enemy core, no enemy-base compass, no starter markers on
+## the plate, no drill line; the navigation line names the mode.
+var coastercraft := false
+
 var world: WorldAdapter
 var player: PlayerController
 var registry: ContentRegistry
@@ -426,7 +431,7 @@ func select_hotbar(index: int) -> Dictionary:
 ## loaded (the player wandered there), on a stone slab levelled for it.
 var _enemy_core_timer := 0.0
 func _ensure_enemy_core(delta: float) -> void:
-	if not world_ready or simulation_paused or registry.entity("enemy_core").is_empty():
+	if coastercraft or not world_ready or simulation_paused or registry.entity("enemy_core").is_empty():
 		return
 	_enemy_core_timer -= delta
 	if _enemy_core_timer > 0.0:
@@ -480,7 +485,8 @@ func _on_spawn_area_ready() -> void:
 		core_defense.clear_for_other_mode()
 		_on_interaction_feedback("The saved defense drill could not be restored (%s); it was cleared." % str(core_restore.get("reason", "UNKNOWN")))
 	world_ready = true
-	_spawn_starter_resource_markers()
+	if not coastercraft:
+		_spawn_starter_resource_markers()
 	simulation_paused = false
 	player.activate(not DisplayServer.get_name().contains("headless"))
 	status_changed.emit("Ready — Tab inventory, B hand crafting, right-click stations, W/R rotate castle previews")
@@ -593,6 +599,7 @@ func snapshot() -> Dictionary:
 	return {
 		"schema_version": SaveCoordinator.SAVE_SCHEMA,
 		"content_version": SaveCoordinator.CONTENT_VERSION,
+		"mode": "coastercraft" if coastercraft else "game",
 		"world": world.snapshot(),
 		"inventory": inventory.snapshot(),
 		"workstations": workstations.snapshot(),
@@ -663,6 +670,11 @@ func _emit_navigation() -> void:
 		return
 	var offset := Vector2(WorldAdapter.SPAWN_FEET.x - player.global_position.x, WorldAdapter.SPAWN_FEET.z - player.global_position.z)
 	var distance := offset.length()
+	if coastercraft:
+		var mode_directions: Array[String] = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+		var mode_direction: String = mode_directions[posmod(roundi(atan2(offset.x, -offset.y) / (PI / 4.0)), 8)]
+		navigation_changed.emit("COASTERCRAFT  ·  infinite stock  ·  Shift on a car to ride, 1-9 speed  ·  spawn %d m %s" % [roundi(distance), mode_direction])
+		return
 	if distance <= 8.0:
 		var iron_distance := Vector2(STARTER_IRON_MARKER.x - player.global_position.x, STARTER_IRON_MARKER.z - player.global_position.z).length()
 		navigation_changed.emit("HOME CLEARING  ·  IRON MARKER %d m" % roundi(iron_distance))
@@ -675,7 +687,7 @@ func _emit_navigation() -> void:
 
 ## "· ENEMY BASE 160 m NW" from the generator's seed-chosen base site.
 func _enemy_base_hint(directions: Array) -> String:
-	if world == null or world.terrain == null or not world.terrain.generator is P1TerrainGenerator:
+	if coastercraft or world == null or world.terrain == null or not world.terrain.generator is P1TerrainGenerator:
 		return ""
 	var base: Vector3i = world.terrain.generator.enemy_base_cell()
 	var offset := Vector2(float(base.x) + 0.5 - player.global_position.x, float(base.z) + 0.5 - player.global_position.z)
@@ -3464,7 +3476,9 @@ func _spawn_starter_resource_markers() -> void:
 
 
 func _on_defense_state_changed(_text: String) -> void:
-	if core_defense != null and (core_defense.is_active() or core_defense.state == CoreDefenseService.FAILED):
+	if coastercraft:
+		defense_changed.emit("")
+	elif core_defense != null and (core_defense.is_active() or core_defense.state == CoreDefenseService.FAILED):
 		defense_changed.emit(core_defense.hud_text() + (siege_defense.hud_suffix() if siege_defense != null else ""))
 	elif core_defense != null and core_defense.state == CoreDefenseService.WON:
 		defense_changed.emit(core_defense.hud_text() + (siege_defense.hud_suffix() if siege_defense != null else ""))

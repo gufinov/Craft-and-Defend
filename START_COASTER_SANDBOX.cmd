@@ -10,9 +10,9 @@ if errorlevel 1 goto :prepare_failed
 set "SANDBOX_ROOT=%~dp0artifacts\coaster-sandbox"
 mkdir "%SANDBOX_ROOT%" 2>nul
 echo.
-echo Starting the coaster sandbox: new game, premade loop and slope run beside the spawn,
+echo Starting the coaster sandbox: CoasterCraft mode (bare plate) plus the premade demo tracks,
 echo infinite rails / slopes / loops / carts / kettles / blocks / tools in the pack.
-echo Saves for this sandbox live in %SANDBOX_ROOT% (your normal saves are untouched).
+echo Saves for this sandbox live in %SANDBOX_ROOT%\coastercraft (your normal saves are untouched).
 start "" "%~dp0builds\CraftAndDefend\CraftAndDefend.exe" --log-file "%SANDBOX_ROOT%\sandbox.log" -- --f0-data-root="%SANDBOX_ROOT%" --coaster-sandbox
 exit /b 0
 

@@ -2,32 +2,30 @@ class_name CoasterSandbox
 extends Node
 
 ## Owner test sandbox for the coaster rails side project (`--coaster-sandbox`):
-## starts a new game, levels a plate beside the spawn, lays a premade loop
-## with a parked coaster car and a slope run with a mine cart, and keeps the
-## pack topped up with rails, carts, cars, kettles, blocks and tools so nothing
-## has to be mined.
+## the CoasterCraft mode (CoasterCraftMode: a new world on the fixed seed,
+## the bare stone plate, creative placement, the pack topped up every second
+## with rails, carts, cars, kettles, blocks and tools) plus the premade demo
+## tracks on the old 30 x 50 area of the plate (x -14..15, z 22..71) that the
+## `--coaster-sandbox-*` checks and the gates depend on.
 
-const TOP_UP_SECONDS := 1.0
-## Hotbar order, then the rest of the pack.
-const STOCK: Array[String] = ["rail", "rail_slope", "rail_loop", "rail_switch", "rail_cross", "rail_curve", "rail_climb", "mine_cart", "coaster_car", "kettle", "castle_stone", "planks", "iron_pick", "iron_sword", "stone_shot", "flame_shot", "torch", "chest", "wood_axe", "dirt", "stone"]
+## The mode's stock list (hotbar order, then the rest of the pack).
+const STOCK: Array[String] = CoasterCraftMode.STOCK
 
 var app: CraftAndDefendApp
 var loop_car_id := ""
-var _top_up_left := 0.0
 
 
 func run(application: CraftAndDefendApp) -> void:
 	app = application
-	app._on_start_pressed()
+	app._on_coastercraft_new_pressed()
 	var deadline := Time.get_ticks_msec() + 60000
 	while app.session == null or not app.session.world_ready:
 		if Time.get_ticks_msec() >= deadline:
 			push_error("COASTER_SANDBOX world ready timeout")
 			return
 		await get_tree().process_frame
-	# A frame for the spawn hand-off (starter grant, respawn placement).
+	# A frame for the spawn hand-off (the mode's stock, respawn placement).
 	await get_tree().process_frame
-	_stock_pack(true)
 	_lay_demo()
 	app.session.navigation_changed.emit("COASTER SANDBOX  ·  infinite stock  ·  loop ahead (Shift on the car to ride, 1-9 speed); curves, a mountain climb, a smooth switch and a crossing behind you")
 	var spawn_clear := true
@@ -177,53 +175,27 @@ func run(application: CraftAndDefendApp) -> void:
 		get_tree().quit(0)
 
 
-func _process(delta: float) -> void:
-	if app == null or app.session == null or not app.session.world_ready:
-		return
-	_top_up_left -= delta
-	if _top_up_left <= 0.0:
-		_top_up_left = TOP_UP_SECONDS
-		_stock_pack(false)
-
-
-## Fills every STOCK item to its stack size; on the first pass the hotbar is
-## arranged in STOCK order.
+## Refills the pack (the mode's list) between demos that used a stack up.
 func _stock_pack(arrange: bool) -> void:
-	var inventory: F0Inventory = app.session.inventory
-	var registry: ContentRegistry = app.session.registry
-	for item_id in STOCK:
-		var maximum := registry.max_stack(item_id)
-		var have := inventory.count(item_id)
-		if maximum > 0 and have < maximum:
-			inventory.try_transaction({}, {item_id: maximum - have})
-	if not arrange:
-		return
-	for hotbar_index in range(mini(F0Inventory.HOTBAR_COUNT, STOCK.size())):
-		var wanted := STOCK[hotbar_index]
-		if str(inventory.slots[hotbar_index].get("item_id", "")) == wanted:
-			continue
-		for slot_index in range(F0Inventory.SLOT_COUNT):
-			if slot_index != hotbar_index and str(inventory.slots[slot_index].get("item_id", "")) == wanted:
-				inventory.swap_slots(hotbar_index, slot_index)
-				break
-	inventory.select_hotbar(0)
-## A stone plate beside the spawn with a size-6 loop element in a closed circuit and
+	app.coastercraft.stock_pack(arrange)
 
-## A stone plate beside the spawn with a lead-in + loop (radius 3) along +x
-## the car on its approach; nothing else on the plate.
+
+## The demo area of the plate (the old 30 x 50 sandbox plate, inside the
+## mode's 60 x 100 one) with a size-6 loop element in a closed circuit and
+## the car on its approach; the curves, the mountain climb, the smooth
+## switch and the crossing behind it.
 func _lay_demo() -> void:
 	var ws: WorkstationService = app.session.workstations
 	var world: WorldAdapter = app.session.world
 	var interaction: InteractionService = app.session.interaction
-	var plate := Vector3i(-14, 0, 22)
-	_level_ground(plate, 30, 50, 14)
+	# Levelled right now (the mode levels the rest of the plate over the
+	# next frames as its chunks stream in) so the demos land on stone.
+	app.coastercraft.level_area_now(Vector3i(-14, 0, 22), 30, 50)
 	# The Loop element (owner 2026-09-20): size 6, entry heading -x from
 	# (0, 30) on lane A (z=30); base row z=29 with the slopes at x=1 and x=-4;
 	# exit on lane C (z=28) heading -x. A coaster car waits on the approach.
 	var origin := Vector3i(0, 1, 30)
-	# Creative: loops cost nothing here and grow as far as the sky allows.
-	interaction.creative = true
-	ws.creative = true
+	# Creative (the mode): loops cost nothing here and grow as far as the sky allows.
 	app.session.inventory.select_hotbar(STOCK.find("rail_loop"))
 	interaction.placement_rotation_quarters = 3
 	# The true loop (owner 2026-09-20): diameter 8, entry at (0, 30) heading
@@ -373,11 +345,3 @@ func _lay_mountain() -> void:
 	print("COASTER_SANDBOX crossing %s (%s pieces, %d shared) cart %s" % [cross.get("reason"), cross.get("changes", {}).get("count"), (cross_layout.shared as Array).size(), cross_cart.get("reason")])
 	interaction.placement_rotation_quarters = 0
 	app.session.inventory.select_hotbar(0)
-
-
-func _level_ground(origin: Vector3i, width: int, depth: int, height: int) -> void:
-	for x in range(width):
-		for z in range(depth):
-			app.session.world.set_cell(origin + Vector3i(x, 0, z), 3)
-			for y in range(1, height):
-				app.session.world.set_cell(origin + Vector3i(x, y, z), 0)

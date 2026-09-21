@@ -1580,6 +1580,27 @@ func _run_gate() -> void:
 	var stack_back: bool = app.session.inventory.count("rail") == rails_before and app.session.drops_snapshot().is_empty()
 	_record("T190_HANDS_AND_DROPS", not held_before.is_empty() and hands_empty and drop_took_one and drop_ahead and snapshot_ok and picked_up and stack_ok and stack_back, "deselecting the held slot leaves no active item (slot -1); Y drops one rail ahead of the player (the pack loses one, one drop exists, the session snapshot lists it); standing on the drop picks it up; Shift+Y drops the whole stack and standing on it takes it all back", {"held_before": held_before, "hands_empty": hands_empty, "slot_before": slot_before, "dropped": dropped.get("reason"), "drop_took_one": drop_took_one, "drop_ahead": drop_ahead, "drop_at": str(drop_at), "snapshot_ok": snapshot_ok, "picked_up": picked_up, "stack_ok": stack_ok, "stack_back": stack_back})
 
+	# T191 CoasterCraft mode (docs/COASTERCRAFT_MODE.md): the gate's session
+	# saves and exits to the menu, then the mode's whole round trip runs
+	# in-process through the same paths its buttons use (the standalone
+	# `--coastercraft-check` runs the identical CoasterCraftCheck.exercise).
+	app.session.player.global_position = WorldAdapter.SPAWN_FEET
+	for _settle in range(90):
+		await get_tree().process_frame
+	app._pause_game()
+	app._save_and_exit_to_menu()
+	var exit_deadline := Time.get_ticks_msec() + 120000
+	while app.state != CraftAndDefendApp.AppState.MAIN_MENU and Time.get_ticks_msec() < exit_deadline:
+		await get_tree().process_frame
+	var exited: bool = app.state == CraftAndDefendApp.AppState.MAIN_MENU and app.session == null
+	var check := CoasterCraftCheck.new()
+	check.name = "CoasterCraftCheck"
+	add_child(check)
+	var report: Dictionary = {"ok": false, "failures": ["gate session did not exit to the menu"]}
+	if exited:
+		report = await check.exercise(app)
+	_record("T191_COASTERCRAFT_MODE", exited and bool(report.get("ok", false)), "main menu CoasterCraft > New opens a session on the mode's own coordinator (<data root>/coastercraft) with a bare 60 x 100 stone plate (stone at y 0, air above, no stations), creative and the stock filled, no drill line / enemy base; its pause menu has no drills; Save keeps the session, Save and Restart opens a new bare plate, Save and Exit to Menu then Continue restores the last checkpoint with the rail placed on it", {"exited": exited, "failures": report.get("failures", []), "evidence": report.get("evidence", {})})
+
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on
 ## the track, beside a slope run climbing a step, in one 1280x720 view.
