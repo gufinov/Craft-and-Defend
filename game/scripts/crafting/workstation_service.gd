@@ -967,6 +967,35 @@ func container_deposit(instance_id: String, item_id: String, amount: int) -> Dic
 	return result
 
 
+## Room left in the container for `item_id` (matching stacks, then empty slots).
+func container_room(instance_id: String, item_id: String) -> int:
+	if not is_container(instance_id):
+		return 0
+	var room := 0
+	var max_stack := registry.max_stack(item_id)
+	for stack in stations[instance_id].container_slots:
+		if str(stack.get("item_id", "")) == item_id:
+			room += max_stack - int(stack.get("count", 0))
+		elif str(stack.get("item_id", "")).is_empty():
+			room += max_stack
+	return room
+
+
+## Puts up to `amount` of `item_id` into the container from another producer
+## (a miner, a cart). Does not touch the player inventory; moves what fits and
+## reports CONTAINER_FULL when nothing does.
+func container_insert(instance_id: String, item_id: String, amount: int) -> Dictionary:
+	if not is_container(instance_id):
+		return _result(false, "NOT_CONTAINER")
+	var moved := mini(amount, container_room(instance_id, item_id))
+	if moved <= 0:
+		return _result(false, "CONTAINER_FULL")
+	_container_add(stations[instance_id].container_slots, item_id, moved, registry.max_stack(item_id))
+	var result := _result(true, "INSERTED", {"instance_id": instance_id, "item_id": item_id, "moved": moved, "container_slots": container_slots(instance_id)})
+	station_changed.emit(result)
+	return result
+
+
 ## Moves `amount` of `item_id` from the chest into the inventory.
 func container_withdraw(instance_id: String, item_id: String, amount: int) -> Dictionary:
 	if not is_container(instance_id):

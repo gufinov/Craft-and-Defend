@@ -188,6 +188,7 @@ Runtime rows begin **NOT RUN** and change only through recorded runtime evidence
 | T138 | P4b-1 | Every non-gold cell matches the pre-table P1 formula (iron roll [0,18) from depth 6, coal [18,55) from depth 3) and gold only replaces stone at depth ≥ 12, so `terrain_p1_1` saves keep their layout |
 | T139 | P4b-1 | A generated Gold Ore cell refuses the Stone Pick (`WRONG_TOOL`), breaks under the Iron Pick into one Gold Ore item, and block 11, items, texture and measured gold icons are registered |
 | T140 | P4b-1 | Two Gold Ore and one Coal auto-start the 8 s `gold_ingot` Furnace recipe and yield two collectable Gold Ingots after two durations |
+| T193 | Industry | On a levelled plate a `miner` beside an `ore_bin` drills the three iron ore voxels within radius 3 into the bin, one per `MINER_SECONDS` (`advance(MINER_SECONDS + 0.1)` three times → 1, 2, 3 Iron Ore; the voxels become stone; an ore 5 cells away stays); a fourth tick changes nothing and the status is "no ore"; the right-click line reads "Miner: 3 ore mined, no ore." plus its hint; the bin shows its `OreHeap`; a bin-less miner beside ore reports "no bin" and leaves the ore; a JSON save round-trip through `WorkstationService.restore` keeps the bin's 3 ore, 9 slots and the miner's count. Content: recipes 214 / 215 at the Workbench, measured icons |
 
 ## Performance evidence, not invented guarantees
 

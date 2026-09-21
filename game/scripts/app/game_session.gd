@@ -71,6 +71,11 @@ const REASON_TEXT := {
 	"SWORD_MISS": "The sword swing did not reach a raider.",
 	"RAIDER_DAMAGED": "Sword strike landed.",
 	"RAIDER_DEFEATED": "Raider defeated — the core is safe.",
+	# Industry wave 1 (docs/INDUSTRY.md): the miner's right-click status line
+	# is "Miner: N ore mined, <status>." plus one of these hints.
+	"MINER_NO_BIN_HINT": "Place an Ore Bin in a cell beside the miner.",
+	"MINER_BIN_FULL_HINT": "Empty the Ore Bin (right-click it) or let a mine cart collect from it.",
+	"MINER_NO_ORE_HINT": "No ore within 3 cells; move the miner next to iron, gold or coal ore.",
 }
 
 const STARTER_IRON_MARKER := Vector3(-6.5, 0.0, 36.5)
@@ -117,6 +122,10 @@ var _placement_preview_key := ""
 var _snap_announced := ""
 var _held_item_view: HeldItemView
 var fire_service: FireService
+## Industry wave 1 (docs/INDUSTRY.md): miners fill ore bins.
+var miner_service: MinerService
+## Miner visuals: instance id -> the "Drill" node spun while the miner works.
+var _miner_drills: Dictionary = {}
 ## Set by the app before initialize(): Settings > Graphics terrain view distance.
 var settings_view_distance := 0
 var _resource_markers: Node3D
@@ -220,6 +229,10 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	siege_defense.initialize(workstations, core_defense, fire_service, world)
 	siege_defense.feedback.connect(_on_interaction_feedback)
 	siege_defense.state_changed.connect(_on_defense_state_changed)
+	miner_service = MinerService.new()
+	miner_service.name = "MinerService"
+	add_child(miner_service)
+	miner_service.initialize(world, workstations, registry)
 	interaction = InteractionService.new(world, inventory, player.get_body_aabb, registry, workstations, _raycast_station, _defense_interact)
 	interaction.restore_stamps(open_data.get("snapshot", {}).get("blueprints", {}).get("stamps", []))
 	_restore_drops(open_data.get("snapshot", {}).get("drops", []))
@@ -264,6 +277,9 @@ func _process(delta: float) -> void:
 		coaster_ride.advance(delta)
 	if fire_service != null:
 		fire_service.advance(delta, simulation_paused or saving)
+	if miner_service != null:
+		miner_service.advance(delta, simulation_paused or saving or not world_ready)
+		_spin_miner_drills(delta)
 	if not simulation_paused and not saving and world_ready:
 		_advance_drops(delta)
 	if not simulation_paused:
@@ -1012,6 +1028,10 @@ func _on_interaction_result(result: Dictionary) -> void:
 		_bend_lanes_laid = int(changes.get("lanes", 0))
 	if result.get("ok", false) and str(result.get("reason", "")) == "OPEN_STATION":
 		var station_record: Dictionary = changes.get("station", {})
+		if str(station_record.get("entity_id", "")) == MinerService.MINER_ENTITY and miner_service != null:
+			# A miner has no menu: right-click reports what it is doing.
+			_on_interaction_feedback(miner_status_line(str(changes.get("instance_id", ""))))
+			return
 		if str(station_record.get("entity_id", "")) == CoasterRails.CAR:
 			# Right-click on a coaster car boards it (owner 2026-09-20).
 			var boarded := board_coaster_car(str(changes.get("instance_id", "")))
@@ -1040,6 +1060,8 @@ func _on_station_changed(result: Dictionary) -> void:
 			_refresh_rail_neighbours(released[0])
 	elif details.has("instance_id") and details.has("integrity"):
 		_update_station_visual(str(details.instance_id), int(details.integrity), int(details.get("max_integrity", 1)))
+	elif details.has("instance_id") and details.has("container_slots"):
+		_refresh_ore_heap(str(details.instance_id))
 
 
 func _on_job_completed(result: Dictionary) -> void:
@@ -1122,11 +1144,17 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_build_light_block_visual(body, registry.entity_attributes(entity_id), Color("4c9dff"))
 	elif entity_id == "light_block_red":
 		_build_light_block_visual(body, registry.entity_attributes(entity_id), Color("ff3030"))
+	elif entity_id == MinerService.MINER_ENTITY:
+		_build_miner_visual(body, instance_id)
+	elif entity_id == MinerService.BIN_ENTITY:
+		_build_ore_bin_visual(body)
 	else:
 		_add_visual_parts(body, visual.get("parts", []), material, true)
 	add_child(body)
 	_station_visuals[instance_id] = body
 	_station_visual_materials[instance_id] = material
+	if entity_id == MinerService.BIN_ENTITY:
+		_refresh_ore_heap(instance_id)
 	if siege_defense != null and not definition.get("siege", {}).is_empty():
 		siege_defense.register_visual(instance_id, body)
 	if entity_id == "mine_cart" or entity_id == CoasterRails.CAR:
@@ -1253,6 +1281,129 @@ func _build_coastercraft_shop_visual(parent: Node3D) -> void:
 	parent.add_child(hammer)
 	_add_mesh_box(hammer, Vector3(0.06, 0.06, 0.34), Vector3.ZERO, dark_oak)
 	_add_mesh_box(hammer, Vector3(0.24, 0.10, 0.10), Vector3(0.0, 0.0, -0.14), iron)
+
+
+## Industry wave 1 (docs/INDUSTRY.md): the miner. A stone base slab with
+## gold studs, two steel posts and a crossbar, a dark motor block and an iron
+## drill cone pointing down under the node "Drill" (spun while it works).
+func _build_miner_visual(parent: Node3D, instance_id: String) -> void:
+	_add_collision_box(parent, Vector3(0.90, 0.90, 0.90), Vector3.ZERO)
+	var stone := _visual_material(Color("8c9298"), "res://assets/blocks/castle_stone.svg")
+	var steel := _visual_material(Color("7b838c"))
+	var dark_iron := _visual_material(Color("2f353b"))
+	var iron := _visual_material(Color("aeb7bd"))
+	var gold := _visual_material(Color("e0a72c"), "", Color("f2b33a"))
+	_add_mesh_box(parent, Vector3(0.92, 0.16, 0.92), Vector3(0.0, -0.42, 0.0), stone)
+	for x in [-0.36, 0.36]:
+		for z in [-0.36, 0.36]:
+			_add_stud(parent, Vector3(x, -0.33, z), gold, Vector3.ZERO)
+	for x in [-0.32, 0.32]:
+		_add_mesh_box(parent, Vector3(0.12, 0.84, 0.12), Vector3(x, 0.08, 0.0), steel)
+	_add_mesh_box(parent, Vector3(0.80, 0.12, 0.16), Vector3(0.0, 0.44, 0.0), steel)
+	_add_mesh_box(parent, Vector3(0.30, 0.22, 0.30), Vector3(0.0, 0.27, 0.0), dark_iron)
+	var drill := Node3D.new()
+	drill.name = "Drill"
+	drill.position = Vector3(0.0, -0.05, 0.0)
+	parent.add_child(drill)
+	# The cone points down: CylinderMesh's tip is +y, so flip it.
+	_add_mesh_cone(drill, 0.17, 0.42, Vector3.ZERO, Vector3(PI, 0.0, 0.0), iron)
+	for step in range(3):
+		var fin := _add_mesh_box(drill, Vector3(0.30 - 0.07 * step, 0.03, 0.06), Vector3(0.0, 0.12 - 0.11 * step, 0.0), dark_iron)
+		fin.rotation.y = 0.6 * step
+	_miner_drills[instance_id] = drill
+
+
+## Industry wave 1 (docs/INDUSTRY.md): the ore bin, an open oak crate with iron
+## bands. The "OreHeap" node on top shows a heap of ore-coloured lumps while
+## the bin holds items (rebuilt on every container change).
+func _build_ore_bin_visual(parent: Node3D) -> void:
+	_add_collision_box(parent, Vector3(0.90, 0.80, 0.90), Vector3(0.0, -0.10, 0.0))
+	var oak := _visual_material(Color("a5672f"), "res://assets/blocks/planks.svg")
+	var dark_oak := _visual_material(Color("6b3d1f"), "res://assets/blocks/log.svg")
+	var iron := _visual_material(Color("7b838c"))
+	_add_mesh_box(parent, Vector3(0.86, 0.08, 0.86), Vector3(0.0, -0.46, 0.0), dark_oak)
+	for x in [-0.42, 0.42]:
+		_add_mesh_box(parent, Vector3(0.06, 0.80, 0.90), Vector3(x, -0.10, 0.0), oak)
+	for z in [-0.42, 0.42]:
+		_add_mesh_box(parent, Vector3(0.90, 0.80, 0.06), Vector3(0.0, -0.10, z), oak)
+	for y in [-0.36, 0.20]:
+		_add_mesh_box(parent, Vector3(0.94, 0.06, 0.94), Vector3(0.0, y, 0.0), iron)
+	var heap := Node3D.new()
+	heap.name = "OreHeap"
+	heap.position = Vector3(0.0, 0.16, 0.0)
+	parent.add_child(heap)
+
+
+## Rebuilds a bin's heap: more lumps the fuller the bin (up to seven),
+## coloured by the ore it holds (iron grey, gold yellow, coal black); none
+## while the bin is empty.
+func _refresh_ore_heap(instance_id: String) -> void:
+	if not _station_visuals.has(instance_id) or workstations == null or not workstations.is_container(instance_id):
+		return
+	var body: Node = _station_visuals[instance_id]
+	var heap: Node3D = body.get_node_or_null("OreHeap") as Node3D
+	if heap == null:
+		return
+	for child in heap.get_children():
+		child.queue_free()
+	var colours: Array[Color] = []
+	var total := 0
+	var capacity := 0
+	for stack in workstations.container_slots(instance_id):
+		var item_id := str(stack.get("item_id", ""))
+		var count := int(stack.get("count", 0))
+		capacity += registry.max_stack(item_id) if not item_id.is_empty() else registry.max_stack("iron_ore")
+		if item_id.is_empty() or count <= 0:
+			continue
+		total += count
+		colours.append(_ore_lump_colour(item_id))
+	if total <= 0 or colours.is_empty():
+		return
+	var lumps := clampi(ceili(float(total) * 7.0 / float(maxi(capacity, 1))), 1, 7)
+	var spots: Array[Vector3] = [Vector3(0.0, 0.0, 0.0), Vector3(-0.22, -0.04, -0.18), Vector3(0.22, -0.04, 0.16), Vector3(-0.20, -0.04, 0.20), Vector3(0.20, -0.04, -0.20), Vector3(0.0, 0.14, -0.10), Vector3(0.02, 0.16, 0.12)]
+	for index in range(lumps):
+		var lump := _add_mesh_box(heap, Vector3(0.24, 0.22, 0.24), spots[index], _visual_material(colours[index % colours.size()]))
+		lump.rotation = Vector3(0.3 * index, 0.5 + 0.7 * index, 0.2)
+
+
+func _ore_lump_colour(item_id: String) -> Color:
+	match item_id:
+		"gold_ore":
+			return Color("e0b13a")
+		"coal":
+			return Color("23262a")
+		"iron_ore":
+			return Color("9a8f86")
+	return Color("8f969d")
+
+
+## Spins every working miner's drill; a stalled miner (no ore, no bin, bin
+## full) stands still, which reads from a distance.
+func _spin_miner_drills(delta: float) -> void:
+	if simulation_paused or saving or not world_ready or _miner_drills.is_empty():
+		return
+	for instance_id: String in _miner_drills.keys():
+		var drill: Node3D = _miner_drills[instance_id]
+		if not is_instance_valid(drill):
+			_miner_drills.erase(instance_id)
+			continue
+		if miner_service.is_working(instance_id):
+			drill.rotate_y(delta * 9.0)
+
+
+## "Miner: 3 ore mined, drilling iron ore 2 m away." plus a hint while stalled.
+func miner_status_line(instance_id: String) -> String:
+	if miner_service == null:
+		return str(REASON_TEXT.get("OPEN_STATION", ""))
+	var line := miner_service.status_text(instance_id) + "."
+	var status := str(miner_service.miner_state(instance_id).get("status", ""))
+	if status == MinerService.STATUS_NO_BIN:
+		line += " " + str(REASON_TEXT.get("MINER_NO_BIN_HINT", ""))
+	elif status == MinerService.STATUS_BIN_FULL:
+		line += " " + str(REASON_TEXT.get("MINER_BIN_FULL_HINT", ""))
+	elif status == MinerService.STATUS_NO_ORE:
+		line += " " + str(REASON_TEXT.get("MINER_NO_ORE_HINT", ""))
+	return line
 
 
 func _build_ballista_visual(parent: Node3D) -> void:
@@ -3331,6 +3482,7 @@ func _remove_station_visual(instance_id: String) -> void:
 	if is_riding() and coaster_ride.car_id == instance_id:
 		_on_interaction_feedback(str(leave_coaster_car().get("reason", "COASTER_LEFT")))
 	body.queue_free()
+	_miner_drills.erase(instance_id)
 	if siege_defense != null:
 		siege_defense.unregister_visual(instance_id)
 	if coaster_carts != null:
