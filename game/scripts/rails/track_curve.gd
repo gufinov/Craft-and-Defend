@@ -24,6 +24,12 @@ extends RefCounted
 const SAMPLES := 48
 const REFINE := 5
 const EPSILON := 0.0005
+## Bank by curvature (`up_at`): a bend of this radius (cells) leans the
+## full bank; gentler bends lean proportionally less.
+const BANK_FULL_RADIUS := 4.0
+## The share of a banked curve's parameter range over which the lean eases
+## in from upright at each end (so a curve always meets its neighbours flat).
+const BANK_EASE := 0.25
 
 
 static func make(kind: String, origin: Vector3, along: Vector3, side: Vector3, params: Dictionary, bank: float = 1.0) -> Dictionary:
@@ -117,6 +123,17 @@ static func tangent(curve: Dictionary, t: float) -> Vector3:
 ## The rider's up at `t`: the curve's centre-of-curvature direction blended
 ## with world up by the curve's bank (1 = lean fully into the curve, as a
 ## loop must; 0 = stay upright).
+##
+## Smooth sweep (owner playtest 2026-09-21, "starts flat, then suddenly
+## shifts angle"): a banked flat curve (bank below 1) leans by how hard it
+## actually turns - the blend weight is bank x clamp(kappa x
+## BANK_FULL_RADIUS, 0, 1), kappa the curvature from the same finite
+## differences, so a radius-BANK_FULL_RADIUS bend gets the full bank, a
+## gentler one less, a straight and an S-bend's inflection none - and eases
+## out of the lean over the first / last BANK_EASE of the curve, so every
+## curve meets its neighbours upright (an S-bend's smoothstep profile turns
+## hardest right at its ends). Continuous in t everywhere. Loops (bank 1)
+## keep the full lean the whole way round.
 static func up_at(curve: Dictionary, t: float) -> Vector3:
 	var h := 0.02
 	var ahead := point(curve, minf(1.0, t + h))
@@ -126,11 +143,38 @@ static func up_at(curve: Dictionary, t: float) -> Vector3:
 	var bank := clampf(float(curve.get("bank", 1.0)), 0.0, 1.0)
 	if normal.length() < 0.00001 or bank <= 0.0:
 		return Vector3.UP
+	var weight := bank
+	if bank < 0.999:
+		var first := (ahead - behind) * 0.5
+		if first.length_squared() < 0.000000001:
+			return Vector3.UP
+		# Curvature = |second difference perpendicular to the tangent| /
+		# |first difference|^2 (the step h cancels).
+		var perpendicular := normal - first * (normal.dot(first) / first.length_squared())
+		var curvature := perpendicular.length() / first.length_squared()
+		var ease := clampf(minf(t, 1.0 - t) / BANK_EASE, 0.0, 1.0)
+		ease = ease * ease * (3.0 - 2.0 * ease)
+		weight = bank * clampf(curvature * BANK_FULL_RADIUS, 0.0, 1.0) * ease
+		if weight <= 0.0001 or perpendicular.length() < 0.00001:
+			return Vector3.UP
+		normal = perpendicular
 	normal = normal.normalized()
-	var blended := Vector3.UP.lerp(normal, bank)
+	var blended := Vector3.UP.lerp(normal, weight)
 	if blended.length() < 0.05:
 		return normal
 	return blended.normalized()
+
+
+## The tilt of `up_at` from world up at `t`, in degrees (the tests' probe).
+static func tilt_degrees(curve: Dictionary, t: float) -> float:
+	return rad_to_deg(Vector3.UP.angle_to(up_at(curve, t)))
+
+
+## The tilt a banked flat curve leans at full bank, in degrees: the blend
+## UP * (1 - bank) + normal * bank, normal horizontal.
+static func full_bank_degrees(curve: Dictionary) -> float:
+	var bank := clampf(float(curve.get("bank", 1.0)), 0.0, 1.0)
+	return rad_to_deg(atan2(bank, 1.0 - bank))
 
 
 ## The parameter in `t0..t1` whose point lies nearest `target`: coarse

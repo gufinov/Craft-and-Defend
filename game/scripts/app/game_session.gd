@@ -1372,7 +1372,7 @@ func _refresh_rail_neighbours(anchor: Vector3i) -> void:
 ## (`_track_meeting_point`) computed the same way from both sides.
 const TRACK_GAUGE_HALF := 0.22
 const TRACK_RAIL_SIZE := 0.10
-const TRACK_CORNER_SECTIONS := 6
+const TRACK_CORNER_SECTIONS := 8
 const TRACK_SLOPE_SECTIONS := 5
 
 
@@ -1417,45 +1417,166 @@ func _track_meeting_point(record: Dictionary, other: Dictionary) -> Vector3:
 
 
 ## One run of track through `points` (world), drawn under `undo` (a node
-## whose rotation cancels the body's, so world directions hold): per section
-## two iron rails spread along `across` (zero = the horizontal perpendicular
-## of each section), a stone spine and an oak tie on the side away from
+## whose rotation cancels the body's, so world directions hold): two iron
+## rails spread along `across` (zero = the horizontal perpendicular of the
+## run at each point), a stone spine and oak ties on the side away from
 ## `lean` (below the rails for flat track: lean = a point above; outside the
-## ring for a loop: lean = its centre). Each section node carries the meta
-## `rail_length` (the automation's joint probe reads the rail ends from it).
-func _add_track_run(undo: Node3D, body_origin: Vector3, points: Array[Vector3], across: Vector3, lean: Vector3, materials: Dictionary) -> int:
-	var iron: Material = materials.iron
-	var oak: Material = materials.oak
-	var stone: Material = materials.stone
-	var sections := 0
-	for index in range(1, points.size()):
-		var from_point: Vector3 = points[index - 1]
-		var to_point: Vector3 = points[index]
-		var direction := to_point - from_point
-		var length := direction.length()
-		if length < 0.001:
+## ring for a loop: lean = its centre).
+##
+## Smooth sweep (owner playtest 2026-09-21, "in these corners, the rails are
+## segmented"): the rails and the spine are ONE swept mesh per run
+## (`_add_track_sweep`) whose cross-section rides a frame at every point -
+## tangent (the polyline's average direction there), across, up = across x
+## tangent - so consecutive rings share their vertices and the twist runs
+## continuously along the curve. `across_points` (one per point; empty =
+## `across` everywhere) lets a curve piece hand in its binormal at each
+## sampled t. Each section between two points keeps a Node3D carrying the
+## meta `rail_length` (the automation's joint probe reads the rail ends from
+## it) and `rail_across` ([across at its start, across at its end], world)
+## with the section's oak tie under it.
+func _add_track_run(undo: Node3D, body_origin: Vector3, points: Array[Vector3], across: Vector3, lean: Vector3, materials: Dictionary, across_points: Array[Vector3] = []) -> int:
+	var run: Array[Vector3] = []
+	var run_across: Array[Vector3] = []
+	for index in range(points.size()):
+		if not run.is_empty() and run[run.size() - 1].distance_to(points[index]) < 0.001:
 			continue
-		direction = direction.normalized()
-		var section_across := across
+		run.append(points[index])
+		run_across.append(across_points[index] if across_points.size() == points.size() else across)
+	if run.size() < 2:
+		return 0
+	var count := run.size()
+	var tangents: Array[Vector3] = []
+	var frames: Array[Vector3] = []
+	for index in range(count):
+		var tangent: Vector3 = run[mini(index + 1, count - 1)] - run[maxi(index - 1, 0)]
+		if tangent.length() < 0.000001:
+			tangent = Vector3.FORWARD
+		tangent = tangent.normalized()
+		tangents.append(tangent)
+		var point_across: Vector3 = run_across[index]
+		if point_across.length() < 0.05 or absf(point_across.normalized().dot(tangent)) > 0.95:
+			point_across = tangent.cross(Vector3.UP)
+			if point_across.length() < 0.05:
+				point_across = Vector3.RIGHT if absf(tangent.x) < 0.95 else Vector3.FORWARD
+		point_across = point_across - tangent * point_across.dot(tangent)
+		point_across = point_across.normalized()
+		# The profile is symmetric in across, so its sign is free: keep it
+		# continuous along the run (a flat binormal follows the polyline's
+		# direction, a curve's binormal its t direction - they can oppose).
+		if not frames.is_empty() and point_across.dot(frames[frames.size() - 1]) < 0.0:
+			point_across = -point_across
+		frames.append(point_across)
+	# The spine's side, once per run: away from `lean` (down for flat track,
+	# outward for a ring), measured at the run's middle so it never flips
+	# between rings.
+	var middle := count / 2
+	var up_middle: Vector3 = frames[middle].cross(tangents[middle])
+	var outward := (run[middle] - lean).normalized()
+	var spine_up := -1.0 if (-up_middle).dot(outward) >= 0.0 else 1.0
+	_add_track_sweep(undo, body_origin, run, tangents, frames, spine_up, materials)
+	var oak: Material = materials.oak
+	var sections := 0
+	for index in range(1, count):
+		var from_point: Vector3 = run[index - 1]
+		var to_point: Vector3 = run[index]
+		var direction := (to_point - from_point).normalized()
+		var length := from_point.distance_to(to_point)
+		var section_across: Vector3 = (frames[index - 1] + frames[index])
 		if section_across.length() < 0.05 or absf(section_across.normalized().dot(direction)) > 0.95:
-			section_across = direction.cross(Vector3.UP)
-			if section_across.length() < 0.05:
-				section_across = Vector3.RIGHT if absf(direction.x) < 0.95 else Vector3.FORWARD
-		section_across = section_across.normalized()
+			section_across = frames[index - 1]
+		section_across = (section_across - direction * section_across.dot(direction)).normalized()
 		var piece := Node3D.new()
 		piece.position = (from_point + to_point) * 0.5 - body_origin
 		piece.basis = Basis.looking_at(direction, section_across)
 		piece.set_meta("rail_length", length)
+		piece.set_meta("rail_across", [frames[index - 1], frames[index]])
 		undo.add_child(piece)
-		for offset in [-TRACK_GAUGE_HALF, TRACK_GAUGE_HALF]:
-			_add_mesh_box(piece, Vector3(TRACK_RAIL_SIZE, TRACK_RAIL_SIZE, length + 0.02), Vector3(0.0, offset, 0.0), iron)
-		var outward := ((from_point + to_point) * 0.5 - lean).normalized()
-		var local_x := piece.basis.x
-		var spine_side := 1.0 if local_x.dot(outward) >= 0.0 else -1.0
-		_add_mesh_box(piece, Vector3(0.16, 0.16, length + 0.02), Vector3(spine_side * 0.30, 0.0, 0.0), stone)
-		_add_mesh_box(piece, Vector3(0.10, 0.54, 0.10), Vector3(spine_side * 0.12, 0.0, 0.0), oak)
+		# The tie: local X is -up (looking_at puts `across` on Y), so the
+		# spine's side is -spine_up along X.
+		_add_mesh_box(piece, Vector3(0.10, 0.54, 0.10), Vector3(-spine_up * 0.12, 0.0, 0.0), oak)
 		sections += 1
 	return sections
+
+
+## The swept rails and spine of one run: one ArrayMesh with three surfaces
+## (left rail, right rail, spine - iron, iron, stone), each a rectangular
+## cross-section swept through `points` with the frame (tangents[i],
+## across[i], up[i] = across[i] x tangents[i]) at every point; the spine
+## sits 0.30 along up x `spine_up`. Flat-shaded faces (four side strips
+## plus end caps) whose ring vertices coincide, so the twist is continuous.
+func _add_track_sweep(undo: Node3D, body_origin: Vector3, points: Array[Vector3], tangents: Array[Vector3], across: Array[Vector3], spine_up: float, materials: Dictionary) -> MeshInstance3D:
+	var mesh := ArrayMesh.new()
+	var half_rail := TRACK_RAIL_SIZE * 0.5
+	var profiles: Array[Array] = [[-TRACK_GAUGE_HALF, 0.0, half_rail, half_rail, materials.iron], [TRACK_GAUGE_HALF, 0.0, half_rail, half_rail, materials.iron], [0.0, spine_up * 0.30, 0.08, 0.08, materials.stone]]
+	var count := points.size()
+	var distances: Array[float] = [0.0]
+	for index in range(1, count):
+		distances.append(distances[index - 1] + points[index - 1].distance_to(points[index]))
+	for profile: Array in profiles:
+		var centre_across := float(profile[0])
+		var centre_up := float(profile[1])
+		var half_across := float(profile[2])
+		var half_up := float(profile[3])
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		st.set_material(profile[4] as Material)
+		# Ring corners in (across, up) order: +a+u, -a+u, -a-u, +a-u; the
+		# side faces run between consecutive corners, each with its own
+		# outward normal (up, -across, -up, across).
+		var corners: Array[Vector2] = [Vector2(half_across, half_up), Vector2(-half_across, half_up), Vector2(-half_across, -half_up), Vector2(half_across, -half_up)]
+		for face in range(4):
+			var next_corner := (face + 1) % 4
+			for index in range(1, count):
+				var quad: Array[Vector3] = []
+				var normals: Array[Vector3] = []
+				var uvs: Array[Vector2] = []
+				for ring: int in [index - 1, index]:
+					var up: Vector3 = across[ring].cross(tangents[ring])
+					var normal: Vector3 = [up, -across[ring], -up, across[ring]][face]
+					var origin: Vector3 = points[ring] - body_origin + across[ring] * centre_across + up * centre_up
+					quad.append(origin + across[ring] * corners[face].x + up * corners[face].y)
+					quad.append(origin + across[ring] * corners[next_corner].x + up * corners[next_corner].y)
+					normals.append(normal)
+					normals.append(normal)
+					uvs.append(Vector2(distances[ring], 0.0))
+					uvs.append(Vector2(distances[ring], 1.0))
+				# quad: [ring0 corner a, ring0 corner b, ring1 corner a, ring1 corner b]
+				_add_sweep_triangle(st, quad[0], quad[2], quad[1], normals[0], uvs[0], uvs[2], uvs[1])
+				_add_sweep_triangle(st, quad[1], quad[2], quad[3], normals[1], uvs[1], uvs[2], uvs[3])
+		# End caps.
+		for cap: Array in [[0, -1.0], [count - 1, 1.0]]:
+			var ring: int = cap[0]
+			var cap_sign: float = cap[1]
+			var up: Vector3 = across[ring].cross(tangents[ring])
+			var origin: Vector3 = points[ring] - body_origin + across[ring] * centre_across + up * centre_up
+			var normal: Vector3 = tangents[ring] * cap_sign
+			var ring_points: Array[Vector3] = []
+			for corner: Vector2 in corners:
+				ring_points.append(origin + across[ring] * corner.x + up * corner.y)
+			_add_sweep_triangle(st, ring_points[0], ring_points[1], ring_points[2], normal, corners[0], corners[1], corners[2])
+			_add_sweep_triangle(st, ring_points[0], ring_points[2], ring_points[3], normal, corners[0], corners[2], corners[3])
+		st.commit(mesh)
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.name = "TrackSweep"
+	mesh_instance.mesh = mesh
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	undo.add_child(mesh_instance)
+	return mesh_instance
+
+
+## One flat-shaded triangle wound to face `normal` (Godot's front faces
+## wind clockwise seen from the front, so the corner order is swapped when
+## the cross product points along the normal).
+func _add_sweep_triangle(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, normal: Vector3, uv_a: Vector2, uv_b: Vector2, uv_c: Vector2) -> void:
+	var order: Array[Vector3] = [a, b, c]
+	var uvs: Array[Vector2] = [uv_a, uv_b, uv_c]
+	if (b - a).cross(c - a).dot(normal) > 0.0:
+		order = [a, c, b]
+		uvs = [uv_a, uv_c, uv_b]
+	for index in range(3):
+		st.set_normal(normal)
+		st.set_uv(uvs[index])
+		st.add_vertex(order[index])
 
 
 ## Flat rail piece (`rail`, a flat `rail_loop` piece, a grounded
@@ -1511,6 +1632,12 @@ func _build_rail_visual(parent: Node3D, record: Dictionary, node_name: String = 
 				arc.append(corner - b * 0.5 * cos(angle) - a * 0.5 * sin(angle))
 			_add_track_run(undo, body_origin, arc, Vector3.ZERO, lean, materials)
 			return
+	if ends.size() == 2:
+		# One run end to end through the ride point: a straight, or a mitred
+		# bend at the centre for a diagonal step, in one swept mesh.
+		var through: Array[Vector3] = [ends[0], own_point, ends[1]]
+		_add_track_run(undo, body_origin, through, Vector3.ZERO, lean, materials)
+		return
 	for end: Vector3 in ends:
 		var run: Array[Vector3] = [own_point, end]
 		_add_track_run(undo, body_origin, run, Vector3.ZERO, lean, materials)
@@ -1561,7 +1688,7 @@ func _build_rail_slope_visual(parent: Node3D, record: Dictionary) -> void:
 ## circle from halfway to the previous piece to halfway to the next, as a
 ## few short straight sections, so the loop reads as a smooth ring instead
 ## of a cell-centre zigzag. Wooden ties every section; a post at the centre.
-const LOOP_ARC_SECTIONS := 4
+const LOOP_ARC_SECTIONS := 8
 
 
 ## A loop-element piece (owner 2026-09-20, "prettier"): two iron rails
@@ -1607,23 +1734,39 @@ func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[
 		if binormal.length() > 0.05:
 			across = binormal.normalized()
 	var plane_across := plane_axis
+	# Every run starts at the piece's own point with the piece's across
+	# (the binormal at piece_t for a curve); each further point carries its
+	# own across - the curve's binormal at that t for a same-curve neighbour,
+	# zero (= the flat binormal of the run there) at the meeting point with
+	# anything else - so the frame twists continuously along the curve and
+	# matches the neighbour's frame at the shared point. Two runs (the usual
+	# piece) merge end to end into one sweep through the own point.
+	var runs: Array[Array] = []
 	for cell: Vector3i in joined:
 		var other: Dictionary = tracks.get(cell, {"anchor": cell, "entity_id": CoasterRails.FLAT})
 		if CoasterRails.has_second_curve(other):
 			# A crossing's shared neighbour: the curve of the pair this cell is on.
 			other = CoasterRails.pair_for(other, anchor, pair_key)
 		var points: Array[Vector3] = [own_point]
+		var frames: Array[Vector3] = [across]
 		if round and str(other.get("entity_id", "")) == CoasterRails.SLOPE:
 			# The classic ring (fit B / C) meets the slope a little above its
 			# tangent corner; the last bit of rail bridges the lift.
 			points.append(CoasterRails.slope_rail_corner(other) + Vector3.UP * float(record.get("loop_lift", 0.0)))
 			points.append(CoasterRails.slope_rail_corner(other))
+			frames.append(across)
+			frames.append(across)
 		elif not curve.is_empty() and other.has("curve") and str(JSON.stringify(other.get("curve"))) == str(JSON.stringify(curve)):
-			# Same curve: follow it from this piece's t halfway to the other's.
+			# Same curve: follow it from this piece's t halfway to the other's,
+			# the binormal at every sampled t (both pieces sample the same
+			# halfway t, so their end rings coincide).
 			var own_t := TrackCurve.piece_t(record)
 			var other_t := TrackCurve.piece_t(other)
 			for section in range(1, LOOP_ARC_SECTIONS + 1):
-				points.append(TrackCurve.point(curve, own_t + (other_t - own_t) * 0.5 * float(section) / float(LOOP_ARC_SECTIONS)))
+				var t := own_t + (other_t - own_t) * 0.5 * float(section) / float(LOOP_ARC_SECTIONS)
+				points.append(TrackCurve.point(curve, t))
+				var binormal := TrackCurve.tangent(curve, t).cross(TrackCurve.up_at(curve, t))
+				frames.append(binormal.normalized() if binormal.length() > 0.05 else across)
 		elif round:
 			var other_angle := CoasterRails.arc_angle(record, CoasterRails.arc_point(record, CoasterRails.ride_point(other)))
 			var own_angle := CoasterRails.arc_angle(record, own_point)
@@ -1633,11 +1776,33 @@ func _build_loop_track_visual(parent: Node3D, record: Dictionary, joined: Array[
 				var angle := own_angle + delta * 0.5 * float(section) / float(LOOP_ARC_SECTIONS)
 				var spoke := plane_across * cos(angle) + Vector3.UP * sin(angle)
 				points.append(Vector3(arc.center) + spoke * float(arc.radius))
+				frames.append(across)
 		else:
 			# Any other neighbour (a plain rail, a slope's rail end, another
-			# tool's piece): a straight to the shared meeting point.
+			# tool's piece): a straight to the shared meeting point, met
+			# upright (the flat binormal there, as the neighbour draws it).
 			points.append(_track_meeting_point(record, other))
-		_add_track_run(undo, body_origin, points, across, lean, materials)
+			frames.append(across if round or curve.is_empty() else Vector3.ZERO)
+		runs.append([points, frames])
+	if runs.size() == 2:
+		var merged_points: Array[Vector3] = []
+		var merged_frames: Array[Vector3] = []
+		var first_points: Array[Vector3] = runs[0][0]
+		var first_frames: Array[Vector3] = runs[0][1]
+		for index in range(first_points.size() - 1, -1, -1):
+			merged_points.append(first_points[index])
+			merged_frames.append(first_frames[index])
+		var second_points: Array[Vector3] = runs[1][0]
+		var second_frames: Array[Vector3] = runs[1][1]
+		for index in range(1, second_points.size()):
+			merged_points.append(second_points[index])
+			merged_frames.append(second_frames[index])
+		_add_track_run(undo, body_origin, merged_points, across, lean, materials, merged_frames)
+		return
+	for run: Array in runs:
+		var run_points: Array[Vector3] = run[0]
+		var run_frames: Array[Vector3] = run[1]
+		_add_track_run(undo, body_origin, run_points, across, lean, materials, run_frames)
 
 
 func _build_loop_arc_visual(parent: Node3D, record: Dictionary, joined: Array[Vector3i]) -> void:

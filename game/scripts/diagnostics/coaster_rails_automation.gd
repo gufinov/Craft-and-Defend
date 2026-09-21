@@ -1244,6 +1244,109 @@ func _run_gate() -> void:
 				ts_worst = [station_anchor, other_cell]
 	_record("T185_TRACK_STYLE", ts_loaded and ts_placed and ts_curve_laid.get("reason") == "CURVE_PLACED" and ts_loop_laid.get("reason") == "LOOP_PLACED" and not ts_corner_arms and not ts_corner_plate and ts_corner_sections >= 5 and ts_posts == 0 and ts_decks == 0 and ts_pieces >= 30 and ts_joints >= 30 and ts_max_gap < 0.02, "a plain-rail L corner on a levelled plate draws a round arc (no RailArms plate, at least 5 rail sections), no rail or slope in a rail-slope-rail run carries the old stone posts or oak deck, and across the corner, the slope run, a rail-curve-rail run (radius 4) and a rail-loop-rail true loop (diameter 6) every joined pair's rail ends meet within 0.02 (rail_end_gap)", {"loaded": ts_loaded, "placed": ts_placed, "curve": ts_curve_laid.get("reason"), "loop": ts_loop_laid.get("reason"), "corner_arms": ts_corner_arms, "corner_plate": ts_corner_plate, "corner_sections": ts_corner_sections, "posts": ts_posts, "decks": ts_decks, "pieces": ts_pieces, "joints": ts_joints, "rail_end_gap": ts_max_gap, "worst_joint": ts_worst})
 
+	# T186 smooth track (owner playtest 2026-09-21: "the pieces standalone
+	# are not even smooth ... starts flat, then suddenly shifts angle ... in
+	# these corners, the rails are segmented"): a radius-4 curve and a 4 x 1
+	# smooth switch between plain rails on their own plate. The switch's
+	# lean (TrackCurve.up_at) is upright at both ends, at t 0.02 and at its
+	# inflection, peaks between 3 degrees and the full bank and never steps
+	# more than 2 degrees per 0.01 of t; the arc leans the full bank at its
+	# middle and none at its ends; at every joint of both runs the two
+	# pieces' end rings coincide (point within 0.02, across within 2
+	# degrees); and every piece's rails and spine are one swept mesh (at most
+	# three ArrayMesh surfaces), not boxes.
+	var sm := Vector3i(48, 0, 62)
+	var sm_loaded := await _wait_levelled(sm + Vector3i(-4, 0, -2), 12, 14, 6, [sm, sm + Vector3i(4, 0, 4), sm + Vector3i(0, 0, 8), sm + Vector3i(4, 0, 9)] as Array[Vector3i])
+	app.session.inventory.try_transaction({}, {"rail": 12, "rail_curve": 24, "rail_bend": 16})
+	var sm_placed := true
+	_hotbar_slot_for("rail_curve", 4)
+	interaction.placement_rotation_quarters = 1
+	interaction.begin_curve_at(sm)
+	interaction.set_curve_sweep(90, false)
+	interaction.set_curve_radius(4)
+	var sm_curve_laid := interaction.commit_drag_place()
+	var sm_curve_exit: Vector3i = sm_curve_laid.get("changes", {}).get("exit", sm)
+	for step in [1, 2]:
+		sm_placed = sm_placed and bool(ws.try_place("rail", sm - Vector3i(step, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+		sm_placed = sm_placed and bool(ws.try_place("rail", sm_curve_exit + Vector3i(0, 0, step), world.query_cell, AABB(), 0).get("ok", false))
+	var sm_bend := sm + Vector3i(0, 0, 8)
+	_hotbar_slot_for("rail_bend", 5)
+	interaction.set_curve_size(4, 1)
+	interaction.begin_curve_tool_at(sm_bend)
+	var sm_bend_laid := interaction.commit_drag_place()
+	var sm_bend_exit := sm_bend + Vector3i(4, 0, 1)
+	for step in [1, 2]:
+		sm_placed = sm_placed and bool(ws.try_place("rail", sm_bend - Vector3i(step, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+		sm_placed = sm_placed and bool(ws.try_place("rail", sm_bend_exit + Vector3i(step, 0, 0), world.query_cell, AABB(), 0).get("ok", false))
+	interaction.placement_rotation_quarters = 0
+	await get_tree().process_frame
+	# (a) the switch's lean along its S-bend.
+	var sm_bend_curve: Dictionary = ws.station(ws.station_at_cell(sm_bend)).get("curve", {})
+	var sm_bend_ends: Array[float] = []
+	var sm_ends_flat := not sm_bend_curve.is_empty()
+	for t: float in [0.0, 0.02, 0.5, 1.0]:
+		var tilt := TrackCurve.tilt_degrees(sm_bend_curve, t)
+		sm_bend_ends.append(snappedf(tilt, 0.01))
+		sm_ends_flat = sm_ends_flat and tilt < 1.0
+	var sm_max_tilt := 0.0
+	var sm_max_step := 0.0
+	var sm_previous_tilt := 0.0
+	for index in range(101):
+		var tilt := TrackCurve.tilt_degrees(sm_bend_curve, float(index) / 100.0)
+		sm_max_tilt = maxf(sm_max_tilt, tilt)
+		if index > 0:
+			sm_max_step = maxf(sm_max_step, absf(tilt - sm_previous_tilt))
+		sm_previous_tilt = tilt
+	var sm_full_bank := TrackCurve.full_bank_degrees(sm_bend_curve)
+	var sm_bend_ok: bool = sm_ends_flat and sm_max_tilt >= 3.0 and sm_max_tilt <= sm_full_bank + 1.0 and sm_max_step <= 2.0
+	# (b) the arc: the full bank at its middle, none at its ends.
+	var sm_arc_curve: Dictionary = ws.station(ws.station_at_cell(sm)).get("curve", {})
+	var sm_arc_middle := TrackCurve.tilt_degrees(sm_arc_curve, 0.5)
+	var sm_arc_full := TrackCurve.full_bank_degrees(sm_arc_curve)
+	var sm_arc_start := TrackCurve.tilt_degrees(sm_arc_curve, 0.0)
+	var sm_arc_end := TrackCurve.tilt_degrees(sm_arc_curve, 1.0)
+	var sm_arc_ok: bool = not sm_arc_curve.is_empty() and absf(sm_arc_middle - sm_arc_full) < 1.0 and sm_arc_start < 0.01 and sm_arc_end < 0.01
+	# (c) every joint's end rings coincide; (d) swept meshes, not boxes.
+	var sm_tracks := CoasterRails.track_records(ws.stations)
+	var sm_pieces := 0
+	var sm_joints := 0
+	var sm_max_gap := 0.0
+	var sm_max_angle := 0.0
+	var sm_worst: Array = []
+	var sm_max_surfaces := 0
+	var sm_box_rails := 0
+	for station_id: String in ws.stations.keys():
+		var station_record: Dictionary = ws.stations[station_id]
+		var station_anchor: Vector3i = station_record.get("anchor", Vector3i.MAX)
+		if station_anchor.x < sm.x - 4 or station_anchor.x > sm.x + 8 or station_anchor.z < sm.z - 2 or station_anchor.z > sm.z + 12 or not CoasterRails.is_track_id(str(station_record.get("entity_id", ""))):
+			continue
+		sm_pieces += 1
+		var station_body: Node3D = app.session._station_visuals.get(station_id)
+		if station_body == null:
+			continue
+		var surfaces := 0
+		for mesh_node: Node in station_body.find_children("*", "MeshInstance3D", true, false):
+			var instance := mesh_node as MeshInstance3D
+			if instance.mesh is ArrayMesh:
+				surfaces += (instance.mesh as ArrayMesh).get_surface_count()
+			elif instance.mesh is BoxMesh and instance.get_parent() != null and instance.get_parent().has_meta("rail_length") and not (instance.mesh as BoxMesh).size.is_equal_approx(Vector3(0.10, 0.54, 0.10)):
+				sm_box_rails += 1
+		sm_max_surfaces = maxi(sm_max_surfaces, surfaces)
+		var own_frames := _rail_end_frames(station_body)
+		for other_cell: Vector3i in CoasterRails.connected_cells(station_record, sm_tracks):
+			var other_body: Node3D = app.session._station_visuals.get(ws.station_at_cell(other_cell))
+			if other_body == null:
+				continue
+			sm_joints += 1
+			var joint := _rail_joint_match(own_frames, _rail_end_frames(other_body))
+			if float(joint[0]) > sm_max_gap or float(joint[1]) > sm_max_angle:
+				sm_worst = [station_anchor, other_cell, joint]
+			sm_max_gap = maxf(sm_max_gap, float(joint[0]))
+			sm_max_angle = maxf(sm_max_angle, float(joint[1]))
+	var sm_joints_ok: bool = sm_joints >= 20 and sm_max_gap < 0.02 and sm_max_angle < 2.0
+	var sm_swept_ok: bool = sm_max_surfaces > 0 and sm_max_surfaces <= 3 and sm_box_rails == 0
+	_record("T186_SMOOTH_TRACK", sm_loaded and sm_placed and sm_curve_laid.get("reason") == "CURVE_PLACED" and sm_bend_laid.get("reason") == "BEND_PLACED" and sm_bend_ok and sm_arc_ok and sm_joints_ok and sm_swept_ok, "a 4 x 1 smooth switch between plain rails leans (TrackCurve.up_at) within 1 degree of upright at t 0, 0.02, 0.5 and 1, peaks between 3 degrees and the full bank and never steps more than 2 degrees per 0.01 t; a radius-4 curve leans the full bank at its middle and none at its ends; at every joint of both runs the two pieces' end rings coincide (point within 0.02, across within 2 degrees); every piece's rails and spine are one swept ArrayMesh of at most three surfaces with no rail boxes", {"loaded": sm_loaded, "placed": sm_placed, "curve": sm_curve_laid.get("reason"), "bend": sm_bend_laid.get("reason"), "bend_tilt_at_0_002_05_1": sm_bend_ends, "bend_max_tilt": snappedf(sm_max_tilt, 0.01), "bend_max_step": snappedf(sm_max_step, 0.001), "full_bank": snappedf(sm_full_bank, 0.01), "arc_middle": snappedf(sm_arc_middle, 0.01), "arc_ends": [snappedf(sm_arc_start, 0.001), snappedf(sm_arc_end, 0.001)], "pieces": sm_pieces, "joints": sm_joints, "joint_gap": snappedf(sm_max_gap, 0.0001), "joint_angle": snappedf(sm_max_angle, 0.01), "worst_joint": sm_worst, "max_surfaces": sm_max_surfaces, "box_rails": sm_box_rails})
+
 
 ## Rendered evidence: a lead-in, a radius-3 loop and its exit with a cart on
 ## the track, beside a slope run climbing a step, in one 1280x720 view.
@@ -1336,6 +1439,7 @@ func _run_visual() -> void:
 	await _render_climb()
 	await _render_curves()
 	await _render_supports()
+	await _render_sweep()
 
 
 ## T172: a Smooth Switch and a Crossing with lead-in / exit rails and a
@@ -1781,6 +1885,46 @@ func _render_curves() -> void:
 	_record("T175_CURVES_RENDERED", ninety.get("reason") == "CURVE_PLACED" and uturn.get("reason") == "CURVE_PLACED" and s_first.get("reason") == "CURVE_PLACED" and s_second.get("reason") == "CURVE_PLACED" and curve_cart.get("ok", false) and curve_error == OK and curve_image.get_size() == Vector2i(1280, 720) and curve_parts >= 60 and curve_cart_cell != cp + Vector3i(-2, 0, 0), "a radius-4 90-degree curve with a mine cart on it, a radius-3 U-turn and an S of two radius-5 45s render with rails at their ends in one 1280x720 view", {"path": curve_path, "size": curve_image.get_size(), "error": curve_error, "ninety": ninety.get("reason"), "uturn": uturn.get("reason"), "s_first": s_first.get("reason"), "s_second": s_second.get("reason"), "s_exit": s_exit, "cart": curve_cart.get("reason"), "curve_parts": curve_parts, "cart_cell": curve_cart_cell})
 
 
+## T186: the smooth sweep close up (`coaster-sweep-crossing.png`: the
+## crossing's centre from `_render_smooth_pieces` with a plain-rail L
+## corner laid in front of it; `coaster-sweep-uturn.png`: the radius-3
+## U-turn from `_render_curves`), so a kink at a crossing's centre or ends,
+## a stepped twist along a bend or a faceted corner would show.
+func _render_sweep() -> void:
+	var player := app.session.player
+	var ws := app.session.workstations
+	var world := app.session.world
+	app.session.inventory.try_transaction({}, {"rail": 8})
+	var corner_laid := true
+	for cell: Vector3i in [Vector3i(16, 0, 42), Vector3i(17, 0, 42), Vector3i(18, 0, 42), Vector3i(18, 0, 43)]:
+		corner_laid = corner_laid and bool(ws.try_place("rail", cell, world.query_cell, AABB(), 0).get("ok", false))
+	await get_tree().process_frame
+	var crossing_path := app.data_root.path_join("coaster-sweep-crossing.png")
+	var crossing_error := await _capture_from(player, Vector3(21.5, 2.4, 46.0), Vector3(18.0, 0.55, 40.0), crossing_path)
+	var uturn_path := app.data_root.path_join("coaster-sweep-uturn.png")
+	var uturn_error := await _capture_from(player, Vector3(17.5, 3.2, 49.0), Vector3(10.5, 0.55, 53.5), uturn_path)
+	_record("T186_SWEEP_RENDERED", corner_laid and crossing_error == OK and uturn_error == OK, "the crossing's centre with a plain-rail corner in front and the radius-3 U-turn render close up in coaster-sweep-crossing.png and coaster-sweep-uturn.png", {"crossing": crossing_path, "crossing_error": crossing_error, "uturn": uturn_path, "uturn_error": uturn_error, "corner_laid": corner_laid})
+
+
+## Moves the (deactivated) player's eye to `from` looking at `target`,
+## waits for the frame and saves the viewport to `path` (an Error).
+func _capture_from(player: PlayerController, from: Vector3, target: Vector3, path: String) -> Error:
+	var delta := target - from
+	player.global_position = from
+	player.rotation = Vector3(0.0, atan2(-delta.x, -delta.z), 0.0)
+	player.look_pitch = atan2(delta.y, Vector2(delta.x, delta.z).length())
+	player.apply_mouse_look(Vector2.ZERO)
+	for _frame in range(60):
+		await get_tree().process_frame
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+	var texture := get_viewport().get_texture()
+	var image := texture.get_image() if texture != null else null
+	if image == null:
+		return ERR_UNAVAILABLE
+	return image.save_png(path)
+
+
 ## T181: trestle supports rendered (`coaster-supports.png`).
 func _render_supports() -> void:
 	var player := app.session.player
@@ -1854,6 +1998,40 @@ func _track_sections(body: Node3D) -> Array[Array]:
 		var along: Vector3 = section.global_transform.basis.z
 		sections.append([section.global_position - along * half, section.global_position + along * half])
 	return sections
+
+
+## The end rings of a track piece's visual: [point, across] (world) for
+## both ends of every node carrying the `rail_length` / `rail_across` meta
+## (`GameSession._add_track_run`).
+func _rail_end_frames(body: Node3D) -> Array[Array]:
+	var frames: Array[Array] = []
+	if body == null:
+		return frames
+	for node: Node in body.find_children("*", "Node3D", true, false):
+		if not node.has_meta("rail_length") or not node.has_meta("rail_across"):
+			continue
+		var section := node as Node3D
+		var half: float = float(node.get_meta("rail_length")) * 0.5
+		var along: Vector3 = section.global_transform.basis.z
+		var across: Array = node.get_meta("rail_across")
+		frames.append([section.global_position + along * half, Vector3(across[0])])
+		frames.append([section.global_position - along * half, Vector3(across[1])])
+	return frames
+
+
+## The closest pair of end rings of two pieces: [distance, angle between
+## their across lines in degrees (sign-free)]; [INF, INF] when either has
+## none. Joined pieces should share a ring, so a smooth joint reads ~[0, 0].
+func _rail_joint_match(own: Array[Array], other: Array[Array]) -> Array:
+	var best_distance := INF
+	var best_angle := INF
+	for frame: Array in own:
+		for other_frame: Array in other:
+			var distance: float = Vector3(frame[0]).distance_to(Vector3(other_frame[0]))
+			if distance < best_distance:
+				best_distance = distance
+				best_angle = rad_to_deg(acos(clampf(absf(Vector3(frame[1]).dot(Vector3(other_frame[1]))), 0.0, 1.0)))
+	return [best_distance, best_angle]
 
 
 ## The smallest distance between any rail end of one piece and any rail end
