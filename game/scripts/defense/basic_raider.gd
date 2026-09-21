@@ -5,9 +5,24 @@ signal route_finished
 ## Emitted when the body made no progress toward its next route cell for
 ## STUCK_SECONDS (blocked by a corner, a tree or another body).
 signal stuck
+## Progress watchdog (wave 1 "raiders unstuck"): emitted once per stage when
+## the body's best horizontal distance to its goal has not improved for
+## PROGRESS_STAGE_SECONDS[stage - 1] seconds (1: re-plan wide, 2: unstick
+## hop, 3: stalled out). The drill owns the goal (set_goal / clear_goal).
+signal progress_stalled(stage: int)
 
 const MOVE_SPEED := 2.8
 const GRAVITY := 14.0
+## Step-up assist: a body walking into a one-block ledge climbs it (the player
+## uses the same test_move probe with a half-block step).
+const MAX_STEP_HEIGHT := 1.02
+const STEP_FLOOR_PROBE := 0.1
+## Shuffle: standing still against another raider for SHUFFLE_AFTER_SECONDS
+## makes the body nudge itself sideways for SHUFFLE_SECONDS (no shoving).
+const SHUFFLE_AFTER_SECONDS := 1.0
+const SHUFFLE_SECONDS := 0.45
+const PROGRESS_STAGE_SECONDS: Array[float] = [6.0, 12.0, 20.0]
+const PROGRESS_EPSILON := 0.05
 
 ## Raider kinds. A "raider" is the basic orc with two cleavers; a "brute" is the
 ## same orc scaled up with a purple tint (bigger, slower, hits harder); a
@@ -39,6 +54,23 @@ var ground_loaded: Callable
 const STUCK_SECONDS := 1.6
 var _stuck_timer := 0.0
 var _best_distance := INF
+## Progress watchdog state: the goal point (Vector3.INF = none), whether it is
+## watched, the best horizontal distance to it, the seconds without a gain
+## and the stage already reported (0..3). Unlike the route watchdog it keeps
+## counting while the body is parked without a route (the drill's stall retry)
+## so a walled-in raider still stalls out; it is switched off while the body
+## deliberately stands (attacking, chasing, shooting).
+var goal_point := Vector3.INF
+var goal_watch := false
+var stall_stage := 0
+var _goal_best_distance := INF
+var _goal_stall_timer := 0.0
+var _contact_timer := 0.0
+var _shuffle_timer := 0.0
+var _shuffle_side := 1.0
+## Counters diagnostics read: one-block step-ups taken and shuffles started.
+var step_ups := 0
+var shuffles := 0
 var _death_tween: Tween
 var _attack_tween: Tween
 ## Model root (feet at its origin, 0.9 below the body origin); the limb pivots
@@ -199,9 +231,57 @@ func feet_cell() -> Vector3i:
 	return Vector3i(floori(global_position.x), floori(global_position.y - 0.5), floori(global_position.z))
 
 
+## Starts (or continues) watching progress toward `point`. A new goal resets
+## the watchdog; the same goal keeps its timers, so a re-plan toward the same
+## target after the 1.6 s watchdog does not restart the 6/12/20 s clock.
+func set_goal(point: Vector3) -> void:
+	goal_watch = true
+	if goal_point.is_finite() and goal_point.distance_squared_to(point) < 0.01:
+		return
+	goal_point = point
+	reset_progress()
+
+
+## Stops watching (the body stands to attack, chase or shoot).
+func clear_goal() -> void:
+	goal_watch = false
+	goal_point = Vector3.INF
+	reset_progress()
+
+
+func reset_progress() -> void:
+	_goal_best_distance = INF
+	_goal_stall_timer = 0.0
+	stall_stage = 0
+
+
+## Seconds without a gain toward the goal (diagnostics read it).
+func progress_stall_seconds() -> float:
+	return _goal_stall_timer
+
+
+## The progress watchdog: the best horizontal distance to the goal must
+## improve by PROGRESS_EPSILON within each stage's window, else the stage is
+## reported once. Stage 3 stops the clock until the drill resets the goal.
+func _tick_progress(delta: float) -> void:
+	if not goal_watch or not goal_point.is_finite() or stall_stage >= PROGRESS_STAGE_SECONDS.size():
+		return
+	var distance := Vector2(goal_point.x - global_position.x, goal_point.z - global_position.z).length()
+	if distance < _goal_best_distance - PROGRESS_EPSILON:
+		_goal_best_distance = distance
+		_goal_stall_timer = 0.0
+		stall_stage = 0
+		return
+	_goal_stall_timer += delta
+	if _goal_stall_timer >= PROGRESS_STAGE_SECONDS[stall_stage]:
+		stall_stage += 1
+		progress_stalled.emit(stall_stage)
+
+
 func _physics_process(delta: float) -> void:
 	if dead:
 		return
+	_tick_progress(delta)
 	if not active or route_index >= route.size():
 		# Idle bodies still settle onto the ground (restored or shoved raiders).
 		velocity.x = 0.0
@@ -253,13 +333,62 @@ func _physics_process(delta: float) -> void:
 	var push := _separation()
 	velocity.x = direction.x * move_speed + push.x
 	velocity.z = direction.z * move_speed + push.z
-	if is_on_floor():
-		velocity.y = clampf(offset.y * 6.0, -2.0, 5.0)
+	# Shuffle: pressed against another body and not moving, step sideways for
+	# a moment (alternating sides) instead of leaning into it.
+	if _shuffle_timer > 0.0:
+		_shuffle_timer -= delta
+		var side := Vector3(-direction.z, 0.0, direction.x) * _shuffle_side
+		velocity.x = side.x * move_speed * 0.8
+		velocity.z = side.z * move_speed * 0.8
+	# Step-up assist: blocked by a single block with air above it, climb it.
+	var stepped := _try_step_up(Vector3(velocity.x, 0.0, velocity.z) * delta)
+	var normal_snap := floor_snap_length
+	if stepped:
+		floor_snap_length = MAX_STEP_HEIGHT + STEP_FLOOR_PROBE
+		velocity.y = 0.0
+	elif is_on_floor():
+		# Fallback hop toward a higher cell once the step-up assist has not
+		# taken it within half a second (a diagonal edge, a half-open corner).
+		velocity.y = 5.0 if offset.y > 0.5 and _stuck_timer > 0.5 else 0.0
 	else:
 		velocity.y -= GRAVITY * delta
+	var before := global_position
 	move_and_slide()
-	_walk_distance += Vector2(velocity.x, velocity.z).length() * delta
+	floor_snap_length = normal_snap
+	var travelled := Vector2(global_position.x - before.x, global_position.z - before.z).length()
+	_walk_distance += travelled
+	if _shuffle_timer <= 0.0 and travelled < move_speed * delta * 0.15 and push.length_squared() > 0.0:
+		_contact_timer += delta
+		if _contact_timer >= SHUFFLE_AFTER_SECONDS:
+			_contact_timer = 0.0
+			_shuffle_side = -_shuffle_side
+			_shuffle_timer = SHUFFLE_SECONDS
+			shuffles += 1
+	else:
+		_contact_timer = 0.0
 	_animate_walk(delta, true)
+
+
+## Climbs a one-block step the way the player does: the horizontal motion is
+## blocked, the space one block up is free, the motion from there is free and
+## there is a floor within the probe below the raised spot.
+func _try_step_up(horizontal_motion: Vector3) -> bool:
+	if not is_on_floor() or horizontal_motion.length_squared() <= 0.000001:
+		return false
+	if not test_move(global_transform, horizontal_motion):
+		return false
+	var upward_motion := Vector3.UP * MAX_STEP_HEIGHT
+	if test_move(global_transform, upward_motion):
+		return false
+	var raised_transform := global_transform.translated(upward_motion)
+	if test_move(raised_transform, horizontal_motion * 4.0):
+		return false
+	var advanced_transform := raised_transform.translated(horizontal_motion * 4.0)
+	if not test_move(advanced_transform, Vector3.DOWN * (MAX_STEP_HEIGHT + STEP_FLOOR_PROBE)):
+		return false
+	global_position += upward_motion
+	step_ups += 1
+	return true
 
 
 ## Push away from other living raiders closer than SEPARATION_RADIUS.

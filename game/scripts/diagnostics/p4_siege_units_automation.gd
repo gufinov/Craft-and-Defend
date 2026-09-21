@@ -557,6 +557,180 @@ func _run_gate() -> void:
 	var stepped_aside := side_route_second.x != center.x + 3
 	_record("T155_WALL_MOUNTS_JUNCTIONS_SIDESTEP", lantern_on_wall.get("ok", false) and str(lantern_on_wall.get("details", {}).get("mount", "")) == "wall" and lantern_rotation == 0 and not lantern_on_ground.get("ok", false) and torch_on_ground.get("ok", false) and torch_on_wall.get("ok", false) and rails_placed == 8 and corner_kettle.get("ok", false) and reaches_around_corner and junction_degree == 3 and stays_straight and not branch_reached and side_drill.get("ok", false) and sidestepping and stepped_aside, "a wall lantern hangs on a wall face facing away and refuses bare ground while a torch does both; a kettle rides through a rail corner as one track but never turns onto a T branch; a stuck raider backs up and steps sideways before re-planning", {"lantern_wall": lantern_on_wall.get("reason"), "lantern_mount": lantern_on_wall.get("details", {}).get("mount", ""), "lantern_rotation": lantern_rotation, "lantern_ground": lantern_on_ground.get("reason"), "torch_ground": torch_on_ground.get("reason"), "torch_wall": torch_on_wall.get("reason"), "rails": rails_placed, "kettle": corner_kettle.get("reason"), "corner_step": step_from_end, "junction_degree": junction_degree, "through_t": through_t, "branch_reached": branch_reached, "sidestepping": sidestepping, "route": core.raider.route})
 	core.clear_for_other_mode()
+	await _run_unstuck_tests()
+
+
+## Wave 1 "raiders unstuck" (T196-T198). Each drill runs on its own levelled
+## plate far from the arena with a placed Core of Power (the drill centres on
+## it): the plate is RAIDER_PLATE_SIZE, the core anchor sits at (6, 0, 15) so
+## the wave's spawn lands at (7, 0, 3) and the core's centre at (7, 0, 16).
+## The bodies run in real physics; RAIDER_TIME_SCALE with matching physics
+## ticks keeps every step at 1/60 s while the clock runs faster.
+const RAIDER_PLATE_SIZE := Vector2i(15, 20)
+const RAIDER_TIME_SCALE := 4.0
+
+
+func _run_unstuck_tests() -> void:
+	var core := app.session.core_defense
+	var ws := app.session.workstations
+	var world := app.session.world
+	var normal_ticks := Engine.physics_ticks_per_second
+	Engine.physics_ticks_per_second = int(60.0 * RAIDER_TIME_SCALE)
+	Engine.time_scale = RAIDER_TIME_SCALE
+
+	# T196 step-up: a one-block ledge across the whole approach; the raider
+	# climbs it (feet on y 1) and reaches the core instead of leaning on it.
+	var step_origin := Vector3i(24, 0, 56)
+	var step_plate := await _raider_plate(step_origin)
+	var step_core_id := str(step_plate.get("core_id", ""))
+	for x in range(RAIDER_PLATE_SIZE.x):
+		world.set_cell(step_origin + Vector3i(x, 0, 8), 8)
+	await get_tree().physics_frame
+	var step_drill := core.start_prototype()
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var step_route := core.last_route_reason
+	var spawned_at := core.raider.feet_cell() if is_instance_valid(core.raider) else Vector3i.MAX
+	var climbed := false
+	var step_ups := 0
+	var step_seconds := 0.0
+	while step_seconds < 30.0 and core.state != CoreDefenseService.ATTACKING_CORE:
+		await get_tree().physics_frame
+		step_seconds += 1.0 / 60.0
+		if is_instance_valid(core.raider) and core.raider.feet_cell().y == 1 and core.raider.feet_cell().z == step_origin.z + 8:
+			climbed = true
+		if is_instance_valid(core.raider):
+			step_ups = core.raider.step_ups
+	var step_reached := core.state == CoreDefenseService.ATTACKING_CORE
+	_record("T196_RAIDER_UNSTUCK_STEP", step_drill.get("ok", false) and step_core_id != "" and spawned_at == step_origin + Vector3i(7, 0, 3) and step_route == "OK" and climbed and step_ups >= 1 and step_reached and step_seconds < 30.0, "a raider behind a 1-high ledge climbs it like the player (the step-up assist fires, feet on the ledge top) and reaches the core within 30 s", {"drill": step_drill.get("reason"), "plate": step_plate, "route": step_route, "spawned_at": spawned_at, "climbed": climbed, "step_ups": step_ups, "reached": step_reached, "seconds": snappedf(step_seconds, 0.01), "state": core.state, "route_reason": core.last_route_reason})
+	core.clear_for_other_mode()
+	ws.try_damage(step_core_id, 9999)
+	await get_tree().process_frame
+
+	# T197 pocket: a raider in a 3x3 stone pocket whose only gap another raider
+	# stands in (frozen: no route progress). The progress watchdog re-plans
+	# the frozen one at 6 s; within 20 s both have left the pocket.
+	var pocket_origin := Vector3i(-40, 0, 56)
+	var pocket_plate := await _raider_plate(pocket_origin)
+	var pocket_core_id := str(pocket_plate.get("core_id", ""))
+	var pocket_drill := core.start_prototype({"raiders": 2})
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var pocket_centre := pocket_origin + Vector3i(7, 0, 4)
+	var gap := pocket_origin + Vector3i(7, 0, 6)
+	var lead: BasicRaider = core.raider
+	var follower: BasicRaider = core.extra_raiders[0].node if core.extra_raiders.size() > 0 else null
+	for node in core.raider_nodes():
+		node.active = false
+	lead.global_position = Vector3(pocket_centre) + Vector3(0.5, 0.9, 0.5)
+	if follower != null:
+		follower.global_position = Vector3(gap) + Vector3(0.5, 0.9, 0.5)
+	for x in range(5, 10):
+		for z in range(2, 7):
+			var wall := x == 5 or x == 9 or z == 2 or z == 6
+			var cell := pocket_origin + Vector3i(x, 0, z)
+			if wall and cell != gap:
+				world.set_cell(cell, 8)
+				world.set_cell(cell + Vector3i.UP, 8)
+	await get_tree().physics_frame
+	core._plan_from_raider()
+	if core.extra_raiders.size() > 0:
+		core._plan_extra(core.extra_raiders[0])
+	var pocket_routes: Array[String] = [core.last_route_reason]
+	if core.extra_raiders.size() > 0:
+		pocket_routes.append(str(core.extra_raiders[0].route_reason))
+	if follower != null:
+		follower.active = false
+	var pocket_box := AABB(Vector3(pocket_origin + Vector3i(5, 0, 2)), Vector3(5, 3, 5))
+	var pocket_seconds := 0.0
+	var follower_woke_at := -1.0
+	var both_out_at := -1.0
+	while pocket_seconds < 20.0:
+		await get_tree().physics_frame
+		pocket_seconds += 1.0 / 60.0
+		if follower != null and follower_woke_at < 0.0 and follower.active:
+			follower_woke_at = pocket_seconds
+		var lead_in := is_instance_valid(lead) and pocket_box.has_point(lead.global_position - Vector3.UP * 0.5)
+		var follower_in := follower != null and is_instance_valid(follower) and pocket_box.has_point(follower.global_position - Vector3.UP * 0.5)
+		if not lead_in and not follower_in:
+			both_out_at = pocket_seconds
+			break
+	_record("T197_RAIDER_UNSTUCK_POCKET", pocket_drill.get("ok", false) and pocket_core_id != "" and follower != null and pocket_routes == ["OK", "OK"] and follower_woke_at > 0.0 and both_out_at > 0.0 and both_out_at <= 20.0, "a raider in a 3x3 stone pocket with a one-cell gap that a frozen raider stands in: the frozen one is re-planned by the progress watchdog and both have left the pocket within 20 s", {"drill": pocket_drill.get("reason"), "plate": pocket_plate, "routes": pocket_routes, "follower_woke_at": snappedf(follower_woke_at, 0.01), "both_out_at": snappedf(both_out_at, 0.01), "lead_feet": lead.feet_cell() if is_instance_valid(lead) else Vector3i.MAX, "follower_feet": follower.feet_cell() if follower != null and is_instance_valid(follower) else Vector3i.MAX, "state": core.state})
+	core.clear_for_other_mode()
+	ws.try_damage(pocket_core_id, 9999)
+	await get_tree().process_frame
+
+	# T198 stall recovery: a raider boxed in by bedrock (unbreachable) probes
+	# (stall retries), re-plans wide at 6 s, finds no hop at 12 s, is marked
+	# stalled at 20 s with exactly one warning, and since the wave is otherwise
+	# over it retires (the spawn is where it stands) and the drill ends WON.
+	var stall_origin := Vector3i(24, 0, 4)
+	var stall_plate := await _raider_plate(stall_origin)
+	var stall_core_id := str(stall_plate.get("core_id", ""))
+	var stall_spawn := stall_origin + Vector3i(7, 0, 3)
+	var bedrock: Array[Vector3i] = []
+	for x in range(-1, 2):
+		for z in range(-1, 2):
+			for y in range(0, 3):
+				var cell := stall_spawn + Vector3i(x, y, z)
+				if x == 0 and z == 0 and y < 2:
+					continue
+				bedrock.append(cell)
+				world.set_cell(cell, 9)
+	await get_tree().physics_frame
+	var warnings_before := core.stall_warnings
+	var stall_drill := core.start_prototype()
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var probing := core.last_route_reason
+	var stall_seconds := 0.0
+	var wide_at := -1.0
+	var stalled_at := -1.0
+	var won_at := -1.0
+	while stall_seconds < 26.0:
+		await get_tree().physics_frame
+		stall_seconds += 1.0 / 60.0
+		if wide_at < 0.0 and core._capture_wide:
+			wide_at = stall_seconds
+		if stalled_at < 0.0 and core.last_route_reason == "STALLED":
+			stalled_at = stall_seconds
+		core.advance(1.0 / 60.0, false)
+		if won_at < 0.0 and core.state == CoreDefenseService.WON:
+			won_at = stall_seconds
+	var stall_warnings := core.stall_warnings - warnings_before
+	var body_gone := not is_instance_valid(core.raider) or core.raider.dead
+	_record("T198_RAIDER_STALL_RECOVERY", stall_drill.get("ok", false) and stall_core_id != "" and probing == "NO_PERMITTED_ROUTE" and wide_at > 5.0 and wide_at < 8.0 and stalled_at > 19.0 and stalled_at < 22.0 and won_at > 0.0 and stall_warnings == 1 and body_gone and core.living_raider_count() == 0, "a raider walled in by bedrock probes without a route, re-plans wide at 6 s, is marked stalled at 20 s with exactly one warning, and since the wave is otherwise over it retires and the drill ends WON (no immortal stuck raider)", {"drill": stall_drill.get("reason"), "plate": stall_plate, "probing": probing, "wide_at": snappedf(wide_at, 0.01), "stalled_at": snappedf(stalled_at, 0.01), "won_at": snappedf(won_at, 0.01), "warnings": stall_warnings, "body_gone": body_gone, "living": core.living_raider_count(), "state": core.state})
+	core.clear_for_other_mode()
+	ws.try_damage(stall_core_id, 9999)
+	for cell in bedrock:
+		world.set_cell(cell, 0)
+	Engine.time_scale = 1.0
+	Engine.physics_ticks_per_second = normal_ticks
+	await get_tree().process_frame
+
+
+## Levels a raider plate at `origin` (waits for the terrain to be editable)
+## and places the Core of Power that centres the drill on it.
+func _raider_plate(origin: Vector3i) -> Dictionary:
+	var ws := app.session.workstations
+	var world := app.session.world
+	var deadline := Time.get_ticks_msec() + 15000
+	var levelled := false
+	while Time.get_ticks_msec() < deadline and not levelled:
+		_level_ground(origin, RAIDER_PLATE_SIZE.x, RAIDER_PLATE_SIZE.y)
+		levelled = true
+		for x in range(RAIDER_PLATE_SIZE.x):
+			for z in range(RAIDER_PLATE_SIZE.y):
+				var plate := world.query_cell(origin + Vector3i(x, -1, z))
+				var feet := world.query_cell(origin + Vector3i(x, 0, z))
+				if plate.get("state") != "LOADED" or int(plate.get("voxel_id", 0)) != 3 or int(feet.get("voxel_id", 1)) != 0:
+					levelled = false
+		if not levelled:
+			await get_tree().process_frame
+	app.session.inventory.try_transaction({}, {"core_of_power": 1})
+	var placed := ws.try_place("core_of_power", origin + Vector3i(6, 0, 15), world.query_cell, AABB(), 0)
+	await get_tree().physics_frame
+	return {"levelled": levelled, "core": placed.get("reason"), "core_id": str(placed.get("details", {}).get("station", {}).get("instance_id", ""))}
 
 
 ## Rendered evidence: the five machines (ballista, catapult, turret catapult on

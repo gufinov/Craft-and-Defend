@@ -113,6 +113,21 @@ var _wave_rng := RandomNumberGenerator.new()
 var _capture_retries := 0
 const CAPTURE_RETRY_LIMIT := 40
 const CAPTURE_RETRY_SECONDS := 0.5
+## Wave 1 "raiders unstuck": the progress watchdog on every body reports
+## stages (6 s: re-plan wide with digging enabled, 12 s: unstick hop, 20 s:
+## stalled out). A stage-1 report widens every later capture of this drill
+## by CAPTURE_WIDE_PADDING cells; a stalled-out body is respawned at the
+## wave's spawn once the wave is otherwise over (or gives up when that cannot
+## help), so no immortal stuck raider ever holds a wave open. Diagnostics
+## read `stall_warnings` (one push_warning per stalled-out body).
+const CAPTURE_WIDE_PADDING := Vector3i(8, 4, 8)
+const HOP_NEIGHBOURS: Array[Vector3i] = [
+	Vector3i(-1, 0, 0), Vector3i(1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 1),
+	Vector3i(-1, 0, -1), Vector3i(1, 0, -1), Vector3i(-1, 0, 1), Vector3i(1, 0, 1),
+]
+var _capture_wide := false
+var stall_warnings := 0
+var stalled_out_count := 0
 
 
 func initialize(world_adapter: WorldAdapter, content_registry: ContentRegistry, station_service: WorkstationService, saved: Dictionary = {}) -> void:
@@ -251,6 +266,8 @@ func start_prototype(options: Dictionary = {}) -> Dictionary:
 	last_route_reason = ""
 	navigation_revision = 0
 	exact_invalidations = 0
+	_capture_wide = false
+	stalled_out_count = 0
 	_build_core_visual()
 	if far_mode:
 		var base := _terrain_generator().enemy_base_cell()
@@ -285,6 +302,8 @@ func advance(delta: float, paused: bool = false) -> void:
 				_primary_chase = {}
 				_queue_replan()
 		_advance_extras(delta)
+		if stalled_out_count > 0:
+			_resolve_stalled_out()
 
 
 ## Extra raiders (P4D) run their own attack timers against whatever they
@@ -294,7 +313,7 @@ func _advance_extras(delta: float) -> void:
 		if int(entry.health) <= 0 or not is_instance_valid(entry.node):
 			continue
 		var phase := str(entry.get("phase", "routing"))
-		if phase == "marching" or phase == "sidestep":
+		if phase == "marching" or phase == "sidestep" or phase == "stalled_out":
 			continue
 		if phase == "chasing":
 			if not _advance_chase(entry.node, entry.chase, int(entry.damage), float(entry.get("attack_interval", raider_attack_interval)), bool(entry.get("ranged", false)), delta):
@@ -364,6 +383,7 @@ func _brute_smashes_nearby(entry: Dictionary, delta: float) -> void:
 	entry.phase = "attacking_structure"
 	entry.attack_timer = 0.3
 	node.active = false
+	node.clear_goal()
 	feedback.emit("A brute turns on your %s." % registry.display_name(str(workstations.stations[nearest].get("entity_id", "structure"))))
 ## The centre of whatever an extra raider is heading for (core or structure).
 func _extra_target_point(entry: Dictionary) -> Vector3:
@@ -388,6 +408,7 @@ func _engage_ranged(entry: Dictionary) -> void:
 	var node: BasicRaider = entry.node
 	node.active = false
 	node.velocity = Vector3.ZERO
+	node.clear_goal()
 	node.face_point(_extra_target_point(entry))
 	entry.attack_timer = 0.3
 	if str(entry.target_type) == "core":
@@ -462,9 +483,11 @@ func _extra_attacks_core(entry: Dictionary) -> void:
 func _halt_all_raiders() -> void:
 	if is_instance_valid(raider):
 		raider.active = false
+		raider.clear_goal()
 	for entry in extra_raiders:
 		if is_instance_valid(entry.node):
 			entry.node.active = false
+			entry.node.clear_goal()
 
 
 ## The placed core's record changed (damage from any raider path): mirror it
@@ -574,12 +597,14 @@ func notify_raider_provoked(node: Node, source: String) -> void:
 			return
 		_primary_chase = chase
 		raider.active = false
+		raider.clear_goal()
 		return
 	for entry in extra_raiders:
-		if entry.node == node and str(entry.get("phase", "")) != "marching":
+		if entry.node == node and str(entry.get("phase", "")) not in ["marching", "stalled_out"]:
 			entry.chase = chase
 			entry.phase = "chasing"
 			node.active = false
+			node.clear_goal()
 			return
 
 
@@ -733,7 +758,9 @@ func hud_text() -> String:
 			if far_mode and last_route_reason == "MARCHING" and is_instance_valid(raider):
 				var away := Vector2(float(raider.global_position.x - arena_center.x), float(raider.global_position.z - arena_center.z)).length()
 				return "WAVE MARCHING FROM THE ENEMY BASE · %d/%d raiders · lead %d m out · core %d/%d" % [living_raider_count(), wave_size, int(away), core_integrity, core_max_integrity]
-			if last_route_reason in ["NO_PERMITTED_ROUTE", "NO_PERMITTED_BREACH", "NO_APPROACH_ROUTE"]:
+			if last_route_reason == "STALLED" and living_raider_count() > 1:
+				return "WAVE ROUTING TO CORE · lead raider stalled · %d/%d raiders left · core %d/%d" % [living_raider_count(), wave_size, core_integrity, core_max_integrity]
+			if last_route_reason in ["NO_PERMITTED_ROUTE", "NO_PERMITTED_BREACH", "NO_APPROACH_ROUTE", "STALLED"]:
 				return "RAIDERS PROBING FOR A WAY IN · %d/%d left · no route they can breach yet · core %d/%d" % [living_raider_count(), wave_size, core_integrity, core_max_integrity]
 			if wave_size > 1:
 				return "WAVE ROUTING TO CORE · %d/%d raiders left · lead HP %d/%d · core %d/%d" % [living_raider_count(), wave_size, raider_health, raider_max_health, core_integrity, core_max_integrity]
@@ -833,6 +860,7 @@ func _start_march(node: BasicRaider, march: Array[Vector3i]) -> void:
 	for cell in march:
 		cells.append(cell)
 	node.set_route(cells)
+	node.set_goal(_goal_point(arena_center))
 
 
 func _ground_loaded(cell: Vector3i) -> bool:
@@ -909,6 +937,7 @@ func _spawn_extra_raider(spawn_position: Vector3, kind: String) -> Dictionary:
 	extra_raiders.append(entry)
 	node.route_finished.connect(_on_extra_route_finished.bind(node))
 	node.stuck.connect(_on_extra_stuck.bind(node))
+	node.progress_stalled.connect(_on_extra_progress_stalled.bind(node))
 	return entry
 
 
@@ -976,17 +1005,206 @@ func _on_extra_stuck(node: BasicRaider) -> void:
 			return
 
 
+## --- Progress watchdog (wave 1 "raiders unstuck") -------------------------
+
+
+## The point a body measures its progress against: the centre of a cell at
+## body height.
+func _goal_point(cell: Vector3i) -> Vector3:
+	return Vector3(cell) + Vector3(0.5, 0.9, 0.5)
+
+
+func _on_raider_progress_stalled(stage: int) -> void:
+	if not (is_active() and is_instance_valid(raider) and raider_health > 0) or not _primary_chase.is_empty():
+		return
+	_handle_progress_stall(raider, {}, stage)
+
+
+func _on_extra_progress_stalled(stage: int, node: BasicRaider) -> void:
+	if not is_active():
+		return
+	for entry in extra_raiders:
+		if entry.node == node and int(entry.health) > 0:
+			if str(entry.get("phase", "")) in ["chasing", "attacking_core", "attacking_structure", "stalled_out"]:
+				return
+			_handle_progress_stall(node, entry, stage)
+			return
+
+
+## Stage 1 (6 s): re-capture wider and re-plan with digging enabled. Stage 2
+## (12 s): hop to the nearest reachable neighbour cell closer to the goal and
+## re-plan. Stage 3 (20 s): stalled out (one warning; see _resolve_stalled_out).
+func _handle_progress_stall(node: BasicRaider, entry: Dictionary, stage: int) -> void:
+	var marching: bool = (entry.is_empty() and far_mode and last_route_reason == "MARCHING") or str(entry.get("phase", "")) == "marching"
+	if stage >= 3:
+		if marching:
+			# A marcher waiting at an unloaded hand-over ring is not lost: it
+			# re-marches and its clock restarts (never stalled out).
+			node.reset_progress()
+			_remarch(node)
+			return
+		_mark_stalled_out(node, entry)
+		return
+	if stage == 2:
+		var goal: Vector3 = node.goal_point if node.goal_point.is_finite() else _goal_point(_core_cell())
+		_unstick_hop(node, goal)
+	else:
+		_capture_wide = true
+		node.set_meta("stuck_breach", true)
+	node.set_meta("sidestepping", false)
+	if marching:
+		_remarch(node)
+		return
+	_capture_navigation()
+	if entry.is_empty():
+		_plan_from_raider()
+	else:
+		_plan_extra(entry)
+
+
+## A short teleport-free hop: from the body's 8 neighbours (one up, level or
+## one down) pick the walkable cell nearest the goal that is closer than the
+## body stands now. Returns false when none exists.
+func _unstick_hop(node: BasicRaider, goal: Vector3) -> bool:
+	var feet := node.feet_cell()
+	var here := Vector2(goal.x - node.global_position.x, goal.z - node.global_position.z).length()
+	var best := Vector3i.MAX
+	var best_distance := here - 0.1
+	for neighbour: Vector3i in HOP_NEIGHBOURS:
+		for rise: int in [1, 0, -1]:
+			var cell := feet + neighbour + Vector3i(0, rise, 0)
+			if not _walkable_cell(cell):
+				continue
+			var distance := Vector2(goal.x - (float(cell.x) + 0.5), goal.z - (float(cell.z) + 0.5)).length()
+			if distance < best_distance:
+				best_distance = distance
+				best = cell
+			break
+	if best == Vector3i.MAX:
+		return false
+	node.global_position = _goal_point(best)
+	node.velocity = Vector3.ZERO
+	node.reset_progress()
+	return true
+
+
+## 20 s without progress: the body stands down (no more retries) and one
+## warning names it. A world change re-plans it again (the player may have
+## opened a way); _resolve_stalled_out respawns or retires it once the wave
+## is otherwise over.
+func _mark_stalled_out(node: BasicRaider, entry: Dictionary) -> void:
+	node.active = false
+	node.velocity = Vector3.ZERO
+	node.clear_goal()
+	if entry.is_empty():
+		last_route_reason = "STALLED"
+	else:
+		entry.phase = "stalled_out"
+		entry.route_reason = "STALLED"
+	if not node.get_meta("stalled_out", false):
+		stalled_out_count += 1
+	node.set_meta("stalled_out", true)
+	if not node.get_meta("stall_warned", false):
+		node.set_meta("stall_warned", true)
+		stall_warnings += 1
+		var target_type: String = active_target_type if entry.is_empty() else str(entry.get("target_type", ""))
+		var target: Vector3i = active_target_cell if entry.is_empty() else entry.get("target_cell", Vector3i.ZERO)
+		if target_type.is_empty():
+			target = _core_cell()
+		push_warning("Raider stalled out after %d s without progress at %s (target %s)." % [int(BasicRaider.PROGRESS_STAGE_SECONDS[2]), node.feet_cell(), target])
+	feedback.emit("A %s is hopelessly stuck." % str(node.kind))
+	_emit_state()
+
+
+func _clear_stalled_out(node: BasicRaider, entry: Dictionary) -> void:
+	if node.get_meta("stalled_out", false):
+		stalled_out_count = maxi(0, stalled_out_count - 1)
+	node.set_meta("stalled_out", false)
+	node.reset_progress()
+	if entry.is_empty():
+		last_route_reason = ""
+	else:
+		entry.phase = "routing"
+
+
+## Once no other raider is still fighting, a stalled-out body is respawned
+## at the wave's spawn (once, near drills only, and only when that moves it)
+## and otherwise retires as defeated, so the wave can end.
+func _resolve_stalled_out() -> void:
+	var fighting := 0
+	for node in raider_nodes():
+		if not node.get_meta("stalled_out", false):
+			fighting += 1
+	if fighting > 0:
+		return
+	for node in raider_nodes():
+		if not node.get_meta("stalled_out", false):
+			continue
+		var entry := _entry_for(node)
+		var spawn := _start_cell()
+		if not far_mode and not node.get_meta("respawned", false) and _walkable_cell(spawn) and spawn != node.feet_cell():
+			node.set_meta("respawned", true)
+			node.global_position = _goal_point(spawn)
+			node.velocity = Vector3.ZERO
+			_clear_stalled_out(node, entry)
+			feedback.emit("A stuck %s was sent back to the wave's spawn." % str(node.kind))
+			_capture_navigation()
+			if entry.is_empty():
+				_plan_from_raider()
+			else:
+				_plan_extra(entry)
+		else:
+			_retire_stalled(node, entry)
+		return
+
+
+func _entry_for(node: BasicRaider) -> Dictionary:
+	for entry in extra_raiders:
+		if entry.node == node:
+			return entry
+	return {}
+
+
+## A stalled-out body that cannot be helped counts as defeated.
+func _retire_stalled(node: BasicRaider, entry: Dictionary) -> void:
+	_clear_stalled_out(node, entry)
+	if entry.is_empty():
+		raider_health = 0
+	else:
+		entry.health = 0
+	node.die()
+	feedback.emit("A hopelessly stuck %s gave up. %d left." % [str(node.kind), living_raider_count()])
+	if living_raider_count() == 0 and state != FAILED:
+		state = WON
+		feedback.emit("Defense won: the last raider gave up, stuck.")
+	_emit_state()
+
+
+## Re-plans a world change may have unblocked: a stalled-out body gets a new
+## chance (its clock restarts).
+func _revive_stalled_out_for_replan() -> void:
+	if is_instance_valid(raider) and raider.get_meta("stalled_out", false) and raider_health > 0:
+		_clear_stalled_out(raider, {})
+	for entry in extra_raiders:
+		if int(entry.health) > 0 and is_instance_valid(entry.node) and entry.node.get_meta("stalled_out", false):
+			_clear_stalled_out(entry.node, entry)
+
+
 func _plan_extra(entry: Dictionary) -> void:
 	var node: BasicRaider = entry.node
 	if not is_instance_valid(node) or core_integrity <= 0 or int(entry.health) <= 0:
+		return
+	if str(entry.get("phase", "")) == "stalled_out":
 		return
 	if navigation_snapshot == null:
 		_capture_navigation()
 	if navigation_snapshot == null:
 		return
 	var start := node.feet_cell()
-	var capability := _basic_raider_capability()
-	capability["damage_per_hit"] = {"breachable_wood": int(entry.damage), "fortification": int(entry.damage) if str(entry.kind) == BasicRaider.KIND_BRUTE else maxi(1, int(entry.damage) / 3)}
+	var capability := _basic_raider_capability(node)
+	var extra_damage: Dictionary = capability["damage_per_hit"]
+	extra_damage["breachable_wood"] = int(entry.damage)
+	extra_damage["fortification"] = int(entry.damage) if str(entry.kind) == BasicRaider.KIND_BRUTE else maxi(1, int(entry.damage) / 3)
 	var planner := LocalGridPathfinder.new()
 	var plan := planner.plan_next(navigation_snapshot, start, _core_approach_cell(start), capability)
 	entry.route_reason = str(plan.get("reason", "NO_ROUTE"))
@@ -996,6 +1214,7 @@ func _plan_extra(entry: Dictionary) -> void:
 		entry.target_id = "strategic_core_prototype"
 		entry.target_cell = _core_cell()
 		node.set_route(plan.get("path", []))
+		node.set_goal(_goal_point(_core_cell()))
 		return
 	if entry.route_reason == "ATTACK_OBSTRUCTION":
 		var action: Dictionary = plan.get("action", {})
@@ -1012,6 +1231,7 @@ func _plan_extra(entry: Dictionary) -> void:
 		entry.target_id = instance_id
 		entry.target_cell = action.get("cell", Vector3i.ZERO)
 		node.set_route(route.get("path", []))
+		node.set_goal(_goal_point(entry.target_cell))
 		return
 	_stall_extra(entry)
 
@@ -1021,6 +1241,7 @@ func _stall_extra(entry: Dictionary) -> void:
 	entry.attack_timer = STALL_RETRY_SECONDS
 	if is_instance_valid(entry.node):
 		entry.node.active = false
+		entry.node.set_goal(_goal_point(_core_cell()))
 
 
 func _on_extra_route_finished(node: BasicRaider) -> void:
@@ -1041,8 +1262,10 @@ func _on_extra_route_finished(node: BasicRaider) -> void:
 			_plan_extra(entry)
 			return
 		entry.attack_timer = 0.3
+		node.clear_goal()
 		if str(entry.target_type) == "core":
 			entry.phase = "attacking_core"
+			node.set_meta("stuck_breach", false)
 		elif str(entry.target_type) == "structure" and workstations.defense_status(str(entry.target_id)).get("ok", false):
 			entry.phase = "attacking_structure"
 		elif str(entry.target_type) == "voxel":
@@ -1059,6 +1282,8 @@ func _plan_from_raider() -> void:
 		return
 	if not _primary_chase.is_empty():
 		return
+	if last_route_reason == "STALLED":
+		return
 	_capture_navigation()
 	if navigation_snapshot == null:
 		# Far wave lines can reach terrain the streamer has not loaded yet;
@@ -1073,7 +1298,7 @@ func _plan_from_raider() -> void:
 		return
 	_capture_retries = 0
 	var start := raider.feet_cell()
-	var capability := _basic_raider_capability()
+	var capability := _basic_raider_capability(raider)
 	var planner := LocalGridPathfinder.new()
 	var plan := planner.plan_next(navigation_snapshot, start, _core_approach_cell(start), capability)
 	last_route_reason = str(plan.get("reason", "NO_ROUTE"))
@@ -1083,6 +1308,7 @@ func _plan_from_raider() -> void:
 		active_target_cell = _core_cell()
 		state = ROUTING
 		raider.set_route(plan.get("path", []))
+		raider.set_goal(_goal_point(_core_cell()))
 		_emit_state()
 		return
 	if last_route_reason == "ATTACK_OBSTRUCTION":
@@ -1102,6 +1328,7 @@ func _plan_from_raider() -> void:
 		active_target_cell = action.get("cell", Vector3i.ZERO)
 		state = ROUTING
 		raider.set_route(route.get("path", []))
+		raider.set_goal(_goal_point(active_target_cell))
 		_emit_state()
 		return
 	_stall("NO_PERMITTED_ROUTE")
@@ -1115,6 +1342,8 @@ func _stall(reason: String) -> void:
 	last_route_reason = reason
 	if is_instance_valid(raider):
 		raider.active = false
+		# The progress clock keeps running while it waits for a way in.
+		raider.set_goal(_goal_point(_core_cell()))
 	if not _stall_retry_pending:
 		_stall_retry_pending = true
 		get_tree().create_timer(STALL_RETRY_SECONDS).timeout.connect(_retry_after_stall)
@@ -1146,8 +1375,10 @@ func _on_raider_route_finished() -> void:
 			_remarch(raider)
 		return
 	attack_timer = 0.3
+	raider.clear_goal()
 	if active_target_type == "core":
 		state = ATTACKING_CORE
+		raider.set_meta("stuck_breach", false)
 		feedback.emit("Raider reached the strategic core because an open route remained.")
 	elif active_target_type == "structure" and workstations.defense_status(active_target_id).get("ok", false):
 		state = ATTACKING_STRUCTURE
@@ -1199,8 +1430,16 @@ func _attack_core() -> void:
 ## Raiders breach wood at full damage and, when no other way exists, chew
 ## through player-built stone slowly (owner 2026-09-19: "if no way exists,
 ## break it down"). Brutes hit stone at full strength.
-func _basic_raider_capability() -> Dictionary:
-	return {"max_step_up": 1, "max_drop_down": 1, "damage_per_hit": {"breachable_wood": raider_damage, "fortification": maxi(1, raider_damage / 3)}}
+func _basic_raider_capability(node: BasicRaider = null) -> Dictionary:
+	var damage := {"breachable_wood": raider_damage, "fortification": maxi(1, raider_damage / 3)}
+	if node != null and node.get_meta("stuck_breach", false):
+		# A body that went 6 s without progress may dig through natural
+		# ground and wood as well (earth fast, stone slowly); the flag stays
+		# until it reaches the core ("once a digger, always a digger").
+		damage["earth"] = raider_damage
+		damage["wood"] = raider_damage
+		damage["stone"] = maxi(1, raider_damage / 3)
+	return {"max_step_up": 1, "max_drop_down": 1, "damage_per_hit": damage}
 
 
 ## Damage taken by a breached voxel accumulates here until it breaks:
@@ -1232,6 +1471,8 @@ func _capture_navigation() -> void:
 	if far_mode:
 		# Raiders arrive from any bearing: a square around the arena.
 		region = AABB(Vector3(arena_center + Vector3i(-LOCAL_RADIUS, -8, -LOCAL_RADIUS)), Vector3(LOCAL_RADIUS * 2 + 1, 24, LOCAL_RADIUS * 2 + 1))
+	if _capture_wide:
+		region = AABB(region.position - Vector3(CAPTURE_WIDE_PADDING), region.size + Vector3(CAPTURE_WIDE_PADDING) * 2.0)
 	var result := navigation_snapshot.capture(region, _query_navigation_cell, world.revision + navigation_revision)
 	_capture_reason = str(result.get("reason", "OK"))
 	if not result.get("ok", false):
@@ -1296,12 +1537,14 @@ func _run_queued_replan() -> void:
 	if is_instance_valid(raider) and core_integrity > 0:
 		_plan_from_raider()
 	for entry in extra_raiders:
-		if int(entry.health) > 0 and str(entry.get("phase", "routing")) not in ["attacking_core", "marching", "chasing"]:
+		if int(entry.health) > 0 and str(entry.get("phase", "routing")) not in ["attacking_core", "marching", "chasing", "stalled_out"]:
 			_plan_extra(entry)
 
 
 func _on_world_cell_changed(cell: Vector3i, _previous: int, _next: int, _revision: int) -> void:
 	if _refresh_navigation([cell]) and is_active():
+		if stalled_out_count > 0:
+			_revive_stalled_out_for_replan()
 		_queue_replan()
 
 
@@ -1400,6 +1643,7 @@ func _spawn_raider(spawn_position: Vector3) -> void:
 	raider.global_position = spawn_position
 	raider.route_finished.connect(_on_raider_route_finished)
 	raider.stuck.connect(_on_raider_stuck)
+	raider.progress_stalled.connect(_on_raider_progress_stalled)
 
 
 func _clear_fixture() -> void:
@@ -1416,6 +1660,8 @@ func _clear_fixture() -> void:
 	raider = null
 	navigation_snapshot = null
 	_replan_queued = false
+	_capture_wide = false
+	stalled_out_count = 0
 
 
 func _start_position() -> Vector3:

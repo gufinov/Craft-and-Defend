@@ -28,6 +28,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P4C siege units (cannon, turret catapult, kettle on rails, ballista remodel) and wave drills](P4C_SIEGE_UNITS_AND_WAVES.md)
 - [P4F enemy units: orc melee and troll ranged](P4F_ENEMY_UNITS.md)
 - [P4E the big world, the enemy base and far attacks](P4E_WORLD_AND_ENEMY_BASE.md)
+- [Raider pathing: watchdogs, step-ups, stall cases](RAIDER_PATHING.md)
 - [P4G Core of Power and light sources (asset attribute sheet)](P4G_CORE_AND_LIGHTS.md)
 - [Coaster rails side project: slopes, loop drag tool, mine cart](COASTER_RAILS.md)
 - [Coaster car and hero: ride the coaster (Shift, 1–9 speed), the hero character, third person (V)](COASTER_CAR_AND_HERO.md)
