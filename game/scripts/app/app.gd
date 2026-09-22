@@ -38,6 +38,9 @@ var session: GameSession
 ## CoasterCraft (docs/COASTERCRAFT_MODE.md): the coaster building mode with
 ## its own saves; `coastercraft.active` while a session of it is open.
 var coastercraft: CoasterCraftMode
+## Development Expo (docs/DEVELOPMENT_EXPO.md): the development world, its own
+## saves and the Expo builder; `development.active` while its session is open.
+var development: DevelopmentMode
 
 var menu_panel: Control
 var pause_panel: Control
@@ -200,6 +203,10 @@ func _ready() -> void:
 	coastercraft.name = "CoasterCraftMode"
 	add_child(coastercraft)
 	coastercraft.setup(self)
+	development = DevelopmentMode.new()
+	development.name = "DevelopmentMode"
+	add_child(development)
+	development.setup(self)
 	_build_interface()
 	_show_main_menu()
 	print("DATA_ROOT %s" % data_root)
@@ -318,6 +325,11 @@ func _ready() -> void:
 		var p4_resources_automation := P4ResourcesAutomation.new()
 		add_child(p4_resources_automation)
 		p4_resources_automation.call_deferred("run", self, p4_resources_mode)
+	var development_expo_mode := _argument_value("--development-expo-automation=")
+	if not development_expo_mode.is_empty():
+		var development_expo_automation := DevelopmentExpoAutomation.new()
+		add_child(development_expo_automation)
+		development_expo_automation.call_deferred("run", self, development_expo_mode)
 	if OS.get_cmdline_user_args().has("--coaster-sandbox"):
 		# Owner sandbox: CoasterCraft plus the premade demo tracks (not a diagnostic).
 		var coaster_sandbox := CoasterSandbox.new()
@@ -331,6 +343,9 @@ func _ready() -> void:
 	elif OS.get_cmdline_user_args().has("--coastercraft"):
 		# START.cmd coastercraft: straight into CoasterCraft's New.
 		call_deferred("_on_coastercraft_new_pressed")
+	elif OS.get_cmdline_user_args().has("--development"):
+		# Straight into a fresh Development Expo world (card A adds the menu).
+		call_deferred("_on_development_new_pressed")
 	var coaster_rails_mode := _argument_value("--coaster-rails-automation=")
 	if not coaster_rails_mode.is_empty():
 		var coaster_rails_automation := CoasterRailsAutomation.new()
@@ -1404,6 +1419,8 @@ func _show_main_menu() -> void:
 	state = AppState.MAIN_MENU
 	get_tree().paused = false
 	coastercraft.leave()
+	if development != null:
+		development.leave()
 	_hide_all_panels()
 	menu_panel.show()
 	_refresh_slot_ui()
@@ -1435,7 +1452,22 @@ func _on_coastercraft_continue_pressed() -> void:
 ## The coordinator the open session saves to: CoasterCraft's while the mode
 ## is active, otherwise the real game's slots.
 func active_saves() -> SaveCoordinator:
+	if development != null and development.active:
+		return development.saves
 	return coastercraft.saves if coastercraft != null and coastercraft.active else saves
+
+
+## Development Expo entry (card A replaces this with the menu buttons).
+func _on_development_new_pressed() -> void:
+	if state != AppState.MAIN_MENU:
+		return
+	development.begin(false)
+
+
+func _on_development_continue_pressed() -> void:
+	if state != AppState.MAIN_MENU or not development.has_save():
+		return
+	development.begin(true)
 
 
 func _on_slot_selected(index: int) -> void:
@@ -1493,6 +1525,7 @@ func _open_session(continue_existing: bool) -> void:
 		return
 	session = GameSession.new()
 	session.coastercraft = coastercraft.active
+	session.world_bounds_override = development.world_bounds() if development != null and development.active else {}
 	session.settings_view_distance = settings.view_distance
 	session.hero_armored = settings.hero_armored
 	session.track_auto_clear = settings.track_auto_clear
@@ -1524,6 +1557,8 @@ func _on_session_ready() -> void:
 		minimap.configure(session.world.terrain.generator, session.player, session.workstations)
 	if coastercraft.active:
 		coastercraft.on_session_ready(not bool(session.open_data.get("continued", false)))
+	if development != null and development.active:
+		development.on_session_ready(not bool(session.open_data.get("continued", false)))
 	if minimap != null:
 		minimap.show_enemy_base = not coastercraft.active
 	defense_label.visible = not coastercraft.active

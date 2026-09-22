@@ -23,6 +23,14 @@ COASTER_TOOLS = {"loop", "climb", "bend", "cross", "curve"}
 # element lays, so it alone keeps its support.
 GROUNDED_COASTER_TOOL_ENTITIES = {"rail_switch"}
 ATTRIBUTE_MOUNTS = {"ground", "wall", "ceiling", "any_solid_top", "any_solid_top_or_wall", "block"}
+# Development Expo manifest (docs/DEVELOPMENT_EXPO.md). `reserved` is the
+# empty-parcel kind the growth rule needs on top of the five exhibit scales.
+EXPO_KINDS = {"catalog", "functional", "system_demo", "environmental", "scenario", "showcase", "reserved"}
+EXPO_ORIENTATIONS = {"north", "south", "east", "west"}
+EXPO_TERRAIN = {"level", "natural", "tree", "forest", "quarry", "coal_seam", "surface_ore",
+                "ore_face", "mountain", "tunnel", "ore_core", "chamber"}
+EXPO_PREPARE = {"full", "connect"}
+EXPO_CARDS = {"A", "B", "C", "D", "E", "F", "G"}
 
 
 class ValidationError(ValueError):
@@ -73,7 +81,7 @@ def index(rows, field, label):
 
 def load_bundle(root=ROOT):
     return {name: read_json(root / "contracts" / f"{name}.json")
-            for name in ("content", "world", "keybinds", "placement_cases")}
+            for name in ("content", "world", "keybinds", "placement_cases", "development_expo")}
 
 
 def in_bounds(cell, world):
@@ -185,11 +193,199 @@ def validate_ores(ores, blocks, world):
     require(total < 1000, f"ore frequencies sum to {total} per thousand; stone must remain")
 
 
+def expo_parcels(expo):
+    """Python oracle for ExpoLayout's parcel packer (docs/DEVELOPMENT_EXPO.md).
+
+    Exhibits with an explicit `offset` are anchored there; the rest are shelf
+    packed in manifest order inside the district's usable rectangle. Must stay
+    identical to game/scripts/expo/expo_layout.gd.
+    """
+    path = expo["local_path_width"]
+    parcels = {}
+    for district in expo["districts"]:
+        origin, size = district["origin"], district["size"]
+        usable = (origin[0] + path, origin[2] + path, size[0] - 2 * path, size[2] - 2 * path)
+        cursor_x, cursor_z, row_depth = usable[0], usable[1], 0
+        for exhibit in district["exhibits"]:
+            footprint, clearance = exhibit["footprint"], exhibit["clearance"]
+            if "offset" in exhibit:
+                offset = exhibit["offset"]
+                parcels[exhibit["id"]] = ([origin[0] + offset[0], origin[1] + offset[1], origin[2] + offset[2]],
+                                          list(footprint), district["id"])
+                continue
+            cell_w, cell_d = footprint[0] + 2 * clearance, footprint[2] + 2 * clearance
+            if cursor_x + cell_w > usable[0] + usable[2]:
+                cursor_x, cursor_z, row_depth = usable[0], cursor_z + row_depth + path, 0
+            require(cursor_z + cell_d <= usable[1] + usable[3],
+                    f"expo district {district['id']} is full at exhibit {exhibit['id']}")
+            parcels[exhibit["id"]] = ([cursor_x + clearance, origin[1] + 1, cursor_z + clearance],
+                                      list(footprint), district["id"])
+            cursor_x += cell_w + path
+            row_depth = max(row_depth, cell_d)
+    return parcels
+
+
+def expo_world_bounds(expo):
+    chunk, margin = expo["chunk_size"], expo["expansion_margin"]
+    boxes = expo_boxes(expo)
+    low = [min(box[0][axis] for box in boxes) for axis in range(3)]
+    high = [max(box[0][axis] + box[1][axis] for box in boxes) for axis in range(3)]
+    minimum = [low[0] - margin, expo["floor_y"], low[2] - margin]
+    maximum = [high[0] + margin, high[1] + expo["vertical_margin"], high[2] + margin]
+    minimum = [chunk * (value // chunk) for value in minimum]
+    maximum = [chunk * -((-value) // chunk) for value in maximum]
+    return minimum, [maximum[axis] - minimum[axis] for axis in range(3)]
+
+
+def expo_boxes(expo):
+    boxes = []
+    for district in expo["districts"]:
+        boxes.append((district["origin"], district["size"], district["id"]))
+        corridor = district["expansion_corridor"]
+        boxes.append((corridor["origin"], corridor["size"], district["id"] + " corridor"))
+    return boxes
+
+
+def boxes_overlap(first, second):
+    return all(first[0][axis] < second[0][axis] + second[1][axis]
+               and second[0][axis] < first[0][axis] + first[1][axis] for axis in range(3))
+
+
+def validate_development_expo(expo, content):
+    """The Development Expo manifest (docs/DEVELOPMENT_EXPO.md, handoff sections 6 and 7)."""
+    require(expo.get("status") == "development_expo_1", "expo: unexpected status")
+    for field in ("ground_y", "floor_y", "chunk_size", "expansion_margin", "vertical_margin",
+                  "avenue_width", "local_path_width", "clear_height", "fill_bottom", "expo_version"):
+        require(type(expo.get(field)) is int, f"expo: invalid {field}")
+    require(expo["chunk_size"] > 0 and expo["expansion_margin"] >= 0 and expo["avenue_width"] >= 3
+            and expo["local_path_width"] >= 1, "expo: invalid campus metrics")
+    require(numeric_vector(expo.get("spawn_feet")), "expo: invalid spawn_feet")
+    items = {row["id"] for row in content["items"]}
+    entities = {row["id"] for row in content["entities"]}
+    districts = index(expo["districts"], "id", "expo districts")
+    exhibits = {}
+    reserved = 0
+    for district in expo["districts"]:
+        label = district["id"]
+        require(vector(district["origin"]) and vector(district["size"], positive=True), f"expo {label}: invalid box")
+        require(district["origin"][1] == expo["ground_y"], f"expo {label}: district floor must sit at ground_y")
+        require(district["prepare"] in EXPO_PREPARE, f"expo {label}: invalid prepare")
+        require(district["terrain"] in EXPO_TERRAIN, f"expo {label}: invalid district terrain")
+        require(isinstance(district.get("name"), str) and district["name"], f"expo {label}: missing name")
+        require(type(district.get("expansion_priority")) is int and district["expansion_priority"] >= 1,
+                f"expo {label}: invalid expansion priority")
+        validate_expo_sign(district.get("sign"), items, f"expo {label}")
+        for connection in district["connections"]:
+            require(connection in districts, f"expo {label}: unknown connection {connection}")
+        entrance = district["entrance"]
+        require(vector(entrance), f"expo {label}: invalid entrance")
+        require(any(entrance[axis] in (district["origin"][axis], district["origin"][axis] + district["size"][axis] - 1)
+                    for axis in (0, 2)), f"expo {label}: entrance must sit on the district edge")
+        corridor = district["expansion_corridor"]
+        require(vector(corridor["origin"]) and vector(corridor["size"], positive=True), f"expo {label}: invalid corridor")
+        require(min(corridor["size"][0], corridor["size"][2]) >= expo["avenue_width"],
+                f"expo {label}: expansion corridor narrower than an avenue")
+        touching = False
+        for axis in (0, 2):
+            other = 2 if axis == 0 else 0
+            flush = (corridor["origin"][axis] + corridor["size"][axis] == district["origin"][axis]
+                     or district["origin"][axis] + district["size"][axis] == corridor["origin"][axis])
+            overlap = (corridor["origin"][other] < district["origin"][other] + district["size"][other]
+                       and district["origin"][other] < corridor["origin"][other] + corridor["size"][other])
+            touching = touching or (flush and overlap)
+        require(touching, f"expo {label}: expansion corridor must touch its district")
+        for exhibit in district["exhibits"]:
+            name = exhibit["id"]
+            require(name not in exhibits, f"expo: duplicate exhibit {name}")
+            exhibits[name] = exhibit
+            require(exhibit["kind"] in EXPO_KINDS, f"expo exhibit {name}: invalid kind")
+            require(vector(exhibit["footprint"], positive=True), f"expo exhibit {name}: invalid footprint")
+            require(type(exhibit["clearance"]) is int and exhibit["clearance"] >= 0, f"expo exhibit {name}: invalid clearance")
+            require(exhibit["orientation"] in EXPO_ORIENTATIONS, f"expo exhibit {name}: invalid orientation")
+            require(exhibit["terrain"] in EXPO_TERRAIN, f"expo exhibit {name}: invalid terrain")
+            require(type(exhibit.get("expansion_priority")) is int and exhibit["expansion_priority"] >= 1,
+                    f"expo exhibit {name}: invalid expansion priority")
+            require(isinstance(exhibit.get("connections"), list) and exhibit["connections"],
+                    f"expo exhibit {name}: missing connection requirement")
+            for entity_id in exhibit["entities"]:
+                require(entity_id in entities, f"expo exhibit {name}: unknown entity {entity_id}")
+            for item_id in exhibit["items"]:
+                require(item_id in items, f"expo exhibit {name}: unknown item {item_id}")
+            if "offset" in exhibit:
+                require(vector(exhibit["offset"]), f"expo exhibit {name}: invalid offset")
+            if "reset_group" in exhibit:
+                require(isinstance(exhibit["reset_group"], str) and exhibit["reset_group"],
+                        f"expo exhibit {name}: invalid reset group")
+            validate_expo_sign(exhibit.get("sign"), items, f"expo exhibit {name}")
+            if exhibit["kind"] == "reserved":
+                reserved += 1
+                require(not exhibit["entities"] and not exhibit["items"],
+                        f"expo exhibit {name}: a reserved parcel stays empty")
+                require(exhibit.get("sign"), f"expo exhibit {name}: a reserved parcel must be signed")
+    require(reserved >= 1, "expo: at least one visible reserved future-expansion parcel is required")
+    boxes = expo_boxes(expo)
+    for first in range(len(boxes)):
+        for second in range(first + 1, len(boxes)):
+            require(not boxes_overlap(boxes[first], boxes[second]),
+                    f"expo: {boxes[first][2]} overlaps {boxes[second][2]}")
+    parcels = expo_parcels(expo)
+    placed = list(parcels.items())
+    for first in range(len(placed)):
+        origin, size, district_id = placed[first][1]
+        district = districts[district_id]
+        require(all(origin[axis] >= district["origin"][axis]
+                    and origin[axis] + size[axis] <= district["origin"][axis] + district["size"][axis]
+                    for axis in range(3)), f"expo parcel {placed[first][0]} leaves its district")
+        # A `nested` parcel is carved inside another exhibit's volume (the mine
+        # tunnel inside the mountain), so it is exempt from the overlap rule and
+        # instead has to sit wholly inside an ordinary parcel of its district.
+        if exhibits[placed[first][0]].get("nested", False):
+            require(any(key != placed[first][0] and box[2] == district_id and not exhibits[key].get("nested", False)
+                        and all(origin[axis] >= box[0][axis]
+                                and origin[axis] + size[axis] <= box[0][axis] + box[1][axis] for axis in range(3))
+                        for key, box in placed), f"expo parcel {placed[first][0]}: nested outside every host parcel")
+            continue
+        for second in range(first + 1, len(placed)):
+            if exhibits[placed[second][0]].get("nested", False):
+                continue
+            require(not boxes_overlap((origin, size), placed[second][1][:2]),
+                    f"expo: parcel {placed[first][0]} overlaps {placed[second][0]}")
+    minimum, size = expo_world_bounds(expo)
+    require(all(value % expo["chunk_size"] == 0 for value in size), "expo: world size is not chunk aligned")
+    require(minimum[1] <= expo["floor_y"], "expo: world floor above the configured bedrock level")
+    for box in boxes:
+        require(all(box[0][axis] >= minimum[axis] and box[0][axis] + box[1][axis] <= minimum[axis] + size[axis]
+                    for axis in range(3)), f"expo: {box[2]} falls outside the computed world bounds")
+    # Growth rule (handoff section 6): a newly registered item must be exhibited
+    # or explicitly deferred to a named card, never silently absent.
+    deferred = expo["deferred_items"]
+    shown = {item_id for exhibit in exhibits.values() for item_id in exhibit["items"]}
+    shown |= {entity_id for exhibit in exhibits.values() for entity_id in exhibit["entities"]}
+    shown |= {str(sign.get("item")) for sign in
+              [exhibit.get("sign") or {} for exhibit in exhibits.values()] if sign.get("item")}
+    unclassified = sorted(items - shown - set(deferred))
+    require(not unclassified, f"expo: items with no exhibit and no deferral: {unclassified}")
+    require(all(card in EXPO_CARDS for card in deferred.values()), "expo: deferred item names an unknown card")
+    require(not (set(deferred) - items), f"expo: deferral names unknown items: {sorted(set(deferred) - items)}")
+
+
+def validate_expo_sign(sign, items, label):
+    if sign is None:
+        return
+    require(isinstance(sign, dict) and isinstance(sign.get("title"), str) and sign["title"], f"{label}: invalid sign title")
+    require(isinstance(sign.get("lines", []), list)
+            and all(isinstance(line, str) for line in sign.get("lines", [])), f"{label}: invalid sign lines")
+    if "item" in sign:
+        require(sign["item"] in items, f"{label}: sign names unknown item {sign['item']}")
+
+
 def validate_bundle(bundle):
     for name, data in bundle.items():
         require(data["schema_version"] == 1, f"{name}: unsupported schema")
     content, world, keys, placements = (bundle[n] for n in
         ("content", "world", "keybinds", "placement_cases"))
+    if "development_expo" in bundle:
+        validate_development_expo(bundle["development_expo"], content)
     blocks = index(content["blocks"], "id", "blocks")
     numeric = index(content["blocks"], "voxel_id", "blocks")
     items = index(content["items"], "id", "items")
@@ -417,6 +613,9 @@ def validate_repo(root=ROOT):
     runtime_world = read_json(root / "game" / "data" / "world.json")
     require(runtime_world == bundle["world"],
             "runtime world configuration differs from canonical contracts/world.json")
+    runtime_expo = read_json(root / "game" / "data" / "development_expo.json")
+    require(runtime_expo == bundle["development_expo"],
+            "runtime Development Expo manifest differs from canonical contracts/development_expo.json")
     navigation = read_json(root / "contracts" / "navigation_spike.json")
     runtime_navigation = read_json(root / "game" / "data" / "navigation_spike.json")
     require(runtime_navigation == navigation,
