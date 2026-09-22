@@ -57,6 +57,10 @@ const SIGN_OFFSETS: Array[Vector3i] = [
 	Vector3i(-2, 0, 0), Vector3i(0, 0, -2), Vector3i(2, 0, 0), Vector3i(0, 0, 2),
 	Vector3i(0, 1, 0),
 ]
+## How far above its requested cell a sign may climb to find standing room.
+const SIGN_RISE := 48
+## `_sign_stand` returns this y when the column offers no stand.
+const SIGN_NO_STAND := -32768
 
 var layout: ExpoLayout
 var session: GameSession
@@ -594,8 +598,8 @@ func _run_sign(op: Dictionary) -> bool:
 	var rotation := int(op.get("rotation", 0))
 	var last_reason := "PLACE_FAILED"
 	for offset: Vector3i in SIGN_OFFSETS:
-		var cell := anchor + offset
-		if not _loaded(world, cell) or not _loaded(world, cell + Vector3i(0, -1, 0)):
+		var cell := _sign_stand(world, anchor + offset)
+		if cell.y == SIGN_NO_STAND:
 			continue
 		# A rebuild (Reset Expo, a district reset group) finds its own sign
 		# already standing: rewrite that board rather than adding a second one.
@@ -624,6 +628,23 @@ func _run_sign(op: Dictionary) -> bool:
 	request["reason"] = last_reason
 	_failures.append("%s sign at %s: %s" % [str(op.get("label", "")), anchor, last_reason])
 	return true
+
+
+## The cell a sign may stand in above `column`: the first air cell from the
+## requested one upwards with something solid under it. An exhibit that is a
+## volume rather than a pad (the mountain mass, the ore core) has its requested
+## cell buried in rock, so its board climbs to the surface above it instead of
+## being lost. `y == SIGN_NO_STAND` means no stand here (or not streamed yet).
+func _sign_stand(world: WorldAdapter, column: Vector3i) -> Vector3i:
+	for rise in range(SIGN_RISE):
+		var cell := Vector3i(column.x, column.y + rise, column.z)
+		if not _loaded(world, cell) or not _loaded(world, cell + Vector3i(0, -1, 0)):
+			return Vector3i(column.x, SIGN_NO_STAND, column.z)
+		if int(world.query_cell(cell).get("voxel_id", AIR)) != AIR:
+			continue
+		if int(world.query_cell(cell + Vector3i(0, -1, 0)).get("voxel_id", AIR)) != AIR:
+			return cell
+	return Vector3i(column.x, SIGN_NO_STAND, column.z)
 
 
 ## The instance id of a `sign` already standing in `cell` ("" when the cell is

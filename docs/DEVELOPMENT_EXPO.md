@@ -133,17 +133,26 @@ DevelopmentMode.build_expo(session, fresh) -> Dictionary
 DevelopmentMode.register_reset_group(name: String, handler: Callable)  # handler.call(session)
 DevelopmentMode.reset_group(session, name) -> Dictionary
 DevelopmentMode.reset_groups() -> Array[String]
+DevelopmentMode.world_bounds() -> Dictionary                # {min, size} or {}
+DevelopmentMode.layout / DevelopmentMode.expo_builder       # the wired pair
 ```
 
 - **`build_expo(session, fresh)`** runs on a fresh development world and on
   Reset Expo. It logs `EXPO_BUILD start …` / `EXPO_BUILD end …` around the
   registered builder and records `last_build` (`{ok, fresh, builder,
-  seconds}`). With no builder registered it is a stub that changes nothing —
-  card C registers the real `ExpoBuilder` with `set_builder`.
+  seconds}`). `setup()` loads the manifest into `layout`, creates the
+  canonical `ExpoBuilder` and registers it through `set_builder`, so
+  Development New and Reset Expo both build the campus; a card may still
+  replace the builder for a test.
+- **`world_bounds()`** is the layout's chunk-aligned canonical world size plus
+  its expansion margin (§6). The app passes it into the session, which hands
+  it to `WorldAdapter.initialize` as `bounds_override`; a normal or
+  CoasterCraft session passes `{}` and keeps `world.json`.
 - **`reset_group(session, name)`** is the `ExpoResetService` seam: it
   restores one named district without touching the others. An unregistered
-  name returns `{"ok": false, "reason": "NO_GROUP"}`. Card E registers
-  `battlefield` with `register_reset_group`.
+  name returns `{"ok": false, "reason": "NO_GROUP"}`. The builder's own
+  per-district groups (`district:<id>`) are registered here after a build;
+  card E adds `battlefield` with `register_reset_group`.
 - **`EXPO_FIXTURE_VERSION`** is raised whenever the authored Expo changes in
   a way an existing development world should be rebuilt for.
 
@@ -288,24 +297,31 @@ on both counts reaching zero.
 | `scatter_ore(origin, size, voxel, per_thousand, salt, label)` | Deliberate ore in stone; a deterministic cell hash, so the same box always gives the same ore |
 | `plant_tree(base, height, label)` | Log trunk and leaf cap |
 | `place_entity(entity_id, anchor, rotation, label)` | One free fixture |
-| `sign_at(cell, facing, data)` | The sign card's `configure_sign` when present (see below) |
+| `sign_at(cell, facing, data, owner_id)` | Places a real `sign` station and writes its board (see below) |
 | `register_reset_group(name, callable)` / `reset_group(name)` | What card A's `DevelopmentMode.reset_group` calls |
 | `progress()` / `pending_ops()` / `deferred_ops()` / `failures()` / `pending_signs()` | State for diagnostics |
 
-**Sign adapter.** The sign card (card B) owns `configure_sign`. Until it lands,
-`sign_at` records the request (`pending_signs()`), prints one warning and
-carries on; the layout does not change when the real service arrives, because
-the cells and the sign data are already decided here. 44 sign requests are
-recorded by the current campus.
+**Signs.** `sign_at` queues a `sign` op: the `sign` station (card B,
+[Signs](SIGNS.md)) is placed free at the requested cell and its board is
+written through `GameSession.configure_sign`. The manifest block translates
+into the sign's own record — a block naming an `item` becomes Header + Item
+Grid, a title with body lines becomes Split Text, a bare title Single Text.
+The requested cell is an exhibit's corner, so it may be taken (the mine rail
+runs along it) or buried (the mountain mass is solid rock): the sign then
+takes the nearest free cell in the ring around it, climbing to the first air
+cell with solid ground under it. A rebuild rewrites the board of the sign
+already standing there rather than adding a second one. `sign_requests()` is
+the full list with each request's placed instance id; `pending_signs()` is
+whatever is still unfulfilled — T215 asserts it is empty. The current campus
+places 45 signs.
 
-**`DevelopmentMode` stub.** `game/scripts/app/development_mode.gd` is a card C
-stub, clearly marked as such: the save namespace `<data root>/development/`,
-the Expo-sized `world_bounds()`, `set_builder()` and `reset_group()`, plus
-`--development` on the command line to open a fresh Expo world. Card A's
-version replaces it and keeps those four seams. `app.gd` holds the
-`DevelopmentMode` node, the `--development-expo-automation=` dispatch, the save
-coordinator switch in `active_saves()`, the bounds hand-off in `_open_session`
-and the `on_session_ready` call.
+**Wiring.** `DevelopmentMode.setup()` loads the manifest into `layout`, creates
+the `ExpoBuilder` and registers it through card A's `set_builder` seam, so
+Development New and Reset Expo both build the campus and the builder's
+`district:<id>` reset groups reach `DevelopmentMode.reset_group`. `app.gd`
+holds the `DevelopmentMode` node, the `--development-expo-automation=`
+dispatch, the save coordinator switch in `active_saves()`, the bounds hand-off
+in `_open_session` and the `on_session_ready` call.
 
 ---
 
@@ -319,7 +335,7 @@ Spawn is the plaza at `(0.5, 2.0, 40.5)`; north is -z, west is -x.
 | Supply Depot | -16..15, 8..21 | Pad and avenue built; the chest wall is card G's |
 | Reserved — future districts | 24..47, 26..53 | Deliberately empty and signed, in full view east of the plaza |
 | Day One | -60..-17, 56..95 | The eleven-step chain tree -> log -> planks -> sticks -> workbench -> wood pick -> stone -> stone pick -> furnace -> iron -> iron pick, each on its own signed parcel, read along +x and then down the rows |
-| Equipment | -9..24, 60..93 | Wood/stone/iron pick, wood axe, iron sword as catalog booths, and the empty signed future-armour parcel |
+| Equipment | -9..24, 60..93 | Wood/stone/iron pick, wood axe, iron sword as catalog booths, a functional Sign booth (a real writable sign beside its label), and the empty signed future-armour parcel |
 | Resources | -88..-49, 8..47 | Forest patch, stepped quarry, coal seam, surface iron and gold outcrops |
 | Mining Mountain | -124..-53, -68..3 | A 72x72 voxel mass rising to y 23, a deliberately authored deep ore core (coal, iron, gold), a 9-wide 7-high tunnel lit end to end by post lanterns with a 64-cell rail line inside, a manual-mining chamber and a separate automated-mining chamber with a Miner and an Ore Bin on a deep ore face |
 | Industry, Construction Yard, Defense Range, Battlefield, Lighting, CoasterCraft | see the manifest | Parcels, entrances, corridors and avenues reserved; cards D, E and F build them |
