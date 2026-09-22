@@ -1,7 +1,7 @@
 class_name CraftAndDefendApp
 extends Node
 
-enum AppState { MAIN_MENU, LOADING, PLAYING, PAUSED, INVENTORY, CRAFTING, SAVING, ERROR, SIGN }
+enum AppState { MAIN_MENU, LOADING, PLAYING, PAUSED, INVENTORY, CRAFTING, SAVING, ERROR, SIGN, BATTLEFIELD }
 
 const DISPLAY_CONFIRM_SECONDS := 10.0
 const PRINT_SCREEN_FOCUS_WINDOW_MSEC := 2000
@@ -158,6 +158,22 @@ const SIGN_MODES: Array[Dictionary] = [
 	{"id": "header_items", "label": "Header + Item Grid"},
 ]
 const SIGN_SLOT_SIZE := Vector2(152, 92)
+## Development Expo Battlefield control station (docs/DEVELOPMENT_EXPO.md).
+## The pedestal entity, the scenario reset group it belongs to, and the shape
+## of the representative mixed assault START ATTACK sends: orcs lead, brutes
+## hold the middle, trolls hang back, entered beyond the local capture radius
+## so the wave exercises the march-to-local handover on its way in.
+const BATTLEFIELD_CONTROL_ENTITY := "battlefield_control"
+const BATTLEFIELD_RESET_GROUP := "battlefield"
+const BATTLEFIELD_WAVE := 6
+const BATTLEFIELD_BRUTES := 2
+const BATTLEFIELD_TROLLS := 2
+const BATTLEFIELD_SPAWN_DISTANCE := 28
+## Development Expo Battlefield control station (docs/DEVELOPMENT_EXPO.md):
+## the two buttons the in-world pedestal opens.
+var battlefield_panel: Control
+var battlefield_status_label: Label
+var _battlefield_station_id := ""
 var sign_panel: Control
 var sign_mode_buttons: Dictionary = {}
 var sign_text_a_row: HBoxContainer
@@ -498,6 +514,8 @@ func _on_session_player_died() -> void:
 		_crafting_selected_inventory_item = ""
 	elif state == AppState.SIGN:
 		_close_sign()
+	elif state == AppState.BATTLEFIELD:
+		_close_battlefield_control()
 
 
 func _resolve_data_root() -> String:
@@ -537,6 +555,7 @@ func _build_interface() -> void:
 	_build_inventory(canvas)
 	_build_crafting(canvas)
 	_build_sign(canvas)
+	_build_battlefield_control(canvas)
 	_build_hud(canvas)
 	_build_display_confirmation(canvas)
 	_build_cursor_stack(canvas)
@@ -2221,6 +2240,121 @@ func _refresh_sign_picker() -> void:
 		sign_picker_grid.add_child(_sign_tile(item_id, session.registry.display_name(item_id), _pick_sign_item.bind(item_id)))
 
 
+
+## The Development Expo's Battlefield control station (docs/DEVELOPMENT_EXPO.md,
+## commission "Battlefield controls"). Development mode has no ambient enemy
+## pressure, so this pedestal is the only thing in the Expo that starts a fight.
+## It is a live panel, like the sign editor: the world keeps running behind it.
+func _build_battlefield_control(canvas: CanvasLayer) -> void:
+	battlefield_panel = _full_panel(Color(0.05, 0.03, 0.035, 0.94))
+	canvas.add_child(battlefield_panel)
+	var box := _centered_box(battlefield_panel, Vector2(720, 520))
+	box.add_child(_title("BATTLEFIELD CONTROL", 30))
+	battlefield_status_label = _centered_label("")
+	battlefield_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	battlefield_status_label.custom_minimum_size = Vector2(640, 0)
+	battlefield_status_label.add_theme_font_size_override("font_size", 18)
+	box.add_child(battlefield_status_label)
+	box.add_child(_button("START ATTACK", _battlefield_start_pressed))
+	box.add_child(_button("RESET BATTLEFIELD", _battlefield_reset_pressed))
+	box.add_child(_spacer(6))
+	box.add_child(_button("Close", _close_battlefield_control))
+
+
+func _show_battlefield_control(instance_id: String) -> void:
+	if state != AppState.PLAYING or session == null:
+		return
+	if session.is_riding():
+		_set_feedback("Leave the coaster car first (Shift).")
+		return
+	_battlefield_station_id = instance_id
+	state = AppState.BATTLEFIELD
+	session.set_menu_open(true)
+	hud_layer.hide()
+	_refresh_battlefield_panel()
+	battlefield_panel.show()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _close_battlefield_control() -> void:
+	if state != AppState.BATTLEFIELD:
+		return
+	battlefield_panel.hide()
+	hud_layer.show()
+	session.set_menu_open(false)
+	state = AppState.PLAYING
+	_battlefield_station_id = ""
+
+
+func _refresh_battlefield_panel() -> void:
+	if battlefield_status_label == null or session == null:
+		return
+	var core_defense: CoreDefenseService = session.core_defense
+	var lines := "ESCAPE CLOSES  ·  THE WORLD KEEPS RUNNING"
+	if core_defense != null and core_defense.is_active():
+		lines += "\n\n" + core_defense.hud_text()
+	else:
+		lines += "\n\nNo attack is running. START ATTACK musters %d attackers on the far line — %d brutes, %d trolls, the rest orcs — and sends them at this Core." % [BATTLEFIELD_WAVE, BATTLEFIELD_BRUTES, BATTLEFIELD_TROLLS]
+	lines += "\n\nRESET BATTLEFIELD restores this arena and nothing else: the attackers go, both cores, the fortification, the batteries and their ammunition come back. Every other district is left exactly as it stands."
+	battlefield_status_label.text = lines
+
+
+## START ATTACK: a representative mixed assault on the Battlefield's own Core,
+## through the ordinary core-defense drill. No new wave code and no ambient
+## pressure anywhere else in the Expo.
+func battlefield_start_attack() -> Dictionary:
+	if session == null or session.core_defense == null:
+		return {"ok": false, "reason": "NO_SESSION"}
+	var core_id := battlefield_core_station_id()
+	if core_id.is_empty():
+		return {"ok": false, "reason": "NO_BATTLEFIELD_CORE"}
+	return session.core_defense.start_prototype({
+		"raiders": BATTLEFIELD_WAVE, "brutes": BATTLEFIELD_BRUTES, "trolls": BATTLEFIELD_TROLLS,
+		"spawn_distance": BATTLEFIELD_SPAWN_DISTANCE, "core_station_id": core_id})
+
+
+## RESET BATTLEFIELD: the `battlefield` scenario reset group (ExpoResetService),
+## reached through card A's `DevelopmentMode.reset_group` seam.
+func battlefield_reset() -> Dictionary:
+	if session == null or development == null:
+		return {"ok": false, "reason": "NO_SESSION"}
+	return development.reset_group(session, BATTLEFIELD_RESET_GROUP)
+
+
+## The Core of Power standing inside the Battlefield's reset boundary. The Expo
+## has more than one core (the plaza's is the other), so the drill is told
+## which one this scenario is about instead of taking the first one placed.
+func battlefield_core_station_id() -> String:
+	if session == null or session.workstations == null or development == null or development.expo_builder == null:
+		return ""
+	var service: ExpoResetService = development.expo_builder.reset_service
+	for instance_id: String in session.workstations.stations.keys():
+		var record: Dictionary = session.workstations.stations[instance_id]
+		if str(record.get("entity_id", "")) != CoreDefenseService.CORE_ENTITY:
+			continue
+		if service.contains(BATTLEFIELD_RESET_GROUP, record.get("anchor", Vector3i.ZERO)):
+			return instance_id
+	return ""
+
+
+func _battlefield_start_pressed() -> void:
+	if state != AppState.BATTLEFIELD:
+		return
+	var started := battlefield_start_attack()
+	_set_feedback("A mixed wave is mustering on the far line." if started.get("ok", false)
+		else "Attack refused: %s" % str(started.get("reason", "")).replace("_", " ").to_lower())
+	_refresh_battlefield_panel()
+
+
+func _battlefield_reset_pressed() -> void:
+	if state != AppState.BATTLEFIELD:
+		return
+	var done := battlefield_reset()
+	_set_feedback("Battlefield restored; the rest of the Expo is untouched." if done.get("ok", false)
+		else "Reset refused: %s" % str(done.get("reason", "")).replace("_", " ").to_lower())
+	_refresh_battlefield_panel()
+
+
 func _show_inventory() -> void:
 	if state != AppState.PLAYING or session == null:
 		return
@@ -2246,6 +2380,10 @@ func _show_workstation(instance_id: String, station_type: String) -> void:
 	if session != null and session.workstations != null and session.workstations.station_type(instance_id) == WorkstationService.SIGN_ENTITY:
 		# A sign has its own editor, not a crafting grid (docs/SIGNS.md).
 		_show_sign(instance_id)
+		return
+	if station_type == BATTLEFIELD_CONTROL_ENTITY:
+		# The Development Expo's Battlefield pedestal: two buttons, no crafting.
+		_show_battlefield_control(instance_id)
 		return
 	if resolved not in CRAFTING_STATION_TYPES and session != null and session.workstations != null:
 		var service_type: String = session.workstations.station_type(instance_id)
@@ -3967,6 +4105,8 @@ func _handle_escape_recovery() -> void:
 		_close_crafting()
 	elif state == AppState.SIGN:
 		_close_sign()
+	elif state == AppState.BATTLEFIELD:
+		_close_battlefield_control()
 	elif state == AppState.PLAYING and session != null and session.is_riding():
 		# Coaster car: Escape leaves the car before it ever pauses.
 		_set_feedback(str(session.REASON_TEXT.get("COASTER_LEFT", "Left the coaster car.")) if session.leave_coaster_car().get("ok", false) else "")
@@ -4222,14 +4362,14 @@ func _resume_after_screenshot_focus(generation: int) -> void:
 
 
 func _handle_close_request() -> void:
-	if session != null and state in [AppState.PLAYING, AppState.PAUSED, AppState.INVENTORY, AppState.CRAFTING, AppState.SIGN]:
+	if session != null and state in [AppState.PLAYING, AppState.PAUSED, AppState.INVENTORY, AppState.CRAFTING, AppState.SIGN, AppState.BATTLEFIELD]:
 		_save_then(true)
 	elif state != AppState.SAVING:
 		get_tree().quit(0)
 
 
 func _hide_all_panels() -> void:
-	for panel in [menu_panel, coastercraft_menu_panel, development_menu_panel, pause_panel, coastercraft_pause_panel, development_pause_panel, development_reset_panel, keybind_panel, settings_panel, inventory_panel, crafting_panel, sign_panel, display_confirm_panel, loading_panel, hud_layer]:
+	for panel in [menu_panel, coastercraft_menu_panel, development_menu_panel, pause_panel, coastercraft_pause_panel, development_pause_panel, development_reset_panel, keybind_panel, settings_panel, inventory_panel, crafting_panel, sign_panel, battlefield_panel, display_confirm_panel, loading_panel, hud_layer]:
 		if panel != null:
 			panel.hide()
 

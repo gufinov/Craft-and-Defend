@@ -46,6 +46,23 @@ const CELL_BATCH := 48
 ## How often a fixture waits for the ground under it before it is recorded as
 ## a failure instead of being queued again.
 const PLACE_ATTEMPTS := 60
+## How often a stocking op waits for its container. A chest and the op that
+## fills it are queued together but are deferred and re-queued independently,
+## so the filling has to out-wait the placing by a wide margin.
+const STOCK_ATTEMPTS := 600
+
+## Terrain kinds card E authors as one composite piece (the Construction Yard's
+## assemblies, a Defense Range booth, the Battlefield's sides): the exhibit's
+## declared entities are placed by the terrain builder itself - a weapon on its
+## mount with its chest beside it and its target down range - so `place_exhibit`
+## must not also drop one of each in the middle of the parcel.
+const COMPOSITE_TERRAIN: Array[String] = ["wall_demo", "blueprint_demo", "castle_demo",
+	"siege_booth", "field", "camp", "battery", "fortification", "magazine"]
+## How many of each munition an authored ammunition chest opens with.
+const MUNITIONS_PER_CHEST := 16
+## The blueprint pieces the Construction Yard stamps, bottom course first
+## (data/blueprints.json, P3K).
+const STAMP_STACK: Array[String] = ["foundation_4", "tower_segment_4", "cap_4"]
 
 ## The sign entity the manifest's signs are made of (card B, docs/SIGNS.md).
 const SIGN_ENTITY := "sign"
@@ -71,6 +88,8 @@ var _deferred: Array[Dictionary] = []
 var _retry_left := RETRY_SECONDS
 var _retry_anchor := Vector3.ZERO
 var _reset_groups: Dictionary = {}
+## Scenario reset boundaries (card E, docs/DEVELOPMENT_EXPO.md section 14).
+var reset_service := ExpoResetService.new()
 ## Every sign the manifest asked for, in request order: each entry gains its
 ## placed station's `instance_id` and `ok` once the queue reaches it (T215).
 var _sign_requests: Array[Dictionary] = []
@@ -82,6 +101,7 @@ var _failures: Array[String] = []
 
 func configure(expo_layout: ExpoLayout) -> void:
 	layout = expo_layout
+	reset_service.configure(self, layout)
 
 
 func bind_session(game_session: GameSession) -> void:
@@ -127,6 +147,11 @@ func build_district(game_session: GameSession, district_id: String) -> Dictionar
 		place_exhibit(session, exhibit_id)
 	var group := "district:" + district_id
 	register_reset_group(group, _rebuild_district.bind(district_id))
+	# Scenario groups (card E): an exhibit may name a `reset_group` of its own,
+	# and that group restores only what is inside its own parcels - the
+	# Battlefield rebuilds without the rest of the campus being touched.
+	for scenario: String in reset_service.register_district(district_id):
+		register_reset_group(scenario, _rebuild_scenario.bind(scenario))
 	return {"ok": true, "prepared": "full", "ops": _ops.size()}
 
 
@@ -149,7 +174,7 @@ func place_exhibit(game_session: GameSession, exhibit_id: String) -> Dictionary:
 		level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), "reserved:" + exhibit_id)
 		sign_at(origin, str(parcel.get("orientation", "north")), layout.sign_data(exhibit_id), exhibit_id)
 		return {"ok": true, "reserved": true}
-	_build_terrain(exhibit_id, terrain, origin, size)
+	_build_terrain(exhibit_id, terrain, origin, size, record)
 	# `placements` pins named fixtures at manifest offsets inside the parcel
 	# (the Industry chain, the light gallery). The default per-entity geometry
 	# below only runs for entities the manifest did not pin.
@@ -165,7 +190,9 @@ func place_exhibit(game_session: GameSession, exhibit_id: String) -> Dictionary:
 				continue
 			pinned[entity_id] = true
 	var entities: Variant = record.get("entities", [])
-	if entities is Array:
+	# A composite parcel (card E) is authored as one piece: its terrain builder
+	# places the declared entities itself, so the per-entity geometry is skipped.
+	if entities is Array and not COMPOSITE_TERRAIN.has(terrain):
 		_build_entities(exhibit_id, entities as Array, origin, size, str(parcel.get("orientation", "north")), pinned)
 	if placements is Array:
 		for entry: Variant in placements as Array:
@@ -297,6 +324,66 @@ func place_entity(entity_id: String, anchor: Vector3i, rotation_quarters: int = 
 	_ops.append({"kind": "place", "label": label, "entity": entity_id, "anchor": anchor, "rotation": rotation_quarters, "passes": 0})
 
 
+## Fills the container fixture standing at `cell` with `per_item` of each id.
+## Queued like everything else, so it runs after the chest it stocks has been
+## placed; a chest that is already stocked simply has no room left.
+func stock_container(cell: Vector3i, item_ids: Array, per_item: int = MUNITIONS_PER_CHEST, label: String = "stock") -> void:
+	if item_ids.is_empty() or per_item <= 0:
+		return
+	var ids: Array[String] = []
+	for value: Variant in item_ids:
+		ids.append(str(value))
+	_ops.append({"kind": "stock", "label": label, "anchor": cell, "items": ids, "per_item": per_item, "passes": 0})
+
+
+## Queues one callable to run in its turn in the build order. Used where a step
+## must happen after the fixtures before it exist (a scenario reset restoring
+## what its rebuild left standing).
+func queue_action(label: String, callable: Callable) -> void:
+	if not callable.is_valid():
+		return
+	_ops.append({"kind": "action", "label": label, "action": callable, "passes": 0})
+
+
+## Stamps one P3K blueprint (data/blueprints.json) as authored world: the same
+## block list the in-game blueprint tool would place, written straight into the
+## voxels, and the stamp recorded with the interaction service so a later piece
+## can snap to its sockets exactly as a player-stamped one would.
+func stamp_blueprint(blueprint_id: String, anchor: Vector3i, quarters: int = 0, label: String = "stamp") -> int:
+	var definition := InteractionService.blueprint(blueprint_id)
+	if definition.is_empty():
+		_failures.append("%s unknown blueprint %s" % [label, blueprint_id])
+		return 0
+	var size_values: Array = definition.get("size", [1, 1, 1])
+	var size := Vector3i(int(size_values[0]), int(size_values[1]), int(size_values[2]))
+	var cells: Array = []
+	for entry: Variant in definition.get("blocks", []):
+		if not entry is Dictionary:
+			continue
+		var block: Dictionary = entry
+		var offset_values: Array = block.get("offset", [0, 0, 0])
+		var offset := Vector3i(int(offset_values[0]), int(offset_values[1]), int(offset_values[2]))
+		var voxel := WorldAdapter.BLOCK_NAMES.find(str(block.get("block", "")))
+		if voxel <= 0:
+			continue
+		cells.append({"cell": anchor + InteractionService.rotate_blueprint_offset(offset, size, quarters), "voxel": voxel})
+	_queue_cells(label, cells)
+	queue_action(label, _record_stamp.bind(blueprint_id, anchor, quarters))
+	return cells.size()
+
+
+func _record_stamp(blueprint_id: String, anchor: Vector3i, quarters: int) -> void:
+	if session == null or session.interaction == null:
+		return
+	var stamps: Array = session.interaction.stamps_snapshot()
+	for entry: Variant in stamps:
+		var record: Dictionary = entry
+		if str(record.get("blueprint_id", "")) == blueprint_id and record.get("anchor", []) == [anchor.x, anchor.y, anchor.z]:
+			return
+	stamps.append({"blueprint_id": blueprint_id, "anchor": [anchor.x, anchor.y, anchor.z], "rotation": posmod(quarters, 4)})
+	session.interaction.restore_stamps(stamps)
+
+
 ## Requests one of the manifest's signs: a real `sign` station is placed at
 ## `cell` (or the nearest free cell beside it when the exhibit already stands
 ## there) and its board is written with card B's `GameSession.configure_sign`.
@@ -393,6 +480,19 @@ static func _opposite(facing: String) -> String:
 ## re-runs exactly the ops that built it, and nothing else.
 func register_reset_group(group: String, callable: Callable) -> void:
 	_reset_groups[group] = callable
+
+
+## Registers every district's reset group and every scenario group inside it
+## without queueing any build work. A continued development world already has
+## its fixture, but its controls must still reach their group: the Battlefield
+## pedestal's RESET is `reset_group("battlefield")`.
+func register_reset_groups() -> void:
+	if layout == null:
+		return
+	for district_id: String in layout.district_ids():
+		register_reset_group("district:" + district_id, _rebuild_district.bind(district_id))
+		for scenario: String in reset_service.register_district(district_id):
+			register_reset_group(scenario, _rebuild_scenario.bind(scenario))
 
 
 func reset_groups() -> PackedStringArray:
@@ -500,6 +600,18 @@ func _run_op(op: Dictionary, budget: int) -> int:
 				op["done"] = false
 				op["passes"] = int(op.get("passes", 0)) + 1
 			return 4
+		"stock":
+			op["done"] = true
+			if not _run_stock(op):
+				op["done"] = false
+				op["passes"] = int(op.get("passes", 0)) + 1
+			return 4
+		"action":
+			op["done"] = true
+			var action: Callable = op.get("action", Callable())
+			if action.is_valid():
+				action.call()
+			return 4
 	op["done"] = true
 	return 1
 
@@ -602,6 +714,29 @@ func _run_place(op: Dictionary) -> bool:
 	# OCCUPIED means the fixture is already standing (a rebuild): not a failure.
 	if reason != "OCCUPIED":
 		_failures.append("%s %s at %s: %s" % [str(op.get("label", "")), entity_id, anchor, reason])
+	return true
+
+
+## Fills one authored container. The chest it stocks is queued ahead of this
+## op, but the ground under that chest may still have been streaming, so a cell
+## with no container yet is retried rather than reported.
+func _run_stock(op: Dictionary) -> bool:
+	var anchor: Vector3i = op["anchor"]
+	if not _loaded(session.world, anchor):
+		return false
+	var instance_id := session.workstations.station_at_cell(anchor)
+	if instance_id.is_empty() or not session.workstations.is_container(instance_id):
+		if int(op.get("attempts", 0)) < STOCK_ATTEMPTS:
+			op["attempts"] = int(op.get("attempts", 0)) + 1
+			return false
+		_failures.append("%s stock at %s: NO_CONTAINER" % [str(op.get("label", "")), anchor])
+		return true
+	var per_item := int(op.get("per_item", MUNITIONS_PER_CHEST))
+	for item_id: String in op.get("items", []):
+		var room := session.workstations.container_room(instance_id, item_id)
+		if room <= 0:
+			continue
+		session.workstations.container_put(instance_id, item_id, mini(per_item, room))
 	return true
 
 
@@ -732,13 +867,39 @@ func _rebuild_district(district_id: String) -> void:
 	build_district(session, district_id)
 
 
+## One scenario reset boundary (`ExpoResetService`): only the exhibits of that
+## group and the live state inside their box.
+func _rebuild_scenario(group: String) -> void:
+	reset_service.reset(session, group)
+
+
 # ------------------------------------------------------- exhibit construction
 
 ## Terrain kinds the manifest may ask for. Everything stays ordinary editable
 ## voxels (handoff section 11): no decorative mesh, no special-cased blocks.
-func _build_terrain(exhibit_id: String, terrain: String, origin: Vector3i, size: Vector3i) -> void:
+func _build_terrain(exhibit_id: String, terrain: String, origin: Vector3i, size: Vector3i, record: Dictionary = {}) -> void:
 	var ground := layout.ground_y()
 	match terrain:
+		"field":
+			# The Battlefield's no-man's-land: open dirt, deliberately plain, so
+			# a wave crossing it is the only thing to watch.
+			level_area(Vector3i(origin.x, ground, origin.z), size.x, size.z, DIRT, layout.clear_height(), "field:" + exhibit_id)
+		"wall_demo":
+			_build_drag_wall(exhibit_id, origin, size)
+		"blueprint_demo":
+			_build_blueprint_stamp(exhibit_id, origin, size)
+		"castle_demo":
+			_build_castle_demo(exhibit_id, origin, size)
+		"siege_booth":
+			_build_siege_booth(exhibit_id, origin, size, record)
+		"battery":
+			_build_battery(exhibit_id, origin, size, record)
+		"fortification":
+			_build_fortification(exhibit_id, origin, size, record)
+		"magazine":
+			_build_magazine(exhibit_id, origin, size, record)
+		"camp":
+			_build_camp(exhibit_id, origin, size)
 		"level":
 			level_area(Vector3i(origin.x, ground, origin.z), size.x, size.z, STONE, layout.clear_height(), "level:" + exhibit_id)
 		"tree":
@@ -893,3 +1054,237 @@ func _build_entities(exhibit_id: String, entities: Array, origin: Vector3i, size
 				var wide: bool = footprint is Array and (footprint as Array).size() > 1
 				var anchor := origin if wide else Vector3i(origin.x + size.x / 2, origin.y, origin.z + size.z / 2)
 				place_entity(entity_id, anchor, 0, "exhibit:" + exhibit_id)
+
+
+# ------------------------------------------------- card E composite exhibits
+#
+# Construction Yard, Defense Range and Battlefield exhibits are assemblies, not
+# single fixtures: a weapon is only demonstrable with its mount, its munition,
+# the storage that reloads it and something to shoot at. Each of these builds
+# one whole exhibit from the ids the manifest declares, so the manifest still
+# owns what is shown and this file only owns how it stands.
+
+
+## The siege weapons an exhibit declares, in manifest order.
+func _siege_entities(entities: Array) -> Array[String]:
+	var found: Array[String] = []
+	for value: Variant in entities:
+		var siege: Dictionary = session.registry.entity(str(value)).get("siege", {})
+		if not siege.is_empty():
+			found.append(str(value))
+	return found
+
+
+func _siege_entity(entities: Array) -> String:
+	var found := _siege_entities(entities)
+	return found[0] if not found.is_empty() else ""
+
+
+## The munitions of `weapon_id` among the ones this exhibit declares, so a
+## chest beside a ballista holds bolts and never stone shot.
+func _ammo_for(weapon_id: String, items: Array) -> Array:
+	var siege: Dictionary = session.registry.entity(weapon_id).get("siege", {})
+	var allowed: Array = siege.get("ammo_items", [siege.get("ammo_item", "")])
+	var found: Array = []
+	for value: Variant in items:
+		if allowed.has(str(value)):
+			found.append(str(value))
+	return found if not found.is_empty() else allowed
+
+
+## Stands a weapon on the mount its sheet allows: on the tower platform when
+## the exhibit declares one and the weapon takes a light-siege socket, else on
+## the ground. Returns the cell the weapon itself ended up in.
+func _place_mounted_weapon(weapon_id: String, stand: Vector3i, entities: Array, label: String) -> Vector3i:
+	var mount: Dictionary = session.registry.entity(weapon_id).get("mount", {})
+	var allowed: Array = mount.get("allowed", [])
+	if entities.has("tower_platform") and allowed.has("light_siege"):
+		place_entity("tower_platform", stand, 0, label)
+		place_entity(weapon_id, stand + Vector3i(0, 1, 0), 0, label)
+		return stand + Vector3i(0, 1, 0)
+	place_entity(weapon_id, stand, 0, label)
+	return stand
+
+
+## A battlemented top on a run of wall: the wall-walk deck first, the merlons
+## on every other cell above it (each supported by the deck below, exactly as
+## a player stacks them).
+func _build_battlements(label: String, cells: Array[Vector3i], deck_y: int) -> void:
+	for cell: Vector3i in cells:
+		place_entity("wall_walk_slab", Vector3i(cell.x, deck_y, cell.z), 0, label)
+	for index in range(cells.size()):
+		if index % 2 == 0:
+			place_entity("parapet_merlon", Vector3i(cells[index].x, deck_y + 1, cells[index].z), 0, label)
+
+
+## The Construction Yard's drag-built wall: one run of Castle Stone three
+## courses high with a battlemented top - what a player gets by holding
+## right-click and pulling the block along the line.
+func _build_drag_wall(exhibit_id: String, origin: Vector3i, size: Vector3i) -> void:
+	var label := "wall:" + exhibit_id
+	level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), label)
+	var wall_z := origin.z + 1
+	fill_box(Vector3i(origin.x, origin.y, wall_z), Vector3i(size.x, 3, 1), CASTLE_STONE, false, label)
+	var top: Array[Vector3i] = []
+	for step in range(size.x):
+		top.append(Vector3i(origin.x + step, origin.y, wall_z))
+	_build_battlements(label, top, origin.y + 3)
+
+
+## The Construction Yard's stamped structure: the P3K blueprint stack
+## FOUNDATION 4 > TOWER SEGMENT 4 > CAP 4, each piece stamped on the top
+## socket of the one under it, as the blueprint tool snaps them.
+func _build_blueprint_stamp(exhibit_id: String, origin: Vector3i, size: Vector3i) -> void:
+	var label := "stamp:" + exhibit_id
+	level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), label)
+	var anchor := Vector3i(origin.x + 3, origin.y, origin.z + 3)
+	for blueprint_id: String in STAMP_STACK:
+		stamp_blueprint(blueprint_id, anchor, 0, label)
+		var definition := InteractionService.blueprint(blueprint_id)
+		var size_values: Array = definition.get("size", [1, 1, 1])
+		anchor.y += maxi(1, int(size_values[1]))
+
+
+## The Construction Yard's payoff: the same pieces assembled into something
+## that defends. A curtain wall with a battlemented north face, a gate through
+## the south face, a stair up to the wall-walk and a solid tower carrying a
+## tower platform for a light siege weapon.
+func _build_castle_demo(exhibit_id: String, origin: Vector3i, size: Vector3i) -> void:
+	var label := "castle:" + exhibit_id
+	level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), label)
+	var gate_x := origin.x + size.x / 2 - 1
+	var south_z := origin.z + size.z - 1
+	var ring: Array = []
+	for x in range(size.x):
+		for z in range(size.z):
+			var on_ring: bool = x == 0 or x == size.x - 1 or z == 0 or z == size.z - 1
+			if not on_ring:
+				continue
+			var cell_x := origin.x + x
+			# The gateway stays open: the gate frame is the way through.
+			if origin.z + z == south_z and cell_x >= gate_x and cell_x <= gate_x + 2:
+				continue
+			for y in range(3):
+				ring.append({"cell": Vector3i(cell_x, origin.y + y, origin.z + z), "voxel": CASTLE_STONE})
+	_queue_cells(label, ring)
+	# The tower: solid to its top course, with the platform on it.
+	fill_box(Vector3i(origin.x, origin.y, origin.z), Vector3i(4, 4, 4), CASTLE_STONE, false, label)
+	var north: Array[Vector3i] = []
+	for x in range(4, size.x):
+		north.append(Vector3i(origin.x + x, origin.y, origin.z))
+	_build_battlements(label, north, origin.y + 3)
+	# The stair up to the wall-walk: a step of stone under each tread.
+	for step in range(3):
+		fill_box(Vector3i(origin.x + 5 + step, origin.y, origin.z + 1), Vector3i(1, step + 1, 1), CASTLE_STONE, false, label)
+		place_entity("stone_stair", Vector3i(origin.x + 5 + step, origin.y + step + 1, origin.z + 1), 0, label)
+	place_entity("tower_platform", Vector3i(origin.x + 1, origin.y + 4, origin.z + 1), 0, label)
+	place_entity("gate_frame", Vector3i(gate_x, origin.y, south_z), 0, label)
+
+
+## One Defense Range booth: the weapon on the mount its sheet allows, its
+## ammunition in the chest touching it (the storage network is what tops the
+## clip up), a target at the far end of the lane and the lane itself kept clear.
+func _build_siege_booth(exhibit_id: String, origin: Vector3i, size: Vector3i, record: Dictionary) -> void:
+	var label := "booth:" + exhibit_id
+	level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), label)
+	# The target, down range at the far end of the booth's own lane.
+	fill_box(Vector3i(origin.x + 2, origin.y, origin.z + 2), Vector3i(2, 3, 1), CASTLE_STONE, false, label)
+	var entities: Array = record.get("entities", [])
+	var items: Array = record.get("items", [])
+	var weapon_id := _siege_entity(entities)
+	if weapon_id.is_empty():
+		return
+	var stand := Vector3i(origin.x + 1, origin.y, origin.z + size.z - 4)
+	if entities.has("rail"):
+		# The kettle is a wall weapon: a stretch of wall, the rail it rides
+		# along its top and the oil chest beside it on the same course.
+		fill_box(Vector3i(stand.x, origin.y, stand.z), Vector3i(4, 3, 1), CASTLE_STONE, false, label)
+		place_entity("rail", stand + Vector3i(0, 3, 0), 0, label)
+		place_entity("rail", stand + Vector3i(1, 3, 0), 0, label)
+		place_entity(weapon_id, stand + Vector3i(1, 4, 0), 0, label)
+		if entities.has("chest"):
+			var oil_chest := stand + Vector3i(2, 3, 0)
+			place_entity("chest", oil_chest, 0, label)
+			stock_container(oil_chest, _ammo_for(weapon_id, items), MUNITIONS_PER_CHEST, label)
+		return
+	_place_mounted_weapon(weapon_id, stand, entities, label)
+	if entities.has("chest"):
+		var chest_cell := stand + Vector3i(2, 0, 0)
+		place_entity("chest", chest_cell, 0, label)
+		stock_container(chest_cell, _ammo_for(weapon_id, items), MUNITIONS_PER_CHEST, label)
+
+
+## One Battlefield battery: every siege weapon the exhibit declares, in a row
+## facing the enemy side, each on its mount with its own munition chest
+## touching it so the storage network reloads it while the fight runs.
+func _build_battery(exhibit_id: String, origin: Vector3i, size: Vector3i, record: Dictionary) -> void:
+	var label := "battery:" + exhibit_id
+	level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), label)
+	var entities: Array = record.get("entities", [])
+	var items: Array = record.get("items", [])
+	var cursor := origin.x + 1
+	for weapon_id: String in _siege_entities(entities):
+		var stand := Vector3i(cursor, origin.y, origin.z + 1)
+		_place_mounted_weapon(weapon_id, stand, entities, label)
+		if entities.has("chest"):
+			var chest_cell := Vector3i(cursor + 2, origin.y, origin.z + 1)
+			place_entity("chest", chest_cell, 0, label)
+			stock_container(chest_cell, _ammo_for(weapon_id, items), MUNITIONS_PER_CHEST, label)
+		cursor += 5
+
+
+## The Battlefield's curtain wall: the Construction Yard kit assembled in front
+## of the Core - a solid tower carrying a light-siege platform, a battlemented
+## wall and a gate frame through it. The gateway is left open on purpose: a
+## wave that can walk in shows the routing, one that cannot stands and chews
+## stone.
+func _build_fortification(exhibit_id: String, origin: Vector3i, size: Vector3i, _record: Dictionary) -> void:
+	var label := "wall:" + exhibit_id
+	level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), label)
+	var wall_z := origin.z + 2
+	var gate_x := origin.x + 8
+	fill_box(Vector3i(origin.x, origin.y, wall_z), Vector3i(4, 4, 4), CASTLE_STONE, false, label)
+	var run: Array[Vector3i] = []
+	var courses: Array = []
+	for x in range(4, size.x):
+		var cell_x := origin.x + x
+		if cell_x >= gate_x and cell_x <= gate_x + 2:
+			continue
+		run.append(Vector3i(cell_x, origin.y, wall_z))
+		for y in range(3):
+			courses.append({"cell": Vector3i(cell_x, origin.y + y, wall_z), "voxel": CASTLE_STONE})
+	_queue_cells(label, courses)
+	_build_battlements(label, run, origin.y + 3)
+	place_entity("tower_platform", Vector3i(origin.x + 1, origin.y + 4, origin.z + 3), 0, label)
+	place_entity("gate_frame", Vector3i(gate_x, origin.y, wall_z), 0, label)
+	var barricade_z := wall_z - 2
+	for step in range(2):
+		place_entity("wood_barricade", Vector3i(gate_x + step * 2, origin.y, barricade_z), 0, label)
+
+
+## The Battlefield magazine: the chest wall behind the Core holding every
+## munition in the game. RESET BATTLEFIELD fills it again.
+func _build_magazine(exhibit_id: String, origin: Vector3i, size: Vector3i, record: Dictionary) -> void:
+	var label := "magazine:" + exhibit_id
+	level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), label)
+	var items: Array = record.get("items", [])
+	for step in range(0, size.x - 1, 2):
+		var cell := Vector3i(origin.x + step, origin.y, origin.z + 1)
+		place_entity("chest", cell, 0, label)
+		stock_container(cell, items, MUNITIONS_PER_CHEST, label)
+
+
+## The Battlefield muster ground: the enemy side's staging. Flanking walls mark
+## it without closing it - the lane down the middle is the way the wave comes,
+## and the paved band across it is the line the wave enters on.
+func _build_camp(exhibit_id: String, origin: Vector3i, size: Vector3i) -> void:
+	var label := "camp:" + exhibit_id
+	var ground := layout.ground_y()
+	level_area(Vector3i(origin.x, ground, origin.z), size.x, size.z, DIRT, layout.clear_height(), label)
+	fill_box(Vector3i(origin.x, origin.y, origin.z), Vector3i(2, 3, size.z), CASTLE_STONE, false, label)
+	fill_box(Vector3i(origin.x + size.x - 2, origin.y, origin.z), Vector3i(2, 3, size.z), CASTLE_STONE, false, label)
+	var line: Array = []
+	for x in range(4, size.x - 4):
+		for z in range(2, 7):
+			line.append({"cell": Vector3i(origin.x + x, ground, origin.z + z), "voxel": CASTLE_STONE})
+	_queue_cells(label, line)

@@ -28,7 +28,12 @@ ATTRIBUTE_MOUNTS = {"ground", "wall", "ceiling", "any_solid_top", "any_solid_top
 EXPO_KINDS = {"catalog", "functional", "system_demo", "environmental", "scenario", "showcase", "reserved"}
 EXPO_ORIENTATIONS = {"north", "south", "east", "west"}
 EXPO_TERRAIN = {"level", "natural", "tree", "forest", "quarry", "coal_seam", "surface_ore",
-                "ore_face", "mountain", "tunnel", "ore_core", "chamber", "pavilion"}
+                "ore_face", "mountain", "tunnel", "ore_core", "chamber", "pavilion",
+                # Card E (Construction Yard, Defense Range, Battlefield): composite
+                # parcels the builder authors as one piece - the exhibit's declared
+                # entities are placed by the terrain builder, not one per parcel.
+                "wall_demo", "blueprint_demo", "castle_demo", "siege_booth",
+                "field", "camp", "battery", "fortification", "magazine"}
 EXPO_PREPARE = {"full", "connect"}
 EXPO_CARDS = {"A", "B", "C", "D", "E", "F", "G"}
 

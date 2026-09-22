@@ -233,15 +233,17 @@ func restore_after_world_ready() -> Dictionary:
 
 ## Starts the drill. Options (P4D/P4F): "raiders" (wave size, default 1),
 ## "brutes" (how many of them are brutes, default 0), "trolls" (how many are
-## ranged trolls, default 0; the primary raider is always a melee orc) and
+## ranged trolls, default 0; the primary raider is always a melee orc),
 ## "spawn_distance" (cells from the arena centre to the field-side spawn
-## line, 8..28).
+## line, 8..28) and "core_station_id" (which placed Core of Power the wave
+## marches on, for a world with more than one - the Development Expo's
+## Battlefield control station names its own core).
 func start_prototype(options: Dictionary = {}) -> Dictionary:
 	if is_active():
 		return {"ok": false, "reason": "DEFENSE_ALREADY_ACTIVE"}
 	var requested_far := bool(options.get("from_enemy_base", false)) and _terrain_generator() != null
 	var requested_distance := clampi(int(options.get("spawn_distance", SPAWN_DISTANCE)), SPAWN_DISTANCE, MAX_SPAWN_DISTANCE)
-	var found := _find_available_arena(SPAWN_DISTANCE if requested_far else requested_distance)
+	var found := _find_available_arena(SPAWN_DISTANCE if requested_far else requested_distance, str(options.get("core_station_id", "")))
 	if not found.get("ok", false):
 		return found
 	_clear_fixture()
@@ -1548,8 +1550,8 @@ func _on_world_cell_changed(cell: Vector3i, _previous: int, _next: int, _revisio
 		_queue_replan()
 
 
-func _find_available_arena(distance: int = SPAWN_DISTANCE) -> Dictionary:
-	var placed := _placed_core_id()
+func _find_available_arena(distance: int = SPAWN_DISTANCE, preferred_core_id: String = "") -> Dictionary:
+	var placed := _placed_core_id(preferred_core_id)
 	if not placed.is_empty():
 		# The arena is laid out so the legacy core offset lands on the core's
 		# centre column: arena_center + (0, 0, 5) == anchor + (1, 0, 1).
@@ -1713,9 +1715,16 @@ func _surface_cell(column: Vector3i) -> Vector3i:
 
 
 ## The Core of Power station the drill defends, or "" (prototype core).
-func _placed_core_id() -> String:
+## The Core of Power this drill defends. `preferred` names one explicitly -
+## the Development Expo has more than one core standing (the plaza's and the
+## Battlefield's), so its control station says which one the wave marches on;
+## with no preference the first placed core wins, exactly as before.
+func _placed_core_id(preferred: String = "") -> String:
 	if workstations == null:
 		return ""
+	if not preferred.is_empty() and workstations.stations.has(preferred) \
+			and str(workstations.stations[preferred].get("entity_id", "")) == CORE_ENTITY:
+		return preferred
 	for instance_id: String in workstations.stations.keys():
 		if str(workstations.stations[instance_id].get("entity_id", "")) == CORE_ENTITY:
 			return instance_id
