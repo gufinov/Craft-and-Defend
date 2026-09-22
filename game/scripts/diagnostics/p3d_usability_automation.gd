@@ -154,6 +154,97 @@ func _run_phase1() -> void:
 	var cancel_ok: bool = str(cancelled.get("reason", "")) == "DRAG_CANCELLED" and not interaction.drag_active() 		and app.session.world.revision == revision_before and inventory.count("dirt") == 5 		and int(app.session.world.query_cell(Vector3i(-4, 0, 46)).get("voxel_id", 0)) == 0
 	_record("T108_DRAG_BUILD", row_ok and column_ok and wall_ok and sky_ok and lift_ok and cancel_ok, "a right-drag plans a row, column or wall of the held block with support-first ordering, skips blocked cells, trims to the carried count, commits as one world edit plus one inventory transaction, and cancels with nothing built", {"row": row_plan, "row_commit": row_commit.get("reason"), "column": column_commit.get("reason"), "wall_blocked": blocked, "wall_unaffordable": unaffordable, "wall_commit": wall_commit.get("reason"), "sky": sky_plan.get("shape", ""), "sky_end": sky_plan.get("end", Vector3i.ZERO), "sky_commit": sky_commit.get("reason"), "lift_end": lift_end, "lift_commit": lift_commit.get("reason"), "cancel": cancelled.get("reason"), "dirt": inventory.count("dirt")})
 
+	await _run_sign_phase1()
+
+
+## T212 (docs/SIGNS.md, Development Expo section 9): the Sign places on the
+## ground and on a wall side, refuses an occupied cell, keeps each of the four
+## display modes plus eight item ids across a save/restore, and opens its own
+## editor panel through the app's real right-click path.
+func _run_sign_phase1() -> void:
+	var ws := app.session.workstations
+	var world := app.session.world
+	var ground_anchor := Vector3i(8, 0, 34)
+	var wall_block := Vector3i(10, 1, 34)
+	var wall_anchor := Vector3i(11, 1, 34)
+	if not await _wait_cells([ground_anchor, wall_block, wall_anchor, ground_anchor + Vector3i.DOWN]):
+		return
+	app.session.inventory.try_transaction({}, {"sign": 4})
+	var ground := ws.try_place("sign", ground_anchor, world.query_cell, AABB(), 0)
+	var ground_id := str(ground.get("details", {}).get("station", {}).get("instance_id", ""))
+	var blocked := ws.try_place("sign", ground_anchor, world.query_cell, AABB(), 0)
+	world.set_cell(wall_block, InteractionService.DIRT)
+	var wall := ws.try_place("sign", wall_anchor, world.query_cell, AABB(), 0)
+	var wall_id := str(wall.get("details", {}).get("station", {}).get("instance_id", ""))
+	var placement_ok: bool = ground.get("ok", false) and str(ground.get("details", {}).get("mount", "")) == "ground" 		and wall.get("ok", false) and str(wall.get("details", {}).get("mount", "")) == "wall" 		and ws.sign_mount(wall_id) == "wall" and ws.sign_mount(ground_id) == "ground" 		and not blocked.get("ok", false) and str(blocked.get("reason", "")) == "OCCUPIED"
+
+	var grid_items: Array[String] = ["dirt", "stone", "log", "planks", "coal", "iron_ore", "iron_ingot", "stick"]
+	var modes: Array[Dictionary] = [
+		{"mode": "text", "text_a": "SUPPLY DEPOT", "text_b": "", "items": []},
+		{"mode": "split", "text_a": "ORE", "text_b": "INGOT", "items": []},
+		{"mode": "items", "text_a": "", "text_b": "", "items": grid_items},
+		{"mode": "header_items", "text_a": "AMMUNITION", "text_b": "", "items": ["stone_shot", "flame_shot", "cannonball", "ballista_bolt"]},
+	]
+	var mode_results: Array[Dictionary] = []
+	var modes_ok := true
+	for requested: Dictionary in modes:
+		var applied := app.session.configure_sign(ground_id, requested)
+		var stored := app.session.sign_data(ground_id)
+		var matched: bool = applied.get("ok", false) and str(stored.get("mode", "")) == str(requested.mode) 			and str(stored.get("text_a", "")) == str(requested.text_a) and str(stored.get("text_b", "")) == str(requested.text_b) 			and _same_items(stored.get("items", []), requested.get("items", []))
+		modes_ok = modes_ok and matched
+		mode_results.append({"mode": str(requested.mode), "ok": matched, "stored": stored})
+	var rejected := app.session.configure_sign(ground_id, {"mode": "billboard"})
+	var unknown_item := app.session.configure_sign(ground_id, {"items": ["not_an_item"]})
+	var guard_ok: bool = not rejected.get("ok", false) and not unknown_item.get("ok", false)
+
+	# Eight entries through a real save round trip: the record is JSON first.
+	app.session.configure_sign(ground_id, {"mode": "items", "text_a": "TEST STOCK", "items": grid_items})
+	app.session.configure_sign(wall_id, {"mode": "split", "text_a": "LEFT", "text_b": "RIGHT"})
+	var snapshot: Variant = JSON.parse_string(JSON.stringify(ws.snapshot()))
+	var restored := ws.restore(snapshot if snapshot is Dictionary else {}, world.query_cell)
+	var restored_ground := app.session.sign_data(ground_id)
+	var restored_wall := app.session.sign_data(wall_id)
+	var round_trip_ok: bool = restored.get("ok", false) and str(restored_ground.get("mode", "")) == "items" 		and str(restored_ground.get("text_a", "")) == "TEST STOCK" 		and _same_items(restored_ground.get("items", []), grid_items) 		and str(restored_wall.get("mode", "")) == "split" and str(restored_wall.get("text_b", "")) == "RIGHT" 		and ws.sign_mount(wall_id) == "wall"
+	# A record saved before the editor existed migrates to an empty text sign.
+	var legacy: Dictionary = ws.snapshot()
+	for station: Variant in legacy.get("stations", []):
+		if str((station as Dictionary).get("instance_id", "")) == ground_id:
+			(station as Dictionary).erase("sign")
+	var migrated := ws.restore(legacy, world.query_cell)
+	var migration_ok: bool = migrated.get("ok", false) and app.session.sign_data(ground_id) == WorkstationService.default_sign()
+	app.session.configure_sign(ground_id, {"mode": "items", "text_a": "TEST STOCK", "items": grid_items})
+
+	# The owner's path: right-click the sign, read the panel, close it.
+	app._show_workstation(ground_id, "sign")
+	await get_tree().process_frame
+	var draft: Dictionary = app._sign_draft.duplicate(true)
+	var draft_items: Array = draft.get("items", [])
+	var panel_ok: bool = app.state == CraftAndDefendApp.AppState.SIGN and app.sign_panel.visible 		and str(draft.get("mode", "")) == "items" and str(draft.get("text_a", "")) == "TEST STOCK" 		and _same_items(draft_items, grid_items) and app.sign_slot_buttons.size() == WorkstationService.SIGN_ITEM_SLOTS 		and app.sign_items_card.visible and app.sign_picker_card.visible and app.sign_picker_grid.get_child_count() > 0 		and app.sign_picker_category_row.get_child_count() >= 2 		and app.sign_slot_buttons[1].text.contains(app.session.registry.display_name("stone"))
+	# Editing through the panel controls: pick a different item into slot 1,
+	# then save and read the record back.
+	app._select_sign_slot(0)
+	app._set_sign_picker_category("lighting_and_utility")
+	app._pick_sign_item("torch")
+	app._save_sign()
+	var edited: Array = app.session.sign_data(ground_id).get("items", [])
+	var edit_ok: bool = edited.size() == 8 and str(edited[0]) == "torch" and str(edited[1]) == "stone"
+	app._close_sign()
+	var closed_ok: bool = app.state == CraftAndDefendApp.AppState.PLAYING and not app.sign_panel.visible
+	_record("T212_SIGN_PLACEMENT_AND_EDITOR", placement_ok and modes_ok and guard_ok and round_trip_ok and migration_ok and panel_ok and edit_ok and closed_ok,
+		"a sign places on the ground with a post and on a wall side without one, refuses an occupied cell, keeps each of the four display modes and eight item ids across a save/restore (a record without the block migrates to an empty text sign), and right-click opens the sign editor showing exactly the stored mode, text and items",
+		{"ground": ground.get("reason"), "wall": wall.get("reason"), "blocked": blocked.get("reason"), "placement_ok": placement_ok, "modes": mode_results, "guard_ok": guard_ok, "restored": restored.get("reason"), "restored_ground": restored_ground, "restored_wall": restored_wall, "migration_ok": migration_ok, "panel_ok": panel_ok, "draft": draft, "edited": edited, "closed_ok": closed_ok})
+
+
+func _same_items(actual: Variant, expected: Variant) -> bool:
+	var left: Array = actual if actual is Array else []
+	var right: Array = expected if expected is Array else []
+	if left.size() != right.size():
+		return false
+	for index in range(left.size()):
+		if str(left[index]) != str(right[index]):
+			return false
+	return true
+
 
 func _run_visual() -> void:
 	app._on_start_pressed()
@@ -219,6 +310,34 @@ func _run_visual() -> void:
 	var drag_image_ok := await _save_viewport(drag_path)
 	app.session.interaction.cancel_drag_place()
 	_record("T109_DRAG_BUILD_PRESENTATION", drag_image_ok and drag_ghost_visible, "rendered evidence shows a multi-cell drag-build ghost stretched from the anchor toward the aimed cell", {"path": drag_path, "shape": drag.get("shape", ""), "cells": drag.get("cells", []).size(), "affordable": drag.get("affordable", 0), "ghost_visible": drag_ghost_visible})
+
+	# Sign (docs/SIGNS.md): rendered evidence that a configured board reads at
+	# player distance - the header line plus the eight-item 4 x 2 grid.
+	# One cell up on a dirt plinth so the board sits at eye height for the shot.
+	var sign_anchor := Vector3i(8, 1, 34)
+	var sign_ok := false
+	var sign_path := app.data_root.path_join("p3d-sign-item-grid.png")
+	var sign_entries: Array[String] = ["dirt", "stone", "log", "planks", "coal", "iron_ore", "iron_ingot", "stick"]
+	if await _wait_cells([sign_anchor, sign_anchor + Vector3i.DOWN]):
+		app.session.inventory.try_transaction({}, {"sign": 1})
+		app.session.world.set_cell(sign_anchor + Vector3i.DOWN, InteractionService.DIRT)
+		# Quarter turn 1 points the board's face down +Z, at the camera below.
+		var placed := app.session.workstations.try_place("sign", sign_anchor, app.session.world.query_cell, AABB(), 1)
+		var sign_id := str(placed.get("details", {}).get("station", {}).get("instance_id", ""))
+		var configured := app.session.configure_sign(sign_id, {"mode": "header_items", "text_a": "SUPPLY DEPOT", "items": sign_entries})
+		app.session.player.global_position = Vector3(8.5, 0.05, 36.8)
+		app.session.player.look_at(Vector3(8.5, 0.05, 34.5), Vector3.UP)
+		# Empty hand: no placement ghost between the camera and the board.
+		app.session.inventory.select_hotbar(4)
+		await _settle_frames(6)
+		app.session._hide_placement_preview()
+		await _settle_frames(24)
+		var face: Node3D = app.session._station_visuals.get(sign_id, null)
+		var face_node: Node3D = face.get_node_or_null("SignFace") as Node3D if face != null else null
+		sign_ok = placed.get("ok", false) and configured.get("ok", false) and face_node != null and face_node.get_child_count() >= 9 and await _save_viewport(sign_path)
+		_record("T212_SIGN_PRESENTATION", sign_ok, "rendered evidence shows a placed ground sign whose board carries its header line and its eight-item 4 x 2 grid of icons and names", {"path": sign_path, "placed": placed.get("reason", ""), "face_children": face_node.get_child_count() if face_node != null else 0, "items": sign_entries})
+	else:
+		_record("T212_SIGN_PRESENTATION", false, "the sign cell loaded for the capture", {"path": sign_path})
 
 
 func _move_to_hotbar(item_id: String, target: int) -> int:
