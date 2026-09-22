@@ -31,6 +31,41 @@ func try_reserve(
 	return _result(true, "OK", _instances[instance_id])
 
 
+## Restore only (docs/DEVELOPMENT_EXPO.md, lost-Core Continue): claims the
+## cells of a station that already existed when the game was saved, without
+## the placement checks. The world under a saved station may have changed
+## while it stood there (a raid blew the support away, the owner dug under a
+## chest) - in memory the station survives that, so reloading it must not be
+## a corrupt-snapshot error. Still refuses a record that collides with an
+## already restored one, so the occupancy map stays single-owner.
+func force_reserve(instance_id: String, anchor: Vector3i, offsets: Array, rotation_quarters: int) -> Dictionary:
+	if instance_id.is_empty():
+		return _result(false, "INVALID_INSTANCE")
+	if _instances.has(instance_id):
+		return _result(false, "DUPLICATE_INSTANCE")
+	if offsets.is_empty():
+		return _result(false, "INVALID_FOOTPRINT")
+	var cells: Array[Vector3i] = []
+	for offset_value in offsets:
+		if not offset_value is Vector3i:
+			return _result(false, "INVALID_FOOTPRINT")
+		var cell := anchor + rotate_offset(offset_value, rotation_quarters)
+		if cells.has(cell):
+			return _result(false, "INVALID_FOOTPRINT")
+		if _cell_owners.has(cell):
+			return _result(false, "OCCUPIED", {"cell": cell})
+		cells.append(cell)
+	for cell in cells:
+		_cell_owners[cell] = instance_id
+	_instances[instance_id] = {
+		"instance_id": instance_id,
+		"anchor": anchor,
+		"rotation_quarters": posmod(rotation_quarters, 4),
+		"cells": cells.duplicate(),
+	}
+	return _result(true, "OK", _instances[instance_id])
+
+
 func validate_placement(
 	instance_id: String,
 	anchor: Vector3i,

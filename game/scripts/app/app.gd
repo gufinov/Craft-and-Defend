@@ -38,6 +38,9 @@ var session: GameSession
 ## CoasterCraft (docs/COASTERCRAFT_MODE.md): the coaster building mode with
 ## its own saves; `coastercraft.active` while a session of it is open.
 var coastercraft: CoasterCraftMode
+## Development Start (docs/DEVELOPMENT_EXPO.md): the owner's development
+## world with its own saves; `development.active` while a session of it is open.
+var development: DevelopmentMode
 
 var menu_panel: Control
 var pause_panel: Control
@@ -46,6 +49,12 @@ var coastercraft_continue_button: Button
 var coastercraft_pause_panel: Control
 var coastercraft_hero_armor_button: Button
 var coastercraft_track_auto_clear_button: Button
+var development_menu_panel: Control
+var development_continue_button: Button
+var development_pause_panel: Control
+var development_reset_panel: Control
+var development_hero_armor_button: Button
+var development_track_auto_clear_button: Button
 ## Coaster car and hero (docs/COASTER_CAR_AND_HERO.md): pause-menu toggle.
 var hero_armor_button: Button
 var track_auto_clear_button: Button
@@ -200,6 +209,10 @@ func _ready() -> void:
 	coastercraft.name = "CoasterCraftMode"
 	add_child(coastercraft)
 	coastercraft.setup(self)
+	development = DevelopmentMode.new()
+	development.name = "DevelopmentMode"
+	add_child(development)
+	development.setup(self)
 	_build_interface()
 	_show_main_menu()
 	print("DATA_ROOT %s" % data_root)
@@ -331,6 +344,15 @@ func _ready() -> void:
 	elif OS.get_cmdline_user_args().has("--coastercraft"):
 		# START.cmd coastercraft: straight into CoasterCraft's New.
 		call_deferred("_on_coastercraft_new_pressed")
+	elif OS.get_cmdline_user_args().has("--development-check"):
+		# Headless check of Development Start (docs/DEVELOPMENT_EXPO.md).
+		var development_check := DevelopmentCheck.new()
+		add_child(development_check)
+		development_check.call_deferred("run", self)
+	elif OS.get_cmdline_user_args().has("--development"):
+		# START.cmd dev: straight into the Development Expo (Continue when it
+		# already has a save, otherwise New).
+		call_deferred("_on_development_start_requested")
 	var coaster_rails_mode := _argument_value("--coaster-rails-automation=")
 	if not coaster_rails_mode.is_empty():
 		var coaster_rails_automation := CoasterRailsAutomation.new()
@@ -350,7 +372,7 @@ func _input(event: InputEvent) -> void:
 	if not _is_escape_press(event):
 		return
 	if capture_action.is_empty() and state == AppState.MAIN_MENU \
-		and not keybind_panel.visible and not settings_panel.visible and not display_confirm_panel.visible and not coastercraft_menu_panel.visible:
+		and not keybind_panel.visible and not settings_panel.visible and not display_confirm_panel.visible and not coastercraft_menu_panel.visible and not development_menu_panel.visible:
 		return
 	get_viewport().set_input_as_handled()
 	if not capture_action.is_empty():
@@ -468,9 +490,12 @@ func _build_interface() -> void:
 	add_child(canvas)
 	_build_main_menu(canvas)
 	_build_coastercraft_menu(canvas)
+	_build_development_menu(canvas)
 	_build_loading(canvas)
 	_build_pause(canvas)
 	_build_coastercraft_pause(canvas)
+	_build_development_pause(canvas)
+	_build_development_reset_confirmation(canvas)
 	_build_keybinds(canvas)
 	_build_settings(canvas)
 	_build_inventory(canvas)
@@ -511,7 +536,7 @@ func _build_cursor_stack(canvas: CanvasLayer) -> void:
 func _build_main_menu(canvas: CanvasLayer) -> void:
 	menu_panel = _full_panel(Color("17222c"))
 	canvas.add_child(menu_panel)
-	var menu := _centered_box(menu_panel, Vector2(700, 570))
+	var menu := _centered_box(menu_panel, Vector2(700, 620))
 	var title := _title("CRAFT AND DEFEND", 34)
 	menu.add_child(title)
 	var subtitle := _centered_label("P3B core and breach prototype · castle-building foundation")
@@ -535,6 +560,7 @@ func _build_main_menu(canvas: CanvasLayer) -> void:
 	continue_button = _button("Continue", _on_continue_pressed)
 	menu.add_child(continue_button)
 	menu.add_child(_button("CoasterCraft", _show_coastercraft_menu))
+	menu.add_child(_button("Development Start", _show_development_menu))
 	menu.add_child(_button("Settings", _show_settings))
 	menu.add_child(_button("Keybinds", _show_keybinds))
 	menu.add_child(_button("Quit", _on_quit_pressed))
@@ -564,6 +590,64 @@ func _build_coastercraft_menu(canvas: CanvasLayer) -> void:
 	root_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	root_hint.custom_minimum_size = Vector2(620, 0)
 	menu.add_child(root_hint)
+
+
+## Development submenu (docs/DEVELOPMENT_EXPO.md): Continue (when the mode
+## has a save), New (creates / regenerates the canonical Expo), Back.
+func _build_development_menu(canvas: CanvasLayer) -> void:
+	development_menu_panel = _full_panel(Color("17222c"))
+	canvas.add_child(development_menu_panel)
+	var menu := _centered_box(development_menu_panel, Vector2(700, 480))
+	menu.add_child(_title("DEVELOPMENT START", 34))
+	var subtitle := _centered_label("The Development Expo · every built system on one campus · its own save, no ambient raids · the real game rules")
+	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	subtitle.custom_minimum_size = Vector2(620, 0)
+	menu.add_child(subtitle)
+	menu.add_child(_spacer(12))
+	development_continue_button = _button("Continue", _on_development_continue_pressed)
+	menu.add_child(development_continue_button)
+	menu.add_child(_button("New (build the canonical Expo)", _on_development_new_pressed))
+	menu.add_child(_button("Back", _show_main_menu))
+	var root_hint := _centered_label("Development saves: %s" % development.data_root())
+	root_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	root_hint.custom_minimum_size = Vector2(620, 0)
+	menu.add_child(root_hint)
+
+
+## The Development Expo's pause menu: one column, no drills (combat in the
+## Expo runs from its own controls, never from ambient pressure).
+func _build_development_pause(canvas: CanvasLayer) -> void:
+	development_pause_panel = _full_panel(Color(0.04, 0.06, 0.08, 0.92))
+	canvas.add_child(development_pause_panel)
+	var pause_box := _centered_box(development_pause_panel, Vector2(660, 600))
+	pause_box.add_child(_title("DEVELOPMENT EXPO · PAUSED", 30))
+	pause_box.add_child(_button("Resume", _resume_game))
+	pause_box.add_child(_button("Save", _development_save))
+	pause_box.add_child(_button("Reset Expo", _development_reset_pressed))
+	pause_box.add_child(_button("Save and Exit to Menu", _save_and_exit_to_menu))
+	pause_box.add_child(_button("Save and Quit", _save_and_quit))
+	pause_box.add_child(_spacer(6))
+	pause_box.add_child(_button("Settings", _show_settings))
+	pause_box.add_child(_button("Keybinds", _show_keybinds))
+	development_hero_armor_button = _button("Hero: Armour off", _toggle_hero_armor)
+	pause_box.add_child(development_hero_armor_button)
+	development_track_auto_clear_button = _button("Track auto-clear: off", _toggle_track_auto_clear)
+	pause_box.add_child(development_track_auto_clear_button)
+
+
+## Reset Expo asks first: the development world's changes are discarded.
+func _build_development_reset_confirmation(canvas: CanvasLayer) -> void:
+	development_reset_panel = _full_panel(Color(0.02, 0.03, 0.04, 0.96))
+	canvas.add_child(development_reset_panel)
+	var box := _centered_box(development_reset_panel, Vector2(680, 380))
+	box.add_child(_title("RESET EXPO", 28))
+	var question := _centered_label("Rebuild the canonical Expo? Development-world changes are lost")
+	question.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	question.custom_minimum_size = Vector2(600, 0)
+	question.add_theme_font_size_override("font_size", 20)
+	box.add_child(question)
+	box.add_child(_button("Rebuild the Expo", _development_reset_confirmed))
+	box.add_child(_button("Keep this world", _cancel_development_reset))
 
 
 func _build_loading(canvas: CanvasLayer) -> void:
@@ -1404,6 +1488,7 @@ func _show_main_menu() -> void:
 	state = AppState.MAIN_MENU
 	get_tree().paused = false
 	coastercraft.leave()
+	development.leave()
 	_hide_all_panels()
 	menu_panel.show()
 	_refresh_slot_ui()
@@ -1435,7 +1520,111 @@ func _on_coastercraft_continue_pressed() -> void:
 ## The coordinator the open session saves to: CoasterCraft's while the mode
 ## is active, otherwise the real game's slots.
 func active_saves() -> SaveCoordinator:
+	if development != null and development.active:
+		return development.saves
 	return coastercraft.saves if coastercraft != null and coastercraft.active else saves
+
+
+func _show_development_menu() -> void:
+	if state != AppState.MAIN_MENU:
+		return
+	_hide_all_panels()
+	development_continue_button.disabled = not development.has_save()
+	development_continue_button.tooltip_text = "Resume the saved Development Expo" if development.has_save() else "No development save yet"
+	development_menu_panel.show()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _on_development_new_pressed() -> void:
+	if state != AppState.MAIN_MENU:
+		return
+	development.begin(false)
+
+
+func _on_development_continue_pressed() -> void:
+	if state != AppState.MAIN_MENU or not development.has_save():
+		return
+	development.begin(true)
+
+
+## START.cmd dev / --development: resume the Expo when one is saved,
+## otherwise build it.
+func _on_development_start_requested() -> void:
+	if development.has_save():
+		_on_development_continue_pressed()
+	else:
+		_on_development_new_pressed()
+
+
+## Development pause menu: Save - checkpoint and stay in the paused game
+## (the same in-place save CoasterCraft uses).
+func _development_save() -> void:
+	if session == null or state != AppState.PAUSED:
+		return
+	state = AppState.SAVING
+	get_tree().paused = false
+	_hide_all_panels()
+	loading_panel.show()
+	status_label.text = "Saving the Development Expo checkpoint…"
+	var result := await active_saves().save_session(session)
+	if not result.get("ok", false):
+		_failed_save_quit_after = false
+		_failed_save_restart = false
+		_show_error("Save failed: %s" % result.get("reason", "UNKNOWN"), true)
+		return
+	print("CHECKPOINT %s" % JSON.stringify(result))
+	session.recover_from_failed_save()
+	_return_to_paused_game()
+	_set_feedback("Saved Development Expo checkpoint %d." % int(result.get("revision", 0)))
+
+
+func _development_reset_pressed() -> void:
+	if state != AppState.PAUSED or not development.active:
+		return
+	development_pause_panel.hide()
+	development_reset_panel.show()
+
+
+func _cancel_development_reset() -> void:
+	if not development_reset_panel.visible:
+		return
+	development_reset_panel.hide()
+	if state == AppState.PAUSED:
+		development_pause_panel.show()
+
+
+## Reset Expo, confirmed: the development world is dropped unsaved and a new
+## one is opened on the same save file, rebuilt from the canonical fixture.
+## The checkpoint on disk is replaced by the next ordinary save (Save, Save
+## and Exit, Save and Quit), so a reset made by accident costs nothing.
+func _development_reset_confirmed() -> void:
+	if state != AppState.PAUSED or session == null or not development.active:
+		return
+	development.request_reset()
+	development_reset_panel.hide()
+	_hide_all_panels()
+	loading_panel.show()
+	status_label.text = "Rebuilding the canonical Expo…"
+	get_tree().paused = false
+	if session.world != null and session.world.stream != null and not session.world.stream.database_path.is_empty():
+		session.world.detach_and_close_stream()
+	session.queue_free()
+	session = null
+	state = AppState.MAIN_MENU
+	development.begin(false)
+
+
+## The world could not be restored (a save this build cannot read): leave the
+## loading screen with Back to Main Menu instead of spinning there forever.
+func _on_session_load_failed(reason: String) -> void:
+	if state != AppState.LOADING:
+		return
+	if session != null:
+		if session.world != null and session.world.stream != null and not session.world.stream.database_path.is_empty():
+			session.world.detach_and_close_stream()
+		session.queue_free()
+		session = null
+	_show_error(reason)
 
 
 func _on_slot_selected(index: int) -> void:
@@ -1457,6 +1646,18 @@ func _refresh_slot_ui() -> void:
 	start_button.text = "Start New — %s" % label
 	continue_button.text = "Continue — %s" % label
 	continue_button.disabled = not slot_status.get("ok", false)
+	# A slot whose Core of Power was destroyed is over: it is offered as Game
+	# Over with the ordinary New Game path, never as a resumable Continue
+	# (docs/DEVELOPMENT_EXPO.md). The save itself is left alone and stays
+	# readable; no core is ever re-created in it.
+	var game_over: Dictionary = GameSession.game_over_report(slot_status.get("snapshot", {})) if slot_status.get("ok", false) else {}
+	if game_over.get("game_over", false):
+		slot_status_label.text = "%s · GAME OVER — your Core of Power was destroyed. Start New to play this slot again." % label
+		continue_button.text = "Game Over — Start New"
+		continue_button.disabled = true
+		continue_button.tooltip_text = "This save ended when the Core of Power was destroyed; start a new game in this slot."
+		start_button.text = "Start New — %s" % label
+		return
 	if slot_status.get("ok", false):
 		slot_status_label.text = "%s · checkpoint %d ready" % [label, int(slot_status.get("revision", 0))]
 		continue_button.tooltip_text = "Resume the last complete checkpoint in %s" % label
@@ -1473,6 +1674,11 @@ func _on_start_pressed() -> void:
 
 
 func _on_continue_pressed() -> void:
+	var slot_status := saves.checkpoint_status()
+	if GameSession.game_over_report(slot_status.get("snapshot", {})).get("game_over", false):
+		# Game Over slots never resume; the menu shows Start New for them.
+		_refresh_slot_ui()
+		return
 	_open_session(true)
 
 
@@ -1482,6 +1688,7 @@ func _open_session(continue_existing: bool) -> void:
 	state = AppState.LOADING
 	menu_panel.hide()
 	coastercraft_menu_panel.hide()
+	development_menu_panel.hide()
 	loading_panel.show()
 	loading_back_button.hide()
 	loading_retry_button.hide()
@@ -1493,6 +1700,7 @@ func _open_session(continue_existing: bool) -> void:
 		return
 	session = GameSession.new()
 	session.coastercraft = coastercraft.active
+	session.development = development.active
 	session.settings_view_distance = settings.view_distance
 	session.hero_armored = settings.hero_armored
 	session.track_auto_clear = settings.track_auto_clear
@@ -1509,6 +1717,7 @@ func _open_session(continue_existing: bool) -> void:
 	session.inventory_changed.connect(_on_session_inventory_changed)
 	session.workstation_requested.connect(_show_workstation)
 	session.player_died.connect(_on_session_player_died)
+	session.load_failed.connect(_on_session_load_failed)
 	var initialize_result := session.initialize(open_result)
 	if not initialize_result.get("ok", false):
 		_show_error(initialize_result.get("reason", "SESSION_INITIALIZE_FAILED"))
@@ -1524,9 +1733,11 @@ func _on_session_ready() -> void:
 		minimap.configure(session.world.terrain.generator, session.player, session.workstations)
 	if coastercraft.active:
 		coastercraft.on_session_ready(not bool(session.open_data.get("continued", false)))
+	if development.active:
+		development.on_session_ready(not bool(session.open_data.get("continued", false)))
 	if minimap != null:
-		minimap.show_enemy_base = not coastercraft.active
-	defense_label.visible = not coastercraft.active
+		minimap.show_enemy_base = not coastercraft.active and not development.active
+	defense_label.visible = not coastercraft.active and not development.active
 	state = AppState.PLAYING
 	loading_panel.hide()
 	hud_layer.show()
@@ -1546,6 +1757,8 @@ func _pause_game() -> void:
 
 ## The pause menu of the open session: CoasterCraft's (no drills) or the game's.
 func _active_pause_panel() -> Control:
+	if development != null and development.active:
+		return development_pause_panel
 	return coastercraft_pause_panel if coastercraft.active else pause_panel
 
 
@@ -1554,6 +1767,8 @@ func _resume_game() -> void:
 		return
 	pause_panel.hide()
 	coastercraft_pause_panel.hide()
+	development_pause_panel.hide()
+	development_reset_panel.hide()
 	hud_layer.show()
 	get_tree().paused = false
 	session.pause_game(false)
@@ -1573,7 +1788,7 @@ func _toggle_hero_armor() -> void:
 func _refresh_hero_armor_button() -> void:
 	if settings == null:
 		return
-	for button: Button in [hero_armor_button, coastercraft_hero_armor_button]:
+	for button: Button in [hero_armor_button, coastercraft_hero_armor_button, development_hero_armor_button]:
 		if button != null:
 			button.text = "Hero: Armour %s" % ("on" if settings.hero_armored else "off")
 
@@ -1592,7 +1807,7 @@ func _toggle_track_auto_clear() -> void:
 func _refresh_track_auto_clear_button() -> void:
 	if settings == null:
 		return
-	for button: Button in [track_auto_clear_button, coastercraft_track_auto_clear_button]:
+	for button: Button in [track_auto_clear_button, coastercraft_track_auto_clear_button, development_track_auto_clear_button]:
 		if button != null:
 			button.text = "Track auto-clear: %s" % ("on" if settings.track_auto_clear else "off")
 
@@ -3371,7 +3586,9 @@ func _handle_escape_recovery() -> void:
 		_close_keybinds()
 	elif settings_panel.visible:
 		_close_settings()
-	elif state == AppState.MAIN_MENU and coastercraft_menu_panel.visible:
+	elif development_reset_panel.visible:
+		_cancel_development_reset()
+	elif state == AppState.MAIN_MENU and (coastercraft_menu_panel.visible or development_menu_panel.visible):
 		_show_main_menu()
 	elif state == AppState.INVENTORY:
 		_close_inventory()
@@ -3639,7 +3856,7 @@ func _handle_close_request() -> void:
 
 
 func _hide_all_panels() -> void:
-	for panel in [menu_panel, coastercraft_menu_panel, pause_panel, coastercraft_pause_panel, keybind_panel, settings_panel, inventory_panel, crafting_panel, display_confirm_panel, loading_panel, hud_layer]:
+	for panel in [menu_panel, coastercraft_menu_panel, development_menu_panel, pause_panel, coastercraft_pause_panel, development_pause_panel, development_reset_panel, keybind_panel, settings_panel, inventory_panel, crafting_panel, display_confirm_panel, loading_panel, hud_layer]:
 		if panel != null:
 			panel.hide()
 

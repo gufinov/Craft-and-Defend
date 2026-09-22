@@ -8,6 +8,7 @@ if "%MODE%"=="" set "MODE=play"
 if /i "%MODE%"=="play" goto :play
 if /i "%MODE%"=="sandbox" goto :sandbox
 if /i "%MODE%"=="coastercraft" goto :coastercraft
+if /i "%MODE%"=="dev" goto :dev
 if /i "%MODE%"=="build" goto :build
 if /i "%MODE%"=="stop" goto :stop
 if /i "%MODE%"=="help" goto :help
@@ -27,6 +28,8 @@ echo   START.cmd sandbox       Coaster sandbox: CoasterCraft plus the premade de
 echo                           infinite pack. Data root artifacts\coaster-sandbox.
 echo   START.cmd coastercraft  Straight into CoasterCraft New (bare plate, no monsters).
 echo                           Data root artifacts\coastercraft.
+echo   START.cmd dev           Straight into the Development Expo (its own save, no ambient raids).
+echo                           Data root artifacts\development.
 echo   START.cmd build         Rebuild the Windows export (builds\CraftAndDefend) now.
 echo   START.cmd stop          Close every running Craft and Defend game window.
 echo   START.cmd help          This text.
@@ -71,6 +74,20 @@ echo switches / crossings / curves / climbs / carts / cars / kettles / blocks / 
 echo Escape opens its own pause menu (Save, Save and Restart, Save and Exit to Menu, Save and Quit).
 echo Saves for this mode live in %CC_ROOT%\coastercraft (your normal saves are untouched).
 start "" "%EXE%" --log-file "%CC_ROOT%\coastercraft.log" -- --f0-data-root="%CC_ROOT%" --coastercraft
+exit /b 0
+
+:dev
+title Craft and Defend - Development Expo
+call :prepare
+if errorlevel 1 goto :prepare_failed
+set "DEV_ROOT=%ROOT%artifacts\development"
+mkdir "%DEV_ROOT%" 2>nul
+echo.
+echo Starting the Development Expo: the owner's development world - the real game rules on its
+echo own save, with no ambient raids. Continue resumes it; the first run builds it.
+echo Escape opens its own pause menu (Save, Reset Expo, Save and Exit to Menu, Save and Quit).
+echo Saves for this mode live in %DEV_ROOT%\development (your normal saves are untouched).
+start "" "%EXE%" --log-file "%DEV_ROOT%\development.log" -- --f0-data-root="%DEV_ROOT%" --development
 exit /b 0
 
 :build
