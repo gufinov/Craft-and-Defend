@@ -87,12 +87,16 @@ func exercise(application: CraftAndDefendApp) -> Dictionary:
 	# (the card-A stub build is gone now that card C's builder is wired in).
 	evidence["canonical_build"] = app.development.last_build.duplicate(true)
 	_check("canonical_build", bool(app.development.last_build.get("ok", false)) and bool(app.development.last_build.get("builder", false)) and bool(app.development.last_build.get("fresh", false)) and app.development.expo_builder != null, "a fresh world ran build_expo through the canonical ExpoBuilder (%s)" % JSON.stringify(app.development.last_build))
-	# The reset-group seam: unknown groups are refused, a registered one runs.
-	var unknown := app.development.reset_group(app.session, "battlefield")
+	# The reset-group seam: unknown groups are refused, a registered one runs,
+	# and the campus's own groups are there - `district:<id>` per district plus
+	# the scenario groups the manifest's exhibits name, `battlefield` among them
+	# (card E, ExpoResetService).
+	var unknown := app.development.reset_group(app.session, "no_such_scenario")
 	app.development.register_reset_group("probe", _probe_reset)
 	var known := app.development.reset_group(app.session, "probe")
-	evidence["reset_group"] = {"unknown": unknown, "known": known, "groups": app.development.reset_groups()}
-	_check("reset_group_seam", str(unknown.get("reason", "")) == "NO_GROUP" and known.get("ok", false) and _probe_resets == 1, "reset_group refuses an unregistered group and runs a registered one (%s)" % JSON.stringify(evidence["reset_group"]))
+	var groups := app.development.reset_groups()
+	evidence["reset_group"] = {"unknown": unknown, "known": known, "groups": groups}
+	_check("reset_group_seam", str(unknown.get("reason", "")) == "NO_GROUP" and known.get("ok", false) and _probe_resets == 1 and groups.has("battlefield") and groups.has("district:central_plaza"), "reset_group refuses an unregistered group, runs a registered one and carries the campus's own district and scenario groups (%s)" % JSON.stringify(evidence["reset_group"]))
 	# The pause menu: the mode's own panel, no drills, Reset Expo present.
 	app._pause_game()
 	var buttons := _button_texts(app.development_pause_panel)

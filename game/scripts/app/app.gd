@@ -2292,16 +2292,10 @@ func _refresh_battlefield_panel() -> void:
 	var core_defense: CoreDefenseService = session.core_defense
 	var lines := "ESCAPE CLOSES  ·  THE WORLD KEEPS RUNNING"
 	if core_defense != null and core_defense.is_active():
-		lines += "
-
-" + core_defense.hud_text()
+		lines += "\n\n" + core_defense.hud_text()
 	else:
-		lines += "
-
-No attack is running. START ATTACK musters %d attackers on the far line — %d brutes, %d trolls, the rest orcs — and sends them at this Core." % [BATTLEFIELD_WAVE, BATTLEFIELD_BRUTES, BATTLEFIELD_TROLLS]
-	lines += "
-
-RESET BATTLEFIELD restores this arena and nothing else: the attackers go, both cores, the fortification, the batteries and their ammunition come back. Every other district is left exactly as it stands."
+		lines += "\n\nNo attack is running. START ATTACK musters %d attackers on the far line — %d brutes, %d trolls, the rest orcs — and sends them at this Core." % [BATTLEFIELD_WAVE, BATTLEFIELD_BRUTES, BATTLEFIELD_TROLLS]
+	lines += "\n\nRESET BATTLEFIELD restores this arena and nothing else: the attackers go, both cores, the fortification, the batteries and their ammunition come back. Every other district is left exactly as it stands."
 	battlefield_status_label.text = lines
 
 

@@ -330,11 +330,15 @@ func _test_mountain() -> void:
 			if light.distance_to(Vector3(cell)) <= LIGHT_RANGE:
 				lit += 1
 				break
+	# Only the mine line: the Defense Range's kettle booth lays rails of its own
+	# along a wall top, and those are not part of this chain.
+	var rail_parcel := _parcel_box("mountain_rail")
 	var rails: Array[Vector3i] = []
 	for instance_id: String in app.session.workstations.stations.keys():
 		var record: Dictionary = app.session.workstations.stations[instance_id]
-		if str(record.get("entity_id", "")) == "rail":
-			rails.append(record.get("anchor", Vector3i.ZERO))
+		var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+		if str(record.get("entity_id", "")) == "rail" and _inside(rail_parcel, anchor):
+			rails.append(anchor)
 	rails.sort_custom(func(first: Vector3i, second: Vector3i) -> bool: return first.x < second.x)
 	var chained := rails.size() > 1
 	for index in range(1, rails.size()):
