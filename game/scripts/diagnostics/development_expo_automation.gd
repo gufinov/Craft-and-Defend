@@ -89,6 +89,7 @@ func _run_visual() -> void:
 	app._on_development_new_pressed()
 	if not await _wait_ready():
 		return
+	await _drive_build()
 	if not await _wait_built("plaza"):
 		return
 	var plaza := app.development.layout.district_bounds("central_plaza")
