@@ -365,6 +365,77 @@ the reserved parcel — the validator says which exhibit did not fit.
 
 ---
 
+## 6. CoasterCraft — the component gallery and the Grand Coaster (§7, card F)
+
+The south-east reserve (`coastercraft`, origin `(64, -1, 88)`, size
+`(88, 24, 96)` — the largest parcel on the campus) is built in full. Its
+district is now `prepare: "full"` with `terrain: "level"`: the whole park is
+one levelled pad, so a booth never stands on a cliff the generator happened
+to raise there (the parcel was `natural` while nothing stood on it).
+
+**The manifest's `build` field.** A track element cannot be described by an
+entity list — it is a curve sampled into cells with recorded joints. An
+exhibit may therefore name an authored routine, `"build": "<name>"`, and that
+routine owns its whole parcel: its levelling, its terrain, its fixtures and
+where its sign stands (`ExpoBuilder.place_exhibit` skips the generic terrain
+and entity paths for it). The routines live in **`game/scripts/expo/expo_coaster.gd`
+(`ExpoCoaster`)**, one per exhibit, and are pure composition: every piece
+comes from a real lay tool's layout — `CoasterRails.helix_layout`,
+`climb_layout`, `curve_layout`, `bend_layout`, `cross_layout`, all over
+`TrackCurve` — and is placed by the new seam
+**`ExpoBuilder.place_track(pieces, label)`**, which writes each piece's curve,
+its `t0`/`t1` range and its recorded joints exactly as
+`InteractionService._commit_curve_tool` does once the items are paid. Nothing
+is hand-placed as blocks, so the auto-shaping, the banking, the flush ends and
+the trestle trusses all apply. A track op is **strict**: a cell already taken
+by something else is a build failure the gate sees (a rebuild finding its own
+piece standing is not).
+
+### Component gallery
+
+Eleven booths on their own parcels, each levelled, signed and read along +x:
+an **arrival plaza** (paved, two post lanterns, the routes on its board), then
+**Rail** (a straight run), **Rail Slope** (rails, the slope, rails on the bank
+one level up), **Rail Loop** (a diameter-5 true loop between its entry and
+exit rails), **Rail Switch** (the default 4 × 1 smooth lane switcher),
+**Rail Cross** (the default 8 × 2 crossing with a rail on each of its four
+ends), **Rail Curve** (a banked 90° arc of radius 3), **Rail Climb** (length 8,
+rise 4, onto its landing), **Mine Cart**, **Coaster Car** (parked, boardable)
+and the **CoasterCraft Shop**, placed and usable — right-click opens its own
+recipe book.
+
+### Grand Demonstration Coaster
+
+One closed, rideable circuit on an 80 × 26 parcel. In plan it is a **figure
+eight**: the boarding lane runs east past the **lift hill** (Climb, +6), a
+**crest** (the same tool at rise 0, so the track flies on its trusses), the
+**drop** (Climb, −6) and the **true loop** (Rail Loop, diameter 8, which lands
+one lane over); a **Rail Switch** shifts it back onto its lane; the **Rail
+Cross** (16 long, 6 lanes) carries it onto the return lane; a **180° Rail
+Curve** turns it back west onto the boarding lane, where it rides the *other*
+track of the same crossing — both tracks of the crossing are ridden on one
+lap, so it is a real crossing and not a spur — and a second 180° curve at the
+west end returns it to the station. The station is a castle-stone platform
+beside the boarding rails with the ride's sign on it and a **Coaster Car**
+parked ready to board (Shift on it, 1–9 for speed): the ordinary
+`CoasterCartService` / `CoasterRide` path, with no demo vehicle of its own.
+The two U-turn radii set the lane spacing (radius 3 → the legs six lanes
+apart), so the whole shape is one constant away from being widened.
+
+**Waiting for one district.** The park is 200 cells from the plaza — further
+than the terrain streams — so its ops are parked until someone walks there,
+and a diagnostic can no longer wait on the whole queue from the spawn. The
+builder answers `pending_for(owners)` (district and exhibit ids; every op's
+label is `<what>:<owner>`), and the suite's `_wait_built(label, owners)` waits
+on the district it is standing in. Passing no owners keeps the old
+whole-campus wait.
+
+Calls made by this card: the park is levelled rather than laid over natural
+terrain (above); the elevation comes from the authored lift hill, crest and
+loop rather than from a generated hill, because a track that must pass its own
+gate cannot depend on what the noise put there; and the crossing is sized
+`6` lanes (the tool's maximum) to match the U-turns' lane spacing.
+
 ## Checks
 
 | Gate | Covers |
@@ -374,8 +445,8 @@ the reserved parcel — the validator says which exhibit did not fit.
 
 `game/scripts/diagnostics/development_expo_automation.gd`, dispatched as
 `--development-expo-automation=gate` (headless) and `=visual` (windowed,
-renders the plaza and the tunnel). This suite is the milestone's home; later
-cards add their records to it.
+renders the plaza, the tunnel, the coaster gallery and the showpiece). This
+suite is the milestone's home; later cards add their records to it.
 
 - **T213_EXPO_LAYOUT** — the manifest parses, every referenced id exists, no
   two districts, corridors or parcels overlap, every district has an expansion
@@ -396,3 +467,14 @@ cards add their records to it.
   district sign are read back field by field.
 - **T215V_SIGN_VIEW** (`=visual`) — `development-expo-sign.png`, the plaza's
   orientation board framed from in front of it, close enough to read.
+- **T221_EXPO_COASTER_GALLERY** (card F) — every gallery booth stands in its
+  own parcel with its placed sign, each track specimen carrying the curve its
+  real lay tool writes, and the CoasterCraft Shop opens its own recipe book.
+- **T222_EXPO_GRAND_COASTER** (card F) — the showpiece holds a piece of every
+  track family (straight, climb, curve, true loop, lane switcher, crossing)
+  read from the records' curves; its 208 pieces are one connected chain
+  through the station and nothing else; and the parked Coaster Car boards
+  through `CoasterRide`, rides every cell of the circuit, comes home, and
+  never hangs upside down outside the loop.
+- **T221V_COASTER_GALLERY_VIEW** / **T222V_GRAND_COASTER_VIEW** (`=visual`) —
+  `development-expo-coaster-gallery.png` and `development-expo-coaster.png`.

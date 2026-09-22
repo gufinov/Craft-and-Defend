@@ -149,16 +149,29 @@ func place_exhibit(game_session: GameSession, exhibit_id: String) -> Dictionary:
 		level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), "reserved:" + exhibit_id)
 		sign_at(origin, str(parcel.get("orientation", "north")), layout.sign_data(exhibit_id), exhibit_id)
 		return {"ok": true, "reserved": true}
+	var orientation := str(parcel.get("orientation", "north"))
+	# An exhibit that names an authored `build` routine owns its whole parcel -
+	# its own levelling, terrain and fixtures (card F's coaster district lays
+	# track through the real lay tools' layouts, which no generic entity list
+	# could describe). The routine may name where its sign should stand.
+	var build := str(record.get("build", ""))
+	if not build.is_empty():
+		var built := ExpoCoaster.build(self, build, exhibit_id, origin, size, layout.ground_y())
+		if not bool(built.get("ok", false)):
+			_failures.append("%s: unknown build routine %s" % [exhibit_id, build])
+		var sign_cell: Vector3i = built.get("sign_cell", origin)
+		sign_at(sign_cell, str(built.get("sign_facing", orientation)), layout.sign_data(exhibit_id), exhibit_id)
+		return built
 	_build_terrain(exhibit_id, terrain, origin, size)
 	var entities: Variant = record.get("entities", [])
 	if entities is Array:
-		_build_entities(exhibit_id, entities as Array, origin, size, str(parcel.get("orientation", "north")))
+		_build_entities(exhibit_id, entities as Array, origin, size, orientation)
 	var items: Variant = record.get("items", [])
 	if kind == "catalog" and items is Array and not (items as Array).is_empty():
 		# A catalog booth is a plinth plus its label; the item itself is named
 		# on the sign (the sign card owns the item picker).
 		_queue_cells("booth:" + exhibit_id, [{"cell": origin + Vector3i(size.x / 2, 0, size.z / 2), "voxel": CASTLE_STONE}])
-	sign_at(origin, str(parcel.get("orientation", "north")), layout.sign_data(exhibit_id), exhibit_id)
+	sign_at(origin, orientation, layout.sign_data(exhibit_id), exhibit_id)
 	return {"ok": true}
 
 
@@ -272,6 +285,43 @@ func plant_tree(base: Vector3i, height: int = 5, label: String = "tree") -> void
 ## its item cost (handoff section 13).
 func place_entity(entity_id: String, anchor: Vector3i, rotation_quarters: int = 0, label: String = "entity") -> void:
 	_ops.append({"kind": "place", "label": label, "entity": entity_id, "anchor": anchor, "rotation": rotation_quarters, "passes": 0})
+
+
+## Lays a whole track element the real lay tools produced (card F: the pieces
+## of `CoasterRails.helix_layout` / `climb_layout` / `curve_layout` /
+## `bend_layout` / `cross_layout`, which are `TrackCurve.pieces`). Each piece
+## keeps its curve, its parameter range and its recorded joints - exactly what
+## `InteractionService._commit_curve_tool` writes once the items are paid - so
+## riding, joining, banking and drawing need nothing new here.
+##
+## Track pieces are `strict`: a cell already taken is a real conflict in an
+## authored layout, not a rebuild finding its own fixture standing.
+func place_track(pieces: Array, label: String = "track") -> void:
+	for entry: Variant in pieces:
+		if not entry is Dictionary:
+			continue
+		var piece: Dictionary = entry
+		var cell: Vector3i = piece.get("cell", Vector3i.ZERO)
+		var extra: Dictionary = (piece.get("extra", {}) as Dictionary).duplicate(true)
+		var joints := _joint_offsets(cell, piece.get("joints", []))
+		if not joints.is_empty():
+			extra["coaster_joints"] = joints
+		var joints_b := _joint_offsets(cell, piece.get("joints_b", []))
+		if not joints_b.is_empty():
+			extra["coaster_joints_b"] = joints_b
+		_ops.append({"kind": "place", "label": label, "entity": str(piece.get("entity_id", "rail")),
+			"anchor": cell, "rotation": int(piece.get("rotation", 0)), "extra": extra, "strict": true, "passes": 0})
+
+
+## A piece's joint cells as the record's JSON-safe offsets from its own cell.
+static func _joint_offsets(cell: Vector3i, joints: Variant) -> Array:
+	var out: Array = []
+	if joints is Array:
+		for joint: Variant in joints as Array:
+			if joint is Vector3i:
+				var offset: Vector3i = (joint as Vector3i) - cell
+				out.append([offset.x, offset.y, offset.z])
+	return out
 
 
 ## Requests one of the manifest's signs: a real `sign` station is placed at
@@ -398,6 +448,25 @@ func pending_ops() -> int:
 
 func deferred_ops() -> int:
 	return _deferred.size()
+
+
+## Ops still queued or parked whose label names one of `owners` (a district or
+## exhibit id: every label is "<what>:<owner>"). A district on the far side of
+## the campus stays parked until someone walks there, so a diagnostic standing
+## in one district waits on that district's work, not on the whole campus.
+func pending_for(owners: PackedStringArray) -> int:
+	var count := 0
+	var waiting: Array[Dictionary] = _ops.duplicate()
+	waiting.append_array(_deferred)
+	for op: Dictionary in waiting:
+		if owners.has(_op_owner(op)):
+			count += 1
+	return count
+
+
+static func _op_owner(op: Dictionary) -> String:
+	var parts := str(op.get("label", "")).split(":")
+	return parts[parts.size() - 1] if parts.size() > 1 else ""
 
 
 func is_idle() -> bool:
@@ -565,7 +634,9 @@ func _run_place(op: Dictionary) -> bool:
 	if not _loaded(world, anchor) or not _loaded(world, anchor + Vector3i(0, -1, 0)):
 		return false
 	var entity_id := str(op["entity"])
-	var placed := session.workstations.try_place(entity_id, anchor, world.query_cell, AABB(), int(op.get("rotation", 0)), {"_free": true})
+	var extra: Dictionary = (op.get("extra", {}) as Dictionary).duplicate(true)
+	extra["_free"] = true
+	var placed := session.workstations.try_place(entity_id, anchor, world.query_cell, AABB(), int(op.get("rotation", 0)), extra)
 	if bool(placed.get("ok", false)):
 		_entities_placed += 1
 		return true
@@ -577,6 +648,12 @@ func _run_place(op: Dictionary) -> bool:
 			op["attempts"] = int(op.get("attempts", 0)) + 1
 			return false
 	# OCCUPIED means the fixture is already standing (a rebuild): not a failure.
+	# A `strict` op (a track piece, whose cells an authored layout owns) accepts
+	# that only when the piece standing there is the same one - anything else in
+	# the way is a real collision the gate must see.
+	if reason == "OCCUPIED" and bool(op.get("strict", false)) and not _same_entity_at(anchor, entity_id):
+		_failures.append("%s %s at %s: OCCUPIED by another piece" % [str(op.get("label", "")), entity_id, anchor])
+		return true
 	if reason != "OCCUPIED":
 		_failures.append("%s %s at %s: %s" % [str(op.get("label", "")), entity_id, anchor, reason])
 	return true
@@ -645,6 +722,16 @@ func _sign_stand(world: WorldAdapter, column: Vector3i) -> Vector3i:
 		if int(world.query_cell(cell + Vector3i(0, -1, 0)).get("voxel_id", AIR)) != AIR:
 			return cell
 	return Vector3i(column.x, SIGN_NO_STAND, column.z)
+
+
+## True when `entity_id` is already standing on `cell` (a rebuild laying the
+## same authored track piece again).
+func _same_entity_at(cell: Vector3i, entity_id: String) -> bool:
+	var instance_id := session.workstations.station_at_cell(cell)
+	if instance_id.is_empty():
+		return false
+	var record: Dictionary = session.workstations.stations.get(instance_id, {})
+	return str(record.get("entity_id", "")) == entity_id
 
 
 ## The instance id of a `sign` already standing in `cell` ("" when the cell is

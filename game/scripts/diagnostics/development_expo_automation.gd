@@ -23,6 +23,31 @@ const TUNNEL_WALK := 56
 ## A tunnel sample counts as lit with a light entity this near.
 const LIGHT_RANGE := 12.0
 const BUILD_TIMEOUT_MSEC := 240000
+## Card F. What must stand inside each gallery booth's parcel: the entity ids
+## and the track families (`_track_family`, read from the station records'
+## entity and curve data alone).
+const COASTER_GALLERY: Array[Dictionary] = [
+	{"id": "coaster_arrival", "entities": ["post_lantern"], "families": []},
+	{"id": "coaster_rail", "entities": ["rail"], "families": ["straight"]},
+	{"id": "coaster_rail_slope", "entities": ["rail_slope", "rail"], "families": ["slope"]},
+	{"id": "coaster_rail_loop", "entities": ["rail"], "families": ["loop"]},
+	{"id": "coaster_rail_switch", "entities": ["rail"], "families": ["switch"]},
+	{"id": "coaster_rail_cross", "entities": ["rail"], "families": ["cross"]},
+	{"id": "coaster_rail_curve", "entities": ["rail"], "families": ["curve"]},
+	{"id": "coaster_rail_climb", "entities": ["rail"], "families": ["climb"]},
+	{"id": "coaster_mine_cart", "entities": ["mine_cart", "rail"], "families": []},
+	{"id": "coaster_car", "entities": ["coaster_car", "rail"], "families": []},
+	{"id": "coaster_shop", "entities": ["coastercraft_shop"], "families": []},
+]
+## Every family the Grand Demonstration Coaster must contain.
+const COASTER_FAMILIES: Array[String] = ["straight", "climb", "curve", "loop", "switch", "cross"]
+## The lane switcher's own lane shift, which tells it apart from the crossing's
+## two long s-bends (both are shifted s_bends; only the crossing's shared cells
+## carry a second curve).
+const COASTER_SWITCH_SHIFT := 1.0
+## Frames the parked car is given to ride the whole circuit and come home.
+const RIDE_FRAME_BUDGET := 40000
+const RIDE_TIMEOUT_MSEC := 240000
 
 var app: CraftAndDefendApp
 var failures: Array[String] = []
@@ -53,10 +78,12 @@ func _run_gate() -> void:
 	if not await _wait_ready():
 		return
 	app.session.player.deactivate()
-	if not await _wait_built("plaza"):
+	if not await _wait_built("plaza", _district_owners(["central_plaza", "supply_depot", "future_expansion", "day_one", "equipment", "resources"])):
 		return
 	await _test_plaza_and_day_one()
 	await _test_mountain()
+	await _test_coaster_gallery()
+	await _test_grand_coaster()
 	_test_signs()
 	await _settle_near_spawn()
 
@@ -65,7 +92,7 @@ func _run_visual() -> void:
 	app._on_development_new_pressed()
 	if not await _wait_ready():
 		return
-	if not await _wait_built("plaza"):
+	if not await _wait_built("plaza", _district_owners(["central_plaza"])):
 		return
 	var plaza := app.development.layout.district_bounds("central_plaza")
 	var plaza_origin: Vector3i = plaza["origin"]
@@ -86,7 +113,7 @@ func _run_visual() -> void:
 	var tunnel_size: Vector3i = tunnel["size"]
 	var mouth := Vector3(float(tunnel_origin.x + tunnel_size.x - 3), float(tunnel_origin.y) + 1.6, float(tunnel_origin.z + tunnel_size.z / 2) + 0.5)
 	_teleport(mouth)
-	if not await _wait_built("mountain"):
+	if not await _wait_built("mountain", _district_owners(["mining_mountain"])):
 		return
 	_look_from(mouth, mouth + Vector3(-20.0, -1.0, 0.0))
 	for _frame in range(60):
@@ -96,7 +123,48 @@ func _run_visual() -> void:
 	var tunnel_path := app.data_root.path_join("development-expo-tunnel.png")
 	var tunnel_shot := await _save_viewport(tunnel_path)
 	_record("T214V_TUNNEL_VIEW", tunnel_shot, "rendered evidence of the lit mountain tunnel with its rail line", {"path": tunnel_path})
+	await _shoot_coaster()
 	await _settle_near_spawn()
+
+
+## Card F's rendered evidence: the component gallery, and the Grand
+## Demonstration Coaster from a vantage that shows its lift hill and true loop.
+func _shoot_coaster() -> void:
+	var layout: ExpoLayout = app.development.layout
+	var gallery := layout.parcel_for("coaster_rail_slope")
+	var gallery_origin: Vector3i = gallery["origin"]
+	_teleport(_parcel_centre(gallery) + Vector3(0.0, 3.0, 0.0))
+	if not await _wait_built("coastercraft", _district_owners(["coastercraft"])):
+		return
+	# Along the first row from the path south of it, over the levelled park:
+	# the Slope, the true Loop and the Switch booths with their boards.
+	var gallery_eye := Vector3(gallery_origin) + Vector3(-6.0, 10.0, 14.0)
+	var gallery_target := Vector3(gallery_origin) + Vector3(29.0, 1.0, 5.0)
+	_look_from(gallery_eye, gallery_target)
+	for _frame in range(90):
+		await get_tree().process_frame
+	_look_from(gallery_eye, gallery_target)
+	await get_tree().process_frame
+	var gallery_path := app.data_root.path_join("development-expo-coaster-gallery.png")
+	var gallery_shot := await _save_viewport(gallery_path)
+	_record("T221V_COASTER_GALLERY_VIEW", gallery_shot, "rendered evidence of the CoasterCraft component gallery: the signed booths of the track family side by side", {"path": gallery_path})
+	var show := layout.parcel_for("grand_coaster")
+	var show_origin: Vector3i = show["origin"]
+	var station := ExpoCoaster.show_station(show_origin)
+	var lane_a := int(station["lane_a"])
+	var eye := Vector3(float(show_origin.x) + 56.0, 17.0, float(lane_a) + 28.0)
+	var target := Vector3(float(show_origin.x) + 32.0, 5.0, float(lane_a) + 1.0)
+	_teleport(eye)
+	if not await _wait_built("grand coaster", _district_owners(["coastercraft"])):
+		return
+	_look_from(eye, target)
+	for _frame in range(90):
+		await get_tree().process_frame
+	_look_from(eye, target)
+	await get_tree().process_frame
+	var show_path := app.data_root.path_join("development-expo-coaster.png")
+	var show_shot := await _save_viewport(show_path)
+	_record("T222V_GRAND_COASTER_VIEW", show_shot, "rendered evidence of the Grand Demonstration Coaster: the lift hill, the crest and drop, and the true loop over the station", {"path": show_path})
 
 
 ## T213: the manifest, the solved layout and the computed world bounds, with no
@@ -216,7 +284,7 @@ func _test_mountain() -> void:
 	var centre_z := tunnel_origin.z + tunnel_size.z / 2
 	# Walk in from the campus side of the mountain.
 	_teleport(Vector3(float(tunnel_origin.x + tunnel_size.x - 3), float(tunnel_origin.y) + 1.1, float(centre_z) + 0.5))
-	if not await _wait_built("mountain"):
+	if not await _wait_built("mountain", _district_owners(["mining_mountain"])):
 		return
 	var world: WorldAdapter = app.session.world
 	var core := layout.parcel_for("mountain_ore_core")
@@ -276,6 +344,233 @@ func _test_mountain() -> void:
 		{"ores": ores, "core_sampled": core_sampled, "walked": walked, "walkable": walkable, "lit": lit,
 		"rails": rails.size(), "chained": chained, "lights": lights.size(), "miner": miner_ok, "ore_bin": bin_ok,
 		"builder": app.development.expo_builder.progress()})
+
+
+## T221 (card F): every component-gallery specimen stands inside its own
+## parcel, laid by the real lay tools (its pieces carry the tools' curves),
+## each under its own placed sign; the CoasterCraft Shop is a usable station
+## whose recipe book opens on its own modal.
+func _test_coaster_gallery() -> void:
+	var layout: ExpoLayout = app.development.layout
+	var centre := _parcel_centre(layout.parcel_for("coaster_rail_curve"))
+	_teleport(centre + Vector3(0.0, 2.0, 0.0))
+	if not await _wait_built("coastercraft gallery", _district_owners(["coastercraft"])):
+		return
+	var workstations: WorkstationService = app.session.workstations
+	var signs: Dictionary = {}
+	for request: Dictionary in app.development.expo_builder.sign_requests():
+		if bool(request.get("ok", false)):
+			signs[str(request.get("owner", ""))] = str(request.get("instance_id", ""))
+	var missing: Array[String] = []
+	var booths: Array[Dictionary] = []
+	for booth: Dictionary in COASTER_GALLERY:
+		var exhibit_id := str(booth["id"])
+		var parcel := layout.parcel_for(exhibit_id)
+		var found := _parcel_contents(parcel)
+		var entities: Dictionary = found["entities"]
+		var families: Dictionary = found["families"]
+		for entity_id: Variant in booth["entities"]:
+			if not entities.has(str(entity_id)):
+				missing.append("%s: no %s" % [exhibit_id, entity_id])
+		for family: Variant in booth["families"]:
+			if not families.has(str(family)):
+				missing.append("%s: no %s piece" % [exhibit_id, family])
+		if not signs.has(exhibit_id):
+			missing.append(exhibit_id + ": no sign")
+		booths.append({"id": exhibit_id, "entities": entities.keys(), "families": families.keys(), "sign": signs.get(exhibit_id, "")})
+	# The shop is not a prop: it opens its own recipe book.
+	var shop_id := ""
+	for instance_id: String in workstations.stations.keys():
+		var record: Dictionary = workstations.stations[instance_id]
+		if str(record.get("entity_id", "")) == "coastercraft_shop":
+			shop_id = instance_id
+			break
+	var book_ok := false
+	var title := ""
+	if not shop_id.is_empty():
+		app._show_workstation(shop_id, "coastercraft_shop")
+		for _frame in range(4):
+			await get_tree().process_frame
+		title = app.crafting_title_label.text
+		book_ok = app.state == app.AppState.CRAFTING and app._crafting_station_type == "coastercraft_shop" and title == "COASTERCRAFT SHOP"
+		app._close_crafting()
+		for _frame in range(4):
+			await get_tree().process_frame
+	var ok: bool = missing.is_empty() and not shop_id.is_empty() and book_ok
+	_record("T221_EXPO_COASTER_GALLERY", ok,
+		"every CoasterCraft gallery specimen stands in its own parcel with its sign - plain Rail, Rail Slope, the true Rail Loop, Rail Switch, Rail Cross, Rail Curve, Rail Climb, a Mine Cart, a Coaster Car and a placed CoasterCraft Shop - each track specimen laid by the real lay tool (its pieces carry that tool's curve), and the Shop opens its own COASTERCRAFT SHOP recipe book",
+		{"booths": booths, "missing": missing, "shop": shop_id, "book_title": title, "book_ok": book_ok})
+
+
+## T222 (card F): the Grand Demonstration Coaster. Every required track family
+## is present, the whole circuit is one connected chain through the station,
+## and the parked Coaster Car boards through the real `CoasterRide` path,
+## rides the whole circuit and comes home without ever hanging upside down
+## outside the loop.
+func _test_grand_coaster() -> void:
+	var layout: ExpoLayout = app.development.layout
+	var parcel := layout.parcel_for("grand_coaster")
+	var origin: Vector3i = parcel["origin"]
+	_teleport(_parcel_centre(parcel) + Vector3(0.0, 2.0, 0.0))
+	if not await _wait_built("grand coaster", _district_owners(["coastercraft"])):
+		return
+	var workstations: WorkstationService = app.session.workstations
+	var found := _parcel_contents(parcel)
+	var families: Dictionary = found["families"]
+	var cells: Dictionary = found["cells"]
+	var loop_cells: Dictionary = found["loop_cells"]
+	var missing_families: Array[String] = []
+	for family: String in COASTER_FAMILIES:
+		if not families.has(family):
+			missing_families.append(family)
+	# The lane switcher is the shifted s-bend of one lane; the crossing's own
+	# s-bends are six lanes wide and its middle cells carry a second curve.
+	var shifts: Array = found["switch_shifts"]
+	var switch_ok: bool = shifts.has(COASTER_SWITCH_SHIFT)
+	# One connected chain: everything the showpiece laid is reachable from the
+	# station rail, and the chain leaves nothing out and nothing over.
+	var station := ExpoCoaster.show_station(origin)
+	var station_cell: Vector3i = station["station"]
+	var chain := CoasterRails.chain(workstations.stations, station_cell)
+	var off_circuit := 0
+	for cell: Variant in chain.keys():
+		if not cells.has(cell):
+			off_circuit += 1
+	var unreachable: Array = []
+	for cell: Variant in cells.keys():
+		if not chain.has(cell):
+			unreachable.append(cell)
+	var chain_ok: bool = chain.size() == cells.size() and off_circuit == 0 and unreachable.is_empty()
+	# The ride itself, through the ordinary board / advance / leave path.
+	var car_cell: Vector3i = station["car"]
+	var car_id := workstations.station_at_cell(car_cell)
+	var boarded := app.session.board_coaster_car(car_id)
+	app.session.set_ride_speed(CoasterRide.MAX_SPEED_LEVEL)
+	var rig: Node3D = app.session.coaster_carts.cart_rig(car_id)
+	var covered := false
+	var returned := false
+	var inverted_outside := 0
+	var frames := 0
+	var deadline := Time.get_ticks_msec() + RIDE_TIMEOUT_MSEC
+	while frames < RIDE_FRAME_BUDGET and Time.get_ticks_msec() < deadline and not returned:
+		await get_tree().process_frame
+		frames += 1
+		var here: Vector3i = app.session.coaster_carts.rider_cell(car_id)
+		# A lap is over when the car has been on every cell of the circuit and
+		# is back on the station rail it started from.
+		if frames % 10 == 0:
+			covered = _trail_covers(car_id, cells)
+		if covered and here == station_cell:
+			returned = true
+		if rig != null and is_instance_valid(rig) and rig.global_basis.y.y < 0.0 and not loop_cells.has(here):
+			inverted_outside += 1
+	var trail := app.session.coaster_carts.trail(car_id)
+	var ridden: Dictionary = {}
+	for cell: Variant in trail.keys():
+		var record: Dictionary = _track_record_at(cell)
+		var family := _track_family(record)
+		if not family.is_empty():
+			ridden[family] = int(ridden.get(family, 0)) + 1
+	var ridden_missing: Array[String] = []
+	for family: String in COASTER_FAMILIES:
+		if not ridden.has(family):
+			ridden_missing.append(family)
+	app.session.leave_coaster_car()
+	var ok: bool = missing_families.is_empty() and switch_ok and chain_ok and bool(boarded.get("ok", false)) \
+		and returned and ridden_missing.is_empty() and inverted_outside == 0
+	_record("T222_EXPO_GRAND_COASTER", ok,
+		"the Grand Demonstration Coaster holds at least one piece of every track family (straight, climb, curve, true loop, lane switcher, crossing) read from the station records' entity and curve data; its %d pieces form one connected chain through the station and nothing else; the parked Coaster Car boards through CoasterRide, rides every family, returns to the station rail inside %d frames, and the rider's up vector never inverts outside the loop" % [cells.size(), RIDE_FRAME_BUDGET],
+		{"families": families.keys(), "missing_families": missing_families, "switch_shifts": shifts,
+		"pieces": cells.size(), "chain": chain.size(), "off_circuit": off_circuit, "unreachable": unreachable,
+		"boarded": boarded.get("reason", ""), "frames": frames, "returned": returned, "covered": covered,
+		"trail": trail.size(),
+		"ridden": ridden, "ridden_missing": ridden_missing, "inverted_outside": inverted_outside,
+		"station": station_cell, "car": car_cell})
+
+
+## The track family of a station record, from its entity id and its recorded
+## curve alone: "straight" (a plain rail or a flat run of the Climb tool),
+## "slope", "curve" (an arc), "loop" (a helix), "climb" (a rising s-bend),
+## "switch" (a shifted s-bend) or "cross" (a cell carrying two curves).
+static func _track_family(record: Dictionary) -> String:
+	var entity_id := str(record.get("entity_id", ""))
+	if entity_id == CoasterRails.FLAT:
+		return "straight"
+	if entity_id == CoasterRails.SLOPE:
+		return "slope"
+	if entity_id != CoasterRails.LOOP:
+		return ""
+	if CoasterRails.has_second_curve(record):
+		return "cross"
+	var curve: Dictionary = record.get("curve", {})
+	var params: Dictionary = curve.get("params", {})
+	match str(curve.get("kind", "")):
+		"helix":
+			return "loop"
+		"arc":
+			return "curve"
+		"s_bend":
+			if absf(float(params.get("rise", 0.0))) > 0.01:
+				return "climb"
+			if absf(float(params.get("shift", 0.0))) > 0.01:
+				return "switch"
+			return "straight"
+	return ""
+
+
+## What stands inside a parcel: {entities: {id: count}, families: {family:
+## count}, cells: {cell: true} of its track pieces, loop_cells: {cell: true}
+## of the true loop's pieces, switch_shifts: the lane shifts of its s-bends}.
+func _parcel_contents(parcel: Dictionary) -> Dictionary:
+	var origin: Vector3i = parcel.get("origin", Vector3i.ZERO)
+	var size: Vector3i = parcel.get("size", Vector3i.ZERO)
+	var entities: Dictionary = {}
+	var families: Dictionary = {}
+	var cells: Dictionary = {}
+	var loop_cells: Dictionary = {}
+	var shifts: Array = []
+	for instance_id: String in app.session.workstations.stations.keys():
+		var record: Dictionary = app.session.workstations.stations[instance_id]
+		var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+		if anchor.x < origin.x or anchor.x >= origin.x + size.x or anchor.z < origin.z or anchor.z >= origin.z + size.z:
+			continue
+		var entity_id := str(record.get("entity_id", ""))
+		entities[entity_id] = int(entities.get(entity_id, 0)) + 1
+		var family := _track_family(record)
+		if family.is_empty():
+			continue
+		families[family] = int(families.get(family, 0)) + 1
+		cells[anchor] = true
+		if family == "loop":
+			loop_cells[anchor] = true
+		if family == "switch":
+			var shift := absf(float((record.get("curve", {}) as Dictionary).get("params", {}).get("shift", 0.0)))
+			if not shifts.has(shift):
+				shifts.append(shift)
+	return {"entities": entities, "families": families, "cells": cells, "loop_cells": loop_cells, "switch_shifts": shifts}
+
+
+## True once the car's trail holds every cell of the circuit.
+func _trail_covers(car_id: String, cells: Dictionary) -> bool:
+	var trail := app.session.coaster_carts.trail(car_id)
+	for cell: Variant in cells.keys():
+		if not trail.has(cell):
+			return false
+	return true
+
+
+## The station record of the track piece in `cell` ({} when there is none).
+func _track_record_at(cell: Vector3i) -> Dictionary:
+	var instance_id := app.session.workstations.station_at_cell(cell)
+	if instance_id.is_empty():
+		return {}
+	return app.session.workstations.stations.get(instance_id, {})
+
+
+static func _parcel_centre(parcel: Dictionary) -> Vector3:
+	var origin: Vector3i = parcel.get("origin", Vector3i.ZERO)
+	var size: Vector3i = parcel.get("size", Vector3i.ZERO)
+	return Vector3(origin) + Vector3(float(size.x) * 0.5, 0.0, float(size.z) * 0.5)
 
 
 ## Reading evidence for T215: one of the campus's real signs framed from in
@@ -452,12 +747,15 @@ func _wait_ready() -> bool:
 	return true
 
 
-## Waits until the builder's queue is empty and nothing is parked waiting for
-## terrain to stream in around the player.
-func _wait_built(label: String) -> bool:
+## Waits until the builder has nothing left to do. With `owners` (district and
+## exhibit ids, from `_district_owners`) it waits only on that district's work:
+## a district on the far side of the campus is deliberately parked until
+## someone walks there, so waiting on the whole queue from the plaza would
+## never finish once the CoasterCraft park (card F) is built too.
+func _wait_built(label: String, owners: PackedStringArray = PackedStringArray()) -> bool:
 	var builder: ExpoBuilder = app.development.expo_builder
 	var deadline := Time.get_ticks_msec() + BUILD_TIMEOUT_MSEC
-	while builder.pending_ops() > 0 or builder.deferred_ops() > 0:
+	while _still_building(builder, owners):
 		if Time.get_ticks_msec() >= deadline:
 			failures.append("%s build timeout (%s)" % [label, JSON.stringify(builder.progress())])
 			return false
@@ -468,6 +766,22 @@ func _wait_built(label: String) -> bool:
 		failures.append("%s build failures: %s" % [label, "; ".join(builder.failures())])
 		return false
 	return true
+
+
+static func _still_building(builder: ExpoBuilder, owners: PackedStringArray) -> bool:
+	if owners.is_empty():
+		return builder.pending_ops() > 0 or builder.deferred_ops() > 0
+	return builder.pending_for(owners) > 0
+
+
+## A district's id plus every exhibit id in it: the owners of its build ops.
+func _district_owners(district_ids: Array) -> PackedStringArray:
+	var owners := PackedStringArray()
+	for district_id: Variant in district_ids:
+		owners.append(str(district_id))
+		for exhibit_id: String in app.development.layout.exhibit_ids(str(district_id)):
+			owners.append(exhibit_id)
+	return owners
 
 
 func _save_viewport(path: String) -> bool:
