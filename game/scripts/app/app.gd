@@ -360,6 +360,11 @@ func _ready() -> void:
 		var p4_resources_automation := P4ResourcesAutomation.new()
 		add_child(p4_resources_automation)
 		p4_resources_automation.call_deferred("run", self, p4_resources_mode)
+	var development_expo_mode := _argument_value("--development-expo-automation=")
+	if not development_expo_mode.is_empty():
+		var development_expo_automation := DevelopmentExpoAutomation.new()
+		add_child(development_expo_automation)
+		development_expo_automation.call_deferred("run", self, development_expo_mode)
 	if OS.get_cmdline_user_args().has("--coaster-sandbox"):
 		# Owner sandbox: CoasterCraft plus the premade demo tracks (not a diagnostic).
 		var coaster_sandbox := CoasterSandbox.new()
@@ -1733,6 +1738,9 @@ func _open_session(continue_existing: bool) -> void:
 	session = GameSession.new()
 	session.coastercraft = coastercraft.active
 	session.development = development.active
+	# The Expo's canonical world is sized from its own layout, not world.json
+	# (commission section 6); a normal or CoasterCraft session passes {}.
+	session.world_bounds_override = development.world_bounds() if development.active else {}
 	session.settings_view_distance = settings.view_distance
 	session.hero_armored = settings.hero_armored
 	session.track_auto_clear = settings.track_auto_clear
@@ -2014,7 +2022,7 @@ func _sign_text_row(caption: String) -> HBoxContainer:
 	label.add_theme_color_override("font_color", Color("9fd8e8"))
 	row.add_child(label)
 	var edit := LineEdit.new()
-	edit.max_length = WorkstationService.SIGN_TEXT_LIMIT
+	edit.max_length = WorkstationService.SIGN_EDITOR_TEXT_LIMIT
 	edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	edit.custom_minimum_size = Vector2(340, 40)
 	row.add_child(edit)

@@ -7,7 +7,8 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from validate_foundation import ValidationError, load_bundle, read_json, validate_bundle, in_bounds, reachable_items
+from validate_foundation import (ValidationError, load_bundle, read_json, validate_bundle, in_bounds,
+                                 reachable_items, expo_parcels, expo_world_bounds)
 from verify_toolchain import verify_archive
 
 
@@ -291,6 +292,68 @@ class FoundationTests(unittest.TestCase):
         axe = next(item for item in self.bundle['content']['items'] if item['id'] == 'wood_axe')
         axe['tool_kind'] = 'chainsaw'
         self.rejects('invalid specialized tool')
+
+
+class DevelopmentExpoTests(unittest.TestCase):
+    """The Development Expo manifest rules (docs/DEVELOPMENT_EXPO.md)."""
+
+    def setUp(self):
+        self.bundle = copy.deepcopy(load_bundle())
+        self.expo = self.bundle['development_expo']
+        self.districts = {district['id']: district for district in self.expo['districts']}
+
+    def rejects(self, message):
+        with self.assertRaisesRegex(ValidationError, message):
+            validate_bundle(self.bundle)
+
+    def exhibit(self, exhibit_id):
+        for district in self.expo['districts']:
+            for exhibit in district['exhibits']:
+                if exhibit['id'] == exhibit_id:
+                    return exhibit
+        raise AssertionError(exhibit_id)
+
+    def test_valid_baseline_layout(self):
+        validate_bundle(self.bundle)
+        parcels = expo_parcels(self.expo)
+        self.assertIn('plaza_core', parcels)
+        minimum, size = expo_world_bounds(self.expo)
+        self.assertTrue(all(value % self.expo['chunk_size'] == 0 for value in size))
+        self.assertLessEqual(minimum[1], self.expo['floor_y'])
+
+    def test_unknown_referenced_entity_rejected(self):
+        self.exhibit('plaza_core')['entities'] = ['teleporter']
+        self.rejects('unknown entity')
+
+    def test_unknown_referenced_item_rejected(self):
+        self.exhibit('day_one_log')['items'] = ['unobtainium']
+        self.rejects('unknown item')
+
+    def test_overlapping_districts_rejected(self):
+        # The plaza grows south into the Equipment district; its corridor still
+        # touches it, so only the overlap rule can catch this.
+        self.districts['central_plaza']['size'][2] += 12
+        self.rejects('overlaps')
+
+    def test_district_without_touching_corridor_rejected(self):
+        self.districts['equipment']['expansion_corridor']['origin'][0] += 3
+        self.rejects('expansion corridor must touch')
+
+    def test_populated_reserved_parcel_rejected(self):
+        self.exhibit('equip_armour_reserved')['entities'] = ['chest']
+        self.rejects('reserved parcel stays empty')
+
+    def test_district_too_small_for_its_exhibits_rejected(self):
+        self.districts['equipment']['size'] = [34, 10, 14]
+        self.rejects('is full at exhibit')
+
+    def test_new_item_without_exhibit_or_deferral_rejected(self):
+        self.bundle['content']['items'].append(dict(self.bundle['content']['items'][0], id='mithril'))
+        self.rejects('no exhibit and no deferral')
+
+    def test_unknown_deferral_card_rejected(self):
+        self.expo['deferred_items']['chest'] = 'Z'
+        self.rejects('unknown card')
 
 
 class ArchiveTests(unittest.TestCase):

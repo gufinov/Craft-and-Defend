@@ -157,6 +157,9 @@ var miner_service: MinerService
 var _miner_drills: Dictionary = {}
 ## Set by the app before initialize(): Settings > Graphics terrain view distance.
 var settings_view_distance := 0
+## Set by the app before initialize(): the Development Expo's canonical world
+## bounds ({"min": Vector3i, "size": Vector3i}); {} keeps world.json's.
+var world_bounds_override: Dictionary = {}
 var _resource_markers: Node3D
 var _environment: Environment
 var _sun: DirectionalLight3D
@@ -234,7 +237,7 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	world = WorldAdapter.new()
 	world.name = "World"
 	add_child(world)
-	var world_result := world.initialize(session_data.working_database, player.position, snapshot.get("world", {}))
+	var world_result := world.initialize(session_data.working_database, player.position, snapshot.get("world", {}), world_bounds_override)
 	if not world_result.get("ok", false):
 		return world_result
 	world.revision = int(snapshot.get("world", {}).get("revision", 0))

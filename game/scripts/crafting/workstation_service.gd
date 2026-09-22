@@ -11,7 +11,14 @@ signal job_completed(result: Dictionary)
 const SIGN_ENTITY := "sign"
 const SIGN_MODES: Array[String] = ["text", "split", "items", "header_items"]
 const SIGN_ITEM_SLOTS := 8
-const SIGN_TEXT_LIMIT := 64
+## What a stored text field may hold. It is longer than what the editor's own
+## line lets the player type because an authored sign (the Expo's district and
+## exhibit boards, docs/DEVELOPMENT_EXPO.md) carries the manifest's whole body
+## paragraph in one field; the board autowraps it.
+const SIGN_TEXT_LIMIT := 256
+## What the SIGN editor's own text line accepts, so a hand-typed sign stays a
+## readable heading rather than a wall of text.
+const SIGN_EDITOR_TEXT_LIMIT := 64
 
 var registry: ContentRegistry
 var inventory: F0Inventory

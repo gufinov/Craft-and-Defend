@@ -69,7 +69,12 @@ var _spawn_ready_emitted := false
 var _ready_feet := SPAWN_FEET
 
 
-func initialize(database_path: String, ready_feet: Vector3 = SPAWN_FEET, world_snapshot: Dictionary = {}) -> Dictionary:
+## `bounds_override` ({"min": Vector3i, "size": Vector3i}) replaces the bounds
+## in world.json for one session. The Development Expo uses it: its canonical
+## world size is computed from the Expo layout (docs/DEVELOPMENT_EXPO.md), not
+## assumed to be the normal game's. An ordinary session passes {} and keeps the
+## configured bounds, so WORLD_MIN / WORLD_SIZE return to world.json's values.
+func initialize(database_path: String, ready_feet: Vector3 = SPAWN_FEET, world_snapshot: Dictionary = {}, bounds_override: Dictionary = {}) -> Dictionary:
 	working_database_path = database_path
 	_ready_feet = ready_feet
 	var world_config_result := _load_world_config()
@@ -86,6 +91,12 @@ func initialize(database_path: String, ready_feet: Vector3 = SPAWN_FEET, world_s
 	if config_min is Array and config_min.size() == 3 and config_size is Array and config_size.size() == 3:
 		WORLD_MIN = Vector3i(int(config_min[0]), int(config_min[1]), int(config_min[2]))
 		WORLD_SIZE = Vector3i(int(config_size[0]), int(config_size[1]), int(config_size[2]))
+	var override_min: Variant = bounds_override.get("min", null)
+	var override_size: Variant = bounds_override.get("size", null)
+	if override_min is Vector3i and override_size is Vector3i and (override_size as Vector3i).x > 0 \
+			and (override_size as Vector3i).y > 0 and (override_size as Vector3i).z > 0:
+		WORLD_MIN = override_min
+		WORLD_SIZE = override_size
 	var parent_dir := database_path.get_base_dir()
 	var mkdir_error := DirAccess.make_dir_recursive_absolute(parent_dir)
 	if mkdir_error != OK:

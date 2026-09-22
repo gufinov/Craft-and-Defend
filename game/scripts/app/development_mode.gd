@@ -45,6 +45,10 @@ var last_build: Dictionary = {}
 var _reset_requested := false
 var _builder: Callable = Callable()
 var _reset_groups: Dictionary = {}
+## The Expo manifest solved into districts, parcels, avenues and world bounds.
+var layout: ExpoLayout
+## The canonical fixture builder registered into `set_builder` at setup.
+var expo_builder: ExpoBuilder
 
 
 func setup(application: CraftAndDefendApp) -> void:
@@ -52,6 +56,57 @@ func setup(application: CraftAndDefendApp) -> void:
 	saves = SaveCoordinator.new(app.data_root.path_join(SAVE_DIR))
 	# The fixed default seed: the canonical Expo is the same world every time.
 	saves.random_world_seed = false
+	# The Expo layout and builder (docs/DEVELOPMENT_EXPO.md sections 1-3) are
+	# this mode's canonical fixture: `build_expo` drives the builder through
+	# the `set_builder` seam, so Development New and Reset Expo both build the
+	# campus, and `world_bounds()` sizes the world to what the layout needs.
+	layout = ExpoLayout.new()
+	var loaded := layout.load_layout()
+	if not loaded.get("ok", false):
+		push_error("DevelopmentMode: Expo layout failed to load (%s)" % str(loaded.get("reason", "")))
+		layout = null
+		return
+	expo_builder = ExpoBuilder.new()
+	expo_builder.name = "ExpoBuilder"
+	expo_builder.configure(layout)
+	add_child(expo_builder)
+	set_builder(_build_with_expo_builder)
+
+
+## The `set_builder` seam's handler for the real `ExpoBuilder`: it binds the
+## session, queues the whole campus and hands every district's reset group up
+## to this mode so Reset Expo and `reset_group` reach them.
+func _build_with_expo_builder(session: GameSession, fresh: bool) -> Dictionary:
+	if expo_builder == null:
+		return {"ok": false, "reason": "NO_BUILDER"}
+	expo_builder.bind_session(session)
+	if not fresh:
+		return {"ok": true, "reason": "CONTINUED", "built": false}
+	var report := expo_builder.build_all()
+	for group: String in expo_builder.reset_groups():
+		register_reset_group(group, _reset_builder_group.bind(group))
+	return report
+
+
+func _reset_builder_group(_session: GameSession, group: String) -> Dictionary:
+	return expo_builder.reset_group(group) if expo_builder != null else {"ok": false, "reason": "NO_BUILDER"}
+
+
+## The canonical world bounds computed from the Expo layout plus its expansion
+## margin (commission section 6). The app hands these to the session, which
+## passes them to `WorldAdapter.initialize` as `bounds_override`; a normal game
+## passes {} and keeps world.json's bounds.
+func world_bounds() -> Dictionary:
+	if layout == null:
+		return {}
+	var bounds := layout.world_bounds()
+	var size: Variant = bounds.get("size", Vector3i.ZERO)
+	if not size is Vector3i:
+		return {}
+	var extent: Vector3i = size
+	if extent.x <= 0 or extent.y <= 0 or extent.z <= 0:
+		return {}
+	return bounds
 
 
 func has_save() -> bool:
@@ -72,6 +127,8 @@ func begin(continue_existing: bool) -> void:
 func leave() -> void:
 	active = false
 	building = false
+	if expo_builder != null:
+		expo_builder.clear_queue()
 
 
 ## Called by the app once the world is ready. A fresh world (New, or Reset
@@ -85,6 +142,10 @@ func on_session_ready(fresh: bool) -> void:
 	if fresh:
 		session.set_clock_time(START_TIME)
 		build_expo(session, true)
+	else:
+		# A continued world keeps what the owner left behind, but the builder
+		# still binds to it so Reset Expo and the district reset groups work.
+		build_expo(session, false)
 	_reset_requested = false
 
 

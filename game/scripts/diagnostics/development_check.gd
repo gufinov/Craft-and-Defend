@@ -83,9 +83,10 @@ func exercise(application: CraftAndDefendApp) -> Dictionary:
 	var pack_after: int = _pack_size()
 	evidence["pack"] = {"before": pack_before, "after": pack_after}
 	_check("no_creative_top_up", pack_after == pack_before and not app.session.interaction.creative and not app.session.workstations.creative, "the pack is not topped up and placement is not creative (%d -> %d items)" % [pack_before, pack_after])
-	# The builder seam: New ran the stub (no builder registered yet).
-	evidence["stub_build"] = app.development.last_build.duplicate(true)
-	_check("stub_build", bool(app.development.last_build.get("ok", false)) and not bool(app.development.last_build.get("builder", true)) and bool(app.development.last_build.get("fresh", false)), "a fresh world ran build_expo with no builder registered (%s)" % JSON.stringify(app.development.last_build))
+	# The builder seam: New ran the canonical ExpoBuilder registered at setup
+	# (the card-A stub build is gone now that card C's builder is wired in).
+	evidence["canonical_build"] = app.development.last_build.duplicate(true)
+	_check("canonical_build", bool(app.development.last_build.get("ok", false)) and bool(app.development.last_build.get("builder", false)) and bool(app.development.last_build.get("fresh", false)) and app.development.expo_builder != null, "a fresh world ran build_expo through the canonical ExpoBuilder (%s)" % JSON.stringify(app.development.last_build))
 	# The reset-group seam: unknown groups are refused, a registered one runs.
 	var unknown := app.development.reset_group(app.session, "battlefield")
 	app.development.register_reset_group("probe", _probe_reset)
