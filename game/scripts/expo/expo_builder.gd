@@ -94,6 +94,11 @@ var reset_service := ExpoResetService.new()
 ## placed station's `instance_id` and `ok` once the queue reaches it (T215).
 var _sign_requests: Array[Dictionary] = []
 var _signs_placed := 0
+## The Supply Depot catalog this build generated ({} until the depot is queued).
+var _supply: Dictionary = {}
+## One entry per placed supply chest: its catalog record, its cells and, once
+## the stock op has run, the chest station's instance id (T223 reads these).
+var _supply_stands: Array[Dictionary] = []
 var _cells_written := 0
 var _entities_placed := 0
 var _failures: Array[String] = []
@@ -661,6 +666,12 @@ func _run_op(op: Dictionary, budget: int) -> int:
 				op["done"] = false
 				op["passes"] = int(op.get("passes", 0)) + 1
 			return 4
+		"stock":
+			op["done"] = true
+			if not _run_stock(op):
+				op["done"] = false
+				op["passes"] = int(op.get("passes", 0)) + 1
+			return 4
 		"sign":
 			op["done"] = true
 			if not _run_sign(op):
@@ -792,9 +803,13 @@ func _run_place(op: Dictionary) -> bool:
 	return true
 
 
-## Fills one authored container. The chest it stocks is queued ahead of this
-## op, but the ground under that chest may still have been streaming, so a cell
-## with no container yet is retried rather than reported.
+## Fills one authored container: `units` (card G's supply chests) or `per_item`
+## (card E's munition chests) of each of its item ids, through the container
+## service the running game uses. The container op ahead of this one may not
+## have run yet, or its ground may still be streaming, so a cell with no
+## container is retried rather than reported. A rebuild finds the chest already
+## stocked and tops it back up to the same count, so the depot is idempotent
+## and a chest the owner emptied is refilled.
 func _run_stock(op: Dictionary) -> bool:
 	var anchor: Vector3i = op["anchor"]
 	if not _loaded(session.world, anchor):
@@ -805,6 +820,23 @@ func _run_stock(op: Dictionary) -> bool:
 			op["attempts"] = int(op.get("attempts", 0)) + 1
 			return false
 		_failures.append("%s stock at %s: NO_CONTAINER" % [str(op.get("label", "")), anchor])
+		return true
+	var units := int(op.get("units", 0))
+	if units > 0:
+		# Card G's depot counts: each chest holds exactly `units` of each id,
+		# so a partly emptied chest is topped back up and never overfilled.
+		for entry: Variant in op.get("items", []):
+			var supplied_id := str(entry)
+			var held := session.workstations.container_count(instance_id, supplied_id)
+			if held >= units:
+				continue
+			var put := session.workstations.container_put(instance_id, supplied_id, units - held)
+			if not bool(put.get("ok", false)):
+				_failures.append("%s stock %s in %s: %s" % [str(op.get("label", "")), supplied_id, instance_id, str(put.get("reason", "PUT_FAILED"))])
+		var stand: Dictionary = op.get("stand", {})
+		if not stand.is_empty():
+			stand["instance_id"] = instance_id
+			stand["stocked"] = true
 		return true
 	var per_item := int(op.get("per_item", MUNITIONS_PER_CHEST))
 	for item_id: String in op.get("items", []):
@@ -1017,6 +1049,8 @@ func _build_terrain(exhibit_id: String, terrain: String, origin: Vector3i, size:
 			fill_box(Vector3i(origin.x, ground + 1, origin.z), Vector3i(size.x, maxi(2, size.y - 1), 2), STONE, false, "ore_face:" + exhibit_id)
 			scatter_ore(Vector3i(origin.x, ground + 1, origin.z), Vector3i(size.x, maxi(2, size.y - 1), 2), IRON_ORE, 380, 14, "ore_face:" + exhibit_id)
 			scatter_ore(Vector3i(origin.x, ground + 1, origin.z), Vector3i(size.x, maxi(2, size.y - 1), 2), COAL_ORE, 260, 15, "ore_face:" + exhibit_id)
+		"supply_depot":
+			_build_supply_depot(exhibit_id, origin, size)
 		"mountain":
 			_build_mountain(exhibit_id, origin, size)
 		"tunnel":
@@ -1110,6 +1144,83 @@ func _build_pavilion(exhibit_id: String, origin: Vector3i, size: Vector3i) -> vo
 	# The doorway sits two cells in from the near corner, where the avenue from
 	# the plaza meets the gallery.
 	carve_box(Vector3i(origin.x + 2, origin.y, origin.z), Vector3i(3, 3, 1), "pavilion:" + exhibit_id)
+## The Supply Depot (docs/DEVELOPMENT_EXPO.md, handoff sections 8 and 9): the
+## pad, then one stand per chest the generator asked for - a two-cell stone
+## plinth with the chest in front of it, the chest stocked with eight units of
+## each of its item types and the plinth's top carrying the chest's own Header
+## + Item Grid sign. Categories the game has no items for yet get the same
+## stand with a reserved board and no chest.
+##
+## The catalog comes from `SupplyDepot`, never from a list in this file, so a
+## new item joins the depot by being registered and classified and nothing
+## here changes.
+func _build_supply_depot(exhibit_id: String, origin: Vector3i, size: Vector3i) -> void:
+	level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), "supply:" + exhibit_id)
+	var config: Dictionary = {}
+	var raw_config: Variant = layout.manifest.get("supply", {})
+	if raw_config is Dictionary:
+		config = raw_config
+	_supply = SupplyDepot.catalog(session.registry, config)
+	_supply_stands.clear()
+	var chests: Array = _supply.get("chests", [])
+	var reserved: Array = _supply.get("reserved", [])
+	var units := int(_supply.get("units", SupplyDepot.DEFAULT_UNITS))
+	var unassigned: Array = _supply.get("unassigned", [])
+	if not unassigned.is_empty():
+		# Never silently bucketed: the depot reports it and validation names it.
+		_failures.append("supply depot: unclassified items %s" % str(unassigned))
+	var stands := chests.size() + reserved.size()
+	if stands > SupplyDepot.stand_capacity(size):
+		_failures.append("supply depot: %d stands do not fit the %s parcel (%d)" % [stands, size, SupplyDepot.stand_capacity(size)])
+		return
+	for index in range(chests.size()):
+		var chest: Dictionary = chests[index]
+		var stand := SupplyDepot.stand_at(origin, size, index)
+		var plinth: Vector3i = stand["plinth"]
+		var anchor: Vector3i = stand["chest"]
+		_queue_plinth("supply:" + exhibit_id, plinth)
+		place_entity("chest", anchor, 0, "supply:" + exhibit_id)
+		var items: Array[String] = chest["items"]
+		var record := {"index": index, "category": str(chest.get("category", "")), "label": str(chest.get("label", "")),
+			"items": items.duplicate(), "units": units, "chest": anchor, "plinth": plinth,
+			"sign_owner": _supply_owner(index), "instance_id": "", "stocked": false}
+		_supply_stands.append(record)
+		_ops.append({"kind": "stock", "label": "supply:" + exhibit_id, "anchor": anchor,
+			"items": items.duplicate(), "units": units, "stand": record, "passes": 0})
+		# The board reads back at a visitor walking in from the plaza (+z).
+		sign_at(plinth, "south", SupplyDepot.chest_sign(chest), record["sign_owner"])
+	for offset in range(reserved.size()):
+		var stand_reserved := SupplyDepot.stand_at(origin, size, chests.size() + offset)
+		var reserved_plinth: Vector3i = stand_reserved["plinth"]
+		_queue_plinth("supply:" + exhibit_id, reserved_plinth)
+		sign_at(reserved_plinth, "south", SupplyDepot.reserved_sign(reserved[offset], units),
+			"supply_reserved_" + str((reserved[offset] as Dictionary).get("category", offset)))
+
+
+## The two stone cells a supply sign stands on, so its board reads above the
+## chest in front of it rather than at the chest's own height.
+func _queue_plinth(label: String, base: Vector3i) -> void:
+	var cells: Array = []
+	for step in range(SupplyDepot.PLINTH_HEIGHT):
+		cells.append({"cell": base + Vector3i(0, step, 0), "voxel": STONE})
+	_queue_cells(label, cells)
+
+
+static func _supply_owner(index: int) -> String:
+	return "supply_chest_%02d" % index
+
+
+## The Supply Depot catalog this build generated ({} before the depot is built).
+func supply_catalog() -> Dictionary:
+	return _supply.duplicate(true)
+
+
+## One record per placed supply chest, with the instance id it was stocked in.
+func supply_stands() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for record: Dictionary in _supply_stands:
+		result.append(record.duplicate(true))
+	return result
 
 
 ## Entities of an exhibit: the rail line lays along its parcel, a miner stands

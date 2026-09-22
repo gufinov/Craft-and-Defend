@@ -37,16 +37,16 @@
       "name": "SUPPLY DEPOT",
       "owner_card": "G",
       "prepare": "full",
-      "origin": [-16, -1, 8],
-      "size": [32, 10, 14],
+      "origin": [-48, -1, 8],
+      "size": [64, 10, 14],
       "entrance": [0, 0, 21],
       "terrain": "level",
-      "expansion_corridor": {"origin": [-16, -1, 1], "size": [32, 10, 7]},
+      "expansion_corridor": {"origin": [-48, -1, 1], "size": [64, 10, 7]},
       "connections": ["central_plaza"],
       "expansion_priority": 1,
       "sign": {"title": "SUPPLY DEPOT", "lines": ["Abundant test stock, canonical reset."]},
       "exhibits": [
-        {"id": "supply_depot_stock", "kind": "reserved", "footprint": [20, 3, 6], "clearance": 2, "orientation": "south", "offset": [6, 1, 4], "entities": [], "items": [], "terrain": "level", "connections": ["plaza_avenue"], "owner_card": "G", "expansion_priority": 1, "sign": {"title": "SUPPLY DEPOT", "lines": ["Chest wall placed by the Supply Depot card."]}}
+        {"id": "supply_depot_stock", "kind": "catalog", "footprint": [58, 4, 8], "clearance": 1, "orientation": "south", "offset": [3, 1, 3], "entities": [], "items": [], "terrain": "supply_depot", "connections": ["plaza_avenue"], "owner_card": "G", "reset_group": "supply_depot", "expansion_priority": 1, "sign": {"title": "SUPPLY DEPOT", "lines": ["Eight of every item the game has today.", "One chest per category; its board lists what is inside.", "Chests and boards are generated from the registry,", "so a new item joins this row by being classified."]}}
       ]
     },
     {
@@ -311,5 +311,6 @@
         {"id": "grand_coaster", "kind": "showcase", "footprint": [80, 22, 26], "clearance": 1, "orientation": "north", "entities": ["coaster_car", "rail", "rail_climb", "rail_loop", "rail_switch", "rail_cross", "rail_curve"], "items": ["coaster_car"], "terrain": "level", "build": "grand_coaster", "reset_group": "coaster", "connections": ["coaster_gallery"], "expansion_priority": 3, "sign": {"title": "GRAND DEMONSTRATION COASTER", "lines": ["Lift hill, crest, drop, true loop,", "lane switcher, crossing and two U-turns", "in one closed circuit. Shift on the car."], "item": "coaster_car"}}
       ]
     }
-  ]
+  ],
+  "supply": {"units_per_item": 8, "types_per_chest": 8, "slots_per_chest": 8, "hidden_whitelist": []}
 }

@@ -8,7 +8,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from validate_foundation import (ValidationError, load_bundle, read_json, validate_bundle, in_bounds,
-                                 reachable_items, expo_parcels, expo_world_bounds)
+                                 reachable_items, expo_parcels, expo_world_bounds, item_categories,
+                                 supply_capacity, supply_catalog, supply_slots)
 from verify_toolchain import verify_archive
 
 
@@ -347,13 +348,91 @@ class DevelopmentExpoTests(unittest.TestCase):
         self.districts['equipment']['size'] = [34, 10, 14]
         self.rejects('is full at exhibit')
 
-    def test_new_item_without_exhibit_or_deferral_rejected(self):
+    def test_new_item_without_a_category_rejected(self):
+        # The growth rule's teeth since the Supply Depot stocks every classified
+        # visible item: an unclassified one is named, with the file to fix.
         self.bundle['content']['items'].append(dict(self.bundle['content']['items'][0], id='mithril'))
-        self.rejects('no exhibit and no deferral')
+        self.rejects("no Expo category.*mithril")
 
     def test_unknown_deferral_card_rejected(self):
         self.expo['deferred_items']['chest'] = 'Z'
         self.rejects('unknown card')
+
+
+class SupplyDepotTests(unittest.TestCase):
+    """The Supply Depot generation rules (docs/DEVELOPMENT_EXPO.md, handoff 8).
+
+    The Python oracle here must agree with `SupplyDepot` in
+    game/scripts/expo/supply_depot.gd; the runtime half is asserted by T223 in
+    `--development-expo-automation=gate`.
+    """
+
+    def setUp(self):
+        self.bundle = copy.deepcopy(load_bundle())
+        self.expo = self.bundle['development_expo']
+        self.content = self.bundle['content']
+        self.catalog = supply_catalog(self.content, self.expo)
+
+    def rejects(self, message):
+        with self.assertRaisesRegex(ValidationError, message):
+            validate_bundle(self.bundle)
+
+    def visible(self):
+        return [row['id'] for row in self.content['items'] if not row.get('hidden')]
+
+    def test_every_visible_item_is_stocked_exactly_once(self):
+        stocked = [item for chest in self.catalog['chests'] for item in chest['items']]
+        self.assertEqual(sorted(stocked), sorted(self.visible()))
+        self.assertEqual(len(stocked), len(set(stocked)))
+        self.assertEqual(self.catalog['units'], 8)
+
+    def test_hidden_items_stay_out_unless_whitelisted(self):
+        stocked = {item for chest in self.catalog['chests'] for item in chest['items']}
+        self.assertNotIn('enemy_core', stocked)
+        self.expo['supply']['hidden_whitelist'] = ['enemy_core']
+        whitelisted = supply_catalog(self.content, self.expo)
+        self.assertIn('enemy_core', {item for chest in whitelisted['chests'] for item in chest['items']})
+
+    def test_chests_respect_the_type_and_slot_budget(self):
+        stacks = {row['id']: row for row in self.content['items']}
+        for chest in self.catalog['chests']:
+            self.assertLessEqual(len(chest['items']), 8)
+            self.assertLessEqual(chest['slots'], 8, chest)
+            self.assertEqual(chest['slots'], sum(supply_slots(stacks[item], 8) for item in chest['items']))
+            # One category per chest: its sign's header is that category's label.
+            self.assertEqual(len({chest['category']}), 1)
+        # Eight picks do not stack, so such a chest carries one type, not eight.
+        picks = [chest for chest in self.catalog['chests'] if chest['items'] == ['iron_pick']]
+        self.assertEqual(len(picks), 1)
+
+    def test_catalog_is_deterministic(self):
+        self.assertEqual(self.catalog, supply_catalog(self.content, self.expo))
+
+    def test_future_categories_are_signage_only(self):
+        self.assertEqual([row['category'] for row in self.catalog['reserved']],
+                         ['future_food', 'future_armor'])
+        self.assertFalse([chest for chest in self.catalog['chests']
+                          if chest['category'] in ('future_food', 'future_armor')])
+
+    def test_category_map_classifies_every_visible_item(self):
+        _order, mapping = item_categories()
+        self.assertFalse([item for item in self.visible() if item not in mapping])
+
+    def test_unclassified_item_is_reported(self):
+        self.content['items'].append(dict(self.content['items'][0], id='mithril'))
+        self.assertEqual(supply_catalog(self.content, self.expo)['unassigned'], ['mithril'])
+        self.rejects("no Expo category.*mithril")
+
+    def test_depot_parcel_too_small_rejected(self):
+        exhibit = self.expo['districts'][1]['exhibits'][0]
+        self.assertEqual(exhibit['id'], 'supply_depot_stock')
+        exhibit['footprint'] = [20, 4, 4]
+        self.rejects('do not fit the depot parcel')
+
+    def test_parcel_capacity_holds_the_catalog_with_room_to_grow(self):
+        _origin, size, _district = expo_parcels(self.expo)['supply_depot_stock']
+        stands = len(self.catalog['chests']) + len(self.catalog['reserved'])
+        self.assertLessEqual(stands, supply_capacity(size))
 
 
 class ArchiveTests(unittest.TestCase):

@@ -12,6 +12,14 @@ extends RefCounted
 ##
 ## The Supply Depot card (Expo card G) owns the depot mapping and may extend
 ## CATEGORIES / ITEM_CATEGORY here; keep existing ids and their order.
+##
+## Two readings of the same map:
+##   * `category_of` is the picker's - it falls back to the item's content
+##     `category` so the editor's catalog strip never shows a gap;
+##   * `classify` is the Supply Depot's - explicit entries only, so a newly
+##     registered item that nobody has classified lands in `unassigned` and
+##     `validate_foundation.py` names it instead of the depot quietly filing it
+##     under "Natural Resources" (docs/DEVELOPMENT_EXPO.md, handoff section 8).
 
 const UNASSIGNED := "unassigned"
 
@@ -112,6 +120,20 @@ static func category_of(item_id: String, content_category: String = "") -> Strin
 	if CONTENT_CATEGORY_FALLBACK.has(content_category):
 		return str(CONTENT_CATEGORY_FALLBACK[content_category])
 	return UNASSIGNED
+
+
+## The Supply Depot's strict reading: the explicit map only. An item with no
+## entry is `unassigned`, which is a reported failure and not a bucket.
+static func classify(item_id: String) -> String:
+	return str(ITEM_CATEGORY[item_id]) if ITEM_CATEGORY.has(item_id) else UNASSIGNED
+
+
+## The category ids in display order (CATEGORIES without the labels).
+static func category_ids() -> Array[String]:
+	var result: Array[String] = []
+	for category: Dictionary in CATEGORIES:
+		result.append(str(category.id))
+	return result
 
 
 static func label_of(category_id: String) -> String:
