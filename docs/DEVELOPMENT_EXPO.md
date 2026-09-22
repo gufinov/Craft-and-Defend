@@ -185,6 +185,7 @@ and the layout engine own placement.
 | `avenue_width` / `local_path_width` | Main avenues between districts; paths inside one |
 | `clear_height` / `fill_bottom` | How far a levelled pad is cleared above and underpinned below |
 | `deferred_items` | item id -> the card that will exhibit it (see **Growth rule**) |
+| `supply` | The Supply Depot's settings: `units_per_item`, `types_per_chest`, `slots_per_chest` and the `hidden_whitelist` of hidden ids the depot may stock |
 
 ### District
 
@@ -218,9 +219,11 @@ Terrain kinds: `level`, `natural`, `tree`, `forest`, `quarry`, `coal_seam`,
 
 ### Growth rule
 
-A visible item must be exhibited somewhere or listed in `deferred_items`
-against the card that will exhibit it. Registering new content without doing
-either fails `validate_foundation.py`, so nothing can silently disappear from
+A visible item must be exhibited somewhere, stocked in the Supply Depot or
+listed in `deferred_items` against the card that will exhibit it. The depot
+stocks every *classified* visible item, so what this rule now catches in
+practice is an item nobody has given an Expo category: that fails
+`validate_foundation.py` by name, and nothing can silently disappear from
 Development Start (handoff section 6).
 
 ---
@@ -313,7 +316,7 @@ cell with solid ground under it. A rebuild rewrites the board of the sign
 already standing there rather than adding a second one. `sign_requests()` is
 the full list with each request's placed instance id; `pending_signs()` is
 whatever is still unfulfilled — T215 asserts it is empty. The current campus
-places 45 signs.
+places 69 signs, 24 of them in the Supply Depot.
 
 **Wiring.** `DevelopmentMode.setup()` loads the manifest into `layout`, creates
 the `ExpoBuilder` and registers it through card A's `set_builder` seam, so
@@ -332,7 +335,7 @@ Spawn is the plaza at `(0.5, 2.0, 40.5)`; north is -z, west is -x.
 | District | Box (x, z) | State |
 |---|---|---|
 | Central Plaza | -16..15, 26..53 | Built: level castle-stone plaza, development Core of Power, orientation sign listing every route, avenues out to every district, the Reset Expo access parcel reserved for card A |
-| Supply Depot | -16..15, 8..21 | Pad and avenue built; the chest wall is card G's |
+| Supply Depot | -48..15, 8..21 | Built: 22 generated supply chests in two rows, eight units of every visible item, each under its own Header + Item Grid board, plus the two reserved future-category stands (see **The Supply Depot** below) |
 | Reserved — future districts | 24..47, 26..53 | Deliberately empty and signed, in full view east of the plaza |
 | Day One | -60..-17, 56..95 | The eleven-step chain tree -> log -> planks -> sticks -> workbench -> wood pick -> stone -> stone pick -> furnace -> iron -> iron pick, each on its own signed parcel, read along +x and then down the rows |
 | Equipment | -9..24, 60..93 | Wood/stone/iron pick, wood axe, iron sword as catalog booths, a functional Sign booth (a real writable sign beside its label), and the empty signed future-armour parcel |
@@ -346,7 +349,79 @@ continue.
 
 ---
 
-## 5. Adding an exhibit for a new feature (handoff section 19)
+## 5. The Supply Depot (§8, §9)
+
+The district north of the plaza, one straight walk down the avenue from the
+spawn: **eight units of every item the game has today**, so the owner can test
+anything without first crafting it. Nothing in it is hand-listed — the chests,
+their contents and their boards are generated from the content registry, so a
+new item joins the depot by being registered and classified and by nothing
+else.
+
+| | |
+|---|---|
+| Generator | `game/scripts/expo/supply_depot.gd` (`SupplyDepot`), pure data in / data out |
+| Placement | `ExpoBuilder._build_supply_depot`, reached through the exhibit's `terrain: "supply_depot"` |
+| Parcel | the `supply_depot_stock` exhibit of the `supply_depot` district |
+| Settings | the manifest's `supply` block: `units_per_item`, `types_per_chest`, `slots_per_chest`, `hidden_whitelist` |
+| Python oracle | `supply_catalog()` in `tools/validate_foundation.py` — change one and you must change the other |
+| Checks | **T223** (`--development-expo-automation=gate`), **T223V** (`=visual`), `validate_foundation.py`, `SupplyDepotTests` in `tests/test_foundation.py` |
+
+### The rules
+
+- **Every non-hidden item of the registry is stocked, exactly once, eight
+  units of it.** A hidden id (`enemy_core`) stays out unless the manifest's
+  `hidden_whitelist` names it as a development asset.
+- **One category per chest**, because the chest's board is that category's
+  sign. The fourteen categories and the item → category map live in
+  `game/scripts/ui/item_categories.gd` — the one source both the sign editor's
+  item picker and the depot read.
+- **At most eight distinct types in a chest, filling at most eight of its nine
+  slots**, so the ninth stays visibly empty. Eight units of something that does
+  not stack (a pick, the Core) take eight slots, so such a chest carries that
+  one type alone. That is why the rule is *at most* eight types.
+- **Deterministic order**: category order, then registry order inside a
+  category. A chest fills in that order until the next item would exceed the
+  type or slot budget, then a new chest starts. Contents never shuffle between
+  runs, and a chest is numbered `2/6` on its board when its category needs
+  several.
+- **Future Food and Future Armour** are reserved signage, on the same stands
+  with no chest under them. No fake items, ever.
+- The depot is **idempotent**: Reset Expo (or a `district:supply_depot` reset)
+  re-runs the same build, which tops a chest the owner emptied back up and
+  leaves a full one alone.
+
+### What it looks like on the ground
+
+Each **stand** is a two-cell stone plinth with the chest in front of it and the
+sign on top, so the board stands above the chest and reads back at a visitor
+walking in from the plaza. Stands run along +x, four cells apart; rows run
+back from the entrance, four cells apart (plinth, chest, two cells of aisle).
+The parcel is 58 x 8, which holds 28 stands; the current catalog uses 24 (22
+chests and the two reserved boards). When the catalog outgrows the parcel,
+`validate_foundation.py` says so by name and the district widens into its
+expansion corridor.
+
+### How a new item joins the depot
+
+1. Register it in `contracts/content.json` as usual.
+2. Give it a category in `ItemCategories.ITEM_CATEGORY`. This is the only
+   manual step, and skipping it is a **failure**, not a default: an item with
+   no entry is `unassigned`, which fails `validate_foundation.py` naming the
+   item and the file, and which T223 proves the classifier reports rather than
+   bucketing.
+3. Run `python tools/validate_foundation.py`, `python -m unittest discover -s
+   tests` and `--development-expo-automation=gate`. The depot rebuilds itself;
+   no coordinates and no item lists change anywhere.
+
+`ItemCategories` has two readings of the same map on purpose:
+`category_of` falls back to the item's content category so the sign editor's
+picker never shows a gap, while `classify` is explicit-only so the depot can
+report what nobody has classified.
+
+---
+
+## 6. Adding an exhibit for a new feature (handoff section 19)
 
 1. Add the item/entity to `contracts/content.json` as usual.
 2. Add an exhibit record to the district that owns it in
@@ -396,3 +471,18 @@ cards add their records to it.
   district sign are read back field by field.
 - **T215V_SIGN_VIEW** (`=visual`) — `development-expo-sign.png`, the plaza's
   orientation board framed from in front of it, close enough to read.
+- **T223_SUPPLY_DEPOT** — after a Development New every non-hidden visible item
+  of the registry is stocked exactly once, eight units of it, in a chest of at
+  most eight distinct types that still has a free slot; every chest's board is
+  a Header + Item Grid whose ids are exactly the chest's, in the chest's order;
+  the walk from the spawn down the avenue and along the depot's front aisle is
+  unobstructed, floored and clear at head height; and a registry carrying an
+  unclassified item reports it as `unassigned` instead of bucketing it.
+- **T223V_SUPPLY_VIEW** (`=visual`) — `development-expo-supply.png`, a supply
+  chest framed from the aisle with its board above it, close enough to read the
+  4 x 2 grid against the chest.
+
+The exported-game runner for all of this is
+`tools\runners\TEST_DEVELOPMENT_EXPO.cmd` (gate then visual, four screenshots,
+prints `DEVELOPMENT EXPO TEST: PASS|FAIL`); `tools\runners\RUN_ALL.cmd`
+includes it in the sweep.

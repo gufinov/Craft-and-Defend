@@ -56,6 +56,7 @@ func _run_gate() -> void:
 	if not await _wait_built("plaza"):
 		return
 	await _test_plaza_and_day_one()
+	_test_supply_depot()
 	await _test_mountain()
 	_test_signs()
 	await _settle_near_spawn()
@@ -81,6 +82,7 @@ func _run_visual() -> void:
 	var plaza_shot := await _save_viewport(plaza_path)
 	_record("T214V_PLAZA_VIEW", plaza_shot, "rendered evidence of the Development Expo plaza with its Core", {"path": plaza_path})
 	await _shoot_sign("central_plaza")
+	await _shoot_supply_row()
 	var tunnel := app.development.layout.parcel_for("mountain_tunnel")
 	var tunnel_origin: Vector3i = tunnel["origin"]
 	var tunnel_size: Vector3i = tunnel["size"]
@@ -206,6 +208,155 @@ func _test_plaza_and_day_one() -> void:
 		"present": present, "missing": chain.size() - present.size()})
 
 
+## T223: the generated Supply Depot. Every non-hidden visible item of the
+## registry is stocked exactly once, eight units of it, in a chest holding at
+## most eight distinct types with a slot left free; every chest's board lists
+## exactly the ids in the chest below it; the depot is a clear walk from the
+## spawn; and an item with no Expo category is reported as unassigned instead
+## of being filed away silently (the classifier is driven directly for that).
+func _test_supply_depot() -> void:
+	var builder: ExpoBuilder = app.development.expo_builder
+	var catalog := builder.supply_catalog()
+	var stands := builder.supply_stands()
+	var requests := builder.sign_requests()
+	var workstations: WorkstationService = app.session.workstations
+	var units := int(catalog.get("units", SupplyDepot.DEFAULT_UNITS))
+	var expected := SupplyDepot.visible_items(app.session.registry, _supply_whitelist())
+	var stocked: Array[String] = []
+	var problems: Array[String] = []
+	for stand: Dictionary in stands:
+		var items: Array = stand.get("items", [])
+		var instance_id := str(stand.get("instance_id", ""))
+		var label := str(stand.get("category", "")) + " @ " + str(stand.get("chest", Vector3i.ZERO))
+		if instance_id.is_empty() or str(workstations.stations.get(instance_id, {}).get("entity_id", "")) != "chest":
+			problems.append(label + ": no chest station")
+			continue
+		if items.size() > SupplyDepot.DEFAULT_TYPES_PER_CHEST:
+			problems.append(label + ": more than eight distinct types")
+		var held: Dictionary = {}
+		var empty_slots := 0
+		for entry: Variant in workstations.container_slots(instance_id):
+			var slot: Dictionary = entry
+			var item_id := str(slot.get("item_id", ""))
+			if item_id.is_empty():
+				empty_slots += 1
+				continue
+			held[item_id] = int(held.get(item_id, 0)) + int(slot.get("count", 0))
+		if empty_slots < 1:
+			problems.append(label + ": no free slot left in the chest")
+		for entry: Variant in items:
+			var item_id := str(entry)
+			stocked.append(item_id)
+			if int(held.get(item_id, 0)) != units:
+				problems.append("%s: %s holds %d, expected %d" % [label, item_id, int(held.get(item_id, 0)), units])
+		if held.size() != items.size():
+			problems.append(label + ": chest holds items its catalog record does not name")
+		var board := _sign_of(requests, str(stand.get("sign_owner", "")), workstations)
+		if board.is_empty():
+			problems.append(label + ": no sign placed above the chest")
+			continue
+		if str(board.get("mode", "")) != "header_items" or not str(board.get("text_a", "")).begins_with(str(stand.get("label", ""))):
+			problems.append(label + ": the board is not a Header + Item Grid of its category")
+		var listed: Array = board.get("items", [])
+		if listed.size() != items.size():
+			problems.append(label + ": the board lists %d ids for %d items" % [listed.size(), items.size()])
+		else:
+			for index in range(listed.size()):
+				if str(listed[index]) != str(items[index]):
+					problems.append(label + ": the board lists " + str(listed[index]) + " where the chest holds " + str(items[index]))
+	var duplicates: Array[String] = []
+	for item_id: String in stocked:
+		if stocked.count(item_id) > 1 and item_id not in duplicates:
+			duplicates.append(item_id)
+	var missing: Array[String] = []
+	for item_id: String in expected:
+		if item_id not in stocked:
+			missing.append(item_id)
+	var extra: Array[String] = []
+	for item_id: String in stocked:
+		if item_id not in expected and item_id not in extra:
+			extra.append(item_id)
+	var walk := _walk_to_depot()
+	var probe := _unassigned_probe()
+	var ok: bool = bool(catalog.get("ok", false)) and (catalog.get("unassigned", []) as Array).is_empty() \
+		and not stands.is_empty() and problems.is_empty() and duplicates.is_empty() \
+		and missing.is_empty() and extra.is_empty() and bool(walk.get("ok", false)) \
+		and bool(probe.get("ok", false))
+	_record("T223_SUPPLY_DEPOT", ok,
+		"after a Development New every non-hidden visible item of the registry is stocked exactly once in the generated Supply Depot, %d units of it, in a chest of at most eight distinct types that still has a free slot; every chest's board is a Header + Item Grid listing exactly the ids in that chest; the depot is an unobstructed walk from the spawn; and an item with no Expo category is reported as unassigned instead of being bucketed" % units,
+		{"chests": stands.size(), "reserved": (catalog.get("reserved", []) as Array).size(), "stocked": stocked.size(),
+		"expected": expected.size(), "missing": missing, "extra": extra, "duplicates": duplicates,
+		"problems": problems, "walk": walk, "unassigned_probe": probe})
+
+
+## The manifest's development-asset whitelist (hidden ids the depot may stock).
+func _supply_whitelist() -> Array[String]:
+	var result: Array[String] = []
+	var config: Variant = app.development.layout.manifest.get("supply", {})
+	if config is Dictionary:
+		var raw: Variant = (config as Dictionary).get("hidden_whitelist", [])
+		if raw is Array:
+			for value: Variant in raw as Array:
+				result.append(str(value))
+	return result
+
+
+## The stored board of the sign request `owner_id` placed ({} when there is none).
+func _sign_of(requests: Array[Dictionary], owner_id: String, workstations: WorkstationService) -> Dictionary:
+	for request: Dictionary in requests:
+		if str(request.get("owner", "")) != owner_id or not bool(request.get("ok", false)):
+			continue
+		return workstations.sign_data(str(request.get("instance_id", "")))
+	return {}
+
+
+## The walk a visitor actually makes: straight down the plaza avenue from the
+## spawn to the depot's front aisle, then along that aisle past every chest.
+## Each cell must be air at head and foot height with solid ground under it.
+func _walk_to_depot() -> Dictionary:
+	var layout: ExpoLayout = app.development.layout
+	var world: WorldAdapter = app.session.world
+	var parcel := layout.parcel_for("supply_depot_stock")
+	if parcel.is_empty():
+		return {"ok": false, "reason": "NO_PARCEL"}
+	var origin: Vector3i = parcel["origin"]
+	var size: Vector3i = parcel["size"]
+	var spawn := layout.spawn_feet()
+	var feet_y := layout.ground_y() + 1
+	var aisle_z := origin.z + size.z - 2
+	var cells: Array[Vector3i] = []
+	for z in range(int(floor(spawn.z)), aisle_z - 1, -1):
+		cells.append(Vector3i(int(floor(spawn.x)), feet_y, z))
+	for x in range(size.x):
+		cells.append(Vector3i(origin.x + x, feet_y, aisle_z))
+	var blocked: Array[Vector3i] = []
+	var checked := 0
+	for cell: Vector3i in cells:
+		var feet := world.query_cell(cell)
+		var head := world.query_cell(cell + Vector3i(0, 1, 0))
+		if str(feet.get("state", "")) != "LOADED" or str(head.get("state", "")) != "LOADED":
+			continue
+		checked += 1
+		var ground := int(world.query_cell(cell + Vector3i(0, -1, 0)).get("voxel_id", AIR))
+		if int(feet.get("voxel_id", 1)) != AIR or int(head.get("voxel_id", 1)) != AIR or ground == AIR:
+			blocked.append(cell)
+	return {"ok": checked == cells.size() and blocked.is_empty(), "cells": cells.size(),
+		"checked": checked, "blocked": blocked.size(), "first_blocked": blocked[0] if not blocked.is_empty() else Vector3i.ZERO}
+
+
+## Drives the classifier directly: a registry carrying one item nobody has
+## classified must produce an unassigned report, not a silent bucket.
+func _unassigned_probe() -> Dictionary:
+	var probe := ContentRegistry.new()
+	probe.items["expo_unclassified_probe"] = {"id": "expo_unclassified_probe", "max_stack": 64, "category": "resource"}
+	var catalog := SupplyDepot.catalog(probe, {"hidden_whitelist": _supply_whitelist()})
+	var unassigned: Array = catalog.get("unassigned", [])
+	var stocked: Array = catalog.get("items", [])
+	return {"ok": not bool(catalog.get("ok", true)) and unassigned.has("expo_unclassified_probe")
+		and not stocked.has("expo_unclassified_probe"),
+		"classified": ItemCategories.classify("expo_unclassified_probe"), "unassigned": unassigned}
+
+
 ## T214 part two: the mountain's authored ore core, the lit and traversable
 ## tunnel and the rail line inside it.
 func _test_mountain() -> void:
@@ -308,6 +459,42 @@ func _shoot_sign(owner_id: String) -> void:
 	var path := app.data_root.path_join("development-expo-sign.png")
 	var shot := await _save_viewport(path)
 	_record("T215V_SIGN_VIEW", shot, "rendered evidence that the plaza's orientation sign is a real readable board, not a recorded request", {"path": path, "owner": owner_id, "cell": stand})
+
+
+## Reading evidence for T223: one Supply Depot chest framed from the aisle in
+## front of it, close enough to read its board's 4x2 item grid against the
+## chest below. The Construction chest is chosen because it is the fullest
+## grid the current catalog produces.
+func _shoot_supply_row() -> void:
+	var stands := app.development.expo_builder.supply_stands()
+	var chosen: Dictionary = {}
+	for stand: Dictionary in stands:
+		if str(stand.get("category", "")) == "construction":
+			chosen = stand
+			break
+	if chosen.is_empty() and not stands.is_empty():
+		chosen = stands[0]
+	if chosen.is_empty():
+		_record("T223V_SUPPLY_VIEW", false, "rendered evidence of a Supply Depot chest and its board", {"reason": "NO_STAND"})
+		return
+	var chest: Vector3i = chosen["chest"]
+	# Close enough to read the 4x2 grid, low enough to keep the chest under it
+	# in frame: the board is two cells above the chest, one cell behind it.
+	var board := Vector3(float(chest.x) + 0.5, float(chest.y) + 1.75, float(chest.z) - 0.5)
+	var eye := Vector3(float(chest.x) + 0.5, float(chest.y) + 1.45, float(chest.z) + 4.0)
+	_teleport(eye)
+	if not await _wait_built("supply depot"):
+		return
+	_look_from(eye, board)
+	for _frame in range(60):
+		await get_tree().process_frame
+	_look_from(eye, board)
+	await get_tree().process_frame
+	var path := app.data_root.path_join("development-expo-supply.png")
+	var shot := await _save_viewport(path)
+	_record("T223V_SUPPLY_VIEW", shot,
+		"rendered evidence that a Supply Depot chest stands under its own Header + Item Grid board, the grid listing the eight-unit stock inside it",
+		{"path": path, "category": str(chosen.get("category", "")), "items": chosen.get("items", []), "cell": chest})
 
 
 ## T215: every sign the manifest asked for is a real placed `sign` station,

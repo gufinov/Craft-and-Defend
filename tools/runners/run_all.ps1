@@ -15,7 +15,7 @@ $stamp = [DateTime]::Now.ToString('yyyyMMdd-HHmmss')
 $logRoot = Join-Path $repositoryRoot "artifacts\run_all-$stamp"
 New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
 
-foreach ($prefix in 'P2', 'P3C', 'P3D', 'P3E', 'P3F', 'P3G', 'P3H', 'P3K', 'P4') {
+foreach ($prefix in 'EXPO', 'P2', 'P3C', 'P3D', 'P3E', 'P3F', 'P3G', 'P3H', 'P3K', 'P4') {
     Set-Item -Path "env:${prefix}_DIAGNOSTIC_NO_OPEN" -Value '1'
     Set-Item -Path "env:${prefix}_DIAGNOSTIC_NO_PAUSE" -Value '1'
 }

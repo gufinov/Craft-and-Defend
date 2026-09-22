@@ -28,7 +28,20 @@ ATTRIBUTE_MOUNTS = {"ground", "wall", "ceiling", "any_solid_top", "any_solid_top
 EXPO_KINDS = {"catalog", "functional", "system_demo", "environmental", "scenario", "showcase", "reserved"}
 EXPO_ORIENTATIONS = {"north", "south", "east", "west"}
 EXPO_TERRAIN = {"level", "natural", "tree", "forest", "quarry", "coal_seam", "surface_ore",
-                "ore_face", "mountain", "tunnel", "ore_core", "chamber"}
+                "ore_face", "mountain", "tunnel", "ore_core", "chamber", "supply_depot"}
+# Supply Depot (docs/DEVELOPMENT_EXPO.md, handoff sections 8 and 9). The
+# categories and the item -> category map are read out of the one runtime
+# source, `game/scripts/ui/item_categories.gd`, rather than copied here: the
+# depot's whole point is that a newly registered item is either classified
+# there or reported, and two copies of the map would let them disagree.
+ITEM_CATEGORIES_GD = "game/scripts/ui/item_categories.gd"
+SUPPLY_UNASSIGNED = "unassigned"
+# Categories that may exist as signage only (mirrors SupplyDepot.RESERVED_CATEGORIES).
+SUPPLY_RESERVED_CATEGORIES = ("future_food", "future_armor")
+# Depot geometry inside its parcel (mirrors SupplyDepot's constants).
+SUPPLY_COLUMN_STRIDE = 4
+SUPPLY_ROW_PITCH = 4
+SUPPLY_EDGE_INSET = 1
 EXPO_PREPARE = {"full", "connect"}
 EXPO_CARDS = {"A", "B", "C", "D", "E", "F", "G"}
 
@@ -251,7 +264,122 @@ def boxes_overlap(first, second):
                and second[0][axis] < first[0][axis] + first[1][axis] for axis in range(3))
 
 
-def validate_development_expo(expo, content):
+def item_categories(root=ROOT):
+    """(ordered [(id, label)], item id -> category) read out of ItemCategories.
+
+    Parsed rather than duplicated: the runtime map in
+    `game/scripts/ui/item_categories.gd` is the single source of truth, and an
+    item missing from it must fail here (see `validate_supply_depot`).
+    """
+    text = (Path(root) / ITEM_CATEGORIES_GD).read_text(encoding="utf-8")
+    order = [(SUPPLY_UNASSIGNED if key == "UNASSIGNED" else key.strip('"'), label)
+             for key, label in re.findall(r'\{"id":\s*("[a-z0-9_]+"|UNASSIGNED),\s*"label":\s*"([^"]*)"\}', text)]
+    require(order, "item categories: CATEGORIES could not be read")
+    block = re.search(r"const ITEM_CATEGORY := \{(.*?)\n\}", text, re.S)
+    require(block is not None, "item categories: ITEM_CATEGORY could not be read")
+    mapping = dict(re.findall(r'"([a-z0-9_]+)":\s*"([a-z0-9_]+)"', block.group(1)))
+    known = {key for key, _ in order}
+    require(all(value in known for value in mapping.values()), "item categories: ITEM_CATEGORY names an unknown category")
+    return order, mapping
+
+
+def supply_slots(item, units):
+    """Chest slots `units` of one item type takes: one per stack, rounded up."""
+    return -(-units // max(1, item["max_stack"]))
+
+
+def supply_catalog(content, expo, root=ROOT):
+    """Python oracle of `SupplyDepot.catalog` (game/scripts/expo/supply_depot.gd).
+
+    Category order, then registry order inside a category; a chest takes items
+    until the next one would exceed the type or slot budget, then a new chest
+    starts. Must stay identical to the GDScript - change one, change the other.
+    """
+    config = expo.get("supply", {})
+    units = config["units_per_item"]
+    types_per_chest = config["types_per_chest"]
+    slots_per_chest = config["slots_per_chest"]
+    whitelist = set(config.get("hidden_whitelist", []))
+    order, mapping = item_categories(root)
+    visible = [row for row in content["items"] if not row.get("hidden") or row["id"] in whitelist]
+    unassigned = [row["id"] for row in visible if mapping.get(row["id"], SUPPLY_UNASSIGNED) == SUPPLY_UNASSIGNED]
+    grouped = {}
+    for row in visible:
+        category = mapping.get(row["id"], SUPPLY_UNASSIGNED)
+        if category != SUPPLY_UNASSIGNED:
+            grouped.setdefault(category, []).append(row)
+    chests, reserved = [], []
+    for category, label in order:
+        if category == SUPPLY_UNASSIGNED:
+            continue
+        members = grouped.get(category, [])
+        if not members:
+            if category in SUPPLY_RESERVED_CATEGORIES:
+                reserved.append({"category": category, "label": label})
+            continue
+        groups, current, used = [], [], 0
+        for row in members:
+            slots = min(supply_slots(row, units), slots_per_chest)
+            if current and (len(current) >= types_per_chest or used + slots > slots_per_chest):
+                groups.append((current, used))
+                current, used = [], 0
+            current.append(row["id"])
+            used += slots
+        if current:
+            groups.append((current, used))
+        for part, (group, slots_used) in enumerate(groups, start=1):
+            chests.append({"category": category, "label": label, "part": part, "parts": len(groups),
+                           "items": group, "slots": slots_used})
+    return {"units": units, "types_per_chest": types_per_chest, "slots_per_chest": slots_per_chest,
+            "chests": chests, "reserved": reserved, "unassigned": unassigned,
+            "visible": [row["id"] for row in visible]}
+
+
+def supply_capacity(size):
+    """Chest stands the depot parcel holds (mirrors SupplyDepot.stand_capacity)."""
+    span = size[0] - SUPPLY_EDGE_INSET - 2
+    columns = 0 if span < 0 else span // SUPPLY_COLUMN_STRIDE + 1
+    return columns * max(0, size[2] // SUPPLY_ROW_PITCH)
+
+
+def validate_supply_depot(expo, content, exhibits, parcels, root=ROOT):
+    """The Supply Depot rules (handoff section 8). Returns the solved catalog."""
+    config = expo.get("supply")
+    require(isinstance(config, dict), "expo supply: the manifest needs a supply block")
+    for field in ("units_per_item", "types_per_chest", "slots_per_chest"):
+        require(integer(config.get(field), 1), f"expo supply: invalid {field}")
+    whitelist = config.get("hidden_whitelist")
+    require(isinstance(whitelist, list) and all(isinstance(value, str) for value in whitelist),
+            "expo supply: invalid hidden_whitelist")
+    items = {row["id"] for row in content["items"]}
+    require(not (set(whitelist) - items), f"expo supply: hidden_whitelist names unknown items: {sorted(set(whitelist) - items)}")
+    depot = [name for name, exhibit in exhibits.items() if exhibit["terrain"] == "supply_depot"]
+    require(len(depot) == 1, "expo supply: exactly one exhibit carries the supply_depot terrain")
+    catalog = supply_catalog(content, expo, root)
+    require(not catalog["unassigned"],
+            "expo supply: visible items with no Expo category, classify them in "
+            f"{ITEM_CATEGORIES_GD}: {catalog['unassigned']}")
+    stocked = []
+    for chest in catalog["chests"]:
+        label = f"{chest['category']} {chest['part']}/{chest['parts']}"
+        require(len(chest["items"]) <= catalog["types_per_chest"],
+                f"expo supply: chest {label} holds more than {catalog['types_per_chest']} distinct item types")
+        require(chest["slots"] <= catalog["slots_per_chest"],
+                f"expo supply: chest {label} fills more than {catalog['slots_per_chest']} of its nine slots")
+        stocked.extend(chest["items"])
+    duplicates = sorted({item for item in stocked if stocked.count(item) > 1})
+    require(not duplicates, f"expo supply: items stocked in more than one chest: {duplicates}")
+    missing = sorted(set(catalog["visible"]) - set(stocked))
+    require(not missing, f"expo supply: visible items missing from the supply catalog: {missing}")
+    origin, size, _district = parcels[depot[0]]
+    stands = len(catalog["chests"]) + len(catalog["reserved"])
+    require(stands <= supply_capacity(size),
+            f"expo supply: {stands} chest stands do not fit the depot parcel {size} "
+            f"(capacity {supply_capacity(size)}); widen the district or its parcel")
+    return catalog
+
+
+def validate_development_expo(expo, content, root=ROOT):
     """The Development Expo manifest (docs/DEVELOPMENT_EXPO.md, handoff sections 6 and 7)."""
     require(expo.get("status") == "development_expo_1", "expo: unexpected status")
     for field in ("ground_y", "floor_y", "chunk_size", "expansion_margin", "vertical_margin",
@@ -356,13 +484,18 @@ def validate_development_expo(expo, content):
     for box in boxes:
         require(all(box[0][axis] >= minimum[axis] and box[0][axis] + box[1][axis] <= minimum[axis] + size[axis]
                     for axis in range(3)), f"expo: {box[2]} falls outside the computed world bounds")
-    # Growth rule (handoff section 6): a newly registered item must be exhibited
-    # or explicitly deferred to a named card, never silently absent.
+    catalog = validate_supply_depot(expo, content, exhibits, parcels, root)
+    # Growth rule (handoff section 6): a newly registered item must be exhibited,
+    # stocked in the Supply Depot or explicitly deferred to a named card, never
+    # silently absent. The depot covers every classified visible item, so what
+    # this rule actually catches now is an item the depot could not classify -
+    # `validate_supply_depot` names it first, with the file to classify it in.
     deferred = expo["deferred_items"]
     shown = {item_id for exhibit in exhibits.values() for item_id in exhibit["items"]}
     shown |= {entity_id for exhibit in exhibits.values() for entity_id in exhibit["entities"]}
     shown |= {str(sign.get("item")) for sign in
               [exhibit.get("sign") or {} for exhibit in exhibits.values()] if sign.get("item")}
+    shown |= {item_id for chest in catalog["chests"] for item_id in chest["items"]}
     unclassified = sorted(items - shown - set(deferred))
     require(not unclassified, f"expo: items with no exhibit and no deferral: {unclassified}")
     require(all(card in EXPO_CARDS for card in deferred.values()), "expo: deferred item names an unknown card")
