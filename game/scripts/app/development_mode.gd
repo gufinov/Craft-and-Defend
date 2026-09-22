@@ -26,7 +26,7 @@ const SAVE_DIR := "development"
 ## The canonical Expo fixture this build generates. Raise it whenever the
 ## authored Expo changes in a way that an existing development world should
 ## be rebuilt for (Reset Expo).
-const EXPO_FIXTURE_VERSION := 1
+const EXPO_FIXTURE_VERSION := 2
 ## A fresh development world starts at this time of day (mid-morning, full
 ## light). The clock keeps running afterwards: day/night is not removed.
 const START_TIME := "09:00"
