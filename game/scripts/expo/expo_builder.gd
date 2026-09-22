@@ -38,6 +38,10 @@ const UNITS_PER_FRAME := 160
 ## A column that cannot run (chunks not streamed) is retried this many passes
 ## before the op is parked in `_deferred`.
 const DEFER_PASSES := 3
+
+## How many times a deferred op may be taken up again before it is reported.
+## A write that keeps failing is a fault in the fixture, not slow streaming.
+const MAX_REQUEUES := 40
 ## Parked ops are re-queued this often once the player has moved.
 const RETRY_SECONDS := 2.0
 const RETRY_DISTANCE := 12.0
@@ -648,6 +652,13 @@ func _requeue_deferred() -> void:
 		return
 	_retry_anchor = here
 	for op: Dictionary in _deferred:
+		var requeues := int(op.get("requeues", 0)) + 1
+		if requeues > MAX_REQUEUES:
+			# Ground that will not take a write after this many tries is a real
+			# fault, not streaming: report it rather than building for ever.
+			_failures.append("%s: gave up after %d requeues" % [str(op.get("label", "op")), MAX_REQUEUES])
+			continue
+		op["requeues"] = requeues
 		op["passes"] = 0
 		_ops.append(op)
 	_deferred.clear()
@@ -731,6 +742,10 @@ func _run_column(job: Dictionary) -> bool:
 		return false
 	var fill_voxel := int(job["fill_voxel"])
 	var air_only := bool(job["fill_air_only"])
+	# A column can cross a region boundary, so the ends being loaded does not
+	# promise every cell between them is. A write that does not take leaves the
+	# job unfinished and it is run again - authored ground is never half laid.
+	var wrote_all := true
 	for y in range(int(job["fill_from"]), int(job["fill_to"]) + 1):
 		var cell := Vector3i(x, y, z)
 		if air_only:
@@ -739,13 +754,20 @@ func _run_column(job: Dictionary) -> bool:
 				continue
 		if world.set_cell(cell, fill_voxel):
 			_cells_written += 1
+		else:
+			wrote_all = false
 	var surface_y := int(job["surface_y"])
-	if surface_y > -9999 and world.set_cell(Vector3i(x, surface_y, z), int(job["surface_voxel"])):
-		_cells_written += 1
+	if surface_y > -9999:
+		if world.set_cell(Vector3i(x, surface_y, z), int(job["surface_voxel"])):
+			_cells_written += 1
+		else:
+			wrote_all = false
 	for y in range(int(job["clear_from"]), int(job["clear_to"]) + 1):
 		if world.set_cell(Vector3i(x, y, z), AIR):
 			_cells_written += 1
-	return true
+		else:
+			wrote_all = false
+	return wrote_all
 
 
 func _run_cell_batch(batch: Dictionary) -> bool:
@@ -766,6 +788,10 @@ func _run_cell_batch(batch: Dictionary) -> bool:
 			continue
 		if world.set_cell(cell, int(record["voxel"])):
 			_cells_written += 1
+		else:
+			# The cell read as LOADED but the write did not take; run it again
+			# rather than leaving a hole in authored terrain.
+			missed.append(record)
 	if missed.is_empty():
 		return true
 	batch["cells"] = missed
