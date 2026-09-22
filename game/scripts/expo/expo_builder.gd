@@ -150,9 +150,32 @@ func place_exhibit(game_session: GameSession, exhibit_id: String) -> Dictionary:
 		sign_at(origin, str(parcel.get("orientation", "north")), layout.sign_data(exhibit_id), exhibit_id)
 		return {"ok": true, "reserved": true}
 	_build_terrain(exhibit_id, terrain, origin, size)
+	# `placements` pins named fixtures at manifest offsets inside the parcel
+	# (the Industry chain, the light gallery). The default per-entity geometry
+	# below only runs for entities the manifest did not pin.
+	var pinned := {}
+	var placements: Variant = record.get("placements", [])
+	if placements is Array:
+		for entry: Variant in placements as Array:
+			if not entry is Dictionary:
+				continue
+			var placement: Dictionary = entry
+			var entity_id := str(placement.get("entity", ""))
+			if entity_id.is_empty():
+				continue
+			pinned[entity_id] = true
 	var entities: Variant = record.get("entities", [])
 	if entities is Array:
-		_build_entities(exhibit_id, entities as Array, origin, size, str(parcel.get("orientation", "north")))
+		_build_entities(exhibit_id, entities as Array, origin, size, str(parcel.get("orientation", "north")), pinned)
+	if placements is Array:
+		for entry: Variant in placements as Array:
+			if not entry is Dictionary:
+				continue
+			var placement: Dictionary = entry
+			var entity_id := str(placement.get("entity", ""))
+			if entity_id.is_empty():
+				continue
+			place_entity(entity_id, origin + _cell(placement.get("offset", [])), int(placement.get("rotation", 0)), "placement:" + exhibit_id)
 	var items: Variant = record.get("items", [])
 	if kind == "catalog" and items is Array and not (items as Array).is_empty():
 		# A catalog booth is a plinth plus its label; the item itself is named
@@ -758,6 +781,8 @@ func _build_terrain(exhibit_id: String, terrain: String, origin: Vector3i, size:
 			scatter_ore(origin + Vector3i(0, 0, 0), Vector3i(size.x, maxi(1, size.y / 2), size.z), GOLD_ORE, 45, 23, "ore_core:" + exhibit_id)
 		"chamber":
 			_build_chamber(exhibit_id, origin, size)
+		"pavilion":
+			_build_pavilion(exhibit_id, origin, size)
 		_:
 			pass
 
@@ -825,12 +850,30 @@ func _build_chamber(exhibit_id: String, origin: Vector3i, size: Vector3i) -> voi
 	scatter_ore(face, Vector3i(size.x - 2, 3, 3), GOLD_ORE, 70, 32, "chamber:" + exhibit_id)
 
 
+## A roofed gallery: a levelled floor, a castle-stone wall down each long side,
+## a roof over the whole span and both ends left open, with a doorway through
+## the near wall so the avenue walks straight in. The shade is the point - a
+## light source inside reads at midday as well as at midnight.
+func _build_pavilion(exhibit_id: String, origin: Vector3i, size: Vector3i) -> void:
+	var ground := layout.ground_y()
+	var walls := maxi(3, size.y - 1)
+	level_area(Vector3i(origin.x, ground, origin.z), size.x, size.z, CASTLE_STONE, layout.clear_height(), "pavilion:" + exhibit_id)
+	fill_box(Vector3i(origin.x, origin.y, origin.z), Vector3i(size.x, walls, 1), CASTLE_STONE, false, "pavilion:" + exhibit_id)
+	fill_box(Vector3i(origin.x, origin.y, origin.z + size.z - 1), Vector3i(size.x, walls, 1), CASTLE_STONE, false, "pavilion:" + exhibit_id)
+	fill_box(Vector3i(origin.x, origin.y + walls, origin.z), Vector3i(size.x, 1, size.z), CASTLE_STONE, false, "pavilion:" + exhibit_id)
+	# The doorway sits two cells in from the near corner, where the avenue from
+	# the plaza meets the gallery.
+	carve_box(Vector3i(origin.x + 2, origin.y, origin.z), Vector3i(3, 3, 1), "pavilion:" + exhibit_id)
+
+
 ## Entities of an exhibit: the rail line lays along its parcel, a miner stands
 ## in front of its ore face with an ore bin beside it, everything else stands
 ## on the parcel's anchor cell.
-func _build_entities(exhibit_id: String, entities: Array, origin: Vector3i, size: Vector3i, _orientation: String) -> void:
+func _build_entities(exhibit_id: String, entities: Array, origin: Vector3i, size: Vector3i, _orientation: String, pinned: Dictionary = {}) -> void:
 	for entry: Variant in entities:
 		var entity_id := str(entry)
+		if pinned.has(entity_id):
+			continue  # the manifest's `placements` owns this fixture's cell
 		match entity_id:
 			"rail":
 				for x in range(size.x):

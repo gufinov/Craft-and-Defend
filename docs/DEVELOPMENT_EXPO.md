@@ -205,6 +205,7 @@ the district and overlapping nothing), `connections`, `expansion_priority`,
 | `clearance` | Free cells kept on every side of it inside its district |
 | `orientation` | `north` / `south` / `east` / `west` — which way a visitor reads it |
 | `entities` / `items` | Referenced content ids; validation rejects an id that is not in the content registry |
+| `placements` | Optional `[{entity, offset, rotation}]` — fixtures pinned at manifest offsets inside the parcel (the Industry chain, the light gallery). The entity must also appear in `entities` and the offset must lie inside the footprint; the builder places these instead of its own per-entity default geometry |
 | `terrain` | What the builder authors here (see the terrain kinds below) |
 | `connections` | Which path or line the exhibit must touch |
 | `sign` | `{title, lines, item}` — the sign card renders it; `item` must exist |
@@ -214,7 +215,9 @@ the district and overlapping nothing), `connections`, `expansion_priority`,
 | `nested` | This parcel is carved inside another exhibit's volume, so it is exempt from the overlap rule and must lie wholly inside a host parcel |
 
 Terrain kinds: `level`, `natural`, `tree`, `forest`, `quarry`, `coal_seam`,
-`surface_ore`, `ore_face`, `mountain`, `tunnel`, `ore_core`, `chamber`.
+`surface_ore`, `ore_face`, `mountain`, `tunnel`, `ore_core`, `chamber`,
+`pavilion`. `natural` authors nothing, which is what a parcel nested inside a
+built structure (a light alcove inside the gallery) wants.
 
 ### Growth rule
 
@@ -294,6 +297,7 @@ on both counts reaching zero.
 | `fill_box(origin, size, voxel, replace_air_only, label)` | Solid box |
 | `carve_box(origin, size, label)` | Box to air |
 | `carve_tunnel(from, to, width, height, label)` | Axis-aligned passage with a solid floor under it |
+| terrain `pavilion` | A roofed gallery: levelled castle-stone floor, a wall down each long side, a roof slab over the span, both ends open and a three-wide doorway through the near wall |
 | `scatter_ore(origin, size, voxel, per_thousand, salt, label)` | Deliberate ore in stone; a deterministic cell hash, so the same box always gives the same ore |
 | `plant_tree(base, height, label)` | Log trunk and leaf cap |
 | `place_entity(entity_id, anchor, rotation, label)` | One free fixture |
@@ -313,7 +317,7 @@ cell with solid ground under it. A rebuild rewrites the board of the sign
 already standing there rather than adding a second one. `sign_requests()` is
 the full list with each request's placed instance id; `pending_signs()` is
 whatever is still unfulfilled — T215 asserts it is empty. The current campus
-places 45 signs.
+places 61 signs.
 
 **Wiring.** `DevelopmentMode.setup()` loads the manifest into `layout`, creates
 the `ExpoBuilder` and registers it through card A's `set_builder` seam, so
@@ -337,12 +341,54 @@ Spawn is the plaza at `(0.5, 2.0, 40.5)`; north is -z, west is -x.
 | Day One | -60..-17, 56..95 | The eleven-step chain tree -> log -> planks -> sticks -> workbench -> wood pick -> stone -> stone pick -> furnace -> iron -> iron pick, each on its own signed parcel, read along +x and then down the rows |
 | Equipment | -9..24, 60..93 | Wood/stone/iron pick, wood axe, iron sword as catalog booths, a functional Sign booth (a real writable sign beside its label), and the empty signed future-armour parcel |
 | Resources | -88..-49, 8..47 | Forest patch, stepped quarry, coal seam, surface iron and gold outcrops |
-| Mining Mountain | -124..-53, -68..3 | A 72x72 voxel mass rising to y 23, a deliberately authored deep ore core (coal, iron, gold), a 9-wide 7-high tunnel lit end to end by post lanterns with a 64-cell rail line inside, a manual-mining chamber and a separate automated-mining chamber with a Miner and an Ore Bin on a deep ore face |
-| Industry, Construction Yard, Defense Range, Battlefield, Lighting, CoasterCraft | see the manifest | Parcels, entrances, corridors and avenues reserved; cards D, E and F build them |
+| Mining Mountain | -124..-53, -68..3 | A 72x72 voxel mass rising to y 23, a deliberately authored deep ore core (coal, iron, gold), a 9-wide 7-high tunnel lit end to end by post lanterns with a 68-cell rail line inside (it now runs to the district edge so card D's line continues it), a manual-mining chamber and a separate automated-mining chamber with a Miner and an Ore Bin on a deep ore face |
+| Industry | -52..15, -44..-5 | The working chain, built by card D (below) |
+| Lighting and Utilities | -8..35, 96..127 | The roofed light walk, built by card D (below) |
+| Construction Yard, Defense Range, Battlefield, CoasterCraft | see the manifest | Parcels, entrances, corridors and avenues reserved; cards E and F build them |
 
-The Mining Mountain's east mouth faces the campus and its rail line points at
-the Industry district's entrance, which is what card D's chain is expected to
-continue.
+The Mining Mountain's east mouth faces the campus and its rail line runs out to
+the district edge, where the Industry district (flush against it) picks the
+same line up.
+
+---
+
+## 4b. Industry / Logistics and Lighting + Utilities (§7, card D)
+
+Two districts, both built from the manifest alone: no new gameplay, no second
+implementation of anything — the chain is the shipped services composed in
+authored positions (`placements`).
+
+### Industry — one chain, walked west to east
+
+The district is flush against the Mining Mountain (`-52..15, -44..-5`), so the
+**one rail line** is literally one line: the mountain's 68 cells (x -120..-53)
+and the yard's 39 (x -52..-14) chain cell by cell along `z -34` at `y 0`. The
+stages stand along it in reading order, each its own signed exhibit:
+
+| Exhibit | What stands there |
+|---|---|
+| `industry_ore_face` **1 ORE > MINER > ORE BIN** | An authored iron-and-coal face at the mountain foot, a **Miner** two cells off it and an **Ore Bin** beside the miner *and* beside the track |
+| `industry_rail` **2 MINE CART ON RAIL** | The yard's rail cells and a **Mine Cart** on them. The cart loads at the bin, rides east and unloads at the dock |
+| `industry_warehouse` **3 WAREHOUSE > FOUNDRY** | The **Warehouse** beside the track and a **Foundry** touching it: the foundry pulls the ore and the coal out of the warehouse and pushes the ingots back |
+| `industry_ingots` **4 INGOTS** | A catalog plinth for Iron and Gold Ingot, the chain's output |
+| `industry_net_chest` / `_chain` / `_foundry` / `_furnace` | The four storage-network demonstrations, one signed booth each: Warehouse + Chest, two Warehouses daisy-chained, a Foundry touching storage, a Furnace touching storage |
+| `industry_expansion` | The reserved expansion edge, levelled and signed, kept clear |
+
+**Every container and every foundry slot is empty as built** (handoff §7): the
+builder stocks nothing, so the owner watches the bin fill, the cart carry and
+the ingots arrive. The avenue from the plaza enters at `(-12, 0, -5)` and the
+whole southern half of the district is open ground between it and the booths.
+
+### Lighting and Utilities — the light walk
+
+One `pavilion`: a castle-stone gallery 40 x 12, walls down both long sides, a
+roof over the whole span, both ends open and a doorway on the plaza side. Six
+alcoves nested inside it hold **Torch, Wall Lantern, Post Lantern, Campfire,
+Blue Light Block, Red Light Block** side by side, each on its own signed
+parcel; the Wall Lantern hangs on the gallery wall (the placement is beside it,
+so the ordinary wall-mount rule takes over). The shade is the whole point — the
+differences read at 09:00 as well as at midnight. No weather and no new time
+system: World Settings still own the clock.
 
 ---
 
@@ -396,3 +442,20 @@ cards add their records to it.
   district sign are read back field by field.
 - **T215V_SIGN_VIEW** (`=visual`) — `development-expo-sign.png`, the plaza's
   orientation board framed from in front of it, close enough to read.
+- **T216_EXPO_INDUSTRY** — the chain stands (miner, ore bin, the rail chaining
+  unbroken from the mountain's first cell to the yard's last, the cart, the
+  warehouse, the foundry), every container and foundry slot is empty as built,
+  and the chain **runs**: the gate advances the miner, the cart service and the
+  foundry itself and asserts ore in the bin, ore in the warehouse and an ingot
+  back in storage. The four storage-network booths are read through
+  `StorageNetwork.network_of` and must pool exactly as their signs say. The
+  gate pauses the simulation while it inspects, so "empty as built" is a fact
+  about the fixture and not about how fast the run went.
+- **T217_EXPO_LIGHTING** — all six light entities stand in the gallery on their
+  own signed parcels, each carries an `OmniLight3D` with the colour, range and
+  a positive energy its content sheet declares, and each has the gallery roof
+  over it.
+- **T216V_INDUSTRY_VIEW** / **T217V_LIGHTING_VIEW** (`=visual`) —
+  `development-expo-industry.png` (the ore face, the miner and bin, the line
+  east to the yard) and `development-expo-lighting.png` (the shaded walk with
+  the six sources receding).

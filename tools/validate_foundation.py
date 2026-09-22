@@ -28,7 +28,7 @@ ATTRIBUTE_MOUNTS = {"ground", "wall", "ceiling", "any_solid_top", "any_solid_top
 EXPO_KINDS = {"catalog", "functional", "system_demo", "environmental", "scenario", "showcase", "reserved"}
 EXPO_ORIENTATIONS = {"north", "south", "east", "west"}
 EXPO_TERRAIN = {"level", "natural", "tree", "forest", "quarry", "coal_seam", "surface_ore",
-                "ore_face", "mountain", "tunnel", "ore_core", "chamber"}
+                "ore_face", "mountain", "tunnel", "ore_core", "chamber", "pavilion"}
 EXPO_PREPARE = {"full", "connect"}
 EXPO_CARDS = {"A", "B", "C", "D", "E", "F", "G"}
 
@@ -313,6 +313,23 @@ def validate_development_expo(expo, content):
                 require(item_id in items, f"expo exhibit {name}: unknown item {item_id}")
             if "offset" in exhibit:
                 require(vector(exhibit["offset"]), f"expo exhibit {name}: invalid offset")
+            # `placements` pins named fixtures inside the parcel (the Industry
+            # chain, the light gallery): the manifest owns those coordinates,
+            # the builder only applies them.
+            placements = exhibit.get("placements", [])
+            require(isinstance(placements, list), f"expo exhibit {name}: invalid placements")
+            for placement in placements:
+                require(isinstance(placement, dict), f"expo exhibit {name}: invalid placement")
+                entity_id = placement.get("entity")
+                require(entity_id in entities, f"expo exhibit {name}: placement names unknown entity {entity_id}")
+                require(entity_id in exhibit["entities"],
+                        f"expo exhibit {name}: placement entity {entity_id} is not listed in entities")
+                require(vector(placement.get("offset")), f"expo exhibit {name}: invalid placement offset")
+                offset = placement["offset"]
+                require(all(0 <= offset[axis] < exhibit["footprint"][axis] for axis in range(3)),
+                        f"expo exhibit {name}: placement of {entity_id} falls outside the footprint")
+                require(type(placement.get("rotation", 0)) is int and 0 <= placement.get("rotation", 0) <= 3,
+                        f"expo exhibit {name}: invalid placement rotation")
             if "reset_group" in exhibit:
                 require(isinstance(exhibit["reset_group"], str) and exhibit["reset_group"],
                         f"expo exhibit {name}: invalid reset group")
