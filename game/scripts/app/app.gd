@@ -329,7 +329,7 @@ func _ready() -> void:
 		add_child(coastercraft_check)
 		coastercraft_check.call_deferred("run", self)
 	elif OS.get_cmdline_user_args().has("--coastercraft"):
-		# START_COASTERCRAFT.cmd: straight into CoasterCraft's New.
+		# START.cmd coastercraft: straight into CoasterCraft's New.
 		call_deferred("_on_coastercraft_new_pressed")
 	var coaster_rails_mode := _argument_value("--coaster-rails-automation=")
 	if not coaster_rails_mode.is_empty():

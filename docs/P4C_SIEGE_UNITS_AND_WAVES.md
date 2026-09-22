@@ -58,7 +58,7 @@ All four owner-art machines share `_add_siege_platform`: an oak plank deck with 
 ## Acceptance
 
 - `--p4-siege-units-automation=gate`: T130 content, T131 cannon, T132 turret catapult on a tower socket (+ scorched ground), T133 rails + kettle ride + hot-oil dump, T134 ballista presentation, T135 wave drill, T142 far spawn on natural ground; `save` / `restore`: T141 wave persistence; `visual`: T136 `p4-siege-units.png` (all five machines in one view).
-- `TEST_P4_SIEGE_UNITS.cmd` runs gate then visual on the export.
+- `tools\runners\TEST_P4_SIEGE_UNITS.cmd` runs gate then visual on the export.
 - Updated expectations: T73/T78 (three recipe pages, search "kettle"), T66 (progression-ordered book; barricade found by search), T90 order list.
 
 ## Boundary and next

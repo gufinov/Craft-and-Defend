@@ -50,7 +50,7 @@ The modal keeps its 1220 × 680 shell inside the 1280 × 720 canvas. The grid an
 ## Acceptance
 
 - T121 weapon panel through the app handlers, T121_SUPPLY_READOUT with a stocked chest in range, T122 chest panel, T123 rendered PNGs (`p4-weapon-panel.png`, `p4-chest-panel.png`) with real viewport clicks.
-- `TEST_P4_WEAPON_PANEL.cmd` runs gate (headless) then visual on the exported build.
+- `tools\runners\TEST_P4_WEAPON_PANEL.cmd` runs gate (headless) then visual on the exported build.
 - Regression: P3G gate + visual (furnace / workbench modal fit, T114/T115 click path), P3E gate, P3C phase1.
 
 ## Boundary and next

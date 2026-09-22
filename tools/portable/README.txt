@@ -1,12 +1,13 @@
 CRAFT AND DEFEND — PORTABLE WINDOWS BUILD
 
 Keep these files together in one folder:
-  START_GAME.cmd
+  START.cmd
   CraftAndDefend.exe
   CraftAndDefend.pck
   build_manifest.json
 
-Double-click START_GAME.cmd (or CraftAndDefend.exe) to play. Godot Editor is not required.
+Double-click START.cmd (or CraftAndDefend.exe) to play. Godot Editor is not required.
+START.cmd stop closes a stuck game window.
 
 Saved games and global settings:
   %APPDATA%\CraftAndDefend\

@@ -29,7 +29,7 @@ The 1:3 ratio is a transparent prototype balance choice, not a claim of real-wor
 | T101 — directional controls | W advances one quarter-turn, R reverses it, and Shift remains Interact. |
 | T102 — presentation | Rendered evidence visibly shows `1 Coal → 3 items`, stored work and separate W/R Keybind rows. |
 
-Run `TEST_P3H_BALANCE_CONTROLS.cmd`; it prepares the provenance-matched Windows export and controls both the headless and rendered diagnostics.
+Run `tools\runners\TEST_P3H_BALANCE_CONTROLS.cmd`; it prepares the provenance-matched Windows export and controls both the headless and rendered diagnostics.
 
 ## Boundaries
 

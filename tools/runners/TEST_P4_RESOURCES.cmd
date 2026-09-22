@@ -1,15 +1,17 @@
 @echo off
 setlocal
 title Craft and Defend - P4b Resource Distribution Test
-cd /d "%~dp0"
+rem Runners live in tools\runners; ROOT is the repository root two levels up.
+for %%I in ("%~dp0..\..") do set "ROOT=%%~fI\"
+cd /d "%ROOT%"
 
 echo Preparing the current exported game...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\start_game.ps1" -PrepareOnly
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\start_game.ps1" -PrepareOnly
 if errorlevel 1 goto :prepare_failed
 
-set "TEST_ROOT=%~dp0artifacts\manual-p4-resources-%RANDOM%%RANDOM%"
+set "TEST_ROOT=%ROOT%artifacts\manual-p4-resources-%RANDOM%%RANDOM%"
 set "GATE_ROOT=%TEST_ROOT%\gate"
-set "EXE=%~dp0builds\CraftAndDefend\CraftAndDefend.exe"
+set "EXE=%ROOT%builds\CraftAndDefend\CraftAndDefend.exe"
 mkdir "%GATE_ROOT%" 2>nul
 
 echo.

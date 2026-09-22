@@ -44,7 +44,7 @@ Items: `core_of_power` (stack 1), `enemy_core` (stack 1, `"hidden": true`), `tor
 
 - `--p4-assets-automation=gate` (headless): **T148** asset attributes (every new entity has the attribute block with a light, a ghost visual, navigation and defense; the seven craftable recipes are workbench recipes ordered after the chest; the enemy core is hidden and absent from the book; `ItemIconCatalog.missing_item_ids` is empty; the core is role `core`, value 500, ground, 3×4×3, blue, 12 cells; the enemy core is red, value 0, 400; torch and campfire flicker, the lantern does not), **T149** placement and light (all eight place on levelled ground with one `EntityLight` of the attribute colour and range; the core owns its 3×3 base and centre column only; `defense_status` reports 240 / 400 / 4; a torch over air is `UNSUPPORTED`, a torch on a light block places; the torch energy moves within 0.5 s while the lantern's holds).
 - `--p4-assets-automation=visual` (windowed): **T150** renders `p4-assets.png` (1280×720) at 20:30 (`apply_world_settings("2030", false)`) with both cores, the campfire, both lanterns, the torch and both light blocks; eight lights, ≥ 300 mesh parts.
-- `TEST_P4_ASSETS.cmd` runs gate then visual on the export.
+- `tools\runners\TEST_P4_ASSETS.cmd` runs gate then visual on the export.
 - Regression: P3F gate (`EXPECTED_WORKBENCH_ORDER` extended), P3C phase1, P4 siege units gate, P3G gate, P3E gate stay PASS.
 
 ## Boundary and next

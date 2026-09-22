@@ -216,23 +216,17 @@ class FoundationTests(unittest.TestCase):
         self.assertNotIn('stone', capabilities['basic_raider']['damage_per_hit'])
         self.assertIn('fortification', capabilities['siege_breaker_candidate']['damage_per_hit'])
 
-    def test_navigation_spike_has_one_click_visual_evidence(self):
+    def test_navigation_spike_stays_a_headless_gate(self):
+        # The one-click VIEW_NAVIGATION_SPIKE.cmd was retired with the root launcher cleanup
+        # (2026-09-22); the P2 diagnostic itself still runs headless as a regression gate.
         root = Path(__file__).resolve().parents[1]
-        launcher = (root / 'VIEW_NAVIGATION_SPIKE.cmd').read_text(encoding='utf-8')
-        self.assertIn('start_game.ps1" -PrepareOnly', launcher)
-        run_line = next(line for line in launcher.splitlines() if '--p2-navigation-automation=visual' in line)
-        self.assertRegex(
-            run_line,
-            r'CraftAndDefend\.exe" --log-file .* -- --f0-data-root=.* --p2-navigation-automation=visual$',
-        )
-        self.assertIn('if not exist "%DIAGNOSTIC_IMAGE%"', launcher)
-        self.assertIn('Review: %DIAGNOSTIC_LOG%', launcher)
-        self.assertIn('P2_DIAGNOSTIC_NO_OPEN', launcher)
-        self.assertIn('p2-navigation-spike.png', launcher)
+        app = (root / 'game' / 'scripts' / 'app' / 'app.gd').read_text(encoding='utf-8')
+        self.assertIn('--p2-navigation-automation=', app)
+        self.assertFalse((root / 'VIEW_NAVIGATION_SPIKE.cmd').exists())
 
     def test_p3c_has_one_click_exported_gameplay_and_visual_evidence(self):
         root = Path(__file__).resolve().parents[1]
-        launcher = (root / 'TEST_P3C_PLAYER_DEFENSE.cmd').read_text(encoding='utf-8')
+        launcher = (root / 'tools' / 'runners' / 'TEST_P3C_PLAYER_DEFENSE.cmd').read_text(encoding='utf-8')
         self.assertIn('start_game.ps1" -PrepareOnly', launcher)
         self.assertIn('--p3c-player-defense-automation=phase1', launcher)
         self.assertIn('--p3c-player-defense-automation=save', launcher)
@@ -243,7 +237,7 @@ class FoundationTests(unittest.TestCase):
 
     def test_p3d_has_one_click_exported_gameplay_and_visual_evidence(self):
         root = Path(__file__).resolve().parents[1]
-        launcher = (root / 'TEST_P3D_USABILITY.cmd').read_text(encoding='utf-8')
+        launcher = (root / 'tools' / 'runners' / 'TEST_P3D_USABILITY.cmd').read_text(encoding='utf-8')
         self.assertIn('start_game.ps1" -PrepareOnly', launcher)
         self.assertIn('--p3d-usability-automation=phase1', launcher)
         self.assertIn('--p3d-usability-automation=visual', launcher)
@@ -253,7 +247,7 @@ class FoundationTests(unittest.TestCase):
 
     def test_p3e_has_one_click_exported_container_and_visual_evidence(self):
         root = Path(__file__).resolve().parents[1]
-        launcher = (root / 'TEST_P3E_FURNACE.cmd').read_text(encoding='utf-8')
+        launcher = (root / 'tools' / 'runners' / 'TEST_P3E_FURNACE.cmd').read_text(encoding='utf-8')
         self.assertIn('start_game.ps1" -PrepareOnly', launcher)
         self.assertIn('--p3e-container-automation=gate', launcher)
         self.assertIn('--p3e-container-automation=visual', launcher)
@@ -263,7 +257,7 @@ class FoundationTests(unittest.TestCase):
 
     def test_p3f_has_one_click_exported_order_and_visual_evidence(self):
         root = Path(__file__).resolve().parents[1]
-        launcher = (root / 'TEST_P3F_PRESENTATION.cmd').read_text(encoding='utf-8')
+        launcher = (root / 'tools' / 'runners' / 'TEST_P3F_PRESENTATION.cmd').read_text(encoding='utf-8')
         self.assertIn('start_game.ps1" -PrepareOnly', launcher)
         self.assertIn('--p3f-presentation-automation=gate', launcher)
         self.assertIn('--p3f-presentation-automation=visual', launcher)
@@ -275,7 +269,7 @@ class FoundationTests(unittest.TestCase):
 
     def test_p3g_has_one_click_furnace_usability_and_visual_evidence(self):
         root = Path(__file__).resolve().parents[1]
-        launcher = (root / 'TEST_P3G_FURNACE_USABILITY.cmd').read_text(encoding='utf-8')
+        launcher = (root / 'tools' / 'runners' / 'TEST_P3G_FURNACE_USABILITY.cmd').read_text(encoding='utf-8')
         self.assertIn('start_game.ps1" -PrepareOnly', launcher)
         self.assertIn('--p3g-furnace-usability-automation=gate', launcher)
         self.assertIn('--p3g-furnace-usability-automation=visual', launcher)
@@ -285,7 +279,7 @@ class FoundationTests(unittest.TestCase):
 
     def test_p3h_has_one_click_balance_and_controls_evidence(self):
         root = Path(__file__).resolve().parents[1]
-        launcher = (root / 'TEST_P3H_BALANCE_CONTROLS.cmd').read_text(encoding='utf-8')
+        launcher = (root / 'tools' / 'runners' / 'TEST_P3H_BALANCE_CONTROLS.cmd').read_text(encoding='utf-8')
         self.assertIn('start_game.ps1" -PrepareOnly', launcher)
         self.assertIn('--p3h-balance-controls-automation=gate', launcher)
         self.assertIn('--p3h-balance-controls-automation=visual', launcher)

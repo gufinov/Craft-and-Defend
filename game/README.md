@@ -4,7 +4,7 @@ The Godot project contains the owner-accepted foundation through P3B and the com
 
 ## Play on this PC
 
-From the repository or worktree root, double-click `START_GAME.cmd`. In a Git checkout it verifies the ignored portable export against the current tracked `game` tree and automatically rebuilds a missing, legacy, dirty or mismatched package before launch. A portable folder without Git launches its packaged executable normally. The old `START_F0.cmd` remains a compatibility wrapper.
+From the repository or worktree root, double-click `START.cmd`. In a Git checkout it verifies the ignored portable export against the current tracked `game` tree and automatically rebuilds a missing, legacy, dirty or mismatched package before launch. A portable folder without Git launches its packaged executable normally. `START.cmd help` lists the other options (`sandbox`, `coastercraft`, `build`, `stop`).
 
 1. Choose **Slot A** or **Slot B**, then **Start New**. Each slot owns independent terrain, inventory, player and workstation state; the player is not created before this action.
 2. Use physical **E/D/S/F** to move, **Space** to jump, and the mouse to look.
@@ -17,7 +17,7 @@ From the repository or worktree root, double-click `START_GAME.cmd`. In a Git ch
 9. Press **Escape**, open **Keybinds**, search or scroll through grouped action rows. Any implemented keyboard or mouse action can be changed; conflicts are explained and change nothing. Each row has its own **Reset**, and **Reset All Defaults** restores the exact ESDF contract. Escape always cancels capture.
 10. Open **Settings** to change look sensitivity, vertical inversion, master volume or window mode. Fullscreen reports and uses the active monitor's native resolution and fills ultrawide displays. Explicit resolutions apply to Windowed mode; previews remain centered within the active monitor's usable area and revert after ten seconds unless confirmed.
 11. From a paused game, expand **World Settings**. Enter a 24-hour time such as `0800` or `20:00`, choose whether the **Day/Night cycle** runs, then press **Apply World Settings**. New worlds begin at a visible 08:00 sunrise. The sun, sky, lighting and HUD update immediately; the chosen time and cycle state persist with the next normal save in that slot.
-12. Choose **Save and Quit**, relaunch with `START_GAME.cmd`, choose the same slot, and choose **Continue**. Terrain, inventory/hotbar, transform, workstations, world time/cycle state and an in-progress furnace job must return without duplicate outputs. The main menu reports whether the selected slot has a complete checkpoint.
+12. Choose **Save and Quit**, relaunch with `START.cmd`, choose the same slot, and choose **Continue**. Terrain, inventory/hotbar, transform, workstations, world time/cycle state and an in-progress furnace job must return without duplicate outputs. The main menu reports whether the selected slot has a complete checkpoint.
 13. Press **F2** while playing to save the rendered game viewport in the background without pausing. The confirmation names the PNG. Change or reset this action in **Keybinds**; it is a global setting shared by save slots.
 14. Press **Print Screen** while playing. The world freezes invisibly while Windows Snipping Tool owns focus, no Pause menu contaminates the capture, and play resumes after focus returns. Ordinary Alt-Tab/focus loss still opens Pause and requires explicit Resume.
 15. If saving fails, use **Retry Save** or **Return to Paused Game**. The previously completed checkpoint remains available; the game does not label a failed save as successful.
@@ -26,7 +26,7 @@ Normal save data resolves to `C:\Users\Tony\AppData\Roaming\CraftAndDefend\` on 
 
 ## Rebuild
 
-Double-click `BUILD_WINDOWS.cmd`. The wrapper detects the pinned editor/template from environment variables or the required sibling `_tools` layout, generates ignored `game\export_presets.cfg`, and exports with the `Windows Desktop` preset. No machine-specific template path is committed. The completed `builds\CraftAndDefend` folder includes its own `START_GAME.cmd` and `README.txt`; copy that folder anywhere and keep its files together. The old `BUILD_WINDOWS_F0.cmd` remains a compatibility wrapper.
+Double-click `START.cmd build`. The wrapper detects the pinned editor/template from environment variables or the required sibling `_tools` layout, generates ignored `game\export_presets.cfg`, and exports with the `Windows Desktop` preset. No machine-specific template path is committed. The completed `builds\CraftAndDefend` folder includes its own `START.cmd` and `README.txt`; copy that folder anywhere and keep its files together. (The former `BUILD_WINDOWS.cmd` / `BUILD_WINDOWS_F0.cmd` wrappers were folded into `START.cmd build` on 2026-09-22.)
 
 Command-line equivalent:
 

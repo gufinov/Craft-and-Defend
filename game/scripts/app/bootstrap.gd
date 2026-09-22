@@ -18,7 +18,7 @@ func _ready() -> void:
 		get_tree().call_deferred("change_scene_to_file", "res://scenes/app/app.tscn")
 		return
 
-	var message := "WRONG ENGINE BUILD\n\nCraft and Defend F0 requires the pinned Godot 4.6 + Voxel Tools 1.6 Module editor/export template.\nMissing classes: %s\n\nRun START_F0.cmd or follow docs/WINDOWS_SETUP.md." % ", ".join(missing)
+	var message := "WRONG ENGINE BUILD\n\nCraft and Defend F0 requires the pinned Godot 4.6 + Voxel Tools 1.6 Module editor/export template.\nMissing classes: %s\n\nRun START.cmd or follow docs/WINDOWS_SETUP.md." % ", ".join(missing)
 	push_error("FATAL_TOOLCHAIN_MISMATCH: %s" % message.replace("\n", " "))
 	var background := ColorRect.new()
 	background.color = Color("17222c")

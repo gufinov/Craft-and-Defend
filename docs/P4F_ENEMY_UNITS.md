@@ -44,7 +44,7 @@ Animation (per-frame maths and Tweens, no AnimationPlayer resources):
 
 - `--p4-enemy-units-automation=gate` (headless): **T144** enemy unit models (a 3-unit wave builds the orc with two cleavers and a pauldron, the brute scaled 1.25 with cleavers, the troll with crossbow/quiver/topknot and no swords; ≥ 40 mesh parts each; one direct collision shape per body; entries 40/10, 28/5 ranged 9 cells 2 s, lead orc 20/6), **T145** troll ranged attack (a troll 14 cells from the core keeps routing and fires nothing; at 6 cells it stops, engages the core, fires a visible bolt and costs the core 5 per shot every 2 s).
 - `--p4-enemy-units-automation=visual` (windowed): **T146** renders `p4-enemy-units.png` (1280×720) with an orc, a brute and a troll side by side about four metres in front of the camera.
-- `TEST_P4_ENEMY_UNITS.cmd` runs gate then visual on the export.
+- `tools\runners\TEST_P4_ENEMY_UNITS.cmd` runs gate then visual on the export.
 - Regression: P4 siege units gate/save/restore, P3C phase1, P3B phase1 stay PASS.
 
 ## Boundary and next

@@ -24,8 +24,8 @@ Title **COASTERCRAFT · PAUSED**, one column, no drills: **Resume** · **Save** 
 
 ## Launch
 
-- `START_COASTERCRAFT.cmd` (repo root): prepares the export and starts it straight into the mode's **New** (`--coastercraft`) with the data root `artifacts\coastercraft` (so the mode's saves land in `artifacts\coastercraft\coastercraft\`); the main menu's CoasterCraft button in the ordinary `START_GAME` uses the normal data root.
-- `START_COASTER_SANDBOX.cmd` / `--coaster-sandbox` (`CoasterSandbox`) is **this mode plus the demo tracks**: it starts the mode through the same path as the New button, levels the old 30 × 50 demo area (x −14..15, z 22..71) at once and lays the loop, circuit, curves, mountain climb, smooth switch and crossing there; every `--coaster-sandbox-*` check works as before.
+- `START.cmd coastercraft` (repo root): prepares the export and starts it straight into the mode's **New** (`--coastercraft`) with the data root `artifacts\coastercraft` (so the mode's saves land in `artifacts\coastercraft\coastercraft\`); the main menu's CoasterCraft button in the ordinary `START_GAME` uses the normal data root.
+- `START.cmd sandbox` / `--coaster-sandbox` (`CoasterSandbox`) is **this mode plus the demo tracks**: it starts the mode through the same path as the New button, levels the old 30 × 50 demo area (x −14..15, z 22..71) at once and lays the loop, circuit, curves, mountain climb, smooth switch and crossing there; every `--coaster-sandbox-*` check works as before.
 
 ## Code
 

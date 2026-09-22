@@ -205,4 +205,6 @@ Use the 128×32×192 world (expanded from the 64×32×128 fixture on 2026-09-19)
 
 ## Runtime test layers
 
+Exported-game runners: `tools\runners\TEST_*.cmd` (one per suite; each prepares the export with `tools\start_game.ps1 -PrepareOnly`, runs the suite's gate and visual modes and prints `<NAME> TEST: PASS` / `FAIL`; `<PREFIX>_DIAGNOSTIC_NO_OPEN=1` keeps evidence images closed, `P4_DIAGNOSTIC_NO_PAUSE=1` skips the pause) and `tools\runners\RUN_ALL.cmd`, which runs them all and prints a PASS/FAIL table (logs in `artifacts\run_all-<stamp>`). They moved out of the repo root on 2026-09-22; the one-click `VIEW_NAVIGATION_SPIKE.cmd` was retired with them (the P2 diagnostic still runs headless: `--p2-navigation-automation=phase1`).
+
 Automate pure inventory/crafting/occupancy rules in GDScript tests; integration-test actual VoxelTerrain edits and save/load in the pinned engine. Add manual Windows tests for pointer, UI, export and failure recovery. Reuse or add a small test runner only when needed; no testing framework dependency has been selected. Port static placement fixtures into runtime tests, but do not mistake the Python oracle for a test of Godot physics or collision meshes.

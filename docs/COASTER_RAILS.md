@@ -4,7 +4,7 @@ The coaster building **game mode** (main menu → CoasterCraft: a bare 60 × 100
 
 Owner idea (2026-09-19, verbatim intent): rails that climb 45 degrees so mine carts can go up mountains, and a "roller coaster" option — click-and-drag with keys held draws interesting shapes (a loop first; a DNA strand or corkscrew later): equip a loop rail, drag out the straight lead-in, hold Shift to start a loop, X / C make it smaller / bigger while the ghost re-sizes, release lays the loop with a trailing flat exit. Later the same rails may carry mine carts hauling ore.
 
-This is a **modular side feature**: every new file carries a `coaster` name (`game/scripts/rails/coaster_rails.gd`, `game/scripts/rails/coaster_cart_service.gd`, `game/scripts/diagnostics/coaster_rails_automation.gd`, `TEST_COASTER_RAILS.cmd`, this contract and its evidence). The core game touches it in a handful of clearly commented lines; nothing in the core depends on it beyond the `CoasterRails.chain` call that reproduces the P4C rail chain for flat rails.
+This is a **modular side feature**: every new file carries a `coaster` name (`game/scripts/rails/coaster_rails.gd`, `game/scripts/rails/coaster_cart_service.gd`, `game/scripts/diagnostics/coaster_rails_automation.gd`, `tools\runners\TEST_COASTER_RAILS.cmd`, this contract and its evidence). The core game touches it in a handful of clearly commented lines; nothing in the core depends on it beyond the `CoasterRails.chain` call that reproduces the P4C rail chain for flat rails.
 
 ## Pieces (content)
 
@@ -58,7 +58,7 @@ Hauling (industry wave 1, `docs/INDUSTRY.md`): a mine cart reaching a cell with 
 
 ## Tests
 
-`--coaster-rails-automation=gate` (headless): **T160** content, icons, recipes; **T161** slope chain joins two levels (six cells, control pair stays apart), the kettle router steps up through the slope, a cart rides to the top and back; **T162** loop drag ghost (4-cell lead-in; Shift → radius 3, 16 loop cells, 22 cells, frozen lead-in; X → 2 / 18; C to the limit 6 / 38; held key resizes once), commit lays 22 pieces as one chain, a curved piece draws `LoopArms` and the lead-in `RailArms`, a cart rides over the loop's top before taking the exit and returns home. `=visual` (windowed): **T163** `coaster-rails.png`. `TEST_COASTER_RAILS.cmd` runs both against the export. Regressions kept: P4 siege units gate (T133 / T154 / T155 kettles), P3D phase1, P3K gate, P3F gate + visual, P3C phase1 + visual (`EXPECTED_WORKBENCH_ORDER` and the "Page n / 4" labels updated).
+`--coaster-rails-automation=gate` (headless): **T160** content, icons, recipes; **T161** slope chain joins two levels (six cells, control pair stays apart), the kettle router steps up through the slope, a cart rides to the top and back; **T162** loop drag ghost (4-cell lead-in; Shift → radius 3, 16 loop cells, 22 cells, frozen lead-in; X → 2 / 18; C to the limit 6 / 38; held key resizes once), commit lays 22 pieces as one chain, a curved piece draws `LoopArms` and the lead-in `RailArms`, a cart rides over the loop's top before taking the exit and returns home. `=visual` (windowed): **T163** `coaster-rails.png`. `tools\runners\TEST_COASTER_RAILS.cmd` runs both against the export. Regressions kept: P4 siege units gate (T133 / T154 / T155 kettles), P3D phase1, P3K gate, P3F gate + visual, P3C phase1 + visual (`EXPECTED_WORKBENCH_ORDER` and the "Page n / 4" labels updated).
 
 ## Limits — what is NOT done
 
@@ -72,7 +72,7 @@ Hauling (industry wave 1, `docs/INDUSTRY.md`): a mine cart reaching a cell with 
 
 ## Owner sandbox
 
-`START_COASTER_SANDBOX.cmd` (this worktree) launches the export with `--coaster-sandbox` (`CoasterSandbox`): since 2026-09-21 the [CoasterCraft mode](COASTERCRAFT_MODE.md) started through the same path as its New button (fixed seed, the bare 60 × 100 plate, creative, the pack refilled every second with rails, slopes, loops, switches, crossings, curves, climbs, carts, cars, kettles, castle stone, planks, picks, sword, shot, torches and chests — nothing to mine) plus the demo tracks laid on the old 30 × 50 area of the plate (x −14..15, z 22..71): the loop with its circuit and coaster car, the curves, the mountain climb, the smooth switch and the crossing. Its data root is `artifacts\coaster-sandbox` (the mode's saves in its `coastercraft\` subfolder) so ordinary saves are untouched.
+`START.cmd sandbox` (this worktree) launches the export with `--coaster-sandbox` (`CoasterSandbox`): since 2026-09-21 the [CoasterCraft mode](COASTERCRAFT_MODE.md) started through the same path as its New button (fixed seed, the bare 60 × 100 plate, creative, the pack refilled every second with rails, slopes, loops, switches, crossings, curves, climbs, carts, cars, kettles, castle stone, planks, picks, sword, shot, torches and chests — nothing to mine) plus the demo tracks laid on the old 30 × 50 area of the plate (x −14..15, z 22..71): the loop with its circuit and coaster car, the curves, the mountain climb, the smooth switch and the crossing. Its data root is `artifacts\coaster-sandbox` (the mode's saves in its `coastercraft\` subfolder) so ordinary saves are untouched.
 
 ## Offset loop (owner 2026-09-20)
 

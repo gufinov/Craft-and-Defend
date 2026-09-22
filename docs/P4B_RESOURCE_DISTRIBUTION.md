@@ -42,7 +42,7 @@ Display names come from `ContentRegistry.display_name` ("Gold Ore", "Gold Ingot"
 ## Validation
 
 - `tools/validate_foundation.py → validate_ores`: nonempty table; every block exists, is solid, unprotected and droppable; no duplicate block; `3 ≤ min_depth ≤ max_depth ≤ world height`; `1 ≤ cluster_per_thousand < 1000`, sum < 1000; `1 ≤ cluster_size ≤ 8`. Unit tests in `tests/test_foundation.py` (`test_ore_*`, band preservation, gold reachability).
-- Runtime gate `--p4-resources-automation=gate` (`P4ResourcesAutomation`, `TEST_P4_RESOURCES.cmd`): T137 depth bands and rarity order, T138 P1 layout preservation, T139 gold mining (Stone Pick refused, Iron Pick drops one Gold Ore from a *generated* gold cell near the clearing), T140 gold smelting. See [evidence](evidence/P4B_RESOURCE_DISTRIBUTION.md).
+- Runtime gate `--p4-resources-automation=gate` (`P4ResourcesAutomation`, `tools\runners\TEST_P4_RESOURCES.cmd`): T137 depth bands and rarity order, T138 P1 layout preservation, T139 gold mining (Stone Pick refused, Iron Pick drops one Gold Ore from a *generated* gold cell near the clearing), T140 gold smelting. See [evidence](evidence/P4B_RESOURCE_DISTRIBUTION.md).
 
 ## Boundaries
 

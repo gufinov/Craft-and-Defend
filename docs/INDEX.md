@@ -1,5 +1,7 @@
 # Documentation index
 
+Launch: `START.cmd` at the repo root (options `sandbox`, `coastercraft`, `build`, `stop`, `help`); test runners in `tools\runners\` (`RUN_ALL.cmd` sweeps them all).
+
 Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadmap](ROADMAP.md) → [backlog](BACKLOG.md) → [engine decision](ENGINE_DECISION.md) → [Windows setup](WINDOWS_SETUP.md).
 
 ## Product
@@ -55,7 +57,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [Roadmap](ROADMAP.md)
 - [Backlog](BACKLOG.md)
 - [Windows setup](WINDOWS_SETUP.md)
-- [Test plan](TEST_PLAN.md)
+- [Test plan](TEST_PLAN.md) (exported-game runners: `tools\runners\TEST_*.cmd`, `RUN_ALL.cmd`)
 - [Coding-agent handoff](CODING_AGENT_HANDOFF.md)
 - [Evidence template](evidence/TEMPLATE.md)
 - [F0 Windows integration evidence](evidence/F0_WINDOWS_INTEGRATION.md)

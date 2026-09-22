@@ -2,7 +2,7 @@
 
 Owner request (2026-09-19, verbatim intent): "I want to be able to speed up the roller coaster. I want to be able to ride the roller coaster. We should make a roller coaster car. Once inside, I can use the number keys to increase speed from 1-9. Perhaps it is also time to create a character."
 
-Builds on the [coaster rails side project](COASTER_RAILS.md): the car rides the same track graph (`CoasterRails.chain`) through the same `CoasterCartService` as the mine cart. New files carry `coaster` / `hero` names: `game/scripts/rails/coaster_ride.gd` (`CoasterRide`), `game/scripts/player/hero_model.gd` (`HeroModel`), `game/scripts/diagnostics/coaster_car_automation.gd`, `TEST_COASTER_CAR.cmd`, this contract and [its evidence](evidence/COASTER_CAR_AND_HERO.md). Owner art: `docs/reference/owner_art/coaster_car.webp`, `hero_unarmored.webp`, `hero_armored.webp`.
+Builds on the [coaster rails side project](COASTER_RAILS.md): the car rides the same track graph (`CoasterRails.chain`) through the same `CoasterCartService` as the mine cart. New files carry `coaster` / `hero` names: `game/scripts/rails/coaster_ride.gd` (`CoasterRide`), `game/scripts/player/hero_model.gd` (`HeroModel`), `game/scripts/diagnostics/coaster_car_automation.gd`, `tools\runners\TEST_COASTER_CAR.cmd`, this contract and [its evidence](evidence/COASTER_CAR_AND_HERO.md). Owner art: `docs/reference/owner_art/coaster_car.webp`, `hero_unarmored.webp`, `hero_armored.webp`.
 
 ## Content
 
@@ -43,9 +43,9 @@ Pause menu → **Hero: Armour on/off** (`_toggle_hero_armor`) flips `SettingsSto
 
 ## Tests
 
-`--coaster-car-automation=gate` (headless): **T164** content / icon / recipe; **T165** a parked car on a loop fixture stays put, Shift through the interaction raycast boards it (player parked, ride camera current, seated hero on `Seat`, speed 3/9 HUD), speed 2 then 6 measure 2.00 / 6.00 cells/s, the `hotbar_5` action sets speed 5 without touching the hotbar, `interact` leaves the player 1 m beside the parked car, a mid-ride snapshot saves the player beside the car; **T166** hero parts, armoured swap, walk cycle, seated pose, V toggle (camera behind / above, hero visible, aim from the eye), `hero_armored` persisted in `settings.cfg` and applied. `=visual` (windowed): **T167** `coaster-car.png` — the hero riding the car into the sandbox-style loop from the ride camera, 1280×720. `TEST_COASTER_CAR.cmd` runs both against the export. See [TEST_PLAN](TEST_PLAN.md).
+`--coaster-car-automation=gate` (headless): **T164** content / icon / recipe; **T165** a parked car on a loop fixture stays put, Shift through the interaction raycast boards it (player parked, ride camera current, seated hero on `Seat`, speed 3/9 HUD), speed 2 then 6 measure 2.00 / 6.00 cells/s, the `hotbar_5` action sets speed 5 without touching the hotbar, `interact` leaves the player 1 m beside the parked car, a mid-ride snapshot saves the player beside the car; **T166** hero parts, armoured swap, walk cycle, seated pose, V toggle (camera behind / above, hero visible, aim from the eye), `hero_armored` persisted in `settings.cfg` and applied. `=visual` (windowed): **T167** `coaster-car.png` — the hero riding the car into the sandbox-style loop from the ride camera, 1280×720. `tools\runners\TEST_COASTER_CAR.cmd` runs both against the export. See [TEST_PLAN](TEST_PLAN.md).
 
-Sandbox: `--coaster-sandbox` (`START_COASTER_SANDBOX.cmd`) now parks a coaster car at the start of the premade loop's lead-in (the loop's mine cart moved off; the slope run keeps its mine cart) and stocks `coaster_car` in the hotbar after Mine Cart — walk up, Shift, press 1–9.
+Sandbox: `--coaster-sandbox` (`START.cmd sandbox`) now parks a coaster car at the start of the premade loop's lead-in (the loop's mine cart moved off; the slope run keeps its mine cart) and stocks `coaster_car` in the hotbar after Mine Cart — walk up, Shift, press 1–9.
 
 ## Limits — what is NOT done
 
