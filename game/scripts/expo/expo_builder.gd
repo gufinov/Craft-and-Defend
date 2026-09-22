@@ -811,9 +811,11 @@ func _run_place(op: Dictionary) -> bool:
 		_entities_placed += 1
 		return true
 	var reason := str(placed.get("reason", "PLACE_FAILED"))
-	# The ground under a fixture may still be streaming or still queued: retry
-	# until PLACE_ATTEMPTS, then record it rather than queueing for ever.
-	if reason == "UNLOADED" or reason == "UNSUPPORTED":
+	# The ground under a fixture may still be streaming or still queued, and a
+	# mounted fixture's mount (a tower platform, a rail) may be an op that has
+	# not run yet: retry until PLACE_ATTEMPTS, then record it rather than
+	# queueing for ever.
+	if reason == "UNLOADED" or reason == "UNSUPPORTED" or reason == "INVALID_MOUNT":
 		if int(op.get("attempts", 0)) < PLACE_ATTEMPTS:
 			op["attempts"] = int(op.get("attempts", 0)) + 1
 			return false
