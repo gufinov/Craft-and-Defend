@@ -28,6 +28,8 @@ const CASTLE_STONE := 8
 const TUNNEL_WALK := 56
 ## A tunnel sample counts as lit with a light entity this near.
 const LIGHT_RANGE := 12.0
+## Frames one walked cell is given for the terrain around it to stream in.
+const STREAM_FRAMES := 240
 const BUILD_TIMEOUT_MSEC := 420000
 ## Miner ticks T216 drives so the Ore Bin holds both an ore and its fuel.
 const INDUSTRY_MINER_TICKS := 24
@@ -208,6 +210,7 @@ func _run_visual() -> void:
 	var lighting_shot := await _save_viewport(lighting_path)
 	_record("T217V_LIGHTING_VIEW", lighting_shot, "rendered evidence of the roofed light walk with the six light sources side by side", {"path": lighting_path})
 	await _shoot_card_e_districts()
+	await _shoot_coaster()
 	await _settle_near_spawn()
 
 
@@ -262,8 +265,6 @@ func _shoot(test_id: String, eye: Vector3, target: Vector3, file_name: String, e
 	var path := app.data_root.path_join(file_name)
 	var shot := await _save_viewport(path)
 	_record(test_id, shot, expected, {"path": path})
-	await _shoot_coaster()
-	await _settle_near_spawn()
 
 
 ## Card F's rendered evidence: the component gallery, and the Grand
@@ -594,10 +595,20 @@ func _test_mountain() -> void:
 	var lit := 0
 	var walked := 0
 	var lights := _light_positions()
+	# The tunnel is longer than one streaming region, so this is a real walk:
+	# the player is moved down it cell by cell and the terrain around each cell
+	# is given frames to arrive before it is read (card E's campus-walk rule).
 	for step in range(TUNNEL_WALK):
 		var cell := Vector3i(tunnel_origin.x + tunnel_size.x - 3 - step, tunnel_origin.y, centre_z)
+		_teleport(Vector3(float(cell.x) + 0.5, float(cell.y) + 1.1, float(cell.z) + 0.5))
 		var head := world.query_cell(cell + Vector3i(0, 1, 0))
 		var feet := world.query_cell(cell)
+		for _frame in range(STREAM_FRAMES):
+			if str(feet.get("state", "")) == "LOADED" and str(head.get("state", "")) == "LOADED":
+				break
+			await get_tree().process_frame
+			head = world.query_cell(cell + Vector3i(0, 1, 0))
+			feet = world.query_cell(cell)
 		if str(feet.get("state", "")) != "LOADED" or str(head.get("state", "")) != "LOADED":
 			continue
 		walked += 1
@@ -669,11 +680,19 @@ func _test_industry() -> void:
 	var yard_rail := layout.parcel_for("industry_rail")
 	var rail_from: Vector3i = mountain_rail["origin"]
 	var rail_to: Vector3i = yard_rail["origin"] + Vector3i(int((yard_rail["size"] as Vector3i).x) - 1, 0, 0)
+	# Only the mine line's own two parcels: the Defense Range's kettle booth
+	# lays rails along a wall top and the CoasterCraft district lays hundreds
+	# of them, and none of those belong to this chain.
+	var mountain_box := _parcel_box("mountain_rail")
+	var yard_box := _parcel_box("industry_rail")
 	var rails: Array[Vector3i] = []
 	for instance_id: String in ws.stations.keys():
 		var record: Dictionary = ws.stations[instance_id]
-		if str(record.get("entity_id", "")) == "rail":
-			rails.append(record.get("anchor", Vector3i.ZERO))
+		var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+		if str(record.get("entity_id", "")) != "rail":
+			continue
+		if _inside(mountain_box, anchor) or _inside(yard_box, anchor):
+			rails.append(anchor)
 	rails.sort_custom(func(first: Vector3i, second: Vector3i) -> bool: return first.x < second.x)
 	var rail_chained: bool = not rails.is_empty() and rails[0] == rail_from and rails[rails.size() - 1] == rail_to
 	for index in range(1, rails.size()):
