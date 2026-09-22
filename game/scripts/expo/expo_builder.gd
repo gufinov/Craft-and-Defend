@@ -92,6 +92,11 @@ var _deferred: Array[Dictionary] = []
 var _retry_left := RETRY_SECONDS
 var _retry_anchor := Vector3.ZERO
 var _reset_groups: Dictionary = {}
+## Cells a carve op emptied on purpose (the mine tunnel, the chambers). A
+## column op that is deferred for streaming is taken up again later, possibly
+## after the carve that followed it has already run, so a body fill must never
+## be allowed to put the mountain back into its own tunnel.
+var _carved: Dictionary = {}
 ## Scenario reset boundaries (card E, docs/DEVELOPMENT_EXPO.md section 14).
 var reset_service := ExpoResetService.new()
 ## Every sign the manifest asked for, in request order: each entry gains its
@@ -283,6 +288,7 @@ func carve_box(origin: Vector3i, size: Vector3i, label: String = "carve") -> voi
 				"fill_voxel": AIR, "fill_air_only": false,
 				"surface_y": -9999, "surface_voxel": AIR,
 				"clear_from": origin.y, "clear_to": origin.y + size.y - 1,
+				"carve": true,
 			})
 	_queue_columns(label, columns)
 
@@ -308,6 +314,7 @@ func carve_tunnel(from_cell: Vector3i, to_cell: Vector3i, width: int, height: in
 				"fill_voxel": STONE, "fill_air_only": true,
 				"surface_y": -9999, "surface_voxel": AIR,
 				"clear_from": cell.y, "clear_to": cell.y + height - 1,
+				"carve": true,
 			})
 	_queue_columns(label, columns)
 
@@ -746,8 +753,11 @@ func _run_column(job: Dictionary) -> bool:
 	# promise every cell between them is. A write that does not take leaves the
 	# job unfinished and it is run again - authored ground is never half laid.
 	var wrote_all := true
+	var carving := bool(job.get("carve", false))
 	for y in range(int(job["fill_from"]), int(job["fill_to"]) + 1):
 		var cell := Vector3i(x, y, z)
+		if _carved.has(cell) and fill_voxel != AIR:
+			continue
 		if air_only:
 			var voxel := int(world.query_cell(cell).get("voxel_id", fill_voxel))
 			if voxel != AIR and voxel != WATER:
@@ -757,14 +767,17 @@ func _run_column(job: Dictionary) -> bool:
 		else:
 			wrote_all = false
 	var surface_y := int(job["surface_y"])
-	if surface_y > -9999:
+	if surface_y > -9999 and not _carved.has(Vector3i(x, surface_y, z)):
 		if world.set_cell(Vector3i(x, surface_y, z), int(job["surface_voxel"])):
 			_cells_written += 1
 		else:
 			wrote_all = false
 	for y in range(int(job["clear_from"]), int(job["clear_to"]) + 1):
-		if world.set_cell(Vector3i(x, y, z), AIR):
+		var clear_cell := Vector3i(x, y, z)
+		if world.set_cell(clear_cell, AIR):
 			_cells_written += 1
+			if carving:
+				_carved[clear_cell] = true
 		else:
 			wrote_all = false
 	return wrote_all
