@@ -12,16 +12,7 @@
   "local_path_width": 3,
   "clear_height": 12,
   "fill_bottom": -8,
-  "deferred_items": {
-    "coaster_car": "F",
-    "coastercraft_shop": "F",
-    "rail_climb": "F",
-    "rail_cross": "F",
-    "rail_curve": "F",
-    "rail_loop": "F",
-    "rail_slope": "F",
-    "rail_switch": "F"
-  },
+  "deferred_items": {},
   "districts": [
     {
       "id": "central_plaza",
@@ -296,16 +287,29 @@
       "id": "coastercraft",
       "name": "COASTERCRAFT",
       "owner_card": "F",
-      "prepare": "connect",
+      "prepare": "full",
       "origin": [64, -1, 88],
       "size": [88, 24, 96],
       "entrance": [64, 0, 100],
-      "terrain": "natural",
+      "terrain": "level",
       "expansion_corridor": {"origin": [64, -1, 184], "size": [88, 24, 7]},
       "connections": ["central_plaza", "lighting"],
       "expansion_priority": 4,
       "sign": {"title": "COASTERCRAFT", "lines": ["Component gallery and the grand coaster."]},
-      "exhibits": []
+      "exhibits": [
+        {"id": "coaster_arrival", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "west", "entities": ["post_lantern"], "items": [], "terrain": "level", "build": "arrival", "connections": ["coastercraft_avenue"], "expansion_priority": 1, "sign": {"title": "COASTERCRAFT", "lines": ["Component gallery straight ahead.", "The Grand Demonstration Coaster is south.", "Board the car at its station."]}},
+        {"id": "coaster_rail", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["rail"], "items": ["rail"], "terrain": "level", "build": "rail", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "RAIL", "lines": ["The plain track piece.", "Two rails that touch shape themselves."], "item": "rail"}},
+        {"id": "coaster_rail_slope", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["rail_slope", "rail"], "items": ["rail_slope"], "terrain": "level", "build": "slope", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "RAIL SLOPE", "lines": ["Climbs one level at 45 degrees.", "Rails join it flush at both ends."], "item": "rail_slope"}},
+        {"id": "coaster_rail_loop", "kind": "functional", "footprint": [12, 12, 10], "clearance": 1, "orientation": "north", "entities": ["rail_loop", "rail"], "items": ["rail_loop"], "terrain": "level", "build": "loop", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "RAIL LOOP", "lines": ["The true loop: one helix turn.", "It lands one lane beside its entry."], "item": "rail_loop"}},
+        {"id": "coaster_rail_switch", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["rail_switch", "rail"], "items": ["rail_switch"], "terrain": "level", "build": "switch", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "RAIL SWITCH", "lines": ["The smooth lane switcher.", "Four cells, one lane over."], "item": "rail_switch"}},
+        {"id": "coaster_rail_cross", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["rail_cross", "rail"], "items": ["rail_cross"], "terrain": "level", "build": "cross", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "RAIL CROSS", "lines": ["Two tracks swap lanes and cross.", "A rider keeps to the track it entered."], "item": "rail_cross"}},
+        {"id": "coaster_rail_curve", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["rail_curve", "rail"], "items": ["rail_curve"], "terrain": "level", "build": "curve", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "RAIL CURVE", "lines": ["A banked 90 degree arc.", "U-turns come from the same tool."], "item": "rail_curve"}},
+        {"id": "coaster_rail_climb", "kind": "functional", "footprint": [12, 10, 10], "clearance": 1, "orientation": "north", "entities": ["rail_climb", "rail"], "items": ["rail_climb"], "terrain": "level", "build": "climb", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "RAIL CLIMB", "lines": ["Slope-in, grade and slope-out in one.", "A negative rise makes a descent."], "item": "rail_climb"}},
+        {"id": "coaster_mine_cart", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["mine_cart", "rail"], "items": ["mine_cart"], "terrain": "level", "build": "mine_cart", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "MINE CART", "lines": ["Rides the chain on its own.", "Hauls ore between bin and warehouse."], "item": "mine_cart"}},
+        {"id": "coaster_car", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["coaster_car", "rail"], "items": ["coaster_car"], "terrain": "level", "build": "coaster_car", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "COASTER CAR", "lines": ["Parked until a rider boards it.", "Shift to ride, 1-9 for speed."], "item": "coaster_car"}},
+        {"id": "coaster_shop", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["coastercraft_shop"], "items": ["coastercraft_shop"], "terrain": "level", "build": "shop", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "COASTERCRAFT SHOP", "lines": ["Every track recipe is crafted here.", "Right-click to open its book."], "item": "coastercraft_shop"}},
+        {"id": "grand_coaster", "kind": "showcase", "footprint": [80, 22, 26], "clearance": 1, "orientation": "north", "entities": ["coaster_car", "rail", "rail_climb", "rail_loop", "rail_switch", "rail_cross", "rail_curve"], "items": ["coaster_car"], "terrain": "level", "build": "grand_coaster", "reset_group": "coaster", "connections": ["coaster_gallery"], "expansion_priority": 3, "sign": {"title": "GRAND DEMONSTRATION COASTER", "lines": ["Lift hill, crest, drop, true loop,", "lane switcher, crossing and two U-turns", "in one closed circuit. Shift on the car."], "item": "coaster_car"}}
+      ]
     }
   ]
 }
