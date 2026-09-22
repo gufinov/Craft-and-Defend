@@ -47,6 +47,8 @@ DERIVED = [
     "coastercraft_shop",
     "miner", "ore_bin",
     "warehouse", "foundry",
+    # Development Expo (docs/DEVELOPMENT_EXPO_HANDOFF.md section 9): the Sign.
+    "sign",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -466,6 +468,26 @@ def icon_foundry() -> Image.Image:
     return canvas
 
 
+def icon_sign() -> Image.Image:
+    """An oak board on a post with two written lines."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    oak = (166, 114, 62, 255)
+    dark = (104, 66, 32, 255)
+    ink = (58, 40, 22, 255)
+    draw.rectangle([116, 150, 140, 236], fill=dark)
+    draw.polygon([(96, 236), (160, 236), (150, 246), (106, 246)], fill=dark)
+    draw.rectangle([28, 40, 228, 158], fill=oak, outline=dark, width=7)
+    for y in (74, 104):
+        draw.line([(28, y), (228, y)], fill=(148, 100, 54, 255), width=3)
+    for y in (66, 96, 126):
+        draw.line([(56, y), (200, y)], fill=ink, width=8)
+    draw.line([(56, 126), (152, 126)], fill=ink, width=8)
+    for x in (44, 212):
+        draw.ellipse([x - 7, 46, x + 7, 60], fill=(110, 118, 126, 255))
+    return canvas
+
+
 BUILDERS = {
     "flame_shot": icon_flame_shot, "chest": icon_chest, "cannon": icon_cannon, "cannonball": icon_cannonball,
     "turret_catapult": icon_turret_catapult, "hot_oil": icon_hot_oil, "kettle": icon_kettle, "rail": icon_rail,
@@ -481,6 +503,7 @@ BUILDERS = {
     "coastercraft_shop": icon_coastercraft_shop,
     "miner": icon_miner, "ore_bin": icon_ore_bin,
     "warehouse": icon_warehouse, "foundry": icon_foundry,
+    "sign": icon_sign,
 }
 
 

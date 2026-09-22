@@ -1288,6 +1288,8 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_build_core_of_power_visual(body, registry.entity_attributes(entity_id))
 	elif entity_id == "enemy_core":
 		_build_enemy_core_visual(body, registry.entity_attributes(entity_id))
+	elif entity_id == WorkstationService.SIGN_ENTITY:
+		_build_sign_visual(body, record)
 	elif entity_id == "torch":
 		_build_torch_visual(body, registry.entity_attributes(entity_id))
 	elif entity_id == "wall_lantern":
@@ -3382,6 +3384,155 @@ func _add_lantern_body(parent: Node3D, centre: Vector3, iron: Material, gold: Ma
 ## Wall lantern: an iron-capped oak post with gold studs, an arm and a brace,
 ## a chain and the shared lantern body hanging from the arm. Stands on any
 ## solid top; set it on a wall top or beside a wall to read as a bracket.
+## Sign (docs/SIGNS.md): an oak board carrying the player's text or item list.
+## The ground variant stands on a stone-footed oak post; the wall variant hangs
+## flat on the block behind it with no post. Both keep every part inside the
+## sign's own logical cell, so a thin board can never cover a neighbouring one.
+## The board faces local +X: the wall mount rotates the body so that is away
+## from the wall, and a ground sign turns with the ordinary build rotation.
+const SIGN_BOARD_WIDTH := 0.92
+const SIGN_BOARD_HEIGHT := 0.86
+const SIGN_BOARD_THICKNESS := 0.07
+
+
+func _build_sign_visual(parent: Node3D, record: Dictionary) -> void:
+	var wall := str(record.get("mount", "ground")) == "wall"
+	var oak := _visual_material(Color("b07a41"), "res://assets/blocks/planks.svg")
+	var dark_oak := _visual_material(Color("6b3d1f"), "res://assets/blocks/log.svg")
+	var stone := _visual_material(Color("8b929d"))
+	var iron := _visual_material(Color("6f777f"))
+	var board_x := -0.34 if wall else 0.0
+	var board_y := 0.04 if wall else 0.06
+	_add_collision_box(parent, Vector3(0.24, SIGN_BOARD_HEIGHT, SIGN_BOARD_WIDTH), Vector3(board_x, board_y, 0.0))
+	if not wall:
+		_add_mesh_box(parent, Vector3(0.12, 0.44, 0.12), Vector3(0.0, -0.30, 0.0), dark_oak)
+		_add_mesh_box(parent, Vector3(0.44, 0.14, 0.44), Vector3(0.0, -0.45, 0.0), stone)
+		_add_collision_box(parent, Vector3(0.44, 0.60, 0.44), Vector3(0.0, -0.32, 0.0))
+	else:
+		# Two short brackets hold the board off the wall behind it.
+		for z: float in [-0.28, 0.28]:
+			_add_mesh_box(parent, Vector3(0.12, 0.10, 0.10), Vector3(-0.44, board_y, z), iron)
+	_add_mesh_box(parent, Vector3(SIGN_BOARD_THICKNESS, SIGN_BOARD_HEIGHT, SIGN_BOARD_WIDTH), Vector3(board_x, board_y, 0.0), oak)
+	for z: float in [-SIGN_BOARD_WIDTH / 2.0 + 0.04, SIGN_BOARD_WIDTH / 2.0 - 0.04]:
+		_add_mesh_box(parent, Vector3(SIGN_BOARD_THICKNESS + 0.01, SIGN_BOARD_HEIGHT, 0.07), Vector3(board_x, board_y, z), dark_oak)
+	var face := Node3D.new()
+	face.name = "SignFace"
+	# The face's own +Z is the board's +X, so its contents lay out in plain
+	# local X (board width) and Y (board height).
+	face.position = Vector3(board_x + SIGN_BOARD_THICKNESS / 2.0 + 0.012, board_y, 0.0)
+	face.rotation.y = PI / 2.0
+	parent.add_child(face)
+	_populate_sign_face(face, workstations.sanitized_sign(record.get("sign", {}) if record.get("sign") is Dictionary else {}))
+
+
+## Rebuilds the board's contents after the editor (or another system) changed
+## the sign; the board, post and collision stay as they are.
+func _refresh_sign_face(instance_id: String) -> void:
+	var body: Node3D = _station_visuals.get(instance_id)
+	if body == null or workstations == null:
+		return
+	var face: Node3D = body.get_node_or_null("SignFace") as Node3D
+	if face == null:
+		return
+	for child in face.get_children():
+		face.remove_child(child)
+		child.queue_free()
+	_populate_sign_face(face, workstations.sign_data(instance_id))
+
+
+func _populate_sign_face(face: Node3D, data: Dictionary) -> void:
+	var mode := str(data.get("mode", "text"))
+	var width := SIGN_BOARD_WIDTH - 0.08
+	var height := SIGN_BOARD_HEIGHT - 0.08
+	match mode:
+		"split":
+			var divider := _add_mesh_box(face, Vector3(0.02, height, 0.01), Vector3.ZERO, _visual_material(Color("6b3d1f")))
+			divider.rotation.y = -PI / 2.0
+			_add_sign_label(face, str(data.get("text_a", "")), Vector3(-width / 4.0, 0.0, 0.0), width / 2.0 - 0.03, 0.10)
+			_add_sign_label(face, str(data.get("text_b", "")), Vector3(width / 4.0, 0.0, 0.0), width / 2.0 - 0.03, 0.10)
+		"items":
+			_add_sign_item_grid(face, _sign_items(data), Vector3(0.0, 0.0, 0.0), width, height)
+		"header_items":
+			_add_sign_label(face, str(data.get("text_a", "")), Vector3(0.0, height / 2.0 - 0.09, 0.0), width, 0.10)
+			_add_sign_item_grid(face, _sign_items(data), Vector3(0.0, -0.09, 0.0), width, height - 0.18)
+		_:
+			_add_sign_label(face, str(data.get("text_a", "")), Vector3.ZERO, width, 0.13)
+
+
+func _sign_items(data: Dictionary) -> Array:
+	var value: Variant = data.get("items", [])
+	return value if value is Array else []
+
+
+## One line (or wrapped block) of sign text. `line_height` is the cap height in
+## metres, so the same call reads at 3-6 m whatever the board carries.
+func _add_sign_label(parent: Node3D, text: String, offset: Vector3, width: float, line_height: float) -> Label3D:
+	var label := Label3D.new()
+	label.text = text
+	label.font_size = 64
+	label.pixel_size = line_height / 64.0
+	label.width = maxf(width, 0.05) / label.pixel_size
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.modulate = Color("2a1a0c")
+	# A pale outline keeps the small grid captions readable on the oak grain.
+	label.outline_size = 14
+	label.outline_modulate = Color("f0dcb8")
+	label.shaded = false
+	label.double_sided = false
+	label.position = offset
+	parent.add_child(label)
+	return label
+
+
+## The 4-row x 2-column item grid (section 9): each entry is its icon above its
+## readable name, in the record's order, filling left column then right.
+func _add_sign_item_grid(parent: Node3D, items: Array, offset: Vector3, width: float, height: float) -> void:
+	var rows := 4
+	var columns := 2
+	var cell_width := width / float(columns)
+	var cell_height := height / float(rows)
+	for index in range(mini(items.size(), rows * columns)):
+		var item_id := str(items[index])
+		if item_id.is_empty():
+			continue
+		var column := index / rows
+		var row := index % rows
+		var centre := offset + Vector3(
+			(float(column) + 0.5) * cell_width - width / 2.0,
+			height / 2.0 - (float(row) + 0.5) * cell_height,
+			0.0)
+		var icon_height := cell_height * 0.46
+		var texture := ItemIconCatalog.texture_for(item_id) if DisplayServer.get_name() != "headless" else null
+		if texture != null:
+			var sprite := Sprite3D.new()
+			sprite.texture = texture
+			sprite.pixel_size = icon_height / maxf(1.0, texture.get_size().y)
+			sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+			sprite.shaded = false
+			sprite.double_sided = false
+			sprite.position = centre + Vector3(0.0, cell_height * 0.20, 0.001)
+			parent.add_child(sprite)
+		_add_sign_label(parent, registry.display_name(item_id), centre + Vector3(0.0, -cell_height * 0.30, 0.0), cell_width - 0.01, cell_height * 0.34)
+
+
+## Sign content API (docs/SIGNS.md). Other systems - the Expo's Supply Depot
+## and district signs - author a sign through these two calls; the record they
+## write is stable ids and text, saved with the station.
+func configure_sign(instance_id: String, data: Dictionary) -> Dictionary:
+	if workstations == null:
+		return {"ok": false, "reason": "NO_SERVICE"}
+	var result := workstations.configure_sign(instance_id, data)
+	if result.get("ok", false):
+		_refresh_sign_face(instance_id)
+	return result
+
+
+func sign_data(instance_id: String) -> Dictionary:
+	return workstations.sign_data(instance_id) if workstations != null else {}
+
+
 func _build_wall_lantern_visual(parent: Node3D, attributes: Dictionary) -> void:
 	_add_collision_box(parent, Vector3(0.90, 0.96, 0.44), Vector3(0.02, 0.0, 0.0))
 	var oak := _visual_material(Color("a96532"), "res://assets/blocks/planks.svg")

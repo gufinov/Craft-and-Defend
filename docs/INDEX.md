@@ -42,6 +42,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [Design direction 2026-09-18 — owner vision and proposals](DESIGN_DIRECTION_2026-09-18.md)
 - [Development Expo: Development Start, its save namespace, runtime rules and the lost-Core Continue safety](DEVELOPMENT_EXPO.md)
 - [Development Expo — owner-commissioned implementation handoff](DEVELOPMENT_EXPO_HANDOFF.md)
+- [Signs: the sign item, its four display modes, the editor and the content API](SIGNS.md)
 
 ## Technical
 

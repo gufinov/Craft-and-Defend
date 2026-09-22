@@ -1,7 +1,7 @@
 class_name CraftAndDefendApp
 extends Node
 
-enum AppState { MAIN_MENU, LOADING, PLAYING, PAUSED, INVENTORY, CRAFTING, SAVING, ERROR }
+enum AppState { MAIN_MENU, LOADING, PLAYING, PAUSED, INVENTORY, CRAFTING, SAVING, ERROR, SIGN }
 
 const DISPLAY_CONFIRM_SECONDS := 10.0
 const PRINT_SCREEN_FOCUS_WINDOW_MSEC := 2000
@@ -147,6 +147,35 @@ var foundry_status_label: Label
 var cursor_stack_panel: PanelContainer
 var cursor_stack_icon: TextureRect
 var cursor_stack_count: Label
+## Sign editor (docs/SIGNS.md): right-clicking a placed sign opens this panel -
+## the four display modes, the text fields of the active mode, the eight item
+## slots and the icon-first item picker. The world keeps running under it
+## (the live-menu contract); Escape and Close leave without saving.
+const SIGN_MODES: Array[Dictionary] = [
+	{"id": "text", "label": "Single Text"},
+	{"id": "split", "label": "Split Text"},
+	{"id": "items", "label": "Item Grid  ·  4 × 2"},
+	{"id": "header_items", "label": "Header + Item Grid"},
+]
+const SIGN_SLOT_SIZE := Vector2(152, 92)
+var sign_panel: Control
+var sign_mode_buttons: Dictionary = {}
+var sign_text_a_row: HBoxContainer
+var sign_text_b_row: HBoxContainer
+var sign_text_a_edit: LineEdit
+var sign_text_b_edit: LineEdit
+var sign_items_card: PanelContainer
+var sign_slot_buttons: Array[Button] = []
+var sign_picker_card: PanelContainer
+var sign_picker_category_row: HFlowContainer
+var sign_picker_grid: GridContainer
+var sign_picker_heading: Label
+var sign_message: Label
+var _sign_station_id := ""
+## The edit in progress: mode, the two texts and eight item ids ("" is empty).
+var _sign_draft: Dictionary = {}
+var _sign_selected_slot := 0
+var _sign_picker_category := ""
 const CRAFTING_STATION_TYPES: Array[String] = ["workbench", "furnace", "siege", "chest", "coastercraft_shop", "foundry"]
 var _crafting_station_id := ""
 var _crafting_station_type := "hand"
@@ -462,6 +491,8 @@ func _on_session_player_died() -> void:
 		_selected_recipe_id = ""
 		_craft_grid_items.clear()
 		_crafting_selected_inventory_item = ""
+	elif state == AppState.SIGN:
+		_close_sign()
 
 
 func _resolve_data_root() -> String:
@@ -500,6 +531,7 @@ func _build_interface() -> void:
 	_build_settings(canvas)
 	_build_inventory(canvas)
 	_build_crafting(canvas)
+	_build_sign(canvas)
 	_build_hud(canvas)
 	_build_display_confirmation(canvas)
 	_build_cursor_stack(canvas)
@@ -1854,6 +1886,333 @@ func _start_siege_drill() -> void:
 		_resume_game()
 
 
+func _build_sign(canvas: CanvasLayer) -> void:
+	sign_panel = _full_panel(Color(0.03, 0.05, 0.065, 0.96))
+	canvas.add_child(sign_panel)
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(side, 24)
+	sign_panel.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 10)
+	margin.add_child(root)
+
+	var header := HBoxContainer.new()
+	root.add_child(header)
+	var title := _title("SIGN", 30)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	header.add_child(_button("Save", _save_sign, Vector2(150, 44)))
+	header.add_child(_button("Close", _close_sign, Vector2(150, 44)))
+	sign_message = Label.new()
+	sign_message.text = "ESCAPE CLOSES  ·  THE WORLD KEEPS RUNNING  ·  SAVE WRITES THE BOARD"
+	sign_message.add_theme_color_override("font_color", Color("85d5ea"))
+	root.add_child(sign_message)
+
+	var mode_row := HFlowContainer.new()
+	mode_row.add_theme_constant_override("h_separation", 8)
+	mode_row.add_theme_constant_override("v_separation", 6)
+	root.add_child(mode_row)
+	for mode_definition: Dictionary in SIGN_MODES:
+		var mode_id := str(mode_definition.id)
+		var mode_button := _button(str(mode_definition.label), _set_sign_mode.bind(mode_id), Vector2(210, 40))
+		mode_button.toggle_mode = true
+		mode_button.add_theme_font_size_override("font_size", 14)
+		sign_mode_buttons[mode_id] = mode_button
+		mode_row.add_child(mode_button)
+
+	var body := HBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 14)
+	root.add_child(body)
+
+	var left := VBoxContainer.new()
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	left.add_theme_constant_override("separation", 10)
+	body.add_child(left)
+
+	sign_text_a_row = _sign_text_row("TOP / LEFT TEXT")
+	sign_text_a_edit = sign_text_a_row.get_child(1) as LineEdit
+	sign_text_a_edit.text_changed.connect(_on_sign_text_changed.bind("text_a"))
+	left.add_child(sign_text_a_row)
+	sign_text_b_row = _sign_text_row("RIGHT TEXT")
+	sign_text_b_edit = sign_text_b_row.get_child(1) as LineEdit
+	sign_text_b_edit.text_changed.connect(_on_sign_text_changed.bind("text_b"))
+	left.add_child(sign_text_b_row)
+
+	sign_items_card = PanelContainer.new()
+	sign_items_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sign_items_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sign_items_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("4b7180"), 8, 12))
+	left.add_child(sign_items_card)
+	var items_column := VBoxContainer.new()
+	sign_items_card.add_child(items_column)
+	var items_heading := Label.new()
+	items_heading.text = "ITEM GRID  ·  4 ROWS × 2 COLUMNS  ·  CLICK A SLOT, THEN AN ITEM"
+	items_heading.add_theme_color_override("font_color", Color("9fd8e8"))
+	items_column.add_child(items_heading)
+	var slot_grid := GridContainer.new()
+	slot_grid.columns = 2
+	slot_grid.add_theme_constant_override("h_separation", 8)
+	slot_grid.add_theme_constant_override("v_separation", 8)
+	items_column.add_child(slot_grid)
+	# The record fills the left column top to bottom, then the right one, so a
+	# slot's index here is its index in the saved item list.
+	for row in range(4):
+		for column in range(2):
+			var index := column * 4 + row
+			var slot_button := _sign_tile("", "Empty", _select_sign_slot.bind(index))
+			slot_button.tooltip_text = "Sign slot %d" % (index + 1)
+			while sign_slot_buttons.size() <= index:
+				sign_slot_buttons.append(null)
+			sign_slot_buttons[index] = slot_button
+			slot_grid.add_child(slot_button)
+	var slot_actions := HBoxContainer.new()
+	items_column.add_child(slot_actions)
+	slot_actions.add_child(_button("Clear Selected Slot", _clear_sign_slot, Vector2(220, 38)))
+	slot_actions.add_child(_button("Clear All Slots", _clear_sign_slots, Vector2(180, 38)))
+
+	sign_picker_card = PanelContainer.new()
+	sign_picker_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sign_picker_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sign_picker_card.size_flags_stretch_ratio = 1.25
+	sign_picker_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 12))
+	body.add_child(sign_picker_card)
+	var picker_column := VBoxContainer.new()
+	sign_picker_card.add_child(picker_column)
+	sign_picker_heading = Label.new()
+	sign_picker_heading.text = "ITEM PICKER"
+	sign_picker_heading.add_theme_color_override("font_color", Color("9fd8e8"))
+	picker_column.add_child(sign_picker_heading)
+	sign_picker_category_row = HFlowContainer.new()
+	sign_picker_category_row.add_theme_constant_override("h_separation", 6)
+	sign_picker_category_row.add_theme_constant_override("v_separation", 6)
+	picker_column.add_child(sign_picker_category_row)
+	var picker_scroll := ScrollContainer.new()
+	picker_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	picker_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	picker_column.add_child(picker_scroll)
+	sign_picker_grid = GridContainer.new()
+	sign_picker_grid.columns = 4
+	sign_picker_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sign_picker_grid.add_theme_constant_override("h_separation", 8)
+	sign_picker_grid.add_theme_constant_override("v_separation", 8)
+	picker_scroll.add_child(sign_picker_grid)
+	sign_panel.hide()
+
+
+func _sign_text_row(caption: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var label := Label.new()
+	label.text = caption
+	label.custom_minimum_size.x = 170
+	label.add_theme_color_override("font_color", Color("9fd8e8"))
+	row.add_child(label)
+	var edit := LineEdit.new()
+	edit.max_length = WorkstationService.SIGN_TEXT_LIMIT
+	edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	edit.custom_minimum_size = Vector2(340, 40)
+	row.add_child(edit)
+	return row
+
+
+## One icon-first catalog tile: the item's art above its readable name, in the
+## inventory/recipe-book language (no dropdown anywhere in this panel).
+func _sign_tile(item_id: String, caption: String, callback: Callable) -> Button:
+	var tile := Button.new()
+	tile.text = caption
+	tile.custom_minimum_size = SIGN_SLOT_SIZE
+	tile.clip_text = true
+	tile.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	tile.add_theme_font_size_override("font_size", 13)
+	tile.expand_icon = true
+	tile.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tile.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+	tile.icon = ItemIconCatalog.texture_for(item_id)
+	tile.pressed.connect(callback)
+	return tile
+
+
+func _show_sign(instance_id: String) -> void:
+	if state != AppState.PLAYING or session == null or session.workstations == null:
+		return
+	if session.is_riding():
+		_set_feedback("Leave the coaster car first (Shift).")
+		return
+	var data := session.sign_data(instance_id)
+	if data.is_empty():
+		_set_feedback("That is not a sign.")
+		return
+	_sign_station_id = instance_id
+	var slots: Array[String] = []
+	for slot in range(WorkstationService.SIGN_ITEM_SLOTS):
+		slots.append("")
+	var saved_items: Array = data.get("items", [])
+	for index in range(mini(saved_items.size(), WorkstationService.SIGN_ITEM_SLOTS)):
+		slots[index] = str(saved_items[index])
+	_sign_draft = {"mode": str(data.get("mode", "text")), "text_a": str(data.get("text_a", "")), "text_b": str(data.get("text_b", "")), "items": slots}
+	_sign_selected_slot = 0
+	_sign_picker_category = ""
+	state = AppState.SIGN
+	session.set_menu_open(true)
+	hud_layer.hide()
+	sign_message.text = "ESCAPE CLOSES  ·  THE WORLD KEEPS RUNNING  ·  SAVE WRITES THE BOARD"
+	_refresh_sign_panel()
+	sign_panel.show()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _close_sign() -> void:
+	if state != AppState.SIGN:
+		return
+	sign_panel.hide()
+	hud_layer.show()
+	session.set_menu_open(false)
+	state = AppState.PLAYING
+	_sign_station_id = ""
+	_sign_draft.clear()
+
+
+func _set_sign_mode(mode: String) -> void:
+	if state != AppState.SIGN:
+		return
+	_sign_draft["mode"] = mode
+	_refresh_sign_panel()
+
+
+func _on_sign_text_changed(text: String, field: String) -> void:
+	if state != AppState.SIGN:
+		return
+	_sign_draft[field] = text
+
+
+func _select_sign_slot(index: int) -> void:
+	if state != AppState.SIGN:
+		return
+	_sign_selected_slot = clampi(index, 0, WorkstationService.SIGN_ITEM_SLOTS - 1)
+	_refresh_sign_panel()
+
+
+func _clear_sign_slot() -> void:
+	if state != AppState.SIGN:
+		return
+	var slots: Array = _sign_draft.get("items", [])
+	if _sign_selected_slot < slots.size():
+		slots[_sign_selected_slot] = ""
+	_refresh_sign_panel()
+
+
+func _clear_sign_slots() -> void:
+	if state != AppState.SIGN:
+		return
+	var slots: Array = _sign_draft.get("items", [])
+	for index in range(slots.size()):
+		slots[index] = ""
+	_refresh_sign_panel()
+
+
+func _set_sign_picker_category(category_id: String) -> void:
+	if state != AppState.SIGN:
+		return
+	_sign_picker_category = category_id
+	_refresh_sign_panel()
+
+
+func _pick_sign_item(item_id: String) -> void:
+	if state != AppState.SIGN:
+		return
+	var slots: Array = _sign_draft.get("items", [])
+	if _sign_selected_slot < slots.size():
+		slots[_sign_selected_slot] = item_id
+	# Filling a slot walks to the next one so eight entries take eight clicks.
+	_sign_selected_slot = mini(_sign_selected_slot + 1, WorkstationService.SIGN_ITEM_SLOTS - 1)
+	_refresh_sign_panel()
+
+
+func _save_sign() -> void:
+	if state != AppState.SIGN or session == null or _sign_station_id.is_empty():
+		return
+	var items: Array[String] = []
+	for value: Variant in _sign_draft.get("items", []):
+		var item_id := str(value)
+		if not item_id.is_empty():
+			items.append(item_id)
+	var result := session.configure_sign(_sign_station_id, {"mode": str(_sign_draft.get("mode", "text")), "text_a": str(_sign_draft.get("text_a", "")), "text_b": str(_sign_draft.get("text_b", "")), "items": items})
+	if result.get("ok", false):
+		sign_message.text = "Sign saved. It reads the same after a save and reload."
+		sign_message.add_theme_color_override("font_color", Color("9fe8b0"))
+	else:
+		sign_message.text = "Sign not saved: %s" % str(result.get("reason", "UNKNOWN")).replace("_", " ").capitalize()
+		sign_message.add_theme_color_override("font_color", Color("ffb0a0"))
+
+
+func _refresh_sign_panel() -> void:
+	if session == null or sign_panel == null:
+		return
+	var mode := str(_sign_draft.get("mode", "text"))
+	for mode_id: String in sign_mode_buttons:
+		var mode_button: Button = sign_mode_buttons[mode_id]
+		mode_button.button_pressed = mode_id == mode
+	var uses_items := mode == "items" or mode == "header_items"
+	sign_text_a_row.visible = mode != "items"
+	sign_text_b_row.visible = mode == "split"
+	sign_items_card.visible = uses_items
+	sign_picker_card.visible = uses_items
+	var caption_label: Label = sign_text_a_row.get_child(0) as Label
+	caption_label.text = "LEFT TEXT" if mode == "split" else ("HEADING" if mode == "header_items" else "TEXT")
+	if sign_text_a_edit.text != str(_sign_draft.get("text_a", "")):
+		sign_text_a_edit.text = str(_sign_draft.get("text_a", ""))
+	if sign_text_b_edit.text != str(_sign_draft.get("text_b", "")):
+		sign_text_b_edit.text = str(_sign_draft.get("text_b", ""))
+	var slots: Array = _sign_draft.get("items", [])
+	for index in range(sign_slot_buttons.size()):
+		var slot_button: Button = sign_slot_buttons[index]
+		var item_id := str(slots[index]) if index < slots.size() else ""
+		var selected := index == _sign_selected_slot
+		var name_text := session.registry.display_name(item_id) if not item_id.is_empty() else "Empty"
+		slot_button.icon = ItemIconCatalog.texture_for(item_id)
+		slot_button.text = "▶ %s" % name_text if selected else name_text
+		slot_button.add_theme_color_override("font_color", Color("ffe08a") if selected else Color("d5e2e8"))
+	if uses_items:
+		_refresh_sign_picker()
+
+
+## The picker's category strip and icon grid (section 9): categories come from
+## ItemCategories so the Supply Depot and the sign agree on the grouping.
+func _refresh_sign_picker() -> void:
+	var groups := ItemCategories.grouped(session.registry)
+	var available: Array[String] = []
+	for category: Dictionary in ItemCategories.CATEGORIES:
+		var category_id := str(category.id)
+		var members: Array = groups.get(category_id, [])
+		if not members.is_empty():
+			available.append(category_id)
+	if _sign_picker_category.is_empty() or not available.has(_sign_picker_category):
+		_sign_picker_category = available[0] if not available.is_empty() else ""
+	for child in sign_picker_category_row.get_children():
+		sign_picker_category_row.remove_child(child)
+		child.queue_free()
+	for category_id: String in available:
+		var category_button := _button(ItemCategories.label_of(category_id), _set_sign_picker_category.bind(category_id), Vector2(178, 34))
+		category_button.toggle_mode = true
+		category_button.button_pressed = category_id == _sign_picker_category
+		category_button.add_theme_font_size_override("font_size", 13)
+		sign_picker_category_row.add_child(category_button)
+	for child in sign_picker_grid.get_children():
+		sign_picker_grid.remove_child(child)
+		child.queue_free()
+	var items: Array = groups.get(_sign_picker_category, [])
+	sign_picker_heading.text = "ITEM PICKER  ·  %s  ·  FILLING SLOT %d" % [ItemCategories.label_of(_sign_picker_category), _sign_selected_slot + 1]
+	for value: Variant in items:
+		var item_id := str(value)
+		sign_picker_grid.add_child(_sign_tile(item_id, session.registry.display_name(item_id), _pick_sign_item.bind(item_id)))
+
+
 func _show_inventory() -> void:
 	if state != AppState.PLAYING or session == null:
 		return
@@ -1876,6 +2235,10 @@ func _show_workstation(instance_id: String, station_type: String) -> void:
 	# station type from the service so siege weapons and Chests open their
 	# own panels instead of falling back to hand crafting.
 	var resolved := station_type
+	if session != null and session.workstations != null and session.workstations.station_type(instance_id) == WorkstationService.SIGN_ENTITY:
+		# A sign has its own editor, not a crafting grid (docs/SIGNS.md).
+		_show_sign(instance_id)
+		return
 	if resolved not in CRAFTING_STATION_TYPES and session != null and session.workstations != null:
 		var service_type: String = session.workstations.station_type(instance_id)
 		if service_type in CRAFTING_STATION_TYPES:
@@ -3594,6 +3957,8 @@ func _handle_escape_recovery() -> void:
 		_close_inventory()
 	elif state == AppState.CRAFTING:
 		_close_crafting()
+	elif state == AppState.SIGN:
+		_close_sign()
 	elif state == AppState.PLAYING and session != null and session.is_riding():
 		# Coaster car: Escape leaves the car before it ever pauses.
 		_set_feedback(str(session.REASON_TEXT.get("COASTER_LEFT", "Left the coaster car.")) if session.leave_coaster_car().get("ok", false) else "")
@@ -3849,14 +4214,14 @@ func _resume_after_screenshot_focus(generation: int) -> void:
 
 
 func _handle_close_request() -> void:
-	if session != null and state in [AppState.PLAYING, AppState.PAUSED, AppState.INVENTORY, AppState.CRAFTING]:
+	if session != null and state in [AppState.PLAYING, AppState.PAUSED, AppState.INVENTORY, AppState.CRAFTING, AppState.SIGN]:
 		_save_then(true)
 	elif state != AppState.SAVING:
 		get_tree().quit(0)
 
 
 func _hide_all_panels() -> void:
-	for panel in [menu_panel, coastercraft_menu_panel, development_menu_panel, pause_panel, coastercraft_pause_panel, development_pause_panel, development_reset_panel, keybind_panel, settings_panel, inventory_panel, crafting_panel, display_confirm_panel, loading_panel, hud_layer]:
+	for panel in [menu_panel, coastercraft_menu_panel, development_menu_panel, pause_panel, coastercraft_pause_panel, development_pause_panel, development_reset_panel, keybind_panel, settings_panel, inventory_panel, crafting_panel, sign_panel, display_confirm_panel, loading_panel, hud_layer]:
 		if panel != null:
 			panel.hide()
 

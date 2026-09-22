@@ -4,6 +4,15 @@ extends RefCounted
 signal station_changed(result: Dictionary)
 signal job_completed(result: Dictionary)
 
+## Sign (docs/SIGNS.md, Development Expo section 9): a placed sign carries one
+## `sign` block of stable ids and text - a display mode, two text fields and up
+## to eight item ids. It is saved with the station record and never stores a
+## label or a scene path.
+const SIGN_ENTITY := "sign"
+const SIGN_MODES: Array[String] = ["text", "split", "items", "header_items"]
+const SIGN_ITEM_SLOTS := 8
+const SIGN_TEXT_LIMIT := 64
+
 var registry: ContentRegistry
 var inventory: F0Inventory
 var footprints := EntityFootprintService.new()
@@ -114,6 +123,13 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		# Storage network card (docs/INDUSTRY.md): the foundry smelts from its
 		# own three slots, fed from the storage beside it.
 		record["foundry_slots"] = _empty_foundry_slots()
+	if wall_side != Vector3i.ZERO:
+		# A wall-mounted entity hangs on the side of a block and has no ground
+		# under it; the record remembers that so restore does not ask for the
+		# support the placement never needed.
+		record["mount"] = "wall"
+	if entity_id == SIGN_ENTITY:
+		record["sign"] = default_sign()
 	var defense_definition: Dictionary = definition.get("defense", {})
 	if not defense_definition.is_empty():
 		record["integrity"] = maxi(1, int(defense_definition.get("max_integrity", 1)))
@@ -734,6 +750,91 @@ func station_type(instance_id: String) -> String:
 	return str(registry.entity(str(record.get("entity_id", ""))).get("station_type", ""))
 
 
+## An empty sign: one text line, no items.
+static func default_sign() -> Dictionary:
+	var items: Array[String] = []
+	return {"mode": "text", "text_a": "", "text_b": "", "items": items}
+
+
+## The sign block of a placed sign ({} when the station is not a sign).
+func sign_data(instance_id: String) -> Dictionary:
+	var record: Dictionary = stations.get(instance_id, {})
+	if str(record.get("entity_id", "")) != SIGN_ENTITY:
+		return {}
+	var data: Variant = record.get("sign", default_sign())
+	return sanitized_sign(data if data is Dictionary else {})
+
+
+## Writes the sign's content. `data` may carry any subset of mode / text_a /
+## text_b / items; whatever it omits keeps its current value. Unknown modes,
+## over-long text, unknown item ids and a ninth item are rejected, so a caller
+## (the editor panel, an authored Expo fixture) cannot store a record the
+## renderer or the save cannot read back.
+func configure_sign(instance_id: String, data: Dictionary) -> Dictionary:
+	if not stations.has(instance_id):
+		return _result(false, "NO_ENTITY")
+	var record: Dictionary = stations[instance_id]
+	if str(record.get("entity_id", "")) != SIGN_ENTITY:
+		return _result(false, "NOT_A_SIGN")
+	var current := sign_data(instance_id)
+	var merged := current.duplicate(true)
+	if data.has("mode"):
+		var mode := str(data.get("mode", ""))
+		if mode not in SIGN_MODES:
+			return _result(false, "INVALID_SIGN_MODE")
+		merged["mode"] = mode
+	for field: String in ["text_a", "text_b"]:
+		if data.has(field):
+			merged[field] = str(data[field])
+	if data.has("items"):
+		var raw: Variant = data["items"]
+		if not raw is Array:
+			return _result(false, "INVALID_SIGN_ITEMS")
+		var raw_items: Array = raw
+		if raw_items.size() > SIGN_ITEM_SLOTS:
+			return _result(false, "INVALID_SIGN_ITEMS")
+		var clean_items: Array[String] = []
+		for value: Variant in raw_items:
+			var item_id := str(value)
+			if item_id.is_empty():
+				continue
+			if not registry.items.has(item_id):
+				return _result(false, "UNKNOWN_SIGN_ITEM")
+			clean_items.append(item_id)
+		merged["items"] = clean_items
+	record["sign"] = sanitized_sign(merged)
+	stations[instance_id] = record
+	var result := _result(true, "OK", {"instance_id": instance_id, "sign": sign_data(instance_id)})
+	station_changed.emit(result)
+	return result
+
+
+## Normalizes a sign block read from a save, a fixture or the editor: a known
+## mode, trimmed text within the limit and at most eight known item ids.
+func sanitized_sign(data: Dictionary) -> Dictionary:
+	var clean := default_sign()
+	var mode := str(data.get("mode", "text"))
+	clean["mode"] = mode if mode in SIGN_MODES else "text"
+	for field: String in ["text_a", "text_b"]:
+		var text := str(data.get(field, ""))
+		clean[field] = text.substr(0, SIGN_TEXT_LIMIT)
+	var raw: Variant = data.get("items", [])
+	var clean_items: Array[String] = []
+	if raw is Array:
+		for value: Variant in raw as Array:
+			var item_id := str(value)
+			if item_id.is_empty() or not registry.items.has(item_id) or clean_items.size() >= SIGN_ITEM_SLOTS:
+				continue
+			clean_items.append(item_id)
+	clean["items"] = clean_items
+	return clean
+
+
+## "wall" for a sign hanging on a block's side, "ground" for one on a post.
+func sign_mount(instance_id: String) -> String:
+	return str(stations.get(instance_id, {}).get("mount", "ground"))
+
+
 func siege_status(instance_id: String) -> Dictionary:
 	var record: Dictionary = stations.get(instance_id, {})
 	if record.is_empty():
@@ -1352,6 +1453,11 @@ func _restored_station(value: Variant, world_query: Callable) -> Dictionary:
 		while clean_container.size() < int(definition.get("container_slots", 0)):
 			clean_container.append(_empty_stack())
 		record["container_slots"] = clean_container
+	if str(record.get("entity_id", "")) == SIGN_ENTITY:
+		# Migration: a sign saved before the editor existed (or an authored
+		# record without the block) comes back as an empty single-text sign.
+		var raw_sign: Variant = record.get("sign", default_sign())
+		record["sign"] = sanitized_sign(raw_sign if raw_sign is Dictionary else {})
 	if str(record.get("entity_id", "")) == "mine_cart":
 		# Hauling (docs/INDUSTRY.md): the cart's cargo, item_id -> count.
 		var raw_cargo: Variant = record.get("cargo", {})
@@ -1426,7 +1532,10 @@ func _restored_station(value: Variant, world_query: Callable) -> Dictionary:
 		record["fuel_model"] = 2
 	var offsets := _vector_list(definition.occupied_offsets)
 	var rotation := int(record.get("rotation_quarters", 0))
-	var reserved := footprints.try_reserve(str(record.instance_id), record.anchor, offsets, rotation, world_query, AABB(), _vector_list(definition.support_offsets))
+	# A wall-mounted record (a sign, a lantern) hangs on a block's side and
+	# never had ground under it, so it restores without support offsets.
+	var restore_support: Array = [] if str(record.get("mount", "")) == "wall" else _vector_list(definition.support_offsets)
+	var reserved := footprints.try_reserve(str(record.instance_id), record.anchor, offsets, rotation, world_query, AABB(), restore_support)
 	if not reserved.get("ok", false):
 		# The cells no longer pass a placement check (the ground under the
 		# station was dug or blasted away, its chunk is not streamed in yet).

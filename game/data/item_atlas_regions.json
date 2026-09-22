@@ -545,6 +545,15 @@
         231
       ]
     },
+    "sign": {
+      "atlas": "derived",
+      "rect": [
+        284,
+        1320,
+        201,
+        207
+      ]
+    },
     "gold_ore": {
       "atlas": "gold",
       "rect": [
