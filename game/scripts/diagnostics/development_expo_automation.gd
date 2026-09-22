@@ -594,6 +594,7 @@ func _test_mountain() -> void:
 	var walkable := 0
 	var lit := 0
 	var walked := 0
+	var blocked: Array[Dictionary] = []
 	var lights := _light_positions()
 	# The tunnel is longer than one streaming region, so this is a real walk:
 	# the player is moved down it cell by cell and the terrain around each cell
@@ -615,6 +616,10 @@ func _test_mountain() -> void:
 		var floor_voxel := int(world.query_cell(cell + Vector3i(0, -1, 0)).get("voxel_id", AIR))
 		if int(feet.get("voxel_id", 1)) == AIR and int(head.get("voxel_id", 1)) == AIR and floor_voxel != AIR:
 			walkable += 1
+		elif blocked.size() < 8:
+			# Name the first few obstructions so a failure says where and what.
+			blocked.append({"cell": str(cell), "feet": int(feet.get("voxel_id", -1)),
+				"head": int(head.get("voxel_id", -1)), "floor": floor_voxel})
 		for light: Vector3 in lights:
 			if light.distance_to(Vector3(cell)) <= LIGHT_RANGE:
 				lit += 1
@@ -644,7 +649,7 @@ func _test_mountain() -> void:
 		and chained and rails.size() >= 32 and miner_ok and bin_ok
 	_record("T214_EXPO_MOUNTAIN", ok,
 		"the mountain's authored ore core holds coal, iron and gold voxels; a straight walk of %d cells down the tunnel is unobstructed, floored and within %d cells of a light the whole way; the rail line inside chains cell by cell; the automated-mining exhibit's Miner and Ore Bin stand" % [TUNNEL_WALK, int(LIGHT_RANGE)],
-		{"ores": ores, "core_sampled": core_sampled, "walked": walked, "walkable": walkable, "lit": lit,
+		{"ores": ores, "core_sampled": core_sampled, "walked": walked, "walkable": walkable, "lit": lit, "blocked": blocked,
 		"rails": rails.size(), "chained": chained, "lights": lights.size(), "miner": miner_ok, "ore_bin": bin_ok,
 		"builder": app.development.expo_builder.progress()})
 
