@@ -1,6 +1,6 @@
 # Documentation index
 
-Launch: `START.cmd` at the repo root (options `sandbox`, `coastercraft`, `build`, `stop`, `help`); test runners in `tools\runners\` (`RUN_ALL.cmd` sweeps them all).
+Launch: `START.cmd` at the repo root (options `sandbox`, `coastercraft`, `dev`, `build`, `stop`, `help`); test runners in `tools\runners\` (`RUN_ALL.cmd` sweeps them all).
 
 Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadmap](ROADMAP.md) → [backlog](BACKLOG.md) → [engine decision](ENGINE_DECISION.md) → [Windows setup](WINDOWS_SETUP.md).
 
@@ -40,6 +40,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P4b resource distribution and gold](P4B_RESOURCE_DISTRIBUTION.md)
 - [Balance, ecology and siege systems](BALANCE_ECOLOGY_AND_SIEGE_SYSTEMS.md)
 - [Design direction 2026-09-18 — owner vision and proposals](DESIGN_DIRECTION_2026-09-18.md)
+- [Development Expo: Development Start, its save namespace, runtime rules and the lost-Core Continue safety](DEVELOPMENT_EXPO.md)
 - [Development Expo — owner-commissioned implementation handoff](DEVELOPMENT_EXPO_HANDOFF.md)
 
 ## Technical

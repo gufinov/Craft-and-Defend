@@ -1,6 +1,13 @@
 class_name F3Automation
 extends Node
 
+## T210 (lost-Core Continue) fixture: the levelled patch beside the spawn
+## that carries the Core of Power and the chest whose ground is dug away.
+const CORE_ANCHOR := Vector3i(6, 0, 42)
+const CHEST_ANCHOR := Vector3i(10, 0, 42)
+## Continue must finish inside this many frames; the old restore never did.
+const LOST_CORE_FRAME_BUDGET := 3600
+
 var app: CraftAndDefendApp
 var failures: Array[String] = []
 
@@ -87,6 +94,74 @@ func _run_phase1() -> void:
 	var edit_b := app.session.interaction.try_break_cell(Vector3i(2, -1, 38))
 	var saved_b := await app.saves.save_session(app.session)
 	_record("T23_SLOT_B_CREATED", b_empty and clean_b and edit_b.get("ok", false) and saved_b.get("ok", false), "slot B starts clean and publishes only its own edit", {"empty": b_empty, "clean": clean_b, "save": saved_b})
+	await _run_lost_core(saved_b.get("ok", false))
+
+
+## T210: a save whose Core of Power was destroyed. The fixture is the real
+## thing - a placed core, a drill defending it, the core smashed, and a
+## second station left standing over dug-away ground (what a raid does) -
+## saved and then re-opened through the app's own Continue. It must load
+## within a bounded number of frames (the old restore refused the snapshot
+## and left the loading screen spinning), report the drill as lost, keep the
+## file readable and leave the menu offering Game Over / Start New with
+## Development Start still reachable.
+func _run_lost_core(slot_b_ready: bool) -> void:
+	if not slot_b_ready or app.session == null:
+		failures.append("T210 fixture skipped: slot B was not created")
+		return
+	var session: GameSession = app.session
+	# The slot B checkpoint above closed the world stream; bring it back the
+	# way the in-place save does before editing the world again.
+	session.recover_from_failed_save()
+	session.pause_game(false)
+	for _resume_frame in range(30):
+		await get_tree().process_frame
+	# Level a patch beside the spawn for the core and the second station.
+	for x in range(CORE_ANCHOR.x - 1, CORE_ANCHOR.x + 5):
+		for z in range(CORE_ANCHOR.z - 1, CORE_ANCHOR.z + 4):
+			await _wait_cell(Vector3i(x, CORE_ANCHOR.y - 1, z))
+			session.world.set_cell(Vector3i(x, CORE_ANCHOR.y - 1, z), 3)
+			for y in range(CORE_ANCHOR.y, CORE_ANCHOR.y + 5):
+				session.world.set_cell(Vector3i(x, y, z), 0)
+	var core_placed := session.workstations.try_place("core_of_power", CORE_ANCHOR, session.world.query_cell, AABB(), 0, {"_free": true})
+	var core_id := str(core_placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	var drill := session.start_core_defense_prototype()
+	var chest_placed := session.workstations.try_place("chest", CHEST_ANCHOR, session.world.query_cell, AABB(), 0, {"_free": true})
+	# The ground under the chest is dug away, as a raid or the player leaves it.
+	session.world.set_cell(CHEST_ANCHOR + Vector3i.DOWN, 0)
+	var destroyed := session.workstations.try_damage(core_id, 9999)
+	var lost: bool = core_placed.get("ok", false) and drill.get("ok", false) and chest_placed.get("ok", false) and destroyed.get("ok", false) and str(destroyed.get("reason", "")) == "DESTROYED" and session.core_defense.state == CoreDefenseService.FAILED and not session.workstations.stations.has(core_id)
+	var saved_lost := await app.saves.save_session(session)
+	_record("T210_LOST_CORE_SAVED", lost and saved_lost.get("ok", false), "a save is written with the defended Core of Power destroyed and a station over dug-away ground", {"core": core_placed.get("reason", ""), "drill": drill.get("reason", ""), "chest": chest_placed.get("reason", ""), "destroyed": destroyed.get("reason", ""), "state": session.core_defense.state, "save": saved_lost.get("reason", "")})
+	await _dispose_session()
+	app.saves.select_slot("b")
+	var status_lost := app.saves.checkpoint_status()
+	app._refresh_slot_ui()
+	var menu_game_over: bool = app.continue_button.disabled and app.continue_button.text.contains("Game Over") and app.slot_status_label.text.contains("GAME OVER") and not app.start_button.disabled
+	var report: Dictionary = GameSession.game_over_report(status_lost.get("snapshot", {}))
+	app._show_development_menu()
+	var development_available: bool = app.development_menu_panel.visible and app.development != null
+	app._show_main_menu()
+	_record("T210_LOST_CORE_MENU", status_lost.get("ok", false) and report.get("game_over", false) and menu_game_over and development_available, "the menu reports the lost-core slot as Game Over - Start New (Continue disabled) with Development Start still available and the file still readable", {"status": status_lost.get("reason", "OK"), "report": report, "continue_text": app.continue_button.text, "slot_status": app.slot_status_label.text})
+	# Continue anyway, through the app path the owner uses.
+	app.saves.select_slot("b")
+	app._open_session(true)
+	var frames := 0
+	while app.state == app.AppState.LOADING and frames < LOST_CORE_FRAME_BUDGET:
+		frames += 1
+		await get_tree().process_frame
+	var loaded: bool = app.state == app.AppState.PLAYING and app.session != null and app.session.world_ready
+	var drill_ended: bool = loaded and app.session.core_defense.state == CoreDefenseService.FAILED and not app.session.core_defense.is_active()
+	var core_absent := true
+	var chest_restored := false
+	if loaded:
+		for record: Dictionary in app.session.workstations.stations.values():
+			if str(record.get("entity_id", "")) == "core_of_power":
+				core_absent = false
+			if str(record.get("entity_id", "")) == "chest":
+				chest_restored = true
+	_record("T210_LOST_CORE_CONTINUE", loaded and drill_ended and core_absent and chest_restored and app.state != app.AppState.ERROR, "the lost-core save opens within %d frames with the drill restored as lost, no re-created core and the unsupported chest back in place" % LOST_CORE_FRAME_BUDGET, {"frames": frames, "state": app.state, "status": app.status_label.text, "core_defense": app.session.core_defense.state if app.session != null else "", "core_absent": core_absent, "chest": chest_restored})
+	await _dispose_session()
 
 
 func _run_phase2() -> void:
@@ -228,7 +303,7 @@ func _record(test_id: String, passed: bool, expected: String, actual: Variant) -
 
 func _finish() -> void:
 	if failures.is_empty():
-		print("F3_AUTOMATION_PASS T23-T26")
+		print("F3_AUTOMATION_PASS T23-T26, T210")
 		get_tree().quit(0)
 	else:
 		push_error("F3_AUTOMATION_FAIL " + "; ".join(failures))

@@ -11,6 +11,10 @@ signal navigation_changed(text: String)
 signal defense_changed(text: String)
 ## The player's health reached zero (the respawn already ran): an open menu closes.
 signal player_died
+## The world could not be restored after it streamed in. The app leaves the
+## loading screen and offers Back to Main Menu; it is never left spinning
+## (lost-Core Continue, docs/DEVELOPMENT_EXPO.md).
+signal load_failed(reason: String)
 
 const REASON_TEXT := {
 	"OK": "Edit complete.",
@@ -86,6 +90,19 @@ const STARTER_IRON_MARKER := Vector3(-6.5, 0.0, 36.5)
 ## initialize(): no enemy core, no enemy-base compass, no starter markers on
 ## the plate, no drill line; the navigation line names the mode.
 var coastercraft := false
+## Development Expo (docs/DEVELOPMENT_EXPO.md), set by the app before
+## initialize(): the owner's development world. No ambient enemy pressure
+## (combat only through an explicit Expo control), no enemy core placed by
+## wandering, no enemy-base compass, no drill line. Everything else - the
+## clock, machines, saving, the live-menu contract, item costs - is the
+## ordinary game.
+var development := false
+## Stations dropped by the last restore (each {reason, entity_id,
+## instance_id}); diagnostics and the load report read it.
+var restore_skipped: Array[Dictionary] = []
+## Development Expo: the canonical fixture version the world was built from
+## (DevelopmentMode.EXPO_FIXTURE_VERSION), saved with the game.
+var expo_fixture_version := 0
 
 var world: WorldAdapter
 var player: PlayerController
@@ -468,7 +485,7 @@ func select_hotbar(index: int) -> Dictionary:
 ## loaded (the player wandered there), on a stone slab levelled for it.
 var _enemy_core_timer := 0.0
 func _ensure_enemy_core(delta: float) -> void:
-	if coastercraft or not world_ready or simulation_paused or registry.entity("enemy_core").is_empty():
+	if coastercraft or development or not world_ready or simulation_paused or registry.entity("enemy_core").is_empty():
 		return
 	_enemy_core_timer -= delta
 	if _enemy_core_timer > 0.0:
@@ -505,24 +522,37 @@ func _ensure_enemy_core(delta: float) -> void:
 func _on_spawn_area_ready() -> void:
 	if world_ready:
 		return
+	restore_skipped.clear()
 	if not _pending_workstation_snapshot.is_empty():
 		var restored := workstations.restore(_pending_workstation_snapshot, world.query_cell)
 		if not restored.get("ok", false):
+			# Only a snapshot that cannot be read at all lands here (single
+			# records are dropped, not fatal): report it and leave the loading
+			# screen instead of spinning forever.
 			status_changed.emit("Station restore failed: %s" % restored.get("reason", "UNKNOWN"))
+			load_failed.emit(str(restored.get("reason", "INVALID_STATION_SNAPSHOT")))
 			return
+		var skipped: Array = restored.get("details", {}).get("skipped", [])
+		for entry in skipped:
+			if entry is Dictionary:
+				restore_skipped.append(entry)
+		if not restore_skipped.is_empty():
+			print("STATION_RESTORE_SKIPPED %s" % JSON.stringify(restore_skipped))
 		for record: Dictionary in workstations.stations.values():
 			_spawn_station_visual(record)
 	var defense_restore := defense.restore_after_world_ready()
 	if not defense_restore.get("ok", false):
-		status_changed.emit("Defense restore failed: %s" % defense_restore.get("reason", "UNKNOWN"))
-		return
+		# A broken drill record must never brick a save (as for the core
+		# drill below): drop the drill and go on.
+		defense.clear_for_other_mode()
+		_on_interaction_feedback("The saved barricade drill could not be restored (%s); it was cleared." % str(defense_restore.get("reason", "UNKNOWN")))
 	var core_restore := core_defense.restore_after_world_ready()
 	if not core_restore.get("ok", false):
 		# A broken drill record must never brick a save: drop the drill and go on.
 		core_defense.clear_for_other_mode()
 		_on_interaction_feedback("The saved defense drill could not be restored (%s); it was cleared." % str(core_restore.get("reason", "UNKNOWN")))
 	world_ready = true
-	if not coastercraft:
+	if not coastercraft and not development:
 		_spawn_starter_resource_markers()
 	simulation_paused = false
 	player.activate(not DisplayServer.get_name().contains("headless"))
@@ -643,6 +673,19 @@ func set_hero_armored(armored: bool) -> void:
 		coaster_ride.set_armored(armored)
 
 
+## Sets the world clock to "HH:MM" and repaints sky, sun and light for it.
+## Development Start uses it once on a fresh Expo so the world opens in
+## readable daylight; the cycle keeps running from there.
+func set_clock_time(value: String) -> Dictionary:
+	if clock == null:
+		return {"ok": false, "reason": "NO_CLOCK"}
+	var result := clock.set_time_hhmm(value)
+	if result.get("ok", false):
+		clock.apply_visuals(_environment, _sun)
+		_update_sun_visual()
+	return result
+
+
 ## Pause-menu "Track auto-clear on/off" (persisted by the app in settings.cfg).
 func set_track_auto_clear(enabled: bool) -> void:
 	track_auto_clear = enabled
@@ -651,10 +694,10 @@ func set_track_auto_clear(enabled: bool) -> void:
 
 
 func snapshot() -> Dictionary:
-	return {
+	var saved := {
 		"schema_version": SaveCoordinator.SAVE_SCHEMA,
 		"content_version": SaveCoordinator.CONTENT_VERSION,
-		"mode": "coastercraft" if coastercraft else "game",
+		"mode": "coastercraft" if coastercraft else ("development" if development else "game"),
 		"world": world.snapshot(),
 		"inventory": inventory.snapshot(),
 		"workstations": workstations.snapshot(),
@@ -666,6 +709,37 @@ func snapshot() -> Dictionary:
 		"player": _player_snapshot(),
 		"session_id": open_data.get("session_id", ""),
 	}
+	if development:
+		# Development Expo: the mode and the canonical fixture the world was
+		# built from, so a later session can spot an outdated Expo.
+		saved["expo"] = {"fixture_version": expo_fixture_version}
+	return saved
+
+
+## The saved game in `snapshot` is over: the Core of Power the player
+## defended is gone and no core stands in the world. The main menu reads this
+## from the checkpoint before it offers Continue (docs/DEVELOPMENT_EXPO.md);
+## nothing here ever writes to the save or re-creates a core.
+static func game_over_report(snapshot_data: Dictionary) -> Dictionary:
+	var core_present := false
+	var instance_ids: Dictionary = {}
+	var stations: Variant = snapshot_data.get("workstations", {}).get("stations", [])
+	if stations is Array:
+		for value in stations:
+			if not value is Dictionary:
+				continue
+			instance_ids[str(value.get("instance_id", ""))] = true
+			if str(value.get("entity_id", "")) == "core_of_power":
+				core_present = true
+	var core_defense_data: Variant = snapshot_data.get("core_defense", {})
+	var state := ""
+	var defended_id := ""
+	if core_defense_data is Dictionary:
+		state = str(core_defense_data.get("state", CoreDefenseService.IDLE))
+		defended_id = str(core_defense_data.get("core_station_id", ""))
+	var defended_missing: bool = not defended_id.is_empty() and not instance_ids.has(defended_id)
+	var over: bool = not core_present and (state == CoreDefenseService.FAILED or defended_missing)
+	return {"game_over": over, "reason": "CORE_DESTROYED" if over else "", "core_present": core_present, "core_defense_state": state, "defended_core_missing": defended_missing}
 
 
 ## While riding the saved player stands beside the car (the ride itself is
@@ -731,6 +805,12 @@ func _emit_navigation() -> void:
 		var mode_direction: String = mode_directions[posmod(roundi(atan2(offset.x, -offset.y) / (PI / 4.0)), 8)]
 		navigation_changed.emit("COASTERCRAFT  ·  infinite stock  ·  Shift on a car to ride, 1-9 speed  ·  spawn %d m %s" % [roundi(distance), mode_direction])
 		return
+	if development:
+		# The Expo names itself; the enemy-base bearing is hidden with it.
+		var expo_directions: Array[String] = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+		var expo_direction: String = expo_directions[posmod(roundi(atan2(offset.x, -offset.y) / (PI / 4.0)), 8)]
+		navigation_changed.emit("DEVELOPMENT EXPO  ·  plaza %d m %s" % [roundi(distance), expo_direction])
+		return
 	if distance <= 8.0:
 		var iron_distance := Vector2(STARTER_IRON_MARKER.x - player.global_position.x, STARTER_IRON_MARKER.z - player.global_position.z).length()
 		navigation_changed.emit("HOME CLEARING  ·  IRON MARKER %d m" % roundi(iron_distance))
@@ -743,7 +823,7 @@ func _emit_navigation() -> void:
 
 ## "· ENEMY BASE 160 m NW" from the generator's seed-chosen base site.
 func _enemy_base_hint(directions: Array) -> String:
-	if coastercraft or world == null or world.terrain == null or not world.terrain.generator is P1TerrainGenerator:
+	if coastercraft or development or world == null or world.terrain == null or not world.terrain.generator is P1TerrainGenerator:
 		return ""
 	var base: Vector3i = world.terrain.generator.enemy_base_cell()
 	var offset := Vector2(float(base.x) + 0.5 - player.global_position.x, float(base.z) + 0.5 - player.global_position.z)
@@ -3889,7 +3969,7 @@ func _spawn_starter_resource_markers() -> void:
 
 
 func _on_defense_state_changed(_text: String) -> void:
-	if coastercraft:
+	if coastercraft or development:
 		defense_changed.emit("")
 	elif core_defense != null and (core_defense.is_active() or core_defense.state == CoreDefenseService.FAILED):
 		defense_changed.emit(core_defense.hud_text() + (siege_defense.hud_suffix() if siege_defense != null else ""))

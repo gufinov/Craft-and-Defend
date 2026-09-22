@@ -1276,141 +1276,166 @@ func restore(data: Dictionary, world_query: Callable) -> Dictionary:
 	stations.clear()
 	jobs.clear()
 	footprints = EntityFootprintService.new()
+	# Lost-Core Continue (docs/DEVELOPMENT_EXPO.md): one unreadable station
+	# record drops that station and is reported in `skipped`; it never fails
+	# the whole load, which used to leave Continue on the loading screen.
+	var skipped: Array[Dictionary] = []
 	for value in data.get("stations", []):
-		if not value is Dictionary or not value.get("anchor") is Array or value.anchor.size() != 3:
-			return _result(false, "INVALID_STATION_SNAPSHOT")
-		var record: Dictionary = value.duplicate(true)
-		record.anchor = Vector3i(int(value.anchor[0]), int(value.anchor[1]), int(value.anchor[2]))
-		var definition := registry.entity(str(record.get("entity_id", "")))
-		if definition.is_empty():
-			return _result(false, "MISSING_CONTENT")
-		var defense_definition: Dictionary = definition.get("defense", {})
-		if not defense_definition.is_empty():
-			var maximum := maxi(1, int(defense_definition.get("max_integrity", 1)))
-			var integrity := int(record.get("integrity", maximum))
-			if integrity <= 0 or integrity > maximum:
-				return _result(false, "INVALID_STATION_SNAPSHOT")
-			record["integrity"] = integrity
-		var siege_definition: Dictionary = definition.get("siege", {})
-		if not siege_definition.is_empty():
-			var maximum_ammo := maxi(0, int(siege_definition.get("starting_ammo", 0)))
-			var siege_ammo := int(record.get("siege_ammo", maximum_ammo))
-			var siege_cooldown := float(record.get("siege_cooldown", 0.0))
-			if siege_ammo < 0 or siege_ammo > maximum_ammo or siege_cooldown < 0.0:
-				return _result(false, "INVALID_STATION_SNAPSHOT")
-			record["siege_ammo"] = siege_ammo
-			record["siege_cooldown"] = siege_cooldown
-			var allowed_ammo: Array = siege_definition.get("ammo_items", [siege_definition.get("ammo_item", "")])
-			var ammo_item := str(record.get("siege_ammo_item", siege_definition.get("ammo_item", "")))
-			if ammo_item not in allowed_ammo:
-				return _result(false, "INVALID_STATION_SNAPSHOT")
-			record["siege_ammo_item"] = ammo_item
-			var stance := str(record.get("siege_stance", "fire_at_will"))
-			if stance not in ["fire_at_will", "hold"]:
-				return _result(false, "INVALID_STATION_SNAPSHOT")
-			record["siege_stance"] = stance
-			record["siege_target_filter"] = str(record.get("siege_target_filter", "any"))
-		if int(definition.get("container_slots", 0)) > 0:
-			var raw_container: Variant = record.get("container_slots", [])
-			if not raw_container is Array:
-				return _result(false, "INVALID_STATION_SNAPSHOT")
-			var clean_container: Array = []
-			for raw_stack in raw_container:
-				var clean_stack := _validated_stack(raw_stack)
-				if clean_stack.is_empty():
-					return _result(false, "INVALID_STATION_SNAPSHOT")
-				clean_container.append(clean_stack)
-			while clean_container.size() < int(definition.get("container_slots", 0)):
-				clean_container.append(_empty_stack())
-			record["container_slots"] = clean_container
-		if str(record.get("entity_id", "")) == "mine_cart":
-			# Hauling (docs/INDUSTRY.md): the cart's cargo, item_id -> count.
-			var raw_cargo: Variant = record.get("cargo", {})
-			if not raw_cargo is Dictionary:
-				return _result(false, "INVALID_STATION_SNAPSHOT")
-			var clean_cargo: Dictionary = {}
-			for cargo_item in raw_cargo.keys():
-				var cargo_count := int(raw_cargo[cargo_item])
-				if not registry.items.has(str(cargo_item)) or cargo_count < 0:
-					return _result(false, "INVALID_STATION_SNAPSHOT")
-				if cargo_count > 0:
-					clean_cargo[str(cargo_item)] = cargo_count
-			record["cargo"] = clean_cargo
-		if str(record.get("entity_id", "")) == "foundry":
-			# Storage network card: a record from before the slots existed gets
-			# empty ones; a present block must hold valid stacks in their roles.
-			var raw_foundry: Variant = record.get("foundry_slots", _empty_foundry_slots())
-			if not raw_foundry is Dictionary:
-				return _result(false, "INVALID_STATION_SNAPSHOT")
-			var clean_foundry := _empty_foundry_slots()
-			for slot_name in ["ore", "fuel", "output"]:
-				var clean_stack := _validated_stack(raw_foundry.get(slot_name, _empty_stack()))
-				if clean_stack.is_empty():
-					return _result(false, "INVALID_STATION_SNAPSHOT")
-				var role := _furnace_role_for_item(str(clean_stack.get("item_id", "")))
-				if not str(clean_stack.get("item_id", "")).is_empty() and slot_name != "output" and role != ("input" if slot_name == "ore" else slot_name):
-					return _result(false, "INVALID_STATION_SNAPSHOT")
-				clean_foundry[slot_name] = clean_stack
-			record["foundry_slots"] = clean_foundry
-		if str(record.get("entity_id", "")) == "furnace":
-			var raw_slots: Variant = record.get("furnace_slots", _empty_furnace_slots())
-			if not raw_slots is Dictionary:
-				return _result(false, "INVALID_STATION_SNAPSHOT")
-			var clean_slots := _empty_furnace_slots()
-			for slot_name in ["input", "fuel", "output"]:
-				var clean_stack := _validated_stack(raw_slots.get(slot_name, _empty_stack()))
-				if clean_stack.is_empty():
-					return _result(false, "INVALID_STATION_SNAPSHOT")
-				if not str(clean_stack.get("item_id", "")).is_empty() and slot_name != "output" and _furnace_role_for_item(str(clean_stack.item_id)) != slot_name:
-					return _result(false, "INVALID_STATION_SNAPSHOT")
-				clean_slots[slot_name] = clean_stack
-			record["furnace_slots"] = clean_slots
-			var operations_per_fuel := _furnace_operations_per_fuel()
-			var stored_operations := int(record.get("furnace_fuel_operations", 0))
-			if stored_operations < 0 or stored_operations >= operations_per_fuel:
-				return _result(false, "INVALID_STATION_SNAPSHOT")
-			record["furnace_fuel_operations"] = stored_operations
-			# Round 3: `furnace_fuel_burning` marks the lit Coal at the top of the
-			# stack. Records saved before the field existed are lit exactly when
-			# operations remain on the Coal.
-			var burning_value: Variant = record.get("furnace_fuel_burning", stored_operations > 0)
-			if not burning_value is bool:
-				return _result(false, "INVALID_STATION_SNAPSHOT")
-			var burning: bool = burning_value or stored_operations > 0
-			var restored_fuel: Dictionary = clean_slots.get("fuel", _empty_stack())
-			if str(restored_fuel.get("item_id", "")) != _furnace_fuel_item() or int(restored_fuel.get("count", 0)) <= 0:
-				# No Coal in the slot: nothing is lit (legacy model-1 records get
-				# their Coal back below and are re-lit there).
-				burning = false
-			record["furnace_fuel_burning"] = burning
-			# Fuel model 1 removed the burning Coal from the slot; model 2 keeps it.
-			# Put the burning Coal back for legacy records so no operations are lost.
-			if int(record.get("fuel_model", 1)) < 2 and stored_operations > 0:
-				var legacy_fuel: Dictionary = clean_slots.get("fuel", _empty_stack())
-				var fuel_item := _furnace_fuel_item()
-				if str(legacy_fuel.get("item_id", "")).is_empty():
-					clean_slots["fuel"] = {"item_id": fuel_item, "count": 1}
-				elif str(legacy_fuel.get("item_id", "")) == fuel_item and int(legacy_fuel.get("count", 0)) < registry.max_stack(fuel_item):
-					clean_slots["fuel"] = {"item_id": fuel_item, "count": int(legacy_fuel.get("count", 0)) + 1}
-				record["furnace_slots"] = clean_slots
-				record["furnace_fuel_burning"] = true
-			record["fuel_model"] = 2
-		var reserved := footprints.try_reserve(str(record.instance_id), record.anchor, _vector_list(definition.occupied_offsets), int(record.get("rotation_quarters", 0)), world_query, AABB(), _vector_list(definition.support_offsets))
-		if not reserved.get("ok", false):
-			return _result(false, "INVALID_STATION_SNAPSHOT", reserved)
+		var restored := _restored_station(value, world_query)
+		if not restored.get("ok", false):
+			skipped.append({"reason": str(restored.get("reason", "INVALID_STATION_SNAPSHOT")), "entity_id": str(restored.get("entity_id", "")), "instance_id": str(restored.get("instance_id", ""))})
+			continue
+		var record: Dictionary = restored.get("record", {})
 		stations[str(record.instance_id)] = record
 	var restored_jobs: Variant = data.get("jobs", {})
 	if not restored_jobs is Dictionary:
 		return _result(false, "INVALID_STATION_SNAPSHOT")
 	for instance_id: String in restored_jobs:
-		if not stations.has(instance_id) or not restored_jobs[instance_id] is Dictionary:
+		if not restored_jobs[instance_id] is Dictionary:
 			return _result(false, "INVALID_STATION_SNAPSHOT")
+		if not stations.has(instance_id):
+			# Its station was dropped above; the job goes with it.
+			continue
 		jobs[instance_id] = restored_jobs[instance_id].duplicate(true)
 	_next_instance = maxi(1, int(data.get("next_instance", 1)))
 	_next_job = maxi(1, int(data.get("next_job", 1)))
-	return _result(true, "OK")
+	return _result(true, "OK", {"skipped": skipped})
 
 
+## One saved station record, validated and normalised. Returns {ok, reason,
+## record}: `ok` false means that record is dropped (the caller records it),
+## never that the save is unreadable.
+func _restored_station(value: Variant, world_query: Callable) -> Dictionary:
+	if not value is Dictionary or not value.get("anchor") is Array or value.anchor.size() != 3:
+		return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+	var record: Dictionary = value.duplicate(true)
+	record.anchor = Vector3i(int(value.anchor[0]), int(value.anchor[1]), int(value.anchor[2]))
+	var definition := registry.entity(str(record.get("entity_id", "")))
+	if definition.is_empty():
+		return {"ok": false, "reason": "MISSING_CONTENT"}
+	var defense_definition: Dictionary = definition.get("defense", {})
+	if not defense_definition.is_empty():
+		# A saved integrity outside the sheet's range is normalised, not fatal:
+		# a station that reached 0 was erased when it was destroyed, so a
+		# record like that is stale bookkeeping, never a corrupt save.
+		var maximum := maxi(1, int(defense_definition.get("max_integrity", 1)))
+		record["integrity"] = clampi(int(record.get("integrity", maximum)), 1, maximum)
+	var siege_definition: Dictionary = definition.get("siege", {})
+	if not siege_definition.is_empty():
+		var maximum_ammo := maxi(0, int(siege_definition.get("starting_ammo", 0)))
+		var siege_ammo := int(record.get("siege_ammo", maximum_ammo))
+		var siege_cooldown := float(record.get("siege_cooldown", 0.0))
+		if siege_ammo < 0 or siege_ammo > maximum_ammo or siege_cooldown < 0.0:
+			return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+		record["siege_ammo"] = siege_ammo
+		record["siege_cooldown"] = siege_cooldown
+		var allowed_ammo: Array = siege_definition.get("ammo_items", [siege_definition.get("ammo_item", "")])
+		var ammo_item := str(record.get("siege_ammo_item", siege_definition.get("ammo_item", "")))
+		if ammo_item not in allowed_ammo:
+			return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+		record["siege_ammo_item"] = ammo_item
+		var stance := str(record.get("siege_stance", "fire_at_will"))
+		if stance not in ["fire_at_will", "hold"]:
+			return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+		record["siege_stance"] = stance
+		record["siege_target_filter"] = str(record.get("siege_target_filter", "any"))
+	if int(definition.get("container_slots", 0)) > 0:
+		var raw_container: Variant = record.get("container_slots", [])
+		if not raw_container is Array:
+			return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+		var clean_container: Array = []
+		for raw_stack in raw_container:
+			var clean_stack := _validated_stack(raw_stack)
+			if clean_stack.is_empty():
+				return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+			clean_container.append(clean_stack)
+		while clean_container.size() < int(definition.get("container_slots", 0)):
+			clean_container.append(_empty_stack())
+		record["container_slots"] = clean_container
+	if str(record.get("entity_id", "")) == "mine_cart":
+		# Hauling (docs/INDUSTRY.md): the cart's cargo, item_id -> count.
+		var raw_cargo: Variant = record.get("cargo", {})
+		if not raw_cargo is Dictionary:
+			return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+		var clean_cargo: Dictionary = {}
+		for cargo_item in raw_cargo.keys():
+			var cargo_count := int(raw_cargo[cargo_item])
+			if not registry.items.has(str(cargo_item)) or cargo_count < 0:
+				return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+			if cargo_count > 0:
+				clean_cargo[str(cargo_item)] = cargo_count
+		record["cargo"] = clean_cargo
+	if str(record.get("entity_id", "")) == "foundry":
+		# Storage network card: a record from before the slots existed gets
+		# empty ones; a present block must hold valid stacks in their roles.
+		var raw_foundry: Variant = record.get("foundry_slots", _empty_foundry_slots())
+		if not raw_foundry is Dictionary:
+			return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+		var clean_foundry := _empty_foundry_slots()
+		for slot_name in ["ore", "fuel", "output"]:
+			var clean_stack := _validated_stack(raw_foundry.get(slot_name, _empty_stack()))
+			if clean_stack.is_empty():
+				return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+			var role := _furnace_role_for_item(str(clean_stack.get("item_id", "")))
+			if not str(clean_stack.get("item_id", "")).is_empty() and slot_name != "output" and role != ("input" if slot_name == "ore" else slot_name):
+				return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+			clean_foundry[slot_name] = clean_stack
+		record["foundry_slots"] = clean_foundry
+	if str(record.get("entity_id", "")) == "furnace":
+		var raw_slots: Variant = record.get("furnace_slots", _empty_furnace_slots())
+		if not raw_slots is Dictionary:
+			return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+		var clean_slots := _empty_furnace_slots()
+		for slot_name in ["input", "fuel", "output"]:
+			var clean_stack := _validated_stack(raw_slots.get(slot_name, _empty_stack()))
+			if clean_stack.is_empty():
+				return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+			if not str(clean_stack.get("item_id", "")).is_empty() and slot_name != "output" and _furnace_role_for_item(str(clean_stack.item_id)) != slot_name:
+				return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+			clean_slots[slot_name] = clean_stack
+		record["furnace_slots"] = clean_slots
+		var operations_per_fuel := _furnace_operations_per_fuel()
+		var stored_operations := int(record.get("furnace_fuel_operations", 0))
+		if stored_operations < 0 or stored_operations >= operations_per_fuel:
+			return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+		record["furnace_fuel_operations"] = stored_operations
+		# Round 3: `furnace_fuel_burning` marks the lit Coal at the top of the
+		# stack. Records saved before the field existed are lit exactly when
+		# operations remain on the Coal.
+		var burning_value: Variant = record.get("furnace_fuel_burning", stored_operations > 0)
+		if not burning_value is bool:
+			return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
+		var burning: bool = burning_value or stored_operations > 0
+		var restored_fuel: Dictionary = clean_slots.get("fuel", _empty_stack())
+		if str(restored_fuel.get("item_id", "")) != _furnace_fuel_item() or int(restored_fuel.get("count", 0)) <= 0:
+			# No Coal in the slot: nothing is lit (legacy model-1 records get
+			# their Coal back below and are re-lit there).
+			burning = false
+		record["furnace_fuel_burning"] = burning
+		# Fuel model 1 removed the burning Coal from the slot; model 2 keeps it.
+		# Put the burning Coal back for legacy records so no operations are lost.
+		if int(record.get("fuel_model", 1)) < 2 and stored_operations > 0:
+			var legacy_fuel: Dictionary = clean_slots.get("fuel", _empty_stack())
+			var fuel_item := _furnace_fuel_item()
+			if str(legacy_fuel.get("item_id", "")).is_empty():
+				clean_slots["fuel"] = {"item_id": fuel_item, "count": 1}
+			elif str(legacy_fuel.get("item_id", "")) == fuel_item and int(legacy_fuel.get("count", 0)) < registry.max_stack(fuel_item):
+				clean_slots["fuel"] = {"item_id": fuel_item, "count": int(legacy_fuel.get("count", 0)) + 1}
+			record["furnace_slots"] = clean_slots
+			record["furnace_fuel_burning"] = true
+		record["fuel_model"] = 2
+	var offsets := _vector_list(definition.occupied_offsets)
+	var rotation := int(record.get("rotation_quarters", 0))
+	var reserved := footprints.try_reserve(str(record.instance_id), record.anchor, offsets, rotation, world_query, AABB(), _vector_list(definition.support_offsets))
+	if not reserved.get("ok", false):
+		# The cells no longer pass a placement check (the ground under the
+		# station was dug or blasted away, its chunk is not streamed in yet).
+		# The station existed when the game was saved, so it comes back where
+		# it stood; only a collision with an already restored station drops it.
+		var forced := footprints.force_reserve(str(record.instance_id), record.anchor, offsets, rotation)
+		if not forced.get("ok", false):
+			return {"ok": false, "reason": str(forced.get("reason", "INVALID_STATION_SNAPSHOT")), "entity_id": str(record.get("entity_id", "")), "instance_id": str(record.get("instance_id", "")), "details": reserved}
+	return {"ok": true, "reason": "OK", "record": record}
 func _vector_list(values: Array) -> Array:
 	var vectors: Array = []
 	for value in values:
