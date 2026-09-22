@@ -1342,6 +1342,49 @@ func try_damage(instance_id: String, amount: int) -> Dictionary:
 	return destroyed
 
 
+## Authored fixture restore (docs/DEVELOPMENT_EXPO.md, reset groups): puts a
+## station back to full integrity with no item cost, because the Development
+## Expo's scenarios rebuild what they own rather than being repaired by hand.
+## Reports the same REPAIRED result the ordinary repair does, so the visual and
+## the save record follow.
+func restore_integrity(instance_id: String) -> Dictionary:
+	var status := defense_status(instance_id)
+	if not status.get("ok", false):
+		return status
+	var details: Dictionary = status.get("details", {})
+	var before := int(details.get("integrity", 1))
+	var maximum := int(details.get("max_integrity", before))
+	if before >= maximum:
+		return _result(true, "NO_REPAIR_NEEDED", {"instance_id": instance_id, "integrity": before, "max_integrity": maximum})
+	stations[instance_id]["integrity"] = maximum
+	var repaired := _result(true, "REPAIRED", {
+		"instance_id": instance_id,
+		"entity_id": details.get("entity_id", ""),
+		"integrity_before": before,
+		"integrity": maximum,
+		"max_integrity": maximum,
+	})
+	station_changed.emit(repaired)
+	return repaired
+
+
+## Authored fixture restore: a siege weapon goes back to the clip its sheet
+## opens with, in its default munition. No inventory and no storage involved.
+func restore_siege_ammo(instance_id: String) -> Dictionary:
+	var status := siege_status(instance_id)
+	if not status.get("ok", false):
+		return status
+	var definition: Dictionary = status.get("details", {}).get("definition", {})
+	var item_id := str(definition.get("ammo_item", ""))
+	var ammo := clampi(int(definition.get("starting_ammo", 0)), 0, maxi(1, int(definition.get("capacity", 1))))
+	stations[instance_id]["siege_ammo_item"] = item_id
+	stations[instance_id]["siege_ammo"] = ammo
+	stations[instance_id]["siege_cooldown"] = 0.0
+	var result := _result(true, "AMMO_RESTORED", {"instance_id": instance_id, "item_id": item_id, "ammo": ammo})
+	station_changed.emit(result)
+	return result
+
+
 func try_repair_structure(instance_id: String) -> Dictionary:
 	var status := defense_status(instance_id)
 	if not status.get("ok", false):

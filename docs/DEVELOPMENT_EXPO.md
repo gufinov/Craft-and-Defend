@@ -365,6 +365,92 @@ the reserved parcel — the validator says which exhibit did not fit.
 
 ---
 
+## 6. Construction Yard, Defense Range and Battlefield (§7, §14, §15)
+
+The eastern half of the campus. All three are `prepare: "full"`; the
+Battlefield's own district terrain is `natural`, because the arena it needs is
+one authored parcel inside it rather than a pad the size of the district.
+
+### Composite exhibits
+
+A weapon is not demonstrable on its own: it needs the mount its sheet allows,
+its munition, the storage that reloads it and something to shoot at. These
+districts therefore use **composite terrain kinds** — `wall_demo`,
+`blueprint_demo`, `castle_demo`, `siege_booth`, `field`, `camp`, `battery`,
+`fortification`, `magazine`. A composite exhibit's declared `entities` are
+placed by its own terrain builder (`ExpoBuilder.COMPOSITE_TERRAIN`), not one
+per parcel by `_build_entities`, so the manifest still owns **what** is shown
+and the builder owns only **how** it stands. Two builder helpers came with
+them: `stock_container(cell, items, per_item)` fills an authored chest, and
+`queue_action(label, callable)` runs one step in its turn in the build order.
+
+| District | Box (x, z) | What stands there |
+|---|---|---|
+| Construction Yard | 28..71, -44..-5 | Castle Stone, Stone Stair, Wall-walk Slab, Parapet Merlon, Tower Platform, Gate Frame and Wood Barricade each on their own signed booth; then the same pieces assembled — a drag-built run of castle stone with a wall-walk deck and merlons, the blueprint stack FOUNDATION 4 / TOWER SEGMENT 4 / CAP 4 stamped as ordinary voxels and recorded as stamps, and a small castle with a curtain wall, a gate, a stair and a tower platform; a signed, empty parcel for future castle technology |
+| Defense Range | 56..103, 12..51 | Six booths in a row, each 28 cells deep: Ballista and both Turret Catapults on tower platforms, Catapult and Cannon on the ground, Kettle on a rail along a wall top; each with its munition chest touching it, a castle-stone target at the far end of its own lane and a sign naming the weapon and its ammunition; a signed, empty parcel for future machines |
+| Battlefield | 112..183, -16..55 | One `field` parcel of open dirt with everything else nested in it: the enemy core and its muster ground to the north, the west and east batteries, the curtain wall with its gate and tower, the Core of Power, the magazine and the control pedestal to the south, and signed empty parcels for future enemy kinds and for allied archers and soldiers |
+
+### The Battlefield control station
+
+`battlefield_control` is an entity with no item: not craftable, not in the
+recipe book, placed only by the fixture. Right-clicking it opens a live
+two-button panel (`AppState.BATTLEFIELD`; the world keeps running behind it,
+as it does for the sign editor).
+
+- **START ATTACK** — `CraftAndDefendApp.battlefield_start_attack()` calls
+  `CoreDefenseService.start_prototype` with six attackers, two brutes, two
+  trolls and a spawn distance of 28. No new wave code: this is the ordinary
+  drill. The Expo has **two** Cores of Power standing, so the drill gained one
+  option — `core_station_id` — and the control station names the core inside
+  the Battlefield's reset boundary. Without it the first placed core wins,
+  exactly as before.
+- **RESET BATTLEFIELD** — `battlefield_reset()` calls
+  `DevelopmentMode.reset_group(session, "battlefield")`.
+
+Development mode has no ambient pressure, so this pedestal is the only thing
+in the whole Expo that starts a fight.
+
+### The reset-group pattern — `ExpoResetService`
+
+`game/scripts/expo/expo_reset_service.gd` is the §14 seam's implementation and
+is **not** Battlefield-specific. Any exhibit may name a `reset_group` in the
+manifest; every named group becomes a **scenario** with its own boundary, and
+`ExpoBuilder.build_district` registers each one so it reaches
+`DevelopmentMode.reset_group`. A group may share its district's name — the
+district's own group is `district:<id>`, which rebuilds the avenue and the
+whole pad with it.
+
+A scenario's **boundary** is the union of its parcels (plus the pad under them
+and the cleared headroom over them). Resetting one is three steps:
+
+1. **Live state inside the boundary stops.** A core-defense drill whose arena
+   centre lies in the box is cleared through the ordinary
+   `clear_for_other_mode()` — attackers removed, drill back to idle. A drill
+   anywhere else in the Expo is left running. This step is immediate.
+2. **The fixture is rebuilt.** Each of the group's exhibits is re-placed
+   through `ExpoBuilder.place_exhibit`, in manifest order, so its terrain is
+   levelled again and anything destroyed is placed again; a fixture still
+   standing reports `OCCUPIED` and is kept. The Battlefield's `field` parcel is
+   first in the manifest, so the arena floor is restored before everything
+   standing on it.
+3. **What survived is restored.** Every station inside the boundary goes back
+   to full integrity and every siege weapon to its opening clip, through two
+   new free calls on `WorkstationService` — `restore_integrity(id)` and
+   `restore_siege_ammo(id)` (authored fixture restore: no item cost, because a
+   scenario rebuilds what it owns rather than being repaired by hand). The
+   ammunition chests are refilled by their own exhibit builders in step 2.
+
+Steps 2 and 3 are queued on the builder and drained a budget per frame like
+any other build, so a reset never freezes the frame. To give a future scenario
+its own boundary, name a new `reset_group` on its exhibits — nothing else.
+
+**Call made:** `_build_fortification` leaves the gateway of the curtain wall
+open. A wave that cannot walk in stands and chews castle stone instead of
+showing the routing the Battlefield exists to show; the Wood Barricades in
+front of the gate are what the wave meets first.
+
+---
+
 ## Checks
 
 | Gate | Covers |
@@ -396,3 +482,22 @@ cards add their records to it.
   district sign are read back field by field.
 - **T215V_SIGN_VIEW** (`=visual`) — `development-expo-sign.png`, the plaza's
   orientation board framed from in front of it, close enough to read.
+- **T218_EXPO_CONSTRUCTION** — every castle piece stands on its own signed
+  booth; the drag-built wall carries its deck and merlons; the blueprint stack
+  is stamped and recorded in `InteractionService.stamps_snapshot()`; the small
+  castle has its gate frame, its stair and its tower platform; the future
+  parcel is signed and empty.
+- **T219_EXPO_DEFENSE_RANGE** — each of the six booths has the mount its sheet
+  allows, its munition in a container the real `StorageNetwork` reports beside
+  it, a target down its lane and a sign; draining the Cannon back to its
+  opening clip is topped up to capacity again by the unmodified siege reload,
+  and the munition leaves the chest.
+- **T220_EXPO_BATTLEFIELD** — START ATTACK musters a mixed wave at the
+  Battlefield's own Core, its distance to that Core shrinks and a player siege
+  weapon engages; RESET BATTLEFIELD then clears the fight and restores both
+  cores, the batteries, their ammunition and the magazine, while damage done to
+  the plaza Core and to a Defense Range weapon stays exactly as it was; a
+  second START ATTACK straight afterwards is accepted.
+- **T218V / T219V / T220V** (`=visual`) — `development-expo-construction.png`,
+  `development-expo-range.png` and `development-expo-battlefield.png`, the last
+  one taken mid-attack.

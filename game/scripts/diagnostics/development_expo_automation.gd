@@ -1,28 +1,48 @@
 class_name DevelopmentExpoAutomation
 extends Node
 
-## Development Expo gate (docs/DEVELOPMENT_EXPO.md, docs/TEST_PLAN.md T213 and
-## T214). This suite is the milestone's home: the later Expo cards add their
-## own records to it.
+## Development Expo gate (docs/DEVELOPMENT_EXPO.md, docs/TEST_PLAN.md T213-T220).
+## This suite is the milestone's home: each Expo card adds its own records to it.
 ##
-##   --development-expo-automation=gate    headless, T213 + T214
-##   --development-expo-automation=visual  windowed, builds and renders the
-##                                         plaza and the mountain tunnel
+##   --development-expo-automation=gate    headless: T213 layout, T214 plaza /
+##                                         Day One / mountain, T215 signs, T218
+##                                         Construction Yard, T219 Defense Range,
+##                                         T220 Battlefield
+##   --development-expo-automation=visual  windowed: the plaza, a sign, the
+##                                         mountain tunnel, the Construction
+##                                         Yard, the Defense Range and the
+##                                         Battlefield mid-attack
 ##
-## The layout half (T213) needs no world; the campus half (T214) opens a fresh
-## Development world, walks the player to the districts this milestone builds
-## and reads the voxels and stations back out.
+## The layout half (T213) needs no world; everything else opens a fresh
+## Development world, walks the player round the campus so the whole fixture
+## builds, and then reads the voxels, the stations and the live services back
+## out district by district.
 
 const AIR := 0
 const STONE := 3
 const COAL_ORE := 6
 const IRON_ORE := 7
 const GOLD_ORE := 11
+const CASTLE_STONE := 8
 ## Cells of the mountain tunnel walked in a straight line.
 const TUNNEL_WALK := 56
 ## A tunnel sample counts as lit with a light entity this near.
 const LIGHT_RANGE := 12.0
-const BUILD_TIMEOUT_MSEC := 240000
+const BUILD_TIMEOUT_MSEC := 420000
+## Work units the gate pushes through the builder itself each frame, on top of
+## the builder's own per-frame budget (`ExpoBuilder.advance` exists for this):
+## the campus is three districts bigger than it was and a headless gate has no
+## frame to protect.
+const BUILD_BUDGET_PER_FRAME := 2400
+## Frames spent at each district while driving the build round the campus.
+const BUILD_FRAMES_PER_STOP := 150
+## How long one Battlefield assault may take to muster, close on the core and
+## be shot at (the drill's own warning countdown is 20 seconds of it).
+const ATTACK_TIMEOUT_MSEC := 120000
+## How long a drained weapon may take to be reloaded from the storage beside it.
+const RELOAD_TIMEOUT_MSEC := 30000
+## How much nearer the core a wave has to get before it counts as closing in.
+const CLOSING_CELLS := 6.0
 
 var app: CraftAndDefendApp
 var failures: Array[String] = []
@@ -53,10 +73,14 @@ func _run_gate() -> void:
 	if not await _wait_ready():
 		return
 	app.session.player.deactivate()
+	await _drive_build()
 	if not await _wait_built("plaza"):
 		return
 	await _test_plaza_and_day_one()
 	await _test_mountain()
+	await _test_construction_yard()
+	await _test_defense_range()
+	await _test_battlefield()
 	_test_signs()
 	await _settle_near_spawn()
 
@@ -96,7 +120,61 @@ func _run_visual() -> void:
 	var tunnel_path := app.data_root.path_join("development-expo-tunnel.png")
 	var tunnel_shot := await _save_viewport(tunnel_path)
 	_record("T214V_TUNNEL_VIEW", tunnel_shot, "rendered evidence of the lit mountain tunnel with its rail line", {"path": tunnel_path})
+	await _shoot_card_e_districts()
 	await _settle_near_spawn()
+
+
+## Reading evidence for the eastern half of the campus: the Construction Yard's
+## kit and the castle built from it, the Defense Range's booth line, and the
+## Battlefield with an assault actually crossing it.
+func _shoot_card_e_districts() -> void:
+	if not await _walk_to_district("construction_yard"):
+		return
+	var castle := app.development.layout.parcel_for("cy_castle_demo")
+	var castle_origin: Vector3i = castle["origin"]
+	var castle_size: Vector3i = castle["size"]
+	await _shoot("T218V_CONSTRUCTION_VIEW",
+		Vector3(castle_origin) + Vector3(float(castle_size.x) * 0.5, 16.0, float(castle_size.z) + 18.0),
+		Vector3(castle_origin) + Vector3(float(castle_size.x) * 0.5, 2.0, float(castle_size.z) * 0.5),
+		"development-expo-construction.png",
+		"rendered evidence of the Construction Yard: the castle pieces on their signed booths and the small castle assembled from them")
+	if not await _walk_to_district("defense_range"):
+		return
+	var range_bounds := app.development.layout.district_bounds("defense_range")
+	var range_origin: Vector3i = range_bounds["origin"]
+	var range_size: Vector3i = range_bounds["size"]
+	await _shoot("T219V_RANGE_VIEW",
+		Vector3(range_origin) + Vector3(float(range_size.x) * 0.5, 16.0, float(range_size.z) + 6.0),
+		Vector3(range_origin) + Vector3(float(range_size.x) * 0.5, 2.0, float(range_size.z) * 0.4),
+		"development-expo-range.png",
+		"rendered evidence of the Defense Range: six weapon booths, each on its mount with its ammunition chest, target and sign")
+	var core_parcel := app.development.layout.parcel_for("battlefield_player_core")
+	var core_origin: Vector3i = core_parcel["origin"]
+	if not await _walk_to(core_origin + Vector3i(1, 0, 8), "battlefield"):
+		return
+	app.battlefield_start_attack()
+	var deadline := Time.get_ticks_msec() + ATTACK_TIMEOUT_MSEC
+	while app.session.core_defense.living_raider_count() == 0 and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	for _frame in range(300):
+		await get_tree().process_frame
+	await _shoot("T220V_BATTLEFIELD_VIEW",
+		Vector3(core_origin) + Vector3(1.5, 13.0, 12.0),
+		Vector3(core_origin) + Vector3(1.5, 1.0, -22.0),
+		"development-expo-battlefield.png",
+		"rendered evidence of the Battlefield mid-attack: the Core behind its gate, the batteries either side and the wave crossing the open ground from the enemy core")
+	app.session.core_defense.clear_for_other_mode()
+
+
+func _shoot(test_id: String, eye: Vector3, target: Vector3, file_name: String, expected: String) -> void:
+	_look_from(eye, target)
+	for _frame in range(60):
+		await get_tree().process_frame
+	_look_from(eye, target)
+	await get_tree().process_frame
+	var path := app.data_root.path_join(file_name)
+	var shot := await _save_viewport(path)
+	_record(test_id, shot, expected, {"path": path})
 
 
 ## T213: the manifest, the solved layout and the computed world bounds, with no
@@ -278,6 +356,250 @@ func _test_mountain() -> void:
 		"builder": app.development.expo_builder.progress()})
 
 
+## T218: the Construction Yard shows every castle piece on its own booth and
+## then the same pieces assembled - a drag-built wall, a stamped blueprint and
+## a small castle - each of them signed.
+func _test_construction_yard() -> void:
+	var layout: ExpoLayout = app.development.layout
+	if not await _walk_to_district("construction_yard"):
+		return
+	var pieces := {"cy_stone_stair": "stone_stair", "cy_wall_walk_slab": "wall_walk_slab",
+		"cy_parapet_merlon": "parapet_merlon", "cy_tower_platform": "tower_platform",
+		"cy_gate_frame": "gate_frame", "cy_wood_barricade": "wood_barricade"}
+	var missing_pieces: Array[String] = []
+	for exhibit_id: String in pieces.keys():
+		if _stations_in(_parcel_box(exhibit_id), str(pieces[exhibit_id])).is_empty():
+			missing_pieces.append(exhibit_id)
+	var stone_booth: bool = _voxels_in(_parcel_box("cy_castle_stone"), CASTLE_STONE) > 0
+	var unsigned: Array[String] = []
+	for exhibit_id: String in layout.exhibit_ids("construction_yard"):
+		if not _sign_placed(exhibit_id):
+			unsigned.append(exhibit_id)
+	# The drag-built wall: a run of castle stone with a battlemented top.
+	var wall_box := _parcel_box("cy_drag_wall")
+	var wall_stone := _voxels_in(wall_box, CASTLE_STONE)
+	var wall_deck := _stations_in(wall_box, "wall_walk_slab").size()
+	var wall_merlons := _stations_in(wall_box, "parapet_merlon").size()
+	# The stamped blueprint: the P3K stack, recorded as stamps so a later piece
+	# snaps to its sockets exactly as a player-stamped one would.
+	var stamp_box := _parcel_box("cy_blueprint_stamp")
+	var stamp_stone := _voxels_in(stamp_box, CASTLE_STONE)
+	var stamped: Array[String] = []
+	for entry: Variant in app.session.interaction.stamps_snapshot():
+		stamped.append(str((entry as Dictionary).get("blueprint_id", "")))
+	var stamps_ok: bool = stamped.has("foundation_4") and stamped.has("tower_segment_4") and stamped.has("cap_4")
+	# The payoff: the kit assembled into something that defends.
+	var castle_box := _parcel_box("cy_castle_demo")
+	var castle_stone := _voxels_in(castle_box, CASTLE_STONE)
+	var castle_gate: bool = not _stations_in(castle_box, "gate_frame").is_empty()
+	var castle_platform: bool = not _stations_in(castle_box, "tower_platform").is_empty()
+	var castle_stairs := _stations_in(castle_box, "stone_stair").size()
+	var reserved_empty: bool = _stations_in(_parcel_box("cy_expansion_reserved"), "").is_empty()
+	var ok: bool = missing_pieces.is_empty() and stone_booth and unsigned.is_empty() \
+		and wall_stone >= 36 and wall_deck >= 8 and wall_merlons >= 4 \
+		and stamp_stone > 0 and stamps_ok \
+		and castle_stone > 0 and castle_gate and castle_platform and castle_stairs >= 3 and reserved_empty
+	_record("T218_EXPO_CONSTRUCTION", ok,
+		"the Construction Yard stands each castle piece on its own signed booth and then shows them assembled: a drag-built run of castle stone with a wall-walk deck and merlons on it, the FOUNDATION 4 / TOWER SEGMENT 4 / CAP 4 blueprint stack stamped and recorded as stamps, and a small castle with a gate frame, a stair and a tower platform; the future-castle-technology parcel is signed and empty",
+		{"missing_pieces": missing_pieces, "castle_stone_booth": stone_booth, "unsigned": unsigned,
+		"wall": {"stone": wall_stone, "deck": wall_deck, "merlons": wall_merlons},
+		"stamp": {"stone": stamp_stone, "stamps": stamped},
+		"castle": {"stone": castle_stone, "gate": castle_gate, "platform": castle_platform, "stairs": castle_stairs},
+		"reserved_empty": reserved_empty})
+
+
+## T219: every Defense Range booth is a weapon that could be demonstrated -
+## the mount its sheet allows, its own munition in the storage touching it, a
+## target down range and a sign naming both - and the storage network really
+## does reload one of them.
+func _test_defense_range() -> void:
+	if not await _walk_to_district("defense_range"):
+		return
+	var workstations: WorkstationService = app.session.workstations
+	var storage: StorageNetwork = app.session.siege_defense.storage
+	var booths := {"dr_ballista": "ballista", "dr_catapult": "catapult",
+		"dr_turret_catapult": "turret_catapult", "dr_turret_catapult_mk2": "turret_catapult_mk2",
+		"dr_cannon": "cannon", "dr_kettle": "kettle"}
+	var problems: Array[String] = []
+	var booth_report: Dictionary = {}
+	for exhibit_id: String in booths.keys():
+		var entity_id := str(booths[exhibit_id])
+		var box := _parcel_box(exhibit_id)
+		var weapons := _stations_in(box, entity_id)
+		if weapons.is_empty():
+			problems.append(exhibit_id + ": no weapon")
+			continue
+		var weapon_id: String = weapons[0]
+		var record: Dictionary = workstations.station(weapon_id)
+		var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+		var details: Dictionary = workstations.siege_status(weapon_id).get("details", {})
+		var ammo_item := str(details.get("definition", {}).get("ammo_item", ""))
+		var support_id := workstations.station_at_cell(anchor + Vector3i(0, -1, 0))
+		var support := str(workstations.station(support_id).get("entity_id", "")) if not support_id.is_empty() else ""
+		var allowed: Array = app.session.registry.entity(entity_id).get("mount", {}).get("allowed", [])
+		var ground_support: bool = int(app.session.world.query_cell(anchor + Vector3i(0, -1, 0)).get("voxel_id", AIR)) != AIR
+		var mount_ok: bool = (support == "tower_platform" and allowed.has("light_siege")) \
+			or (support == "rail" and allowed.has("rail_mount")) \
+			or (support.is_empty() and ground_support and allowed.has("ground"))
+		var network := storage.network_of(weapon_id)
+		var stored := storage.count(network, ammo_item)
+		var target_box := {"origin": Vector3i(box["origin"].x + 2, box["origin"].y, box["origin"].z + 2), "size": Vector3i(2, 3, 1)}
+		var target := _voxels_in(target_box, CASTLE_STONE)
+		var signed := _sign_placed(exhibit_id)
+		booth_report[exhibit_id] = {"weapon": weapon_id, "support": support, "mount_ok": mount_ok,
+			"ammo_item": ammo_item, "loaded": int(details.get("ammo", 0)), "storage": stored,
+			"containers": network.size(), "target": target, "signed": signed}
+		if not mount_ok:
+			problems.append("%s: mount %s" % [exhibit_id, support if not support.is_empty() else "ground"])
+		if network.is_empty() or stored <= 0:
+			problems.append(exhibit_id + ": no munition in the storage beside it")
+		if target <= 0:
+			problems.append(exhibit_id + ": no target")
+		if not signed:
+			problems.append(exhibit_id + ": unsigned")
+	var reload := await _test_booth_reload("dr_cannon", "cannon")
+	var ok: bool = problems.is_empty() and bool(reload.get("ok", false))
+	_record("T219_EXPO_DEFENSE_RANGE", ok,
+		"each of the six Defense Range booths stands its weapon on the mount its sheet allows, with its own munition in the container the storage network sees beside it, a castle-stone target down its lane and a sign naming the weapon and the ammunition; draining the Cannon back to the clip its sheet opens with is topped up again by the existing storage-network reload, and the munition comes out of the chest",
+		{"problems": problems, "booths": booth_report, "reload": reload})
+
+
+## One booth's weapon is drained back to its opening clip and the ordinary
+## siege service is left to reload it from the container beside it.
+func _test_booth_reload(exhibit_id: String, entity_id: String) -> Dictionary:
+	var workstations: WorkstationService = app.session.workstations
+	var storage: StorageNetwork = app.session.siege_defense.storage
+	var weapons := _stations_in(_parcel_box(exhibit_id), entity_id)
+	if weapons.is_empty():
+		return {"ok": false, "reason": "NO_WEAPON"}
+	var weapon_id: String = weapons[0]
+	workstations.restore_siege_ammo(weapon_id)
+	var details: Dictionary = workstations.siege_status(weapon_id).get("details", {})
+	var ammo_item := str(details.get("ammo_item", ""))
+	var capacity := int(details.get("capacity", 1))
+	var before := int(details.get("ammo", 0))
+	var stored_before := storage.count(storage.network_of(weapon_id), ammo_item)
+	var deadline := Time.get_ticks_msec() + RELOAD_TIMEOUT_MSEC
+	var after := before
+	while after < capacity and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+		after = int(workstations.siege_status(weapon_id).get("details", {}).get("ammo", 0))
+	var stored_after := storage.count(storage.network_of(weapon_id), ammo_item)
+	return {"ok": after > before and after == capacity and stored_after < stored_before,
+		"weapon": weapon_id, "item": ammo_item, "before": before, "after": after, "capacity": capacity,
+		"storage_before": stored_before, "storage_after": stored_after}
+
+
+## T220: the Battlefield scenario end to end. START ATTACK sends a mixed wave
+## of the enemy kinds that exist at the Battlefield's own Core; the wave closes
+## on it; a player siege weapon engages; RESET BATTLEFIELD then clears the
+## fight and restores the arena, leaving damage in other districts alone; and a
+## second START ATTACK works straight away.
+func _test_battlefield() -> void:
+	var workstations: WorkstationService = app.session.workstations
+	var core_defense: CoreDefenseService = app.session.core_defense
+	var bounds: Dictionary = app.development.expo_builder.reset_service.group_bounds("battlefield")
+	var core_id := app.battlefield_core_station_id()
+	var core_parcel := _parcel_box("battlefield_player_core")
+	var core_origin: Vector3i = core_parcel["origin"]
+	if not await _walk_to(core_origin + Vector3i(6, 0, 4), "battlefield"):
+		return
+	core_id = app.battlefield_core_station_id()
+	var enemy_core: Array[String] = _stations_in(_parcel_box("battlefield_enemy_core"), "enemy_core")
+	var control: Array[String] = _stations_in(_parcel_box("battlefield_control"), "battlefield_control")
+	var weapons := _siege_stations_in(bounds)
+	var core_cell := Vector3(workstations.station(core_id).get("anchor", Vector3i.ZERO)) + Vector3(1.5, 0.0, 1.5)
+	var started := app.battlefield_start_attack()
+	var attack := await _watch_attack(core_cell, weapons)
+	# Damage two exhibits in other districts: a battlefield reset must leave
+	# them exactly as they are (the plaza Core and a Defense Range weapon).
+	var plaza_core: Array[String] = _stations_in(_parcel_box("plaza_core"), "core_of_power")
+	var range_ballista: Array[String] = _stations_in(_parcel_box("dr_ballista"), "ballista")
+	var elsewhere: Dictionary = {}
+	for instance_id: String in [plaza_core[0] if not plaza_core.is_empty() else "", range_ballista[0] if not range_ballista.is_empty() else ""]:
+		if instance_id.is_empty():
+			continue
+		workstations.try_damage(instance_id, 9)
+		elsewhere[instance_id] = int(workstations.defense_status(instance_id).get("details", {}).get("integrity", 0))
+	# The core the wave is chewing is restored by the reset, so record how far
+	# it got first.
+	var core_before := int(workstations.defense_status(core_id).get("details", {}).get("integrity", 0))
+	var reset := app.battlefield_reset()
+	var cleared: bool = core_defense.living_raider_count() == 0 and not core_defense.is_active()
+	if not await _wait_built("battlefield reset"):
+		return
+	var untouched: Array[String] = []
+	for instance_id: String in elsewhere.keys():
+		if int(workstations.defense_status(instance_id).get("details", {}).get("integrity", 0)) != int(elsewhere[instance_id]):
+			untouched.append(instance_id)
+	var restored_core := int(workstations.defense_status(core_id).get("details", {}).get("integrity", 0))
+	var core_max := int(workstations.defense_status(core_id).get("details", {}).get("max_integrity", 0))
+	var enemy_after: Array[String] = _stations_in(_parcel_box("battlefield_enemy_core"), "enemy_core")
+	var ammo_ok := true
+	var restored_weapons := _siege_stations_in(bounds)
+	for weapon_id: String in restored_weapons:
+		var details: Dictionary = workstations.siege_status(weapon_id).get("details", {})
+		ammo_ok = ammo_ok and int(details.get("ammo", 0)) >= int(details.get("definition", {}).get("starting_ammo", 0))
+	var magazine := 0
+	for chest_id: String in _stations_in(_parcel_box("battlefield_magazine"), "chest"):
+		for stack: Variant in workstations.container_slots(chest_id):
+			magazine += int((stack as Dictionary).get("count", 0))
+	var again := app.battlefield_start_attack()
+	var ok: bool = bool(started.get("ok", false)) and not enemy_core.is_empty() and not control.is_empty() \
+		and weapons.size() >= 5 and bool(attack.get("ok", false)) \
+		and bool(reset.get("ok", false)) and cleared and untouched.is_empty() \
+		and restored_core == core_max and core_max > 0 and not enemy_after.is_empty() \
+		and ammo_ok and magazine > 0 and restored_weapons.size() == weapons.size() \
+		and bool(again.get("ok", false))
+	core_defense.clear_for_other_mode()
+	_record("T220_EXPO_BATTLEFIELD", ok,
+		"START ATTACK on the Battlefield pedestal sends a mixed wave of the enemy kinds that exist at the Battlefield's own Core of Power (not the plaza's); the wave's distance to that Core shrinks as it routes in and a player siege weapon engages it; RESET BATTLEFIELD then removes every attacker, ends the drill, puts both cores, the batteries, their ammunition and the magazine back, and leaves damage done to the plaza Core and to a Defense Range weapon exactly as it was; a second START ATTACK straight afterwards is accepted",
+		{"started": started, "attack": attack, "weapons": weapons.size(), "enemy_core": enemy_core.size(),
+		"control": control.size(), "reset": reset, "cleared": cleared, "elsewhere": elsewhere,
+		"still_damaged_elsewhere": untouched.is_empty(), "core_before": core_before,
+		"core_after": restored_core, "core_max": core_max, "enemy_core_after": enemy_after.size(),
+		"ammo_restored": ammo_ok, "magazine": magazine, "restarted": again})
+
+
+## Watches one assault: the wave has to appear, carry more than one enemy kind,
+## close on the core and be shot at by a player weapon.
+func _watch_attack(core_cell: Vector3, weapons: Array[String]) -> Dictionary:
+	var core_defense: CoreDefenseService = app.session.core_defense
+	var workstations: WorkstationService = app.session.workstations
+	var siege: SiegeDefenseService = app.session.siege_defense
+	var opening: Dictionary = {}
+	for weapon_id: String in weapons:
+		opening[weapon_id] = int(workstations.siege_status(weapon_id).get("details", {}).get("ammo", 0))
+	var deadline := Time.get_ticks_msec() + ATTACK_TIMEOUT_MSEC
+	var kinds: Dictionary = {}
+	var first_distance := -1.0
+	var closest := -1.0
+	var engaged := false
+	var spawned := 0
+	while Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+		var nodes := core_defense.raider_nodes()
+		spawned = maxi(spawned, nodes.size())
+		var near := -1.0
+		for node: BasicRaider in nodes:
+			kinds[str(node.kind)] = true
+			var distance := Vector2(node.global_position.x - core_cell.x, node.global_position.z - core_cell.z).length()
+			near = distance if near < 0.0 else minf(near, distance)
+		if near >= 0.0:
+			if first_distance < 0.0:
+				first_distance = near
+			closest = near if closest < 0.0 else minf(closest, near)
+		if siege.pending_impacts() > 0:
+			engaged = true
+		for weapon_id: String in weapons:
+			if int(workstations.siege_status(weapon_id).get("details", {}).get("ammo", 0)) < int(opening[weapon_id]):
+				engaged = true
+		if spawned > 0 and engaged and first_distance > 0.0 and closest < first_distance - CLOSING_CELLS:
+			break
+	return {"ok": spawned >= 2 and kinds.size() >= 2 and first_distance > 0.0 and closest < first_distance - CLOSING_CELLS and engaged,
+		"spawned": spawned, "kinds": kinds.keys(), "first_distance": first_distance, "closest": closest, "engaged": engaged}
+
+
 ## Reading evidence for T215: one of the campus's real signs framed from in
 ## front of its board, close enough to read the manifest's words off it.
 func _shoot_sign(owner_id: String) -> void:
@@ -391,6 +713,119 @@ func _sign_spot_check(owner_id: String, requests: Array[Dictionary], workstation
 	return {"ok": false, "owner": owner_id, "reason": "NO_REQUEST"}
 
 
+# ------------------------------------------------------------ card E helpers
+
+## The solved parcel of an exhibit, as a box.
+func _parcel_box(exhibit_id: String) -> Dictionary:
+	var parcel: Dictionary = app.development.layout.parcel_for(exhibit_id)
+	if parcel.is_empty():
+		return {}
+	return {"origin": parcel["origin"] as Vector3i, "size": parcel["size"] as Vector3i}
+
+
+## A cell is in a parcel when its column is: a weapon standing on a platform,
+## a merlon on a wall-walk and the deck under both belong to the same exhibit.
+static func _inside(box: Dictionary, cell: Vector3i) -> bool:
+	if box.is_empty():
+		return false
+	var origin: Vector3i = box["origin"]
+	var size: Vector3i = box["size"]
+	return cell.x >= origin.x and cell.x < origin.x + size.x \
+		and cell.z >= origin.z and cell.z < origin.z + size.z
+
+
+## The stations of one entity standing in a box; with no entity id, everything
+## but the exhibit's own sign board (a reserved parcel still carries its sign).
+func _stations_in(box: Dictionary, entity_id: String) -> Array[String]:
+	var found: Array[String] = []
+	if box.is_empty():
+		return found
+	for instance_id: String in app.session.workstations.stations.keys():
+		var record: Dictionary = app.session.workstations.stations[instance_id]
+		var standing := str(record.get("entity_id", ""))
+		if entity_id.is_empty():
+			if standing == "sign":
+				continue
+		elif standing != entity_id:
+			continue
+		if _inside(box, record.get("anchor", Vector3i.ZERO)):
+			found.append(instance_id)
+	return found
+
+
+## Every siege weapon standing in a box.
+func _siege_stations_in(box: Dictionary) -> Array[String]:
+	var found: Array[String] = []
+	for instance_id: String in app.session.workstations.stations.keys():
+		var record: Dictionary = app.session.workstations.stations[instance_id]
+		if not app.session.workstations.siege_status(instance_id).get("ok", false):
+			continue
+		if _inside(box, record.get("anchor", Vector3i.ZERO)):
+			found.append(instance_id)
+	return found
+
+
+func _voxels_in(box: Dictionary, voxel: int) -> int:
+	if box.is_empty():
+		return 0
+	var world: WorldAdapter = app.session.world
+	var origin: Vector3i = box["origin"]
+	var size: Vector3i = box["size"]
+	var count := 0
+	for x in range(size.x):
+		for y in range(maxi(1, size.y)):
+			for z in range(size.z):
+				if int(world.query_cell(origin + Vector3i(x, y, z)).get("voxel_id", AIR)) == voxel:
+					count += 1
+	return count
+
+
+func _sign_placed(owner_id: String) -> bool:
+	for request: Dictionary in app.development.expo_builder.sign_requests():
+		if str(request.get("owner", "")) == owner_id:
+			return bool(request.get("ok", false))
+	return false
+
+
+## Walks the player round the campus so every district's chunks stream in and
+## the builder can run the ops parked waiting for them (a column whose chunks
+## are not loaded is deferred until the player moves - see `ExpoBuilder`). The
+## campus is thirteen districts wide now, so the strict wait that follows only
+## succeeds if someone has been to all of them.
+func _drive_build() -> void:
+	var builder: ExpoBuilder = app.development.expo_builder
+	var layout: ExpoLayout = app.development.layout
+	var deadline := Time.get_ticks_msec() + BUILD_TIMEOUT_MSEC
+	while Time.get_ticks_msec() < deadline:
+		if builder.pending_ops() == 0 and builder.deferred_ops() == 0:
+			return
+		for district_id: String in layout.district_ids():
+			var bounds := layout.district_bounds(district_id)
+			var origin: Vector3i = bounds["origin"]
+			var size: Vector3i = bounds["size"]
+			_teleport(Vector3(origin) + Vector3(float(size.x) * 0.5, 8.0, float(size.z) * 0.5))
+			for _frame in range(BUILD_FRAMES_PER_STOP):
+				builder.advance(BUILD_BUDGET_PER_FRAME)
+				await get_tree().process_frame
+				if builder.pending_ops() == 0 and builder.deferred_ops() == 0:
+					return
+			if Time.get_ticks_msec() >= deadline:
+				return
+
+
+## Stands the player on a cell and waits for everything still queued there.
+func _walk_to(cell: Vector3i, label: String) -> bool:
+	_teleport(Vector3(float(cell.x) + 0.5, float(cell.y) + 1.6, float(cell.z) + 0.5))
+	return await _wait_built(label)
+
+
+func _walk_to_district(district_id: String) -> bool:
+	var bounds := app.development.layout.district_bounds(district_id)
+	var origin: Vector3i = bounds["origin"]
+	var size: Vector3i = bounds["size"]
+	return await _walk_to(Vector3i(origin.x + size.x / 2, app.development.layout.ground_y(), origin.z + size.z / 2), district_id)
+
+
 func _light_positions() -> Array[Vector3]:
 	var result: Array[Vector3] = []
 	for instance_id: String in app.session.workstations.stations.keys():
@@ -458,6 +893,7 @@ func _wait_built(label: String) -> bool:
 	var builder: ExpoBuilder = app.development.expo_builder
 	var deadline := Time.get_ticks_msec() + BUILD_TIMEOUT_MSEC
 	while builder.pending_ops() > 0 or builder.deferred_ops() > 0:
+		builder.advance(BUILD_BUDGET_PER_FRAME)
 		if Time.get_ticks_msec() >= deadline:
 			failures.append("%s build timeout (%s)" % [label, JSON.stringify(builder.progress())])
 			return false

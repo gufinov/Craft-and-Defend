@@ -80,9 +80,15 @@ func _build_with_expo_builder(session: GameSession, fresh: bool) -> Dictionary:
 	if expo_builder == null:
 		return {"ok": false, "reason": "NO_BUILDER"}
 	expo_builder.bind_session(session)
-	if not fresh:
-		return {"ok": true, "reason": "CONTINUED", "built": false}
-	var report := expo_builder.build_all()
+	var report: Dictionary = {"ok": true, "reason": "CONTINUED", "built": false}
+	if fresh:
+		report = expo_builder.build_all()
+	else:
+		# A continued world keeps the fixture the owner left behind, but its
+		# reset groups must still exist: card E's Battlefield control station
+		# reaches its scenario through `reset_group("battlefield")`, and Reset
+		# Expo through `district:<id>`.
+		expo_builder.register_reset_groups()
 	for group: String in expo_builder.reset_groups():
 		register_reset_group(group, _reset_builder_group.bind(group))
 	return report
