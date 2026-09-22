@@ -38,7 +38,7 @@ The station record carries one `sign` block of stable ids and text — never a l
 }
 ```
 
-It is saved by `workstations.snapshot()` with the rest of the record and normalised on `restore()`: an unknown mode falls back to `text`, text is trimmed to 64 characters and unknown or surplus item ids are dropped. A record written before this feature (or an authored one without the block) **migrates** to an empty single-text sign instead of failing the load.
+It is saved by `workstations.snapshot()` with the rest of the record and normalised on `restore()`: an unknown mode falls back to `text`, text is trimmed to `SIGN_TEXT_LIMIT` (256) characters and unknown or surplus item ids are dropped. The SIGN editor's own text line stops at `SIGN_EDITOR_TEXT_LIMIT` (64) so a hand-typed board stays a heading; the longer stored limit exists for an authored board — the Development Expo's district and exhibit signs carry the manifest's whole body paragraph in `text_b`. A record written before this feature (or an authored one without the block) **migrates** to an empty single-text sign instead of failing the load.
 
 ## The four display modes
 
@@ -47,7 +47,7 @@ It is saved by `workstations.snapshot()` with the rest of the record and normali
 3. **Item Grid** — up to eight entries as icon + readable name, 4 rows × 2 columns, filled left column top-to-bottom then right column.
 4. **Header + Item Grid** — `text_a` as a heading above the same grid.
 
-The board renders with `Label3D` text and `Sprite3D` item icons (the same `ItemIconCatalog` art the inventory uses), the project's existing in-world text approach. Captions carry a pale outline so the grid reads at 3–6 m.
+The board renders with `Label3D` text and `Sprite3D` item icons (the same `ItemIconCatalog` art the inventory uses), the project's existing in-world text approach. Captions carry a pale outline so the grid reads at 3–6 m. A text field's cap height is fitted to what it holds (`_fitted_line_height`): a short heading keeps its size and a whole paragraph shrinks until it wraps inside the panel rather than spilling off the board. A one-cell board carrying a long list is therefore legible only up close — a larger multi-cell board is not part of this milestone.
 
 ## The editor panel
 

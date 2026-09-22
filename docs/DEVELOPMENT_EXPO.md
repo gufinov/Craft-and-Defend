@@ -394,3 +394,5 @@ cards add their records to it.
   `sign_data` carries the manifest's title, lines and item; nothing is left
   unfulfilled in the builder's sign queue. The plaza orientation sign and one
   district sign are read back field by field.
+- **T215V_SIGN_VIEW** (`=visual`) — `development-expo-sign.png`, the plaza's
+  orientation board framed from in front of it, close enough to read.

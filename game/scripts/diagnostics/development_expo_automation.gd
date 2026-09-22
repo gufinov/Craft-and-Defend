@@ -80,6 +80,7 @@ func _run_visual() -> void:
 	var plaza_path := app.data_root.path_join("development-expo-plaza.png")
 	var plaza_shot := await _save_viewport(plaza_path)
 	_record("T214V_PLAZA_VIEW", plaza_shot, "rendered evidence of the Development Expo plaza with its Core", {"path": plaza_path})
+	await _shoot_sign("central_plaza")
 	var tunnel := app.development.layout.parcel_for("mountain_tunnel")
 	var tunnel_origin: Vector3i = tunnel["origin"]
 	var tunnel_size: Vector3i = tunnel["size"]
@@ -275,6 +276,38 @@ func _test_mountain() -> void:
 		{"ores": ores, "core_sampled": core_sampled, "walked": walked, "walkable": walkable, "lit": lit,
 		"rails": rails.size(), "chained": chained, "lights": lights.size(), "miner": miner_ok, "ore_bin": bin_ok,
 		"builder": app.development.expo_builder.progress()})
+
+
+## Reading evidence for T215: one of the campus's real signs framed from in
+## front of its board, close enough to read the manifest's words off it.
+func _shoot_sign(owner_id: String) -> void:
+	var stand := Vector3.ZERO
+	var normal := Vector3(1.0, 0.0, 0.0)
+	var found := false
+	for request: Dictionary in app.development.expo_builder.sign_requests():
+		if str(request.get("owner", "")) != owner_id:
+			continue
+		var record: Dictionary = app.session.workstations.stations.get(str(request.get("instance_id", "")), {})
+		if record.is_empty():
+			continue
+		stand = Vector3(record.get("anchor", Vector3i.ZERO)) + Vector3(0.5, 0.5, 0.5)
+		# The board faces local +X turned by -quarters * 90 degrees.
+		var angle := -float(int(record.get("rotation_quarters", 0))) * PI / 2.0
+		normal = Vector3(cos(angle), 0.0, -sin(angle))
+		found = true
+		break
+	if not found:
+		_record("T215V_SIGN_VIEW", false, "rendered evidence of a placed Expo sign", {"owner": owner_id, "reason": "NO_SIGN"})
+		return
+	var eye := stand + normal * 2.2 + Vector3(0.0, 0.2, 0.0)
+	_look_from(eye, stand)
+	for _frame in range(60):
+		await get_tree().process_frame
+	_look_from(eye, stand)
+	await get_tree().process_frame
+	var path := app.data_root.path_join("development-expo-sign.png")
+	var shot := await _save_viewport(path)
+	_record("T215V_SIGN_VIEW", shot, "rendered evidence that the plaza's orientation sign is a real readable board, not a recorded request", {"path": path, "owner": owner_id, "cell": stand})
 
 
 ## T215: every sign the manifest asked for is a real placed `sign` station,

@@ -3396,6 +3396,8 @@ func _add_lantern_body(parent: Node3D, centre: Vector3, iron: Material, gold: Ma
 const SIGN_BOARD_WIDTH := 0.92
 const SIGN_BOARD_HEIGHT := 0.86
 const SIGN_BOARD_THICKNESS := 0.07
+## The smallest cap height a board will shrink its text to.
+const SIGN_MIN_LINE_HEIGHT := 0.022
 
 
 func _build_sign_visual(parent: Node3D, record: Dictionary) -> void:
@@ -3447,19 +3449,44 @@ func _populate_sign_face(face: Node3D, data: Dictionary) -> void:
 	var mode := str(data.get("mode", "text"))
 	var width := SIGN_BOARD_WIDTH - 0.08
 	var height := SIGN_BOARD_HEIGHT - 0.08
+	var text_a := str(data.get("text_a", ""))
+	var text_b := str(data.get("text_b", ""))
 	match mode:
 		"split":
 			var divider := _add_mesh_box(face, Vector3(0.02, height, 0.01), Vector3.ZERO, _visual_material(Color("6b3d1f")))
 			divider.rotation.y = -PI / 2.0
-			_add_sign_label(face, str(data.get("text_a", "")), Vector3(-width / 4.0, 0.0, 0.0), width / 2.0 - 0.03, 0.10)
-			_add_sign_label(face, str(data.get("text_b", "")), Vector3(width / 4.0, 0.0, 0.0), width / 2.0 - 0.03, 0.10)
+			var column := width / 2.0 - 0.03
+			_add_sign_label(face, text_a, Vector3(-width / 4.0, 0.0, 0.0), column, _fitted_line_height(text_a, column, height, 0.10))
+			_add_sign_label(face, text_b, Vector3(width / 4.0, 0.0, 0.0), column, _fitted_line_height(text_b, column, height, 0.10))
 		"items":
 			_add_sign_item_grid(face, _sign_items(data), Vector3(0.0, 0.0, 0.0), width, height)
 		"header_items":
-			_add_sign_label(face, str(data.get("text_a", "")), Vector3(0.0, height / 2.0 - 0.09, 0.0), width, 0.10)
+			_add_sign_label(face, text_a, Vector3(0.0, height / 2.0 - 0.09, 0.0), width, _fitted_line_height(text_a, width, 0.18, 0.10))
 			_add_sign_item_grid(face, _sign_items(data), Vector3(0.0, -0.09, 0.0), width, height - 0.18)
 		_:
-			_add_sign_label(face, str(data.get("text_a", "")), Vector3.ZERO, width, 0.13)
+			_add_sign_label(face, text_a, Vector3.ZERO, width, _fitted_line_height(text_a, width, height, 0.13))
+
+
+## The cap height at which `text` still wraps inside `width` x `height` on the
+## board, never bigger than `preferred`. A hand-typed heading keeps its size;
+## an authored board carrying a whole paragraph (the Expo's district and
+## exhibit signs) shrinks to fit instead of spilling off the panel.
+static func _fitted_line_height(text: String, width: float, height: float, preferred: float) -> float:
+	if text.is_empty() or width <= 0.0 or height <= 0.0:
+		return preferred
+	var line_height := preferred
+	while line_height > SIGN_MIN_LINE_HEIGHT:
+		# This font runs about 0.62 of the cap height per character (measured
+		# generously so a long word still lands inside the column), and the
+		# rows sit 1.3 cap heights apart.
+		var per_line := maxi(1, int(width / (line_height * 0.62)))
+		var rows := 0
+		for paragraph: String in text.split(String.chr(10)):  # newline
+			rows += maxi(1, ceili(float(paragraph.length()) / float(per_line)))
+		if float(rows) * line_height * 1.3 <= height:
+			return line_height
+		line_height -= 0.004
+	return SIGN_MIN_LINE_HEIGHT
 
 
 func _sign_items(data: Dictionary) -> Array:
