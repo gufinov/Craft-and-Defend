@@ -182,7 +182,7 @@ func _run_visual() -> void:
 	var yard_eye := Vector3(float(face_origin.x) - 2.5, float(face_origin.y) + 4.0, float(face_origin.z + face_size.z) + 4.5)
 	var yard_target := Vector3(float(face_origin.x + 6), float(face_origin.y) + 1.0, float(face_origin.z + face_size.z))
 	_teleport(yard_eye)
-	if not await _wait_built("industry"):
+	if not await _wait_built("industry", _district_owners(["industry"])):
 		return
 	_look_from(yard_eye, yard_target)
 	for _frame in range(60):
@@ -199,7 +199,7 @@ func _run_visual() -> void:
 	var walk_eye := Vector3(float(pavilion_origin.x) + 4.5, float(pavilion_origin.y) + 1.7, float(pavilion_origin.z) + 8.5)
 	var walk_target := Vector3(float(pavilion_origin.x + pavilion_size.x) - 1.5, float(pavilion_origin.y) + 1.0, float(pavilion_origin.z) + 2.5)
 	_teleport(walk_eye)
-	if not await _wait_built("lighting"):
+	if not await _wait_built("lighting", _district_owners(["lighting"])):
 		return
 	_look_from(walk_eye, walk_target)
 	for _frame in range(60):
@@ -668,7 +668,7 @@ func _test_industry() -> void:
 	var yard_origin: Vector3i = yard["origin"]
 	# Stand in the yard so the district's parked build ops finish.
 	_teleport(Vector3(float(yard_origin.x) + 0.5, float(yard_origin.y) + 1.1, float(yard_origin.z) + 4.5))
-	if not await _wait_built("industry"):
+	if not await _wait_built("industry", _district_owners(["industry"])):
 		return
 	var miner_id := _pinned_station("industry_ore_face", "miner")
 	var bin_id := _pinned_station("industry_ore_face", "ore_bin")
@@ -783,7 +783,7 @@ func _test_lighting() -> void:
 	var pavilion_size: Vector3i = pavilion["size"]
 	_teleport(Vector3(float(pavilion_origin.x) + float(pavilion_size.x) * 0.5, float(pavilion_origin.y) + 1.1,
 		float(pavilion_origin.z) + float(pavilion_size.z) * 0.5))
-	if not await _wait_built("lighting"):
+	if not await _wait_built("lighting", _district_owners(["lighting"])):
 		return
 	var signed: Dictionary = {}
 	for request: Dictionary in app.development.expo_builder.sign_requests():
@@ -1044,7 +1044,7 @@ func _test_battlefield() -> void:
 	var core_before := int(workstations.defense_status(core_id).get("details", {}).get("integrity", 0))
 	var reset := app.battlefield_reset()
 	var cleared: bool = core_defense.living_raider_count() == 0 and not core_defense.is_active()
-	if not await _wait_built("battlefield reset"):
+	if not await _wait_built("battlefield reset", _district_owners(["battlefield"])):
 		return
 	var untouched: Array[String] = []
 	for instance_id: String in elsewhere.keys():
@@ -1397,7 +1397,7 @@ func _shoot_supply_row() -> void:
 	var board := Vector3(float(chest.x) + 0.5, float(chest.y) + 1.75, float(chest.z) - 0.5)
 	var eye := Vector3(float(chest.x) + 0.5, float(chest.y) + 1.45, float(chest.z) + 4.0)
 	_teleport(eye)
-	if not await _wait_built("supply depot"):
+	if not await _wait_built("supply depot", _district_owners(["supply_depot"])):
 		return
 	_look_from(eye, board)
 	for _frame in range(60):
@@ -1680,9 +1680,10 @@ func _wait_built(label: String, owners: PackedStringArray = PackedStringArray())
 			failures.append("%s build timeout (%s)" % [label, JSON.stringify(builder.progress())])
 			return false
 		await get_tree().process_frame
-	# A queue can empty while a late cell is still streaming in: settle, then
-	# make sure nothing came back as deferred before calling the build done
-	# (T216's mine rail lost its last piece this way on one run).
+	# A queue can empty while a late cell is still streaming in: settle and
+	# re-check ONLY this wait's own districts (advancing the whole queue here
+	# burned the far parcels' requeue budget while the player stood elsewhere,
+	# which is what made the exported build give up on the coaster pad).
 	for _settle in range(3):
 		for _frame in range(30):
 			await get_tree().process_frame

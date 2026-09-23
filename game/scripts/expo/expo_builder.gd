@@ -41,7 +41,10 @@ const DEFER_PASSES := 3
 
 ## How many times a deferred op may be taken up again before it is reported.
 ## A write that keeps failing is a fault in the fixture, not slow streaming.
-const MAX_REQUEUES := 40
+## Requeues before a deferred op is called a real fault. A far parcel whose
+## region has not streamed in does not count one (see `_region_loaded`), so
+## this only trips on ground that refuses a write while it is loaded.
+const MAX_REQUEUES := 120
 ## Parked ops are re-queued this often once the player has moved.
 const RETRY_SECONDS := 2.0
 const RETRY_DISTANCE := 12.0
@@ -622,9 +625,18 @@ func _region_loaded(op: Dictionary) -> bool:
 	if session == null or session.world == null:
 		return false
 	var probe: Variant = op.get("anchor", op.get("origin", op.get("cell")))
-	if not (probe is Vector3i):
+	if probe is Vector3i:
+		return str(session.world.query_cell(probe).get("state", "")) == "LOADED"
+	# A column op (level / fill / carve) carries its cells instead: any one
+	# of them still unloaded means the parcel has not streamed in yet.
+	var columns: Variant = op.get("columns")
+	if columns is Array and not (columns as Array).is_empty():
+		for column: Dictionary in columns:
+			var cell := Vector3i(int(column.get("x", 0)), int(column.get("surface_y", column.get("top", 0))), int(column.get("z", 0)))
+			if str(session.world.query_cell(cell).get("state", "")) != "LOADED":
+				return false
 		return true
-	return str(session.world.query_cell(probe).get("state", "")) == "LOADED"
+	return true
 
 
 func failures() -> Array[String]:
