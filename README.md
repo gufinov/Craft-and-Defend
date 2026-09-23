@@ -4,13 +4,13 @@ First-person voxel survival and fortress building: **from forest to fortress**. 
 
 **Status (2026-09-19): baseline on `main`.** Playable Windows slice with ESDF first-person movement, finite editable voxel world with hills/trees/ore, hand/Workbench crafting, auto-running Furnace, Tab inventory, castle kit, right-drag wall building (Shift to build up), stamped castle blueprints (service level), a core-defense drill with one raider, and siege weapons that turn, throw and reload. Everything on `main` is owner-playtested unless `docs/STATUS.md` says otherwise. Craft-and-Defend is a working label; final branding is open.
 
-**New here?** Read, in order: [AGENTS.md](AGENTS.md) → [docs/STATUS.md](docs/STATUS.md) (what is true right now) → [docs/DESIGN_DIRECTION_2026-09-18.md](docs/DESIGN_DIRECTION_2026-09-18.md) (where the game is going and which decisions are locked) → [docs/BACKLOG.md](docs/BACKLOG.md) (the next cards) → [docs/INDEX.md](docs/INDEX.md). Then double-click `START.cmd`. Every milestone has a contract in `docs/` and an evidence record in `docs/evidence/`; every runtime test has a `TEST_*.cmd` runner.
+**New here?** Read, in order: [AGENTS.md](AGENTS.md) → [docs/STATUS.md](docs/STATUS.md) (what is true right now) → [docs/DESIGN_DIRECTION_2026-09-18.md](docs/DESIGN_DIRECTION_2026-09-18.md) (where the game is going and which decisions are locked) → [docs/BACKLOG.md](docs/BACKLOG.md) (the next cards) → [docs/INDEX.md](docs/INDEX.md). Then double-click `START.cmd`. Every milestone has a contract in `docs/` and an evidence record in `docs/evidence/`; every runtime test has a `TEST_*.cmd` runner in `tools\runners\`.
 
 ## Start here
 
 1. Read [AGENTS.md](AGENTS.md) and [the handoff](docs/CODING_AGENT_HANDOFF.md).
 2. Review [current status](docs/STATUS.md), [engine decision](docs/ENGINE_DECISION.md), and [prototype scope](docs/PROTOTYPE_SCOPE.md).
-3. Double-click `START.cmd` for the local playable slice (`START.cmd help` lists its options: `sandbox`, `coastercraft`, `build`, `stop`), or follow [Windows setup](docs/WINDOWS_SETUP.md) to reproduce the toolchain and export.
+3. Double-click `START.cmd` for the local playable slice — that is the quick start (`START.cmd help` lists its options: `sandbox`, `coastercraft`, `dev`, `build`, `stop`). The other two entry points are **Development Start** (`START.cmd dev`, the [Development Expo](docs/DEVELOPMENT_EXPO.md) on its own save) and **CoasterCraft** (`START.cmd coastercraft`, or from the main menu). Or follow [Windows setup](docs/WINDOWS_SETUP.md) to reproduce the toolchain and export.
 4. Review the newest evidence records listed in [the documentation index](docs/INDEX.md) before promoting another milestone.
 
 The exported portable folder is `builds\CraftAndDefend`. Keep its EXE, PCK, `START.cmd` (`START.cmd stop` closes a stuck game window) and manifest together; double-click its `START.cmd` on a Windows PC. It does not need the repository or Godot Editor. Saves and settings are in `%APPDATA%\CraftAndDefend`; F2 in-game screenshots are in `%APPDATA%\CraftAndDefend\screenshots`.
