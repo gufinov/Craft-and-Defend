@@ -1680,8 +1680,21 @@ func _wait_built(label: String, owners: PackedStringArray = PackedStringArray())
 			failures.append("%s build timeout (%s)" % [label, JSON.stringify(builder.progress())])
 			return false
 		await get_tree().process_frame
-	for _frame in range(30):
-		await get_tree().process_frame
+	# A queue can empty while a late cell is still streaming in: settle, then
+	# make sure nothing came back as deferred before calling the build done
+	# (T216's mine rail lost its last piece this way on one run).
+	for _settle in range(3):
+		for _frame in range(30):
+			await get_tree().process_frame
+		if not _still_building(builder, owners):
+			break
+		var settle_deadline := Time.get_ticks_msec() + BUILD_TIMEOUT_MSEC
+		while _still_building(builder, owners):
+			builder.advance(BUILD_BUDGET_PER_FRAME)
+			if Time.get_ticks_msec() >= settle_deadline:
+				failures.append("%s build timeout after settling (%s)" % [label, JSON.stringify(builder.progress())])
+				return false
+			await get_tree().process_frame
 	if not builder.failures().is_empty():
 		failures.append("%s build failures: %s" % [label, "; ".join(builder.failures())])
 		return false
