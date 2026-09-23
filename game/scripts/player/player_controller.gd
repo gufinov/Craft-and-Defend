@@ -52,6 +52,13 @@ const CROUCH_SPEED := 2.5
 const JUMP_VELOCITY := 5.0
 const GRAVITY := 14.0
 const MAX_STEP_HEIGHT := 0.55
+## Flight (owner 2026-09-23: double-tap Right Shift). The body keeps its
+## collisions - flying carries you over the world, never through it - and
+## the aim direction is the camera's, so the keys steer where you look.
+const FLY_SPEED := 10.0
+const FLY_SPRINT_SPEED := 20.0
+const FLY_LIFT_SPEED := 8.0
+var flying := false
 ## Holding the primary button repeats the strike at this interval (owner
 ## request 2026-09-18: hold to harvest). Melee keeps its own cooldown.
 const PRIMARY_REPEAT_SECONDS := 0.28
@@ -113,6 +120,7 @@ func activate(capture_pointer: bool = true) -> void:
 func deactivate() -> void:
 	active = false
 	velocity = Vector3.ZERO
+	flying = false
 	set_physics_process(false)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -165,6 +173,9 @@ func _physics_process(delta: float) -> void:
 			_perform_primary()
 	else:
 		_primary_repeat_timer = 0.0
+	if flying:
+		_fly(delta)
+		return
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
 	elif Input.is_action_just_pressed("jump"):
@@ -191,6 +202,39 @@ func _physics_process(delta: float) -> void:
 	if hero != null and hero.visible:
 		var travelled := Vector3(global_position.x - _walk_previous.x, 0.0, global_position.z - _walk_previous.z).length()
 		hero.animate_walk(delta, travelled > 0.002, travelled)
+	_walk_previous = global_position
+
+
+## Double-tap Right Shift: flight on / off. Landing keeps the body where it
+## is; gravity takes over again the moment flight ends.
+func set_flying(enabled: bool) -> void:
+	if flying == enabled:
+		return
+	flying = enabled
+	velocity = Vector3.ZERO
+	if not flying:
+		_place_camera(1.6)
+
+
+## Flight step: the movement keys steer along the camera's own axes (look up
+## and press forward to climb), jump / crouch lift and drop, sprint doubles
+## the speed. Collisions still apply.
+func _fly(delta: float) -> void:
+	var input_vector := Input.get_vector("strafe_left", "strafe_right", "move_forward", "move_backward")
+	var aim := camera.global_basis
+	var direction := (aim.x * input_vector.x + -aim.z * -input_vector.y).normalized() if input_vector.length() > 0.01 else Vector3.ZERO
+	var speed := FLY_SPRINT_SPEED if Input.is_action_pressed("sprint") else FLY_SPEED
+	var lift := 0.0
+	if Input.is_action_pressed("jump"):
+		lift += FLY_LIFT_SPEED
+	if Input.is_action_pressed("crouch"):
+		lift -= FLY_LIFT_SPEED
+	velocity = direction * speed + Vector3.UP * lift
+	_place_camera(1.6)
+	move_and_slide()
+	_position_inside_world()
+	if hero != null and hero.visible:
+		hero.animate_walk(delta, false, 0.0)
 	_walk_previous = global_position
 
 

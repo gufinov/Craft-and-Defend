@@ -973,6 +973,24 @@ func _advance_drops(delta: float) -> void:
 		index -= 1
 
 
+## Flight (owner 2026-09-23): a double tap of Right Shift within
+## FLIGHT_DOUBLE_TAP_MSEC toggles it. Not while riding a coaster car.
+const FLIGHT_DOUBLE_TAP_MSEC := 400
+var _right_shift_msec := -FLIGHT_DOUBLE_TAP_MSEC
+
+
+func toggle_flight() -> bool:
+	if player == null or is_riding():
+		return false
+	var flying := not player.flying
+	player.set_flying(flying)
+	if flying:
+		_on_interaction_feedback("Flight on - the keys follow your view, Space rises, Z drops, A is faster. Double-tap Right Shift to land.")
+	else:
+		_on_interaction_feedback("Flight off.")
+	return flying
+
+
 ## U / Ctrl+Z: reverse the newest placement (InteractionService.undo_last).
 func undo_last_placement() -> Dictionary:
 	if interaction == null:
@@ -1108,6 +1126,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		undo_last_placement()
 		get_viewport().set_input_as_handled()
 		return
+	if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_SHIFT or event.keycode == KEY_SHIFT) and event.location == KEY_LOCATION_RIGHT:
+		# Double-tap Right Shift: flight on / off (owner 2026-09-23). The
+		# first tap still does its ordinary Interact; only the second tap of
+		# a double is swallowed.
+		var now := Time.get_ticks_msec()
+		if now - _right_shift_msec <= FLIGHT_DOUBLE_TAP_MSEC:
+			_right_shift_msec = -FLIGHT_DOUBLE_TAP_MSEC
+			toggle_flight()
+			get_viewport().set_input_as_handled()
+			return
+		_right_shift_msec = now
 	if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_V or event.keycode == KEY_V):
 		# Coaster car and hero: V toggles the chase camera (raw key, like X / C).
 		toggle_third_person()

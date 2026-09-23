@@ -235,6 +235,84 @@ func _run_sign_phase1() -> void:
 		{"ground": ground.get("reason"), "wall": wall.get("reason"), "blocked": blocked.get("reason"), "placement_ok": placement_ok, "modes": mode_results, "guard_ok": guard_ok, "restored": restored.get("reason"), "restored_ground": restored_ground, "restored_wall": restored_wall, "migration_ok": migration_ok, "panel_ok": panel_ok, "draft": draft, "edited": edited, "closed_ok": closed_ok})
 
 
+	# T224 flight (owner 2026-09-23): a double tap of Right Shift toggles it;
+	# a single tap does not. While flying there is no gravity, the movement
+	# keys steer along the camera's own axes and Space / Z lift and drop.
+	var fly_player := app.session.player
+	var was_paused: bool = app.session.simulation_paused
+	app.session.simulation_paused = false
+	fly_player.global_position = Vector3(0.0, 20.0, 40.0)
+	fly_player.activate(false)
+	await get_tree().process_frame
+	var single_tap := await _tap_right_shift()
+	var single_ignored: bool = not fly_player.flying
+	await _wait_msec(GameSession.FLIGHT_DOUBLE_TAP_MSEC + 80)
+	var double_tap_a := await _tap_right_shift()
+	var double_tap_b := await _tap_right_shift()
+	var flying_on: bool = fly_player.flying
+	# Airborne with no input: a walking body would fall, a flying one holds.
+	var height_before := fly_player.global_position.y
+	for _frame in range(30):
+		await get_tree().physics_frame
+	var hovered: bool = absf(fly_player.global_position.y - height_before) < 0.05 and absf(fly_player.velocity.y) < 0.01
+	# The keys follow the view: look down-left, press forward, travel that way.
+	fly_player.rotation.y = PI * 0.5
+	fly_player.look_pitch = -0.6
+	fly_player.apply_mouse_look(Vector2.ZERO)
+	var aim_forward := -fly_player.camera.global_basis.z
+	var before_move := fly_player.global_position
+	Input.action_press("move_forward")
+	for _frame in range(30):
+		await get_tree().physics_frame
+	Input.action_release("move_forward")
+	var travelled := fly_player.global_position - before_move
+	var follows_view: bool = travelled.length() > 1.0 and travelled.normalized().dot(aim_forward) > 0.9
+	# Space rises.
+	var lift_before := fly_player.global_position.y
+	Input.action_press("jump")
+	for _frame in range(20):
+		await get_tree().physics_frame
+	Input.action_release("jump")
+	var rose: bool = fly_player.global_position.y > lift_before + 1.0
+	# Another double tap lands: gravity is back.
+	await _wait_msec(GameSession.FLIGHT_DOUBLE_TAP_MSEC + 80)
+	await _tap_right_shift()
+	await _tap_right_shift()
+	var flying_off: bool = not fly_player.flying
+	var fall_before := fly_player.global_position.y
+	for _frame in range(30):
+		await get_tree().physics_frame
+	var fell: bool = fly_player.global_position.y < fall_before - 0.5
+	fly_player.deactivate()
+	fly_player.look_pitch = 0.0
+	fly_player.rotation = Vector3.ZERO
+	app.session.simulation_paused = was_paused
+	_record("T224_FLIGHT", single_tap and single_ignored and double_tap_a and double_tap_b and flying_on and hovered and follows_view and rose and flying_off and fell,
+		"one Right Shift tap does not start flight; two taps within the double-tap window do; a flying body holds its height with no input, travels along the camera's aim when the movement keys are pressed, rises on Space; a second double tap lands it and gravity pulls it down again",
+		{"single_ignored": single_ignored, "flying_on": flying_on, "hovered": hovered, "follows_view": follows_view, "travelled": str(travelled), "rose": rose, "flying_off": flying_off, "fell": fell})
+
+
+## One Right Shift press / release through the real input path.
+func _tap_right_shift() -> bool:
+	for pressed in [true, false]:
+		var key := InputEventKey.new()
+		key.keycode = KEY_SHIFT
+		key.physical_keycode = KEY_SHIFT
+		key.location = KEY_LOCATION_RIGHT
+		key.pressed = pressed
+		Input.parse_input_event(key)
+		await get_tree().process_frame
+	await get_tree().process_frame
+	return true
+
+
+func _wait_msec(msec: int) -> bool:
+	var deadline := Time.get_ticks_msec() + msec
+	while Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	return true
+
+
 func _same_items(actual: Variant, expected: Variant) -> bool:
 	var left: Array = actual if actual is Array else []
 	var right: Array = expected if expected is Array else []
