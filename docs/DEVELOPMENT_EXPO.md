@@ -330,6 +330,33 @@ holds the `DevelopmentMode` node, the `--development-expo-automation=`
 dispatch, the save coordinator switch in `active_saves()`, the bounds hand-off
 in `_open_session` and the `on_session_ready` call.
 
+### Streaming and the exported build
+
+Two faults that only appeared in the exported build, where streaming is slower
+than in the editor, and the rule they leave behind for every future exhibit.
+
+**A district is built only when its own ground has settled** (`8c21abf`). The
+gate once called a district done while a rail line was still arriving — T216
+counted a short line. `_wait_built` now settles the builder before it declares
+a district built, so a district is never reported on mid-stream.
+
+**A far parcel waits; it does not fail** (`32dad5e`, `b788a8c`). The exported
+build gave up on the CoasterCraft pad while the player still stood in the
+plaza: every district's wait advanced the whole queue, so the pad spent its
+requeues without its region ever streaming in, and the plaza's own wait then
+reported that global failure as its own. Now `_region_loaded` checks the op's
+own cell, and an op whose region has not streamed in does not spend a requeue
+(`MAX_REQUEUES` is 120, and it only ends an op whose region *is* loaded — a
+write that will not take is a real fault, an absent chunk is not).
+
+**The rule for a new exhibit:** a district's build wait fails only on its own
+districts' failures (`_wait_built(label, owners)` with the district ids it
+owns, matched by `_failure_owned`), and an op whose region has not streamed in
+waits instead of spending a retry. A parcel across the campus finishes when
+someone walks to it; that is expected, not an error. Never widen a wait to the
+whole campus to make a far district finish sooner, and never treat the global
+`failures()` list as one district's verdict.
+
 ---
 
 ## 4. Districts — the western campus (§7)
