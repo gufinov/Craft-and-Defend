@@ -616,6 +616,17 @@ func progress() -> Dictionary:
 		"signs_requested": _sign_requests.size(), "failures": _failures.duplicate()}
 
 
+## True when the op's own cell is streamed in (so a refusal is a real fault,
+## not a chunk that has not arrived).
+func _region_loaded(op: Dictionary) -> bool:
+	if session == null or session.world == null:
+		return false
+	var probe: Variant = op.get("anchor", op.get("origin", op.get("cell")))
+	if not (probe is Vector3i):
+		return true
+	return str(session.world.query_cell(probe).get("state", "")) == "LOADED"
+
+
 func failures() -> Array[String]:
 	return _failures.duplicate()
 
@@ -660,9 +671,12 @@ func _requeue_deferred() -> void:
 	_retry_anchor = here
 	for op: Dictionary in _deferred:
 		var requeues := int(op.get("requeues", 0)) + 1
-		if requeues > MAX_REQUEUES:
+		if requeues > MAX_REQUEUES and _region_loaded(op):
 			# Ground that will not take a write after this many tries is a real
 			# fault, not streaming: report it rather than building for ever.
+			# A parcel whose region is still unloaded keeps waiting instead -
+			# the far districts only stream in when the player walks to them
+			# (the exported build gave up on the coaster pad from the plaza).
 			_failures.append("%s: gave up after %d requeues" % [str(op.get("label", "op")), MAX_REQUEUES])
 			continue
 		op["requeues"] = requeues

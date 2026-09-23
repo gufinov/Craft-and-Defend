@@ -1695,10 +1695,23 @@ func _wait_built(label: String, owners: PackedStringArray = PackedStringArray())
 				failures.append("%s build timeout after settling (%s)" % [label, JSON.stringify(builder.progress())])
 				return false
 			await get_tree().process_frame
-	if not builder.failures().is_empty():
-		failures.append("%s build failures: %s" % [label, "; ".join(builder.failures())])
+	# Only this wait's own districts count: a far parcel that has not streamed
+	# in yet is not this district's failure.
+	var mine: Array[String] = []
+	for failure: String in builder.failures():
+		if owners.is_empty() or _failure_owned(failure, owners):
+			mine.append(failure)
+	if not mine.is_empty():
+		failures.append("%s build failures: %s" % [label, "; ".join(mine)])
 		return false
 	return true
+
+
+static func _failure_owned(failure: String, owners: PackedStringArray) -> bool:
+	for owner: String in owners:
+		if failure.contains(owner):
+			return true
+	return false
 
 
 static func _still_building(builder: ExpoBuilder, owners: PackedStringArray) -> bool:
