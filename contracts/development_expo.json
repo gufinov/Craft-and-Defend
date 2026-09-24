@@ -2091,6 +2091,26 @@
             "gate_frame",
             "gate"
           ],
+          "placements": [
+            {
+              "entity": "gate_frame",
+              "offset": [
+                0,
+                0,
+                0
+              ],
+              "rotation": 0
+            },
+            {
+              "entity": "gate",
+              "offset": [
+                1,
+                0,
+                0
+              ],
+              "rotation": 0
+            }
+          ],
           "items": [
             "gate"
           ],
