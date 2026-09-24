@@ -1333,17 +1333,52 @@ func _test_trap_range() -> void:
 	var east := _voxels_in({"origin": Vector3i(origin.x + 7, origin.y, origin.z + 5), "size": Vector3i(1, 3, 11)}, CASTLE_STONE)
 	var scenario_core := app.battlefield_core_station_id(CraftAndDefendApp.TRAP_RANGE_RESET_GROUP)
 	var battlefield_core := app.battlefield_core_station_id(CraftAndDefendApp.BATTLEFIELD_RESET_GROUP)
-	var reserved_box := _parcel_box("tr_expansion_reserved")
-	var reserved_empty: bool = _stations_in(reserved_box, "").is_empty()
-	var signed: bool = _sign_placed("tr_spike_funnel") and _sign_placed("tr_expansion_reserved")
+	# Traps card 2: the combo at the mouth of the same lane, and one signed
+	# bay per new trap - each built from that trap's own mount.
+	var plates := _stations_in(box, "spring_plate")
+	var bays := {"tr_tar_patch": "tar_patch", "tr_wall_blades": "wall_blades",
+		"tr_spring_plate": "spring_plate", "tr_ceiling_dropper": "ceiling_dropper"}
+	var bay_report: Dictionary = {}
+	var bay_problems: Array[String] = []
+	for bay_id: String in bays.keys():
+		var entity_id := str(bays[bay_id])
+		var bay_box := _parcel_box(bay_id)
+		var standing := _stations_in(bay_box, entity_id)
+		var bay_armed := 0
+		var mounts: Dictionary = {}
+		for instance_id: String in standing:
+			if app.session.trap_service.is_armed(instance_id):
+				bay_armed += 1
+			mounts[str(app.session.workstations.station(instance_id).get("mount", "ground"))] = true
+		var wanted_mount := str(app.session.registry.entity(entity_id).get("trap", {}).get("mount", "floor"))
+		# A wall trap's record says "wall" and a ceiling trap's says "ceiling",
+		# which is what makes them restore without support under them.
+		var mount_ok: bool = mounts.has(wanted_mount) if wanted_mount in ["wall", "ceiling"] else true
+		var bay_signed := _sign_placed(bay_id)
+		bay_report[bay_id] = {"standing": standing.size(), "armed": bay_armed,
+			"mounts": mounts.keys(), "wanted_mount": wanted_mount, "signed": bay_signed}
+		if standing.size() != 3 or bay_armed != 3:
+			bay_problems.append("%s: %d standing, %d armed" % [bay_id, standing.size(), bay_armed])
+		if not mount_ok:
+			bay_problems.append("%s: record mount %s" % [bay_id, mounts.keys()])
+		if not bay_signed:
+			bay_problems.append(bay_id + ": unsigned")
+	var combo_box := _parcel_box("tr_combo_bay")
+	var combo_plates := _stations_in(combo_box, "spring_plate").size()
+	var combo_spikes := _stations_in(combo_box, "spike_trap").size()
+	var combo_ok: bool = combo_plates == 3 and combo_spikes == 6 and _sign_placed("tr_combo_bay")
+	var signed: bool = _sign_placed("tr_spike_funnel")
 	var ok: bool = traps.size() == 9 and armed == 9 and walkable == 9 and cores.size() == 1 \
-		and pedestals.size() == 1 and west == 33 and east == 33 and signed and reserved_empty \
+		and pedestals.size() == 1 and west == 33 and east == 33 and signed and plates.size() == 3 \
+		and bay_problems.is_empty() and combo_ok \
 		and not scenario_core.is_empty() and scenario_core == cores[0] and scenario_core != battlefield_core
 	_record("T239_TRAP_RANGE", ok,
-		"the Trap Range stands as its manifest record describes it: a lane walled with 33 castle-stone cells a side, nine Spike Traps in its floor that are armed as placed and walkable to the planner, the Core of Power at the far end, the control pedestal beside the mouth, both parcels signed, the future-traps parcel empty, and the pedestal's own scenario resolving to this Core rather than the Battlefield's",
+		"the Trap Range stands as its manifest record describes it: a lane walled with 33 castle-stone cells a side, nine Spike Traps in its floor that are armed as placed and walkable to the planner, a row of three Spring Plates across its mouth, the Core of Power at the far end, the control pedestal beside the mouth, the pedestal's own scenario resolving to this Core rather than the Battlefield's - and, since traps card 2, a signed bay for each of the four new traps holding three of it armed (the wall trap's record mounted on a wall, the ceiling trap's on a ceiling) plus the signed combo bay with its plates and its spike bed",
 		{"traps": traps.size(), "armed": armed, "walkable": walkable, "cores": cores.size(),
 		"pedestals": pedestals.size(), "wall_west": west, "wall_east": east, "signed": signed,
-		"reserved_empty": reserved_empty, "scenario_core": scenario_core, "battlefield_core": battlefield_core})
+		"mouth_plates": plates.size(), "bays": bay_report, "bay_problems": bay_problems,
+		"combo_plates": combo_plates, "combo_spikes": combo_spikes, "combo_ok": combo_ok,
+		"scenario_core": scenario_core, "battlefield_core": battlefield_core})
 
 
 ## T220: the Battlefield scenario end to end. START ATTACK sends a mixed wave
@@ -2201,7 +2236,13 @@ func _test_directory_search() -> void:
 		if str(row.get("added_in", "")) != newest:
 			all_newest = false
 	evidence["whats_new"] = {"stamp": newest, "ids": new_ids}
-	ok = ok and all_newest and new_ids.has(DIRECTORY_SEARCH_EXHIBIT)
+	# What's new shows the newest stamp and nothing older. It used to also
+	# require the wall-kit exhibit by name, which only held while the defence
+	# sets card was the newest one in the manifest; every later card that
+	# stamps an exhibit pushes it out. The rule the panel actually promises is
+	# the one asserted here: a non-empty list, all of it at the newest stamp,
+	# and fewer rows than the unfiltered list.
+	ok = ok and all_newest and new_ids.size() < rows.size()
 	app._clear_directory_filters()
 	_record("T234_DIRECTORY_SEARCH", ok, "K opens the Directory in Development mode and is refused elsewhere; a search for the owner's own words answers the wall-kit exhibit with its sign's description; the district, category and What's new filters narrow the list", evidence)
 

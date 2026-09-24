@@ -193,8 +193,17 @@ func _apply_effect(trap: Dictionary, caught: Array) -> int:
 				return int(damage_area.call(Vector3(trap.cell) + Vector3(0.5, 0.5, 0.5), radius, amount, "trap", ""))
 			if not damage_cell.is_valid():
 				return 0
+			# Once per body, not once per trigger cell: a trap whose trigger
+			# volume is several cells tall (a ceiling trap reaching down, a
+			# wall trap catching head and feet) must not hit the same raider
+			# once per cell - `damage_raiders_in_cell` already forgives a
+			# cell of vertical slack, so the cells would overlap.
 			var hits := 0
-			for cell: Vector3i in trap.trigger_cells.keys():
+			var struck: Dictionary = {}
+			for node in caught:
+				if node is BasicRaider:
+					struck[node.feet_cell()] = true
+			for cell: Vector3i in struck.keys():
 				hits += int(damage_cell.call(cell, amount, "trap"))
 			# A body that is not a raider (the player, when the block says
 			# `affects_player`) is hurt through its own method: the cell

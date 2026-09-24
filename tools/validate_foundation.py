@@ -51,7 +51,10 @@ EXPO_TERRAIN = {"level", "natural", "tree", "forest", "quarry", "coal_seam", "su
                 "wall_kit_demo",
                 # Traps (docs/TRAPS.md): the walled lane with the spike bed in
                 # its floor, its Core at the far end and its control pedestal.
-                "trap_range"}
+                "trap_range",
+                # Traps card 2: one bay per new trap, built from that trap's own
+                # mount, and the Spring-Plate-into-Spike-Trap combo bay.
+                "trap_bay", "trap_combo"}
 # Supply Depot (docs/DEVELOPMENT_EXPO.md, handoff sections 8 and 9). The
 # categories and the item -> category map are read out of the one runtime
 # source, `game/scripts/ui/item_categories.gd`, rather than copied here: the
