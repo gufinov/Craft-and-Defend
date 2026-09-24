@@ -103,6 +103,10 @@ const SIGN_OFFSETS: Array[Vector3i] = [
 const SIGN_RISE := 48
 ## `_sign_stand` returns this y when the column offers no stand.
 const SIGN_NO_STAND := -32768
+## How many cells outside a parcel's reading edge `approach_for` stands a
+## visitor: far enough to see the whole booth and its board, near enough that
+## the Directory's teleport lands inside the district it names.
+const APPROACH_STEP := 2
 
 var layout: ExpoLayout
 var session: GameSession
@@ -595,6 +599,45 @@ func _sign_spot(exhibit_id: String, default_cell: Vector3i, default_facing: Stri
 ##   reading back at it, so a board labelling a whole arena stands at the gate
 ##   a visitor walks through instead of at the arena's far corner.
 ##
+## Where a visitor stands to look at an exhibit or a district: the middle of
+## the edge its `orientation` says it is read from, `APPROACH_STEP` cells
+## outside the parcel, looking back at the parcel's centre. This is the same
+## `entrance` resolution `sign_anchor_for` uses for a board, reused by the
+## Expo Directory's teleport (card D1) so the owner arrives where the sign is
+## read rather than inside the exhibit.
+##
+## Returns `{cell, facing, look_at}` ({} for an unknown id).
+func approach_for(owner_id: String) -> Dictionary:
+	if layout == null:
+		return {}
+	var origin := Vector3i.ZERO
+	var size := Vector3i.ZERO
+	var orientation := "north"
+	var parcel := layout.parcel_for(owner_id)
+	if not parcel.is_empty():
+		origin = parcel["origin"]
+		size = parcel["size"]
+		orientation = str(parcel.get("orientation", "north"))
+	var district_entrance := Vector3i.ZERO
+	var use_entrance := false
+	if parcel.is_empty():
+		var bounds := layout.district_bounds(owner_id)
+		if bounds.is_empty():
+			return {}
+		origin = bounds["origin"]
+		size = bounds["size"]
+		# A district is entered where its avenue arrives, not at an arbitrary
+		# edge: the manifest already names that cell.
+		var record := layout.district(owner_id)
+		if record.has("entrance"):
+			district_entrance = _cell(record.get("entrance"))
+			use_entrance = true
+	var cell := district_entrance if use_entrance else _edge_cell(origin, size, orientation, APPROACH_STEP)
+	var look_at := Vector3(origin) + Vector3(size) * 0.5
+	look_at.y = float(origin.y) + 1.0
+	return {"cell": Vector3i(cell.x, origin.y, cell.z), "facing": orientation, "look_at": look_at}
+
+
 ## Returns {} when the exhibit names no anchor, or names an unknown exhibit.
 func sign_anchor_for(exhibit_id: String) -> Dictionary:
 	if layout == null:

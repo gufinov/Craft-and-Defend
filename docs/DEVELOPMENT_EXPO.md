@@ -211,6 +211,7 @@ the district and overlapping nothing), `connections`, `expansion_priority`,
 | `connections` | Which path or line the exhibit must touch |
 | `sign` | `{title, subtitle, lines, item, board}` — the sign card renders it; `item` must exist, `subtitle` is the optional stacked subheader (without it the first body line becomes the subheader), and `board` is `narrow`, `wide` (two cells) or `large` (three cells). A block that names no `board` takes the caller's default: the three-cell district board for a district's entrance sign, the two-cell wide board for an exhibit ([Signs](SIGNS.md)) |
 | `sign_anchor` | Optional: where this exhibit's board stands instead of its parcel corner — a cell offset `[x, y, z]` inside the footprint, `"centre"`, `"entrance"` (the middle of the edge the `orientation` says a visitor reads from) or `"near:<exhibit_id>"` (one cell outside that exhibit's own reading edge, reading back at it). `near:` must name an exhibit that exists |
+| `added_in` | Optional What's new stamp - an ISO date or a zero-padded version, compared as a string (section 9); set it on every exhibit a new card adds |
 | `reset_group` | Optional named group for a partial rebuild |
 | `expansion_priority` | Lower = kept, higher = first to move when the campus grows |
 | `offset` | Optional anchor relative to the district origin, for terrain-bound exhibits (the mountain and everything inside it) |
@@ -685,12 +686,116 @@ report what nobody has classified.
 
 ---
 
-## 9. Growth rule — adding an exhibit for a new feature (§6, handoff section 19)
+## 9. The Directory, What's new and the test notes (card D1)
+
+The owner's own testing tool, and Development mode only: *"I want to be able to
+search for anything in the expo and teleport to it … You could keep a log of
+all the elements and comments and what is verified, working, broken,
+approved."*
+
+**K opens it** ([Keybinds](KEYBINDS.md)) in a running Development world. It is
+a raw key like V and M, not an InputMap action, and outside Development mode it
+only says `The Expo Directory (K) is a Development mode tool.` K or Escape
+closes it. It is a **live panel** in the game's existing panel language - the
+same `_full_panel` / card / icon-tile vocabulary as the sign editor - so the
+world keeps running behind it and the live-menu contract is untouched.
+
+### 1. The list
+
+`game/scripts/expo/expo_directory.gd` (`ExpoDirectory`) turns the solved
+layout into one row per district and per exhibit; it is pure data in, data out,
+so the gate reads exactly what the panel draws. A row carries `id`, `kind`,
+`name` (the sign's title), `district`, the sign's body as its **description**
+(this is how the owner learns what a Wall Kit is without hunting for it), an
+`icon_item` (the sign's item, else the first item, else the first entity, drawn
+through `ItemIconCatalog` so a row looks like the rest of the game), its
+`ItemCategories` category, its `added_in` stamp and its note `status` and
+newest `remark`.
+
+**Search** matches a lowercased substring of everything above - ids, display
+names, the sign's words, the district - and filters live as it is typed.
+**Filters**: district, category, **What's new** and status, each a toggle;
+`Clear filters` resets them. The list draws at most 60 rows and says so.
+
+### 2. Teleport
+
+A row's **Teleport** takes the player to `ExpoBuilder.approach_for(id)`: the
+middle of the edge the parcel's `orientation` says it is read from, two cells
+outside it, looking back at the parcel's centre - the same `entrance`
+resolution the boards use, so the owner arrives where the sign is read rather
+than inside the exhibit. A district's row uses the manifest's own `entrance`.
+
+The streaming rules above apply: a far district's ground is simply **not there
+yet**. The teleport therefore parks the player over the column, waits for that
+column to report `LOADED`, then finds the settled surface and stands the player
+on it. If the chunk never arrives the panel says so and the player is not
+dropped into unloaded ground.
+
+### 3. What's new
+
+An exhibit may carry an optional **`added_in`** - an ISO date (`"2026-09-24"`)
+or a zero-padded version string; stamps are compared as strings, so the newest
+one wins. **Every card that adds an exhibit should set it.** The What's new
+filter shows the exhibits stamped newer than the last list the owner dismissed
+(closing the panel with the filter on records that), and the newest stamp
+itself when nothing is newer, so it is never silently empty. Backfilled for the
+exhibits added since the Expo shipped: `cy_gate`, `cy_wall_kit` and
+`dr_rail_turret` (the defence sets card; signs v2 added no exhibit of its own).
+
+### 4. Test notes and the status log
+
+`game/scripts/expo/expo_notes.gd` (`ExpoNotes`) keeps the notes per **subject
+id** - an exhibit id, or a placed station's instance id:
+
+- a note is a **remark plus a status** (`untested | verified | working |
+  broken | approved`), timestamped and **appended**: the log is a history, not
+  one overwritten line. `Set status only` changes the status and keeps the
+  newest remark, so a verdict never costs a retyped remark;
+- the Directory lists and filters by status, shows the newest remark on the
+  row and its status as a badge;
+- a **station** gets its own notes through the `Notes` button its panel shows
+  in Development mode (the station modal and the sign editor); it closes that
+  panel and opens the Directory's notes editor on that instance id;
+- notes live in the **development save's own namespace**:
+  `GameSession.snapshot()` writes `expo_notes` only while `development` is
+  true, so they survive save / load and a normal or CoasterCraft save carries
+  no such key at all (T236 proves both).
+
+**Export.** The panel's `Export Notes`, and the headless switch
+`--expo-notes-export` (which reads the development checkpoint and opens no
+world at all), write **`artifacts/expo_notes.md`**: a table of subject, status,
+newest remark and date, with every historical remark underneath. From an
+exported build, where `res://..` is inside the package, it lands in
+`<data root>/artifacts/` instead; the path is printed as
+`EXPO_NOTES_EXPORT <path> subjects=<n>`.
+
+### 5. Checks
+
+**T234_DIRECTORY_SEARCH**, **T235_DIRECTORY_TELEPORT** and **T236_EXPO_NOTES**
+in `--development-expo-automation=gate`; **T234V_DIRECTORY_VIEW**
+(`development-expo-directory.png`) in `=visual`.
+
+### 6. Calls made by this card
+
+- **K, not F**: F is `strafe_right` in the ESDF layout.
+- A row's **Teleport** button is the selection, beside its **Notes** button;
+  the row itself is not one big button, because two verbs share it.
+- A **station's** Notes button lives in the station's own panel header and
+  hands over to the Directory's notes editor rather than growing a second
+  editor of its own.
+- The manifest's mojibaked em dashes and middle dot (`â€”`, `Â·`, which
+  predate this card) are repaired to `-` and `·` in the same pass, because the
+  Directory is the first thing to render a district's `name`.
+
+---
+
+## 10. Growth rule — adding an exhibit for a new feature (§6, handoff section 19)
 
 1. Add the item/entity to `contracts/content.json` as usual.
 2. Add an exhibit record to the district that owns it in
    `contracts/development_expo.json` — id, kind, footprint, clearance,
-   orientation, the referenced ids, terrain, connections and a sign — or, if it
+   orientation, the referenced ids, terrain, connections, a sign and an
+   `added_in` stamp so it shows in the Directory's **What's new** — or, if it
    is not ready to be shown, add its id to `deferred_items` against the card
    that will. Nothing else in the file changes: the layout engine re-packs the
    district and grows into its expansion corridor.
@@ -707,7 +812,7 @@ the range's south side.
 
 ---
 
-## 10. Checks
+## 11. Checks
 
 | Gate | Covers |
 | --- | --- |
@@ -801,6 +906,24 @@ suite is the milestone's home; later cards add their records to it.
   the walk from the spawn down the avenue and along the depot's front aisle is
   unobstructed, floored and clear at head height; and a registry carrying an
   unclassified item reports it as `unassigned` instead of bucketing it.
+- **T234_DIRECTORY_SEARCH** (card D1) — K opens the Directory in Development
+  mode and is refused in the ordinary game; the owner's own search ("wall
+  kit") answers the wall-kit exhibit with the description its sign carries and
+  the panel draws exactly those rows; the district and category filters narrow
+  the list to that district / that category only; and What's new answers the
+  manifest's newest stamp and nothing older.
+- **T235_DIRECTORY_TELEPORT** — selecting an exhibit stands the player on
+  loaded, solid ground with head room within six cells of its parcel, looking
+  at it, for three districts: the Construction Yard, Lighting, and the far
+  CoasterCraft park whose terrain has to stream in first.
+- **T236_EXPO_NOTES** — a remark and a status are stored per subject and
+  appended as a history (a status change keeps the newest remark); the row in
+  the panel shows both; the notes go through the development save's own
+  namespace and back out of a real checkpoint on disk; the same session asked
+  for an ordinary game's snapshot writes no `expo_notes` key at all; and the
+  export writes the table with every historical remark under it.
+- **T234V_DIRECTORY_VIEW** (`=visual`) — `development-expo-directory.png`, the
+  Directory open over the running world with a search typed into it.
 - **T223V_SUPPLY_VIEW** (`=visual`) — `development-expo-supply.png`, a supply
   chest framed from the aisle with its board above it, close enough to read the
   4 x 2 grid against the chest.
