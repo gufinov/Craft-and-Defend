@@ -1365,6 +1365,19 @@ func navigation_cell_data(instance_id: String) -> Dictionary:
 	var entity_id := str(record.get("entity_id", ""))
 	var definition := registry.entity(entity_id)
 	var navigation: Dictionary = definition.get("navigation", {})
+	var trap: Dictionary = definition.get("trap", {})
+	if not trap.is_empty() and not bool(trap.get("blocks_movement", false)):
+		# A trap lies flush in the floor (docs/TRAPS.md): routes run straight
+		# over it, which is the point of it. It keeps its tags and its current
+		# integrity so a raider with no route left can still pick it as the
+		# weakest thing it can reach - the only way a trap is ever attacked.
+		var trap_tags: Array = navigation.get("material_tags", [])
+		return {
+			"state": "LOADED", "solid": false, "voxel_id": 0, "material_id": entity_id,
+			"source": "entity", "source_id": instance_id, "tags": trap_tags.duplicate(),
+			"integrity": maxi(1, int(record.get("integrity", navigation.get("integrity", 1)))),
+			"protected": trap_tags.is_empty(), "trap": true, "damageable": not definition.get("defense", {}).is_empty(),
+		}
 	var tags: Array = navigation.get("material_tags", [])
 	if tags.is_empty() and registry.item_category(entity_id) == "building":
 		tags = ["stone", "fortification"]
@@ -1379,6 +1392,10 @@ func navigation_cell_data(instance_id: String) -> Dictionary:
 		"tags": tags.duplicate(),
 		"integrity": maxi(1, integrity),
 		"protected": tags.is_empty(),
+		"trap": not definition.get("trap", {}).is_empty(),
+		# Only an entity with a `defense` sheet can actually be beaten down;
+		# the planner must not choose one that cannot (docs/TRAPS.md rule 3).
+		"damageable": not definition.get("defense", {}).is_empty(),
 	}
 
 

@@ -23,6 +23,12 @@ COASTER_TOOLS = {"loop", "climb", "bend", "cross", "curve"}
 # element lays, so it alone keeps its support.
 GROUNDED_COASTER_TOOL_ENTITIES = {"rail_switch"}
 ATTRIBUTE_MOUNTS = {"ground", "wall", "ceiling", "any_solid_top", "any_solid_top_or_wall", "block"}
+# Traps (docs/TRAPS.md): the vocabulary TrapService understands. A new trap is
+# an entity with a `trap` block from these sets - nothing in the service knows
+# about any particular trap.
+TRAP_MOUNTS = {"floor", "wall", "ceiling"}
+TRAP_TRIGGERS = {"pressure", "proximity"}
+TRAP_EFFECTS = {"damage", "slow"}
 # Development Expo manifest (docs/DEVELOPMENT_EXPO.md). `reserved` is the
 # empty-parcel kind the growth rule needs on top of the five exhibit scales.
 EXPO_KINDS = {"catalog", "functional", "system_demo", "environmental", "scenario", "showcase", "reserved"}
@@ -697,6 +703,25 @@ def validate_bundle(bundle):
             if siege["fire_mode"] == "dump":
                 require(type(siege.get("rail_speed")) in (int, float) and siege["rail_speed"] > 0
                         and entity.get("mount", {}).get("allowed") == ["rail_mount"], "invalid rail weapon")
+        trap = entity.get("trap")
+        if trap is not None:
+            # docs/TRAPS.md: the whole tuning of a trap is this block, so a new
+            # trap is content plus a visual and nothing else. TrapService reads
+            # exactly these keys; every trap is damageable (rule 3: a raider
+            # with no route attacks the weakest obstacle it can reach).
+            require(isinstance(trap, dict)
+                    and trap.get("mount") in TRAP_MOUNTS
+                    and trap.get("trigger") in TRAP_TRIGGERS
+                    and trap.get("effect") in TRAP_EFFECTS
+                    and integer(trap.get("damage"), 0)
+                    and type(trap.get("radius")) in (int, float) and trap["radius"] >= 0
+                    and type(trap.get("reset_seconds")) in (int, float) and trap["reset_seconds"] > 0
+                    and type(trap.get("fire_seconds")) in (int, float) and trap["fire_seconds"] > 0
+                    and isinstance(trap.get("blocks_movement"), bool), "invalid trap definition: " + entity["id"])
+            require(entity.get("defense") is not None, "a trap must be damageable: " + entity["id"])
+            require(trap["effect"] != "damage" or trap["damage"] > 0, "a damage trap needs damage: " + entity["id"])
+            require(trap["effect"] != "slow" or (type(trap.get("slow_factor")) in (int, float) and 0 < trap["slow_factor"] < 1
+                    and type(trap.get("slow_seconds")) in (int, float) and trap["slow_seconds"] > 0), "invalid slow trap: " + entity["id"])
         if entity.get("container_slots") is not None:
             # Industry wave 1: warehouses and ore bins are chest-style containers
             # (same slot list, same modal) under their own station type.

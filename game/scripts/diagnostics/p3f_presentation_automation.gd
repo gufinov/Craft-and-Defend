@@ -8,6 +8,8 @@ const EXPECTED_WORKBENCH_ORDER: Array[String] = [
 	"sign", "sign_board",
 	# Defence sets (docs/DEFENSE_SETS.md): the gate leaf and the rail turret.
 	"gate", "rail_turret",
+	# Traps wave 1 (docs/TRAPS.md): the Spike Trap.
+	"spike_trap",
 ]
 ## The CoasterCraft Shop's own book (docs/INDUSTRY_PLAN.md wave 1): the coaster
 ## recipes keep their workbench-era orders (194, 204-212) and live only here.
