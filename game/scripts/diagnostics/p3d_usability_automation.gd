@@ -155,6 +155,7 @@ func _run_phase1() -> void:
 	_record("T108_DRAG_BUILD", row_ok and column_ok and wall_ok and sky_ok and lift_ok and cancel_ok, "a right-drag plans a row, column or wall of the held block with support-first ordering, skips blocked cells, trims to the carried count, commits as one world edit plus one inventory transaction, and cancels with nothing built", {"row": row_plan, "row_commit": row_commit.get("reason"), "column": column_commit.get("reason"), "wall_blocked": blocked, "wall_unaffordable": unaffordable, "wall_commit": wall_commit.get("reason"), "sky": sky_plan.get("shape", ""), "sky_end": sky_plan.get("end", Vector3i.ZERO), "sky_commit": sky_commit.get("reason"), "lift_end": lift_end, "lift_commit": lift_commit.get("reason"), "cancel": cancelled.get("reason"), "dirt": inventory.count("dirt")})
 
 	await _run_sign_phase1()
+	await _run_flight_phase1()
 
 
 ## T212 (docs/SIGNS.md, Development Expo section 9): the Sign places on the
@@ -302,6 +303,11 @@ func _run_wide_board_phase1(grid_items: Array[String]) -> Dictionary:
 		"face_children": face.get_child_count() if face != null else 0, "rendered": rendered}
 
 
+## T224 (docs/KEYBINDS.md): flight. The block below was stranded after the
+## `return` of `_run_wide_board_phase1` when the signs card extracted that
+## helper, so T224 never ran between b472d16 and the wave-4 merge. It is a
+## function again and `_run_phase1` calls it.
+func _run_flight_phase1() -> void:
 	# T224 flight (owner 2026-09-23): a double tap of Right Shift toggles it;
 	# a single tap does not. While flying there is no gravity, the movement
 	# keys steer along the camera's own axes and Space / Z lift and drop.
