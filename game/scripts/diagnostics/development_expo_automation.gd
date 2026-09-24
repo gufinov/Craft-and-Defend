@@ -138,6 +138,7 @@ func _run_gate() -> void:
 	# read by now, so the simulation is handed back to the game.
 	app.session.simulation_paused = false
 	await _test_defense_range()
+	await _test_trap_range()
 	await _test_battlefield()
 	await _test_grand_coaster()
 	await _settle_near_spawn()
@@ -244,6 +245,7 @@ func _shoot_card_e_districts() -> void:
 		Vector3(range_origin) + Vector3(float(range_size.x) * 0.5, 2.0, float(range_size.z) * 0.4),
 		"development-expo-range.png",
 		"rendered evidence of the Defense Range: seven weapon booths, each on its mount with its ammunition chest, target and sign")
+	await _shoot_trap_range()
 	var core_parcel := app.development.layout.parcel_for("battlefield_player_core")
 	var core_origin: Vector3i = core_parcel["origin"]
 	if not await _walk_to(core_origin + Vector3i(1, 0, 8), "battlefield"):
@@ -259,6 +261,30 @@ func _shoot_card_e_districts() -> void:
 		Vector3(core_origin) + Vector3(1.5, 1.0, -22.0),
 		"development-expo-battlefield.png",
 		"rendered evidence of the Battlefield mid-attack: the Core behind its gate, the batteries either side and the wave crossing the open ground from the enemy core")
+	app.session.core_defense.clear_for_other_mode()
+
+
+## Traps (docs/TRAPS.md): the Trap Range mid-attack, looked down the lane from
+## above its mouth - the walls, the three rows of Spike Traps in the floor, the
+## Core capping the far end and the wave coming down it.
+func _shoot_trap_range() -> void:
+	var funnel := app.development.layout.parcel_for("tr_spike_funnel")
+	if funnel.is_empty():
+		return
+	var origin: Vector3i = funnel["origin"]
+	if not await _walk_to(origin + Vector3i(9, 0, 3), "trap_range"):
+		return
+	app.battlefield_start_attack(CraftAndDefendApp.TRAP_RANGE_RESET_GROUP)
+	var deadline := Time.get_ticks_msec() + ATTACK_TIMEOUT_MSEC
+	while app.session.core_defense.living_raider_count() == 0 and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	for _frame in range(240):
+		await get_tree().process_frame
+	await _shoot("T239V_TRAP_RANGE_VIEW",
+		Vector3(origin) + Vector3(5.5, 9.0, -2.0),
+		Vector3(origin) + Vector3(5.5, 1.0, 16.0),
+		"development-expo-trap-range.png",
+		"rendered evidence of the Trap Range: the walled lane with three rows of Spike Traps in its floor, the Core of Power at the far end, the control pedestal beside the mouth and a wave coming down the lane")
 	app.session.core_defense.clear_for_other_mode()
 
 
@@ -1077,6 +1103,49 @@ func _test_booth_reload(exhibit_id: String, entity_id: String) -> Dictionary:
 	return {"ok": after > before and after == capacity and stored_after < stored_before,
 		"weapon": weapon_id, "item": ammo_item, "before": before, "after": after, "capacity": capacity,
 		"storage_before": stored_before, "storage_after": stored_after}
+
+
+## T239 (the Expo half of the traps card, docs/TRAPS.md): the Trap Range is
+## built as the manifest describes it - a walled lane with three rows of three
+## Spike Traps in its floor, all armed as placed, the Core of Power capping the
+## far end, the control pedestal beside the mouth and a signed, empty parcel
+## for the traps that do not exist yet. The pedestal resolves to its own
+## scenario, so START ATTACK there musters at the Trap Range Core and not at
+## the Battlefield one.
+func _test_trap_range() -> void:
+	if not await _walk_to_district("trap_range"):
+		return
+	var box := _parcel_box("tr_spike_funnel")
+	if box.is_empty():
+		_record("T239_TRAP_RANGE", false, "the Trap Range funnel has a parcel", {})
+		return
+	var origin: Vector3i = box["origin"]
+	var traps := _stations_in(box, "spike_trap")
+	var cores := _stations_in(box, "core_of_power")
+	var pedestals := _stations_in(box, CraftAndDefendApp.BATTLEFIELD_CONTROL_ENTITY)
+	var armed := 0
+	var walkable := 0
+	for instance_id: String in traps:
+		if app.session.trap_service.is_armed(instance_id):
+			armed += 1
+		var anchor: Vector3i = app.session.workstations.station(instance_id).get("anchor", Vector3i.ZERO)
+		if not bool(app.session.workstations.navigation_cell_data(instance_id).get("solid", true)) and _inside(box, anchor):
+			walkable += 1
+	var west := _voxels_in({"origin": Vector3i(origin.x + 3, origin.y, origin.z + 5), "size": Vector3i(1, 3, 11)}, CASTLE_STONE)
+	var east := _voxels_in({"origin": Vector3i(origin.x + 7, origin.y, origin.z + 5), "size": Vector3i(1, 3, 11)}, CASTLE_STONE)
+	var scenario_core := app.battlefield_core_station_id(CraftAndDefendApp.TRAP_RANGE_RESET_GROUP)
+	var battlefield_core := app.battlefield_core_station_id(CraftAndDefendApp.BATTLEFIELD_RESET_GROUP)
+	var reserved_box := _parcel_box("tr_expansion_reserved")
+	var reserved_empty: bool = _stations_in(reserved_box, "").is_empty()
+	var signed: bool = _sign_placed("tr_spike_funnel") and _sign_placed("tr_expansion_reserved")
+	var ok: bool = traps.size() == 9 and armed == 9 and walkable == 9 and cores.size() == 1 \
+		and pedestals.size() == 1 and west == 33 and east == 33 and signed and reserved_empty \
+		and not scenario_core.is_empty() and scenario_core == cores[0] and scenario_core != battlefield_core
+	_record("T239_TRAP_RANGE", ok,
+		"the Trap Range stands as its manifest record describes it: a lane walled with 33 castle-stone cells a side, nine Spike Traps in its floor that are armed as placed and walkable to the planner, the Core of Power at the far end, the control pedestal beside the mouth, both parcels signed, the future-traps parcel empty, and the pedestal's own scenario resolving to this Core rather than the Battlefield's",
+		{"traps": traps.size(), "armed": armed, "walkable": walkable, "cores": cores.size(),
+		"pedestals": pedestals.size(), "wall_west": west, "wall_east": east, "signed": signed,
+		"reserved_empty": reserved_empty, "scenario_core": scenario_core, "battlefield_core": battlefield_core})
 
 
 ## T220: the Battlefield scenario end to end. START ATTACK sends a mixed wave

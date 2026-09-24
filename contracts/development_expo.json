@@ -237,6 +237,24 @@
       ]
     },
     {
+      "id": "trap_range",
+      "name": "TRAP RANGE",
+      "owner_card": "T1",
+      "prepare": "full",
+      "origin": [56, -1, 60],
+      "size": [40, 16, 26],
+      "entrance": [56, 0, 62],
+      "terrain": "level",
+      "expansion_corridor": {"origin": [96, -1, 60], "size": [7, 16, 26]},
+      "connections": ["defense_range"],
+      "expansion_priority": 4,
+      "sign": {"title": "TRAP RANGE", "lines": ["Traps, and how attackers treat them."]},
+      "exhibits": [
+        {"id": "tr_spike_funnel", "kind": "scenario", "footprint": [12, 6, 22], "clearance": 1, "orientation": "north", "offset": [14, 1, 2], "entities": ["core_of_power", "spike_trap", "battlefield_control"], "items": ["spike_trap"], "terrain": "trap_range", "connections": ["trap_line"], "reset_group": "trap_range", "expansion_priority": 4, "sign": {"title": "SPIKE TRAP FUNNEL", "lines": ["Nine Spike Traps in the floor of a walled lane.", "A trap is undetected: an attacker with a route", "walks straight over it and never attacks it.", "Sealed in with no route at all, it turns on the", "weakest thing it can reach - trap or wall.", "The pedestal musters a wave down the lane."], "item": "spike_trap", "board": "wide"}, "sign_anchor": "entrance"},
+        {"id": "tr_expansion_reserved", "kind": "reserved", "footprint": [12, 6, 8], "clearance": 1, "orientation": "north", "offset": [26, 1, 2], "entities": [], "items": [], "terrain": "level", "connections": ["trap_line"], "expansion_priority": 5, "sign": {"title": "TRAP RANGE - RESERVED", "lines": ["Signed and empty for the traps that do not", "exist yet: tar, wall blades, spring plate and", "the ceiling dropper."]}}
+      ]
+    },
+    {
       "id": "battlefield",
       "name": "BATTLEFIELD",
       "owner_card": "E",

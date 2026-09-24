@@ -47,7 +47,10 @@ EXPO_TERRAIN = {"level", "natural", "tree", "forest", "quarry", "coal_seam", "su
                 "field", "camp", "battery", "fortification", "magazine",
                 # Defence sets (docs/DEFENSE_SETS.md): the Wall Kit exhibit,
                 # stamped from the kit blueprint like the blueprint demo.
-                "wall_kit_demo"}
+                "wall_kit_demo",
+                # Traps (docs/TRAPS.md): the walled lane with the spike bed in
+                # its floor, its Core at the far end and its control pedestal.
+                "trap_range"}
 # Supply Depot (docs/DEVELOPMENT_EXPO.md, handoff sections 8 and 9). The
 # categories and the item -> category map are read out of the one runtime
 # source, `game/scripts/ui/item_categories.gd`, rather than copied here: the

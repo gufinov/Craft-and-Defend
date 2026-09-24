@@ -529,6 +529,26 @@ showing the routing the Battlefield exists to show; the Wood Barricades in
 front of the gate are what the wave meets first.
 
 ---
+## 6b. District — the Trap Range (traps card)
+
+`trap_range` (x 56..96, z 60..86, east of the Defense Range's corridor), one
+`scenario` exhibit and one reserved parcel. Its `trap_range` composite terrain
+authors a walled lane with three rows of three Spike Traps in the floor, the
+Core of Power at the far end and a `battlefield_control` pedestal beside the
+mouth; the reserved parcel is signed for the four traps that do not exist yet.
+
+The pedestal is the Battlefield's entity, and since this card the control panel
+follows whichever pedestal was opened: it resolves the reset group containing
+that pedestal (`CraftAndDefendApp.control_group`) and starts that group's wave
+at that group's Core, and RESET restores only that group. Called without a
+pedestal — as the gates do — it is still the Battlefield.
+
+**Call made:** the lane stands east of the CoasterCraft avenue. An avenue is
+levelled when its own district is built, and CoasterCraft is built after the
+Trap Range, so a lane under that avenue had its walls cleared away again.
+
+---
+
 ## 7. Districts — CoasterCraft: the component gallery and the Grand Coaster (§7, card F)
 
 The south-east reserve (`coastercraft`, origin `(64, -1, 88)`, size

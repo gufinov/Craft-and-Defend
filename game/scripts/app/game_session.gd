@@ -4024,7 +4024,9 @@ func _build_spike_trap_visual(parent: Node3D) -> void:
 	_add_mesh_box(parent, Vector3(0.80, 0.06, 0.80), Vector3(0.0, -0.47, 0.0), iron_dark)
 	var action := Node3D.new()
 	action.name = "TrapAction"
-	action.position = Vector3(0.0, -0.46, 0.0)
+	# At rest the whole bed hides under the floor of its own cell (the ground
+	# voxel below it): the trap is not supposed to be readable until it fires.
+	action.position = Vector3(0.0, -1.06, 0.0)
 	parent.add_child(action)
 	# Nine spikes on the bed: tapered iron teeth, tallest in the middle.
 	for x in [-0.26, 0.0, 0.26]:
