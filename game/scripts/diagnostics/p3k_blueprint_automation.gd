@@ -39,7 +39,7 @@ func _run_gate() -> void:
 
 	# T110: catalogue integrity as the runtime sees it.
 	var catalogue := InteractionService.blueprints()
-	var expected_ids := ["foundation_4", "tower_segment_4", "cap_4", "cap_6", "cap_8", "wall_4"]
+	var expected_ids := ["foundation_4", "tower_segment_4", "cap_4", "cap_6", "cap_8", "wall_4", "wall_kit_8"]
 	var ids_ok := true
 	for id in expected_ids:
 		ids_ok = ids_ok and catalogue.has(id)
@@ -48,7 +48,9 @@ func _run_gate() -> void:
 	for id in catalogue.keys():
 		var cells := interaction.blueprint_cells(str(id), Vector3i.ZERO, 0)
 		var definition: Dictionary = catalogue[id]
-		resolved_ok = resolved_ok and cells.size() == definition.get("blocks", []).size()
+		# Defence sets: a kit blueprint resolves its entity cells alongside
+		# its blocks, so the plan is blocks + pieces.
+		resolved_ok = resolved_ok and cells.size() == definition.get("blocks", []).size() + definition.get("entities", []).size()
 		total_cells += cells.size()
 	var rotated := interaction.blueprint_cells("wall_4", Vector3i.ZERO, 1)
 	var rotated_along_z := true
@@ -146,7 +148,94 @@ func _run_gate() -> void:
 	var refused := restored_service.restore_stamps([{"blueprint_id": "not_a_piece", "anchor": [0, 0, 0]}])
 	_record("T117_BLUEPRINT_SOCKET_SNAP", stamps_after.size() >= 4 and has_segment_top and bool(snap.snapped) and Vector3i(snap.cell) == top_of_segment and not bool(no_snap.snapped) and restore_ok and restored_service.stamps_snapshot().size() == stamps_after.size() and not refused, "stamped pieces are remembered with their sockets, a piece aimed within one cell of a socket snaps to it, an aim far away does not, and the stamp list round-trips through the session snapshot while an unknown piece is refused", {"stamps": stamps_after.size(), "sockets": sockets.size(), "snap": snap, "no_snap": no_snap.snapped, "restore_ok": restore_ok, "refused": refused, "has_segment_top": has_segment_top, "restored_count": restored_service.stamps_snapshot().size(), "top_of_segment": top_of_segment})
 
+	await _run_wall_kit_test()
+
 	_record("T112_BLUEPRINT_TRIM_BLOCK_CANCEL", trimmed_ok and cancel_ok, "a blueprint short on one block type trims only that type's cells, skips an occupied cell, cancels with nothing built, and otherwise stamps every affordable cell", {"blocked": blocked, "unaffordable": unaffordable, "costs": trimmed_costs, "commit": trimmed_commit.get("reason"), "cancel": cancelled.get("reason")})
+
+
+## T227 (docs/DEFENSE_SETS.md): the wall kit. One stamp raises a finished
+## defensive section - two courses of castle stone, a wall-walk, merlons and a
+## stair up at each end - for the real items, refuses a site it does not fit,
+## and comes back out with one U.
+func _run_wall_kit_test() -> void:
+	var interaction := app.session.interaction
+	var inventory := app.session.inventory
+	var ws := app.session.workstations
+	var world := app.session.world
+	var base := Vector3i(30, 0, 44)
+	if not await _wait_cells([base, base + Vector3i(7, 0, 1), base + Vector3i(0, 4, 0)]):
+		return
+	_level_area(base, 8, 2, 6)
+	_clear_inventory()
+
+	# Short of everything: the plan is drawn but nothing is affordable.
+	interaction.begin_blueprint_at("wall_kit_8", base, 0)
+	var empty_plan := interaction.drag_state()
+	var unaffordable := 0
+	var empty_cells := 0
+	var empty_buildable := 0
+	for entry in empty_plan.get("cells", []):
+		empty_cells += 1
+		if str(entry.state) == "unaffordable":
+			unaffordable += 1
+		elif str(entry.state) == "ok":
+			empty_buildable += 1
+	interaction.cancel_drag_place()
+
+	# A site it does not fit: a castle-stone pillar standing in the section.
+	inventory.try_transaction({}, {"castle_stone": 16, "wall_walk_slab": 8, "parapet_merlon": 4, "stone_stair": 4})
+	world.set_cell(base + Vector3i(3, 0, 0), 8)
+	world.set_cell(base + Vector3i(3, 1, 0), 8)
+	interaction.begin_blueprint_at("wall_kit_8", base, 0)
+	var blocked_plan := interaction.drag_state()
+	var blocked := 0
+	for entry in blocked_plan.get("cells", []):
+		if str(entry.state) == "blocked":
+			blocked += 1
+	interaction.cancel_drag_place()
+	world.set_cell(base + Vector3i(3, 0, 0), 0)
+	world.set_cell(base + Vector3i(3, 1, 0), 0)
+
+	# The real stamp.
+	var stations_before := ws.stations.size()
+	var revision_before := world.revision
+	interaction.begin_blueprint_at("wall_kit_8", base, 0)
+	var plan := interaction.drag_state()
+	var costs: Dictionary = plan.get("costs", {})
+	var stamped := interaction.commit_drag_place()
+	var changes: Dictionary = stamped.get("changes", {})
+	var raised: Array = changes.get("entities", [])
+	var course_ok := int(world.query_cell(base + Vector3i(4, 1, 0)).get("voxel_id", 0)) == 8
+	var walk_id := ws.station_at_cell(base + Vector3i(4, 2, 0))
+	var merlon_id := ws.station_at_cell(base + Vector3i(4, 3, 0))
+	var stair_id := ws.station_at_cell(base + Vector3i(0, 1, 1))
+	var walk_is_slab := str(ws.station(walk_id).get("entity_id", "")) == "wall_walk_slab"
+	var merlon_is_merlon := str(ws.station(merlon_id).get("entity_id", "")) == "parapet_merlon"
+	var stair_is_stair := str(ws.station(stair_id).get("entity_id", "")) == "stone_stair"
+	var paid: bool = inventory.count("castle_stone") == 0 and inventory.count("wall_walk_slab") == 0 \
+		and inventory.count("parapet_merlon") == 0 and inventory.count("stone_stair") == 0
+	var stamps_after := interaction.stamps_snapshot().size()
+	var stations_after_stamp := ws.stations.size()
+
+	# One U takes the whole section back out and hands the items back.
+	var undone := interaction.undo_last()
+	var world_restored := int(world.query_cell(base + Vector3i(4, 1, 0)).get("voxel_id", -1)) == 0
+	var stations_restored := ws.stations.size() == stations_before
+	var refunded: bool = inventory.count("castle_stone") == 16 and inventory.count("wall_walk_slab") == 8 \
+		and inventory.count("parapet_merlon") == 4 and inventory.count("stone_stair") == 4
+	var stamp_forgotten := interaction.stamps_snapshot().size() == stamps_after - 1
+	_clear_inventory()
+
+	_record("T227_WALL_KIT", empty_cells == 32 and unaffordable > 0 and empty_buildable == 0 and blocked >= 2
+			and int(costs.get("castle_stone", 0)) == 16 and int(costs.get("wall_walk_slab", 0)) == 8
+			and int(costs.get("parapet_merlon", 0)) == 4 and int(costs.get("stone_stair", 0)) == 4
+			and stamped.get("ok", false) and str(stamped.get("reason", "")) == "BLUEPRINT_STAMPED"
+			and raised.size() == 16 and stations_after_stamp == stations_before + 16
+			and world.revision > revision_before and course_ok
+			and walk_is_slab and merlon_is_merlon and stair_is_stair and paid
+			and undone.get("ok", false) and world_restored and stations_restored and refunded and stamp_forgotten,
+		"one Wall Kit stamp raises a finished defensive section - sixteen castle stone in two courses, an eight-cell wall-walk, four merlons and a pair of stone stairs up at each end - paid for with the real items in one transaction; an empty pack builds none of its thirty-two cells and a pillar standing in the section blocks its cells; and one U takes the section back out, blocks and pieces together, and hands every item back",
+		{"empty_cells": empty_cells, "unaffordable": unaffordable, "empty_buildable": empty_buildable, "blocked": blocked, "costs": costs, "stamped": stamped.get("reason"), "entities": raised.size(), "stations_added": stations_after_stamp - stations_before, "course": course_ok, "walk": walk_is_slab, "merlon": merlon_is_merlon, "stair": stair_is_stair, "paid": paid, "undone": undone.get("reason"), "world_restored": world_restored, "stations_restored": stations_restored, "refunded": refunded, "stamp_forgotten": stamp_forgotten})
 
 
 func _run_visual() -> void:

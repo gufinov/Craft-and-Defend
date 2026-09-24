@@ -59,6 +59,9 @@ const REASON_TEXT := {
 	"NO_STATION": "Aim at a workbench or furnace, then interact.",
 	"SECONDARY_REQUIRED": "Use right click to open this station.",
 	"OPEN_STATION": "Workstation opened.",
+	"GATE_OPENED": "Gate open — the leaf is drawn back and the way through is clear.",
+	"GATE_CLOSED": "Gate shut — the wall is whole again.",
+	"NOT_A_GATE": "That is not a gate.",
 	"WRONG_WORKSTATION": "That recipe needs a different workstation.",
 	"INSUFFICIENT_INPUT": "Missing recipe materials.",
 	"STATION_BUSY": "That furnace is already working.",
@@ -85,6 +88,10 @@ const REASON_TEXT := {
 }
 
 const STARTER_IRON_MARKER := Vector3(-6.5, 0.0, 36.5)
+## Defence sets (docs/DEFENSE_SETS.md): the gate's sliding leaf and how far it
+## travels - one cell, straight into the frame's jamb.
+const GATE_LEAF_NODE := "GateLeaf"
+const GATE_LEAF_OPEN_X := -0.98
 
 ## CoasterCraft (docs/COASTERCRAFT_MODE.md), set by the app before
 ## initialize(): no enemy core, no enemy-base compass, no starter markers on
@@ -1184,6 +1191,11 @@ func _on_interaction_result(result: Dictionary) -> void:
 			# A miner has no menu: right-click reports what it is doing.
 			_on_interaction_feedback(miner_status_line(str(changes.get("instance_id", ""))))
 			return
+		if str(station_record.get("entity_id", "")) == WorkstationService.GATE_ENTITY:
+			# Defence sets: a gate has no menu - right-click works the leaf.
+			var toggled := workstations.toggle_gate(str(changes.get("instance_id", "")))
+			_on_interaction_feedback(str(toggled.get("reason", "NOT_A_GATE")))
+			return
 		if str(station_record.get("entity_id", "")) == CoasterRails.CAR:
 			# Right-click on a coaster car boards it (owner 2026-09-20).
 			var boarded := board_coaster_car(str(changes.get("instance_id", "")))
@@ -1210,6 +1222,8 @@ func _on_station_changed(result: Dictionary) -> void:
 		var released: Array = details.get("occupied_cells", [])
 		if CoasterRails.is_track_id(str(details.get("entity_id", ""))) and released.size() > 0 and released[0] is Vector3i:
 			_refresh_rail_neighbours(released[0])
+	elif details.has("instance_id") and details.has("gate_open"):
+		_apply_gate_state(str(details.instance_id), bool(details.gate_open), true)
 	elif details.has("instance_id") and details.has("integrity"):
 		_update_station_visual(str(details.instance_id), int(details.integrity), int(details.get("max_integrity", 1)))
 	elif details.has("instance_id") and details.has("container_slots"):
@@ -1304,6 +1318,11 @@ func _spawn_station_visual(record: Dictionary) -> void:
 	elif entity_id == "kettle":
 		_build_kettle_visual(body)
 		_wrap_siege_turret(body, definition)
+	elif entity_id == WorkstationService.GATE_ENTITY:
+		_build_gate_visual(body)
+	elif entity_id == "rail_turret":
+		_build_rail_turret_visual(body)
+		_wrap_siege_turret(body, definition)
 	elif entity_id == "rail":
 		_build_rail_visual(body, record)
 	elif entity_id == CoasterRails.SLOPE:
@@ -1356,6 +1375,9 @@ func _spawn_station_visual(record: Dictionary) -> void:
 			add_child(coaster_carts)
 		# A coaster car waits, parked, for a rider (docs/COASTER_CAR_AND_HERO.md).
 		coaster_carts.register_cart(instance_id, body, entity_id == CoasterRails.CAR)
+	if record.has("gate_open"):
+		# A restored gate stands where it was left, without replaying the slide.
+		_apply_gate_state(instance_id, bool(record.gate_open), false)
 	if record.has("integrity"):
 		_update_station_visual(instance_id, int(record.integrity), int(definition.get("defense", {}).get("max_integrity", 1)))
 
@@ -3875,6 +3897,90 @@ func _add_mesh_cone(parent: Node3D, radius: float, height: float, offset: Vector
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	parent.add_child(mesh_instance)
 	return mesh_instance
+
+
+## Defence sets (docs/DEFENSE_SETS.md): a portcullis leaf filling the gate
+## frame's one-cell opening. Every mesh hangs under a `GateLeaf` pivot so the
+## open/close slide moves one node (the station-visual idiom `_wrap_siege_turret`
+## and `KettlePot` use); the two blocking boxes stay direct children of the
+## StaticBody3D, because Godot only reads a CollisionShape3D there, and are
+## disabled instead of moved while the gate stands open.
+func _build_gate_visual(parent: Node3D) -> void:
+	var iron := _visual_material(Color("6f7780"))
+	var dark_iron := _visual_material(Color("3f454c"))
+	for cell in range(2):
+		var blocker := _add_collision_box(parent, Vector3(0.96, 0.98, 0.26), Vector3(0.0, float(cell), 0.0))
+		blocker.name = "GateBlocker_%d" % cell
+	var leaf := Node3D.new()
+	leaf.name = GATE_LEAF_NODE
+	leaf.position = Vector3(0.0, 0.5, 0.0)
+	parent.add_child(leaf)
+	# Three stiles, three cross rails and a row of spiked feet.
+	for x in [-0.34, 0.0, 0.34]:
+		_add_mesh_box(leaf, Vector3(0.13, 1.96, 0.22), Vector3(x, 0.0, 0.0), iron)
+		_add_mesh_box(leaf, Vector3(0.09, 0.16, 0.16), Vector3(x, -1.02, 0.0), dark_iron)
+	for y in [-0.88, 0.0, 0.88]:
+		_add_mesh_box(leaf, Vector3(0.94, 0.13, 0.22), Vector3(0.0, y, 0.0), dark_iron)
+	# The channel the leaf runs in, so a closed gate reads as fitted, not stacked.
+	_add_mesh_box(leaf, Vector3(1.0, 0.12, 0.3), Vector3(0.0, 1.04, 0.0), dark_iron)
+
+
+## Defence sets: the turret catapult on a rail carriage. The arm, bucket and
+## stone keep the field catapult's node names, so SiegeDefenseService's
+## wind-back and throw animation and its muzzle lookup work unchanged.
+func _build_rail_turret_visual(parent: Node3D) -> void:
+	_add_collision_box(parent, Vector3(0.9, 0.88, 0.9), Vector3(0.0, -0.05, 0.0))
+	var iron := _visual_material(Color("8d959d"))
+	var dark_iron := _visual_material(Color("474e55"))
+	var oak := _visual_material(Color("b9783f"), "res://assets/blocks/planks.svg")
+	# Carriage: a plank deck on an iron underframe with four wheels that sit
+	# down in the rail cell, exactly as the kettle's trolley does.
+	_add_mesh_box(parent, Vector3(0.9, 0.14, 0.9), Vector3(0.0, -0.3, 0.0), oak)
+	_add_mesh_box(parent, Vector3(0.94, 0.1, 0.94), Vector3(0.0, -0.4, 0.0), dark_iron)
+	for x in [-0.3, 0.3]:
+		for z in [-0.32, 0.32]:
+			_add_mesh_box(parent, Vector3(0.16, 0.16, 0.1), Vector3(x, -0.52, z), dark_iron)
+	# Turntable and A-frame.
+	_add_mesh_box(parent, Vector3(0.62, 0.1, 0.62), Vector3(0.0, -0.18, 0.0), iron)
+	for x in [-0.24, 0.24]:
+		_add_mesh_box(parent, Vector3(0.1, 0.52, 0.1), Vector3(x, 0.12, -0.08), oak)
+	_add_mesh_box(parent, Vector3(0.62, 0.1, 0.12), Vector3(0.0, 0.38, -0.08), oak)
+	var arm := Node3D.new()
+	arm.name = "CatapultArm"
+	arm.position = Vector3(0.0, 0.34, -0.08)
+	parent.add_child(arm)
+	_add_mesh_box(arm, Vector3(0.12, 0.12, 0.78), Vector3(0.0, 0.0, 0.34), oak)
+	var bucket := Node3D.new()
+	bucket.name = "CatapultBucket"
+	bucket.position = Vector3(0.0, 0.06, 0.7)
+	arm.add_child(bucket)
+	_add_mesh_box(bucket, Vector3(0.28, 0.2, 0.28), Vector3.ZERO, dark_iron)
+	_add_mesh_box(bucket, Vector3(0.18, 0.18, 0.18), Vector3(0.0, 0.14, 0.0), iron, "CatapultStone")
+	var muzzle := Node3D.new()
+	muzzle.name = "SiegeMuzzle"
+	muzzle.position = Vector3(0.0, 0.16, 0.0)
+	bucket.add_child(muzzle)
+
+
+## Defence sets: the leaf slides clear of the opening (into the frame's jamb)
+## and drops back. Pathing has already changed by the time this runs - the
+## slide is presentation, the blockers switch with the state.
+func _apply_gate_state(instance_id: String, open: bool, animate: bool) -> void:
+	var body: Node3D = _station_visuals.get(instance_id)
+	if body == null or not is_instance_valid(body):
+		return
+	var leaf: Node3D = body.get_node_or_null(GATE_LEAF_NODE)
+	if leaf == null:
+		return
+	var target := Vector3(GATE_LEAF_OPEN_X if open else 0.0, 0.5, 0.0)
+	if animate:
+		var tween := create_tween()
+		tween.tween_property(leaf, "position", target, WorkstationService.GATE_SLIDE_SECONDS).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	else:
+		leaf.position = target
+	for child in body.get_children():
+		if child is CollisionShape3D and str(child.name).begins_with("GateBlocker"):
+			child.disabled = open
 
 
 func _add_collision_box(parent: Node3D, size: Vector3, offset: Vector3) -> CollisionShape3D:

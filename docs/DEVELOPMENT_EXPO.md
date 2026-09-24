@@ -459,9 +459,9 @@ them: `stock_container(cell, items, per_item)` fills an authored chest, and
 
 | District | Box (x, z) | What stands there |
 |---|---|---|
-| Construction Yard | 28..71, -44..-5 | Castle Stone, Stone Stair, Wall-walk Slab, Parapet Merlon, Tower Platform, Gate Frame and Wood Barricade each on their own signed booth; then the same pieces assembled — a drag-built run of castle stone with a wall-walk deck and merlons, the blueprint stack FOUNDATION 4 / TOWER SEGMENT 4 / CAP 4 stamped as ordinary voxels and recorded as stamps, and a small castle with a curtain wall, a gate, a stair and a tower platform; a signed, empty parcel for future castle technology |
-| Defense Range | 56..103, 12..51 | Six booths in a row, each 28 cells deep: Ballista and both Turret Catapults on tower platforms, Catapult and Cannon on the ground, Kettle on a rail along a wall top; each with its munition chest touching it, a castle-stone target at the far end of its own lane and a sign naming the weapon and its ammunition; a signed, empty parcel for future machines |
-| Battlefield | 112..183, -16..55 | One `field` parcel of open dirt with everything else nested in it: the enemy core and its muster ground to the north, the west and east batteries, the curtain wall with its gate and tower, the Core of Power, the magazine and the control pedestal to the south, and signed empty parcels for future enemy kinds and for allied archers and soldiers |
+| Construction Yard | 28..71, -44..-5 | Castle Stone, Stone Stair, Wall-walk Slab, Parapet Merlon, Tower Platform, Gate Frame, **Gate** and Wood Barricade each on their own signed booth; then the same pieces assembled — a drag-built run of castle stone with a wall-walk deck and merlons, the blueprint stack FOUNDATION 4 / TOWER SEGMENT 4 / CAP 4 stamped as ordinary voxels and recorded as stamps, the **Wall Kit** exhibit showing what one stamp leaves behind (base course, wall-walk, merlons and a stair up at each end), and a small castle with a curtain wall, a gate, a stair and a tower platform; a signed, empty parcel for future castle technology |
+| Defense Range | 56..110, 12..51 | Seven booths in a row, each 28 cells deep: Ballista and both Turret Catapults on tower platforms, Catapult and Cannon on the ground, Kettle and the **Rail Turret** each on a rail along a wall top; each with its munition chest touching it, a castle-stone target at the far end of its own lane and a sign naming the weapon and its ammunition; a signed, empty parcel for future machines |
+| Battlefield | 112..183, -16..55 | One `field` parcel of open dirt with everything else nested in it: the enemy core and its muster ground to the north, the west and east batteries, the curtain wall with its tower and its **working gate**, hung shut, the Core of Power, the magazine and the control pedestal to the south, and signed empty parcels for future enemy kinds and for allied archers and soldiers |
 
 ### The Battlefield control station
 
@@ -484,6 +484,12 @@ Development mode has no ambient pressure, so this pedestal is the only thing
 in the whole Expo that starts a fight.
 
 ### The reset-group pattern — `ExpoResetService`
+
+Step 3 of a reset (`_restore_standing`) puts everything still standing inside
+the boundary back to the state its fixture opens in: full integrity, a siege
+weapon's opening clip and — since [the defence sets card](DEFENSE_SETS.md) —
+every **gate hung shut again**. So RESET BATTLEFIELD restores the curtain
+wall's gate closed, whatever the last fight left it as.
 
 `game/scripts/expo/expo_reset_service.gd` is the §14 seam's implementation and
 is **not** Battlefield-specific. Any exhibit may name a `reset_group` in the
@@ -681,7 +687,10 @@ report what nobody has classified.
    `--development-expo-automation=gate`.
 
 If the district is full, widen it (and its corridor) in the manifest or claim
-the reserved parcel — the validator says which exhibit did not fit.
+the reserved parcel — the validator says which exhibit did not fit. The
+defence sets card is the worked example: the Defense Range grew from 48 to 55
+cells wide to take the Rail Turret booth, and its expansion corridor moved to
+the range's south side.
 
 ---
 

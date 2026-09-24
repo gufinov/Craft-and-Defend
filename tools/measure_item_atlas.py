@@ -45,6 +45,7 @@ DERIVED_ORDER = [
     "miner", "ore_bin",
     "warehouse", "foundry",
     "sign", "sign_board",
+    "gate", "rail_turret",
 ]
 # Nominal search cells. Row heights for the item atlas follow the shipped
 # ItemIconCatalog grid; the ammunition atlas is two square halves.

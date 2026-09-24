@@ -243,7 +243,7 @@ func _shoot_card_e_districts() -> void:
 		Vector3(range_origin) + Vector3(float(range_size.x) * 0.5, 16.0, float(range_size.z) + 6.0),
 		Vector3(range_origin) + Vector3(float(range_size.x) * 0.5, 2.0, float(range_size.z) * 0.4),
 		"development-expo-range.png",
-		"rendered evidence of the Defense Range: six weapon booths, each on its mount with its ammunition chest, target and sign")
+		"rendered evidence of the Defense Range: seven weapon booths, each on its mount with its ammunition chest, target and sign")
 	var core_parcel := app.development.layout.parcel_for("battlefield_player_core")
 	var core_origin: Vector3i = core_parcel["origin"]
 	if not await _walk_to(core_origin + Vector3i(1, 0, 8), "battlefield"):
@@ -938,7 +938,7 @@ func _test_construction_yard() -> void:
 		return
 	var pieces := {"cy_stone_stair": "stone_stair", "cy_wall_walk_slab": "wall_walk_slab",
 		"cy_parapet_merlon": "parapet_merlon", "cy_tower_platform": "tower_platform",
-		"cy_gate_frame": "gate_frame", "cy_wood_barricade": "wood_barricade"}
+		"cy_gate_frame": "gate_frame", "cy_gate": "gate", "cy_wood_barricade": "wood_barricade"}
 	var missing_pieces: Array[String] = []
 	for exhibit_id: String in pieces.keys():
 		if _stations_in(_parcel_box(exhibit_id), str(pieces[exhibit_id])).is_empty():
@@ -967,21 +967,37 @@ func _test_construction_yard() -> void:
 	var castle_gate: bool = not _stations_in(castle_box, "gate_frame").is_empty()
 	var castle_platform: bool = not _stations_in(castle_box, "tower_platform").is_empty()
 	var castle_stairs := _stations_in(castle_box, "stone_stair").size()
+	# Defence sets (docs/DEFENSE_SETS.md): the gate booth hangs a real leaf in a
+	# frame, and it is hung shut; the wall kit booth is a whole stamped section.
+	var gate_box := _parcel_box("cy_gate")
+	var gate_leaves := _stations_in(gate_box, "gate")
+	var gate_shut: bool = not gate_leaves.is_empty() and not app.session.workstations.gate_is_open(gate_leaves[0])
+	var gate_framed: bool = not _stations_in(gate_box, "gate_frame").is_empty()
+	var kit_box := _parcel_box("cy_wall_kit")
+	var kit_stone := _voxels_in(kit_box, CASTLE_STONE)
+	var kit_walk := _stations_in(kit_box, "wall_walk_slab").size()
+	var kit_merlons := _stations_in(kit_box, "parapet_merlon").size()
+	var kit_stairs := _stations_in(kit_box, "stone_stair").size()
 	var reserved_empty: bool = _stations_in(_parcel_box("cy_expansion_reserved"), "").is_empty()
 	var ok: bool = missing_pieces.is_empty() and stone_booth and unsigned.is_empty() \
 		and wall_stone >= 36 and wall_deck >= 8 and wall_merlons >= 4 \
 		and stamp_stone > 0 and stamps_ok \
+		and gate_shut and gate_framed \
+		and kit_stone == 16 and kit_walk == 8 and kit_merlons == 4 and kit_stairs == 4 \
 		and castle_stone > 0 and castle_gate and castle_platform and castle_stairs >= 3 and reserved_empty
 	_record("T218_EXPO_CONSTRUCTION", ok,
-		"the Construction Yard stands each castle piece on its own signed booth and then shows them assembled: a drag-built run of castle stone with a wall-walk deck and merlons on it, the FOUNDATION 4 / TOWER SEGMENT 4 / CAP 4 blueprint stack stamped and recorded as stamps, and a small castle with a gate frame, a stair and a tower platform; the future-castle-technology parcel is signed and empty",
+		"the Construction Yard stands each castle piece on its own signed booth and then shows them assembled: a drag-built run of castle stone with a wall-walk deck and merlons on it, the FOUNDATION 4 / TOWER SEGMENT 4 / CAP 4 blueprint stack stamped and recorded as stamps, the Gate booth hanging a real leaf in a frame, shut; the Wall Kit booth holding one whole stamped section (sixteen castle stone, an eight-cell wall-walk, four merlons and four stair steps); and a small castle with a gate frame, a stair and a tower platform; the future-castle-technology parcel is signed and empty",
 		{"missing_pieces": missing_pieces, "castle_stone_booth": stone_booth, "unsigned": unsigned,
 		"wall": {"stone": wall_stone, "deck": wall_deck, "merlons": wall_merlons},
 		"stamp": {"stone": stamp_stone, "stamps": stamped},
+		"gate": {"shut": gate_shut, "framed": gate_framed},
+		"wall_kit": {"stone": kit_stone, "walk": kit_walk, "merlons": kit_merlons, "stairs": kit_stairs},
 		"castle": {"stone": castle_stone, "gate": castle_gate, "platform": castle_platform, "stairs": castle_stairs},
 		"reserved_empty": reserved_empty})
 
 
-## T219: every Defense Range booth is a weapon that could be demonstrated -
+## T219: every Defense Range booth (seven since the defence sets card added
+## the Rail Turret) is a weapon that could be demonstrated -
 ## the mount its sheet allows, its own munition in the storage touching it, a
 ## target down range and a sign naming both - and the storage network really
 ## does reload one of them.
@@ -992,7 +1008,7 @@ func _test_defense_range() -> void:
 	var storage: StorageNetwork = app.session.siege_defense.storage
 	var booths := {"dr_ballista": "ballista", "dr_catapult": "catapult",
 		"dr_turret_catapult": "turret_catapult", "dr_turret_catapult_mk2": "turret_catapult_mk2",
-		"dr_cannon": "cannon", "dr_kettle": "kettle"}
+		"dr_cannon": "cannon", "dr_kettle": "kettle", "dr_rail_turret": "rail_turret"}
 	var problems: Array[String] = []
 	var booth_report: Dictionary = {}
 	for exhibit_id: String in booths.keys():
@@ -1033,7 +1049,7 @@ func _test_defense_range() -> void:
 	var reload := await _test_booth_reload("dr_cannon", "cannon")
 	var ok: bool = problems.is_empty() and bool(reload.get("ok", false))
 	_record("T219_EXPO_DEFENSE_RANGE", ok,
-		"each of the six Defense Range booths stands its weapon on the mount its sheet allows, with its own munition in the container the storage network sees beside it, a castle-stone target down its lane and a sign naming the weapon and the ammunition; draining the Cannon back to the clip its sheet opens with is topped up again by the existing storage-network reload, and the munition comes out of the chest",
+		"each of the seven Defense Range booths stands its weapon on the mount its sheet allows, with its own munition in the container the storage network sees beside it, a castle-stone target down its lane and a sign naming the weapon and the ammunition; draining the Cannon back to the clip its sheet opens with is topped up again by the existing storage-network reload, and the munition comes out of the chest",
 		{"problems": problems, "booths": booth_report, "reload": reload})
 
 

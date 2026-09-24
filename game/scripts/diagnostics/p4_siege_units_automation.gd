@@ -558,6 +558,7 @@ func _run_gate() -> void:
 	_record("T155_WALL_MOUNTS_JUNCTIONS_SIDESTEP", lantern_on_wall.get("ok", false) and str(lantern_on_wall.get("details", {}).get("mount", "")) == "wall" and lantern_rotation == 0 and not lantern_on_ground.get("ok", false) and torch_on_ground.get("ok", false) and torch_on_wall.get("ok", false) and rails_placed == 8 and corner_kettle.get("ok", false) and reaches_around_corner and junction_degree == 3 and stays_straight and not branch_reached and side_drill.get("ok", false) and sidestepping and stepped_aside, "a wall lantern hangs on a wall face facing away and refuses bare ground while a torch does both; a kettle rides through a rail corner as one track but never turns onto a T branch; a stuck raider backs up and steps sideways before re-planning", {"lantern_wall": lantern_on_wall.get("reason"), "lantern_mount": lantern_on_wall.get("details", {}).get("mount", ""), "lantern_rotation": lantern_rotation, "lantern_ground": lantern_on_ground.get("reason"), "torch_ground": torch_on_ground.get("reason"), "torch_wall": torch_on_wall.get("reason"), "rails": rails_placed, "kettle": corner_kettle.get("reason"), "corner_step": step_from_end, "junction_degree": junction_degree, "through_t": through_t, "branch_reached": branch_reached, "sidestepping": sidestepping, "route": core.raider.route})
 	core.clear_for_other_mode()
 	await _run_unstuck_tests()
+	await _run_defense_set_tests()
 
 
 ## Wave 1 "raiders unstuck" (T196-T198). Each drill runs on its own levelled
@@ -707,6 +708,204 @@ func _run_unstuck_tests() -> void:
 	Engine.time_scale = 1.0
 	Engine.physics_ticks_per_second = normal_ticks
 	await get_tree().process_frame
+
+
+## Defence sets (docs/DEFENSE_SETS.md): T226 the working gate and T228 the
+## turret catapult on a rail carriage. Both run on their own levelled plate,
+## away from the arena the tests above leave behind.
+func _run_defense_set_tests() -> void:
+	await _run_gate_test()
+	await _run_rail_turret_test()
+
+
+## T226: a gate leaf hung in a gate frame's opening. Closed it is a wall -
+## solid to the planner, breached like the rest of the castle kit at a third
+## of a raider's damage; open it is the way through the owner chose. It takes
+## damage and is repaired like the other pieces, and it remembers which it was
+## across a save.
+func _run_gate_test() -> void:
+	var ws := app.session.workstations
+	var world := app.session.world
+	var core := app.session.core_defense
+	var inventory := app.session.inventory
+	var origin := Vector3i(60, 0, 56)
+	_level_ground(origin, 9, 9)
+	await get_tree().physics_frame
+
+	# A one-cell-thick wall across the plate with a gate frame in the middle:
+	# the only way from the far side to the near side is through the opening.
+	var wall_z := origin.z + 4
+	for x in range(9):
+		if x == 4 or x == 5 or x == 6:
+			continue
+		for y in range(2):
+			world.set_cell(Vector3i(origin.x + x, origin.y + y, wall_z), 8)
+	await get_tree().physics_frame
+	inventory.try_transaction({}, {"gate_frame": 1, "gate": 1, "castle_stone": 4})
+	var frame := ws.try_place("gate_frame", Vector3i(origin.x + 4, origin.y, wall_z), world.query_cell, AABB(), 0)
+	var frame_id := str(frame.get("details", {}).get("station", {}).get("instance_id", ""))
+	var gate_cell := Vector3i(origin.x + 5, origin.y, wall_z)
+	# The leaf is hung with the rotation the player happens to hold; the piece
+	# turns itself to the frame's jambs.
+	var gate := ws.try_place("gate", gate_cell, world.query_cell, AABB(), 1)
+	var gate_id := str(gate.get("details", {}).get("station", {}).get("instance_id", ""))
+	var mount := str(gate.get("details", {}).get("mount", ""))
+	var hung_closed := not ws.gate_is_open(gate_id)
+
+	# Closed: solid, and a raider reads it as breachable player stone.
+	var closed_nav := ws.navigation_cell_data(gate_id)
+	var planner := LocalGridPathfinder.new()
+	var raider_damage: Dictionary = core._basic_raider_capability().get("damage_per_hit", {})
+	var closed_damage := planner._damage_for(closed_nav.get("tags", []), raider_damage)
+	var damageable := ws.defense_status(gate_id)
+
+	# Route across the wall, through the gate cell, with the gate shut and open.
+	var start := Vector3i(origin.x + 5, origin.y, wall_z + 3)
+	var goal := Vector3i(origin.x + 5, origin.y, wall_z - 3)
+	var snapshot := NavigationSnapshot.new()
+	var region := AABB(Vector3(origin) + Vector3(0.0, -1.0, 0.0), Vector3(9.0, 4.0, 9.0))
+	snapshot.capture(region, core._query_navigation_cell, 1)
+	var shut_route := planner.find_route(snapshot, start, goal, core._basic_raider_capability())
+	var shut_action := planner.plan_next(snapshot, start, goal, core._basic_raider_capability())
+	var opened := ws.toggle_gate(gate_id)
+	snapshot.capture(region, core._query_navigation_cell, 2)
+	var open_nav := ws.navigation_cell_data(gate_id)
+	var open_route := planner.find_route(snapshot, start, goal, core._basic_raider_capability())
+	var streams_through := false
+	for cell in open_route.get("path", []):
+		if cell == gate_cell:
+			streams_through = true
+	var closed_again := ws.toggle_gate(gate_id)
+
+	# Integrity and repair, exactly as the other castle pieces.
+	var hit := ws.try_damage(gate_id, 30)
+	var integrity_after_hit := int(ws.defense_status(gate_id).get("details", {}).get("integrity", 0))
+	var stone_before := inventory.count("castle_stone")
+	var repaired := ws.try_repair_structure(gate_id)
+	var integrity_after_repair := int(ws.defense_status(gate_id).get("details", {}).get("integrity", 0))
+	var repair_atomic: bool = repaired.get("ok", false) and inventory.count("castle_stone") == stone_before - 1 and integrity_after_repair == 110
+
+	# Save round trip: the record goes through JSON exactly as a checkpoint
+	# writes it, and comes back open.
+	ws.set_gate_open(gate_id, true)
+	var saved: Variant = JSON.parse_string(JSON.stringify(ws.snapshot()))
+	var restored := ws.restore(saved if saved is Dictionary else {}, world.query_cell)
+	var restored_open := ws.gate_is_open(gate_id)
+	var restored_frame := not ws.station(frame_id).is_empty()
+
+	# A destroyed gate leaves the frame standing.
+	ws.try_damage(gate_id, 9999)
+	var gate_gone := ws.station(gate_id).is_empty()
+	var frame_stands := not ws.station(frame_id).is_empty()
+	var frame_passable := not bool(ws.navigation_cell_data(ws.station_at_cell(gate_cell)).get("solid", false)) if not ws.station_at_cell(gate_cell).is_empty() else true
+
+	_record("T226_GATE", frame.get("ok", false) and gate.get("ok", false) and mount == "gate_mount" and hung_closed
+			and bool(closed_nav.get("solid", false)) and closed_nav.get("tags", []).has("fortification")
+			and closed_damage == float(CoreDefenseService.RAIDER_DAMAGE / 3) and damageable.get("ok", false)
+			and not shut_route.get("ok", false) and str(shut_action.get("reason", "")) == "ATTACK_OBSTRUCTION"
+			and opened.get("ok", false) and not bool(open_nav.get("solid", true))
+			and open_route.get("ok", false) and streams_through
+			and closed_again.get("reason", "") == "GATE_CLOSED"
+			and hit.get("ok", false) and integrity_after_hit == 90 and repair_atomic
+			and restored.get("ok", false) and restored_open and restored_frame
+			and gate_gone and frame_stands and frame_passable,
+		"a gate leaf hangs in a gate frame's opening and starts shut; shut it is solid to the planner and breachable like player stone at a third of a raider's damage, so a raider with no other way picks it as an obstruction instead of routing through; right-click opens it and the route runs straight through the gate cell; it takes damage and is repaired with castle stone; the open/shut state survives a save round trip; and a destroyed leaf leaves the frame standing with the way open",
+		{"frame": frame.get("reason"), "gate": gate.get("reason"), "mount": mount, "hung_closed": hung_closed, "closed_nav": closed_nav, "closed_damage": closed_damage, "damageable": damageable.get("reason"), "shut_route": shut_route.get("reason"), "shut_action": shut_action.get("reason"), "opened": opened.get("reason"), "open_nav": open_nav, "open_route": open_route.get("reason"), "streams_through": streams_through, "closed_again": closed_again.get("reason"), "hit": integrity_after_hit, "repair": repaired, "repaired_to": integrity_after_repair, "restored": restored.get("reason"), "restored_open": restored_open, "gate_gone": gate_gone, "frame_stands": frame_stands})
+
+
+## T228: the turret catapult on a rail carriage. It parks where it is put,
+## patrols the line when told to, restocks from a chest beside the rail it is
+## riding (not only beside its anchor), throws at a raider in range, and comes
+## back from a save still patrolling.
+func _run_rail_turret_test() -> void:
+	var ws := app.session.workstations
+	var world := app.session.world
+	var core := app.session.core_defense
+	var siege := app.session.siege_defense
+	var inventory := app.session.inventory
+	var origin := Vector3i(84, 0, 56)
+	_level_ground(origin, 12, 12)
+	await get_tree().physics_frame
+
+	# Eight rails in a line, a chest at the far end of it, and the carriage
+	# parked on the near end.
+	inventory.try_transaction({}, {"rail": 8, "rail_turret": 1, "chest": 1, "stone_shot": 8})
+	var rail_base := origin + Vector3i(1, 0, 4)
+	var rails_laid := 0
+	for step in range(8):
+		if ws.try_place("rail", rail_base + Vector3i(step, 0, 0), world.query_cell, AABB(), 0).get("ok", false):
+			rails_laid += 1
+	var chest := ws.try_place("chest", rail_base + Vector3i(7, 0, 1), world.query_cell, AABB(), 0)
+	var chest_id := str(chest.get("details", {}).get("station", {}).get("instance_id", ""))
+	ws.container_deposit(chest_id, "stone_shot", 8)
+	var chest_stock := ws.container_count(chest_id, "stone_shot")
+	# A ground cell refuses it; only a rail carries the carriage.
+	var on_ground := ws.try_place("rail_turret", origin + Vector3i(1, 0, 8), world.query_cell, AABB(), 0)
+	var turret := ws.try_place("rail_turret", rail_base + Vector3i(0, 1, 0), world.query_cell, AABB(), 0)
+	var turret_id := str(turret.get("details", {}).get("station", {}).get("instance_id", ""))
+	var mount := str(turret.get("details", {}).get("mount", ""))
+	await get_tree().process_frame
+
+	# Parked: no target, no patrol - it stays on its home rail.
+	var parked_stance := ws.siege_set_stance(turret_id, "hold")
+	for _frame in range(30):
+		siege.advance(1.0 / 30.0, false)
+	var parked_cell := siege.rail_rider_cell(turret_id)
+	var parked := parked_cell == rail_base
+
+	# Patrol: a rail-weapon stance the ground catapult refuses.
+	var patrol := ws.siege_set_stance(turret_id, "patrol")
+	var visited: Dictionary = {}
+	for _frame in range(360):
+		siege.advance(1.0 / 30.0, false)
+		visited[siege.rail_rider_cell(turret_id)] = true
+	var reached_both_ends: bool = visited.has(rail_base) and visited.has(rail_base + Vector3i(7, 0, 0))
+
+	# Reload from the chest beside the rail it rides (its anchor is eight
+	# cells away from that chest).
+	ws.siege_unload(turret_id)
+	var ammo_after_unload := int(ws.siege_status(turret_id).get("details", {}).get("ammo", -1))
+	for _frame in range(240):
+		siege.advance(1.0 / 30.0, false)
+	var ammo_after_reload := int(ws.siege_status(turret_id).get("details", {}).get("ammo", 0))
+	var chest_after := ws.container_count(chest_id, "stone_shot")
+
+	# A raider in range: the carriage rides toward it and throws.
+	var drill := core.start_prototype({"raiders": 1, "spawn_distance": 12})
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	for node in core.raider_nodes():
+		node.active = false
+		node.global_position = Vector3(rail_base) + Vector3(7.5, 0.0, 10.5)
+	ws.siege_set_stance(turret_id, "fire_at_will")
+	var fired := false
+	var ammo_before_shot := int(ws.siege_status(turret_id).get("details", {}).get("ammo", 0))
+	for _frame in range(600):
+		siege.advance(1.0 / 30.0, false)
+		if int(ws.siege_status(turret_id).get("details", {}).get("ammo", 0)) < ammo_before_shot:
+			fired = true
+			break
+	var chased := siege.rail_rider_cell(turret_id).x > rail_base.x
+
+	# Save round trip, patrolling: the record is JSON-safe and the stance
+	# survives (it used to be dropped on load).
+	ws.siege_set_stance(turret_id, "patrol")
+	var saved: Variant = JSON.parse_string(JSON.stringify(ws.snapshot()))
+	var restored := ws.restore(saved if saved is Dictionary else {}, world.query_cell)
+	var restored_stance := str(ws.siege_status(turret_id).get("details", {}).get("stance", ""))
+	var restored_present := not ws.station(turret_id).is_empty()
+	core.clear_for_other_mode()
+
+	_record("T228_RAIL_TURRET", rails_laid == 8 and chest.get("ok", false) and chest_stock == 8
+			and not on_ground.get("ok", false) and str(on_ground.get("reason", "")) == "INVALID_MOUNT"
+			and turret.get("ok", false) and mount == "rail_mount"
+			and parked_stance.get("ok", false) and parked
+			and patrol.get("ok", false) and reached_both_ends
+			and ammo_after_unload == 0 and ammo_after_reload > 0 and chest_after < chest_stock
+			and drill.get("ok", false) and fired and chased
+			and restored.get("ok", false) and restored_present and restored_stance == "patrol",
+		"a turret catapult on a rail carriage mounts only on a rail; parked on Hold it stays on its home rail; on Patrol it rides the chain to both ends; it restocks stone shot from a chest beside the rail it is riding rather than only beside its anchor; a raider in range draws it along the line and it throws at it; and a patrolling carriage survives a save round trip with its stance",
+		{"rails": rails_laid, "chest": chest.get("reason"), "chest_stock": chest_stock, "on_ground": on_ground.get("reason"), "turret": turret.get("reason"), "mount": mount, "parked_cell": parked_cell, "parked": parked, "patrol": patrol.get("reason"), "visited": visited.size(), "both_ends": reached_both_ends, "ammo_after_unload": ammo_after_unload, "ammo_after_reload": ammo_after_reload, "chest_after": chest_after, "drill": drill.get("reason"), "fired": fired, "chased": chased, "restored": restored.get("reason"), "restored_stance": restored_stance})
 
 
 ## Levels a raider plate at `origin` (waits for the terrain to be editable)

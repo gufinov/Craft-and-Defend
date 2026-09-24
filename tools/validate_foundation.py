@@ -38,7 +38,10 @@ EXPO_TERRAIN = {"level", "natural", "tree", "forest", "quarry", "coal_seam", "su
                 # parcels the builder authors as one piece - the exhibit's declared
                 # entities are placed by the terrain builder, not one per parcel.
                 "wall_demo", "blueprint_demo", "castle_demo", "siege_booth",
-                "field", "camp", "battery", "fortification", "magazine"}
+                "field", "camp", "battery", "fortification", "magazine",
+                # Defence sets (docs/DEFENSE_SETS.md): the Wall Kit exhibit,
+                # stamped from the kit blueprint like the blueprint demo.
+                "wall_kit_demo"}
 # Supply Depot (docs/DEVELOPMENT_EXPO.md, handoff sections 8 and 9). The
 # categories and the item -> category map are read out of the one runtime
 # source, `game/scripts/ui/item_categories.gd`, rather than copied here: the

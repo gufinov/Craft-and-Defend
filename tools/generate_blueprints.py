@@ -99,6 +99,33 @@ def wall(length: int, height: int) -> list[dict]:
     return [cell(x, y, 0, CASTLE) for x in range(length) for y in range(height)]
 
 
+def entity(x: int, y: int, z: int, entity_id: str, rotation: int = 0) -> dict:
+    """One castle-kit entity cell of a kit blueprint.
+
+    Blocks stamp voxels; these stamp the one-cell castle-kit entities
+    (wall-walk slab, merlon, stone stair) that have no voxel form. `rotation`
+    is the piece's own quarter turn inside the kit, added to the kit's.
+    """
+    return {"offset": [x, y, z], "entity": entity_id, "rotation": rotation}
+
+
+def wall_kit(length: int) -> tuple[list[dict], list[dict]]:
+    """A finished defensive wall section, in one stamp (docs/DEFENSE_SETS.md).
+
+    Two courses of castle stone carry a wall-walk one cell higher, merlons
+    crenellate it every other cell, and a pair of stone stairs at each end
+    climbs the two half-steps from the ground to the walk. The stairs stand a
+    cell in front of the wall (z = 1) and face the approach, so the whole kit
+    is a wall you can actually get onto.
+    """
+    blocks = [cell(x, y, 0, CASTLE) for x in range(length) for y in range(2)]
+    pieces = [entity(x, 2, 0, "wall_walk_slab") for x in range(length)]
+    pieces += [entity(x, 3, 0, "parapet_merlon") for x in range(length) if x % 2 == 0]
+    for x in (0, length - 1):
+        pieces += [entity(x, 0, 1, "stone_stair", 2), entity(x, 1, 1, "stone_stair", 2)]
+    return blocks, pieces
+
+
 def sockets_for(size_x: int, size_y: int, size_z: int, top: bool, sides: bool) -> list[dict]:
     sockets = []
     if top:
@@ -111,13 +138,14 @@ def sockets_for(size_x: int, size_y: int, size_z: int, top: bool, sides: bool) -
     return sockets
 
 
-def blueprint(id_: str, name: str, size: tuple[int, int, int], blocks: list[dict], top: bool, sides: bool, note: str) -> dict:
+def blueprint(id_: str, name: str, size: tuple[int, int, int], blocks: list[dict], top: bool, sides: bool, note: str, entities: list[dict] | None = None) -> dict:
     return {
         "id": id_,
         "display_name": name,
         "size": list(size),
         "sockets": sockets_for(size[0], size[1], size[2], top, sides),
         "blocks": blocks,
+        "entities": entities or [],
         "note": note,
     }
 
@@ -138,6 +166,10 @@ def main() -> int:
                       "Cap with a 6×6 interior floor; fits a catapult and a ballista together."),
             blueprint("wall_4", "Wall Segment 4×3", (4, 3, 1), wall(4, 3), True, True,
                       "Four castle-stone columns three courses tall; drag-build fills longer runs."),
+            blueprint("wall_kit_8", "Wall Kit 8", (8, 4, 2), wall_kit(8)[0], True, True,
+                      "A whole defensive section in one stamp: two courses of castle stone, a wall-walk,"
+                      " merlons every other cell and stone stairs up at both ends.",
+                      wall_kit(8)[1]),
         ],
     }
     text = json.dumps(catalogue, indent=2) + "\n"
@@ -147,6 +179,8 @@ def main() -> int:
         counts: dict[str, int] = {}
         for block in entry["blocks"]:
             counts[block["block"]] = counts.get(block["block"], 0) + 1
+        for piece in entry.get("entities", []):
+            counts[piece["entity"]] = counts.get(piece["entity"], 0) + 1
         print(f"{entry['id']:16s} {entry['size']} {counts}")
     print(f"wrote {len(OUTPUTS)} files")
     return 0

@@ -14,6 +14,13 @@ const SIGN_ENTITY := "sign"
 ## entities carry the identical `sign` block and the identical editor.
 const SIGN_BOARD_ENTITY := "sign_board"
 const SIGN_ENTITIES: Array[String] = [SIGN_ENTITY, SIGN_BOARD_ENTITY]
+## Defence sets (docs/DEFENSE_SETS.md): the gate leaf that hangs in a gate
+## frame's opening. Right-click toggles it; closed it is solid to pathing and
+## breachable like the rest of the castle kit, open it is a hole in the wall.
+const GATE_ENTITY := "gate"
+## How long the leaf takes to slide clear (presentation only; the pathing
+## change is immediate, as a pulled lever would be).
+const GATE_SLIDE_SECONDS := 0.55
 const SIGN_MODES: Array[String] = ["text", "split", "items", "header_items"]
 const SIGN_ITEM_SLOTS := 8
 ## What a stored text field may hold. It is longer than what the editor's own
@@ -49,6 +56,8 @@ func preview_placement(entity_id: String, anchor: Vector3i, rotation_quarters: i
 	var wall_side := _wall_side(definition, anchor, world_query)
 	if wall_side != Vector3i.ZERO:
 		rotation_quarters = _rotation_facing_away(wall_side)
+	else:
+		rotation_quarters = _socket_aligned_rotation(definition, anchor, rotation_quarters, world_query)
 	var validated := footprints.validate_placement("preview", anchor, _vector_list(definition.get("occupied_offsets", [])), rotation_quarters, world_query, player_aabb, [] if wall_side != Vector3i.ZERO else _vector_list(definition.get("support_offsets", [])))
 	if not validated.get("ok", false):
 		return validated
@@ -77,6 +86,22 @@ func _wall_side(definition: Dictionary, anchor: Vector3i, world_query: Callable)
 		if str(query.get("state", "")) == "LOADED" and int(query.get("voxel_id", 0)) != 0:
 			return side
 	return Vector3i.ZERO
+
+
+## Defence sets: a piece that seats itself in another piece's socket
+## (`rotation_from_mount`, today the gate leaf in a gate frame's opening) has
+## only one sensible orientation - the one whose supports reach the frame's
+## jambs. Rather than make the player find it with W/R, the first quarter turn
+## from the one they hold that validates is used; when none does, their own
+## rotation is kept so the refusal they see is the real one.
+func _socket_aligned_rotation(definition: Dictionary, anchor: Vector3i, rotation_quarters: int, world_query: Callable) -> int:
+	if not bool(definition.get("rotation_from_mount", false)):
+		return rotation_quarters
+	for turn in range(4):
+		var candidate := posmod(rotation_quarters + turn, 4)
+		if _validate_mount(definition, anchor, candidate, world_query).get("ok", false):
+			return candidate
+	return rotation_quarters
 
 
 ## Quarter turns so the model's bracket side (local -x; body yaw is
@@ -109,6 +134,7 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		rotation_quarters = _rotation_facing_away(wall_side)
 		mount_result = _result(true, "OK", {"mount": "wall"})
 	else:
+		rotation_quarters = _socket_aligned_rotation(definition, anchor, rotation_quarters, world_query)
 		mount_result = _validate_mount(definition, anchor, rotation_quarters, world_query)
 	if not mount_result.get("ok", false):
 		return mount_result
@@ -142,6 +168,10 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		record["mount"] = "wall"
 	if is_sign(entity_id):
 		record["sign"] = default_sign()
+	if entity_id == GATE_ENTITY:
+		# A gate is hung closed: the wall it completes is a wall until the
+		# owner opens it.
+		record["gate_open"] = false
 	var defense_definition: Dictionary = definition.get("defense", {})
 	if not defense_definition.is_empty():
 		record["integrity"] = maxi(1, int(defense_definition.get("max_integrity", 1)))
@@ -1270,10 +1300,68 @@ func commit_siege_shot(instance_id: String) -> Dictionary:
 	return _result(true, "SHOT_COMMITTED", {"instance_id": instance_id, "ammo": stations[instance_id]["siege_ammo"], "cooldown": stations[instance_id]["siege_cooldown"]})
 
 
+## Defence sets: is this station a gate, and is its leaf drawn back?
+func is_gate(instance_id: String) -> bool:
+	return str(stations.get(instance_id, {}).get("entity_id", "")) == GATE_ENTITY
+
+
+func gate_is_open(instance_id: String) -> bool:
+	return bool(stations.get(instance_id, {}).get("gate_open", false))
+
+
+## Every gate standing right now, open or shut (diagnostics and the HUD).
+func gate_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for instance_id: String in stations.keys():
+		if is_gate(instance_id):
+			ids.append(instance_id)
+	return ids
+
+
+## Right-click on a gate: draw the leaf back or drop it again. The result
+## carries `occupied_cells` so `GameSession._on_station_changed` hands them to
+## the navigation services - a gate that just opened has to invalidate the
+## raiders' snapshot exactly as a destroyed barricade does, or they keep
+## routing around a hole that is now there.
+func toggle_gate(instance_id: String) -> Dictionary:
+	if not stations.has(instance_id):
+		return _result(false, "NO_ENTITY")
+	if not is_gate(instance_id):
+		return _result(false, "NOT_A_GATE")
+	return set_gate_open(instance_id, not gate_is_open(instance_id))
+
+
+func set_gate_open(instance_id: String, open: bool) -> Dictionary:
+	if not stations.has(instance_id):
+		return _result(false, "NO_ENTITY")
+	if not is_gate(instance_id):
+		return _result(false, "NOT_A_GATE")
+	var record: Dictionary = stations[instance_id]
+	record["gate_open"] = open
+	var definition := registry.entity(GATE_ENTITY)
+	var cells: Array[Vector3i] = []
+	for offset: Vector3i in _vector_list(definition.get("occupied_offsets", [])):
+		cells.append(record.anchor + footprints.rotate_offset(offset, int(record.rotation_quarters)))
+	var result := _result(true, "GATE_OPENED" if open else "GATE_CLOSED", {
+		"instance_id": instance_id,
+		"entity_id": GATE_ENTITY,
+		"anchor": record.anchor,
+		"gate_open": open,
+		"occupied_cells": cells,
+	})
+	station_changed.emit(result)
+	return result
+
+
 func navigation_cell_data(instance_id: String) -> Dictionary:
 	var record: Dictionary = stations.get(instance_id, {})
 	if record.is_empty():
 		return {"state": "LOADED", "solid": false}
+	if bool(record.get("gate_open", false)):
+		# An open gate is a doorway: the cells still belong to the gate (you
+		# cannot build in them) but nothing walks into them, so to the planner
+		# they read exactly like the air a destroyed barricade leaves behind.
+		return {"state": "LOADED", "solid": false, "voxel_id": 0, "material_id": "air", "source": "entity", "source_id": instance_id, "tags": [], "integrity": 0, "protected": false}
 	var entity_id := str(record.get("entity_id", ""))
 	var definition := registry.entity(entity_id)
 	var navigation: Dictionary = definition.get("navigation", {})
@@ -1497,7 +1585,10 @@ func _restored_station(value: Variant, world_query: Callable) -> Dictionary:
 			return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
 		record["siege_ammo_item"] = ammo_item
 		var stance := str(record.get("siege_stance", "fire_at_will"))
-		if stance not in ["fire_at_will", "hold"]:
+		# `patrol` (P4C rail weapons) was missing here, so a kettle saved while
+		# patrolling came back as a dropped record; the rail turret made that
+		# visible (docs/DEFENSE_SETS.md).
+		if stance not in ["fire_at_will", "hold", "patrol"]:
 			return {"ok": false, "reason": "INVALID_STATION_SNAPSHOT"}
 		record["siege_stance"] = stance
 		record["siege_target_filter"] = str(record.get("siege_target_filter", "any"))
@@ -1519,6 +1610,10 @@ func _restored_station(value: Variant, world_query: Callable) -> Dictionary:
 		# record without the block) comes back as an empty single-text sign.
 		var raw_sign: Variant = record.get("sign", default_sign())
 		record["sign"] = sanitized_sign(raw_sign if raw_sign is Dictionary else {})
+	if str(record.get("entity_id", "")) == GATE_ENTITY:
+		# Defence sets: a gate remembers whether it stands open. A record from
+		# before the field existed comes back shut, which is the safe reading.
+		record["gate_open"] = bool(record.get("gate_open", false))
 	if str(record.get("entity_id", "")) == "mine_cart":
 		# Hauling (docs/INDUSTRY.md): the cart's cargo, item_id -> count.
 		var raw_cargo: Variant = record.get("cargo", {})
