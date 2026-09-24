@@ -27,9 +27,9 @@ checks it (`TRAP_MOUNTS`, `TRAP_TRIGGERS`, `TRAP_EFFECTS`):
 
 | Key | Meaning |
 |---|---|
-| `mount` | `floor`, `wall` or `ceiling`. It decides where the trap catches somebody when the block does not say: a floor trap catches whoever stands in its own cells, a ceiling trap reaches `reach` cells down, a wall trap catches the cells it faces |
+| `mount` | `floor`, `wall` or `ceiling`. It decides where the trap catches somebody when the block does not say: a floor trap catches whoever stands in its own cells, a ceiling trap reaches `reach` cells down, a wall trap catches the cell **directly in front of the wall it hangs on** and the cell under that one (so a trap hung a block up still reaches the feet walking past beneath it). A `wall` or `ceiling` trap must also carry the matching `mount.allowed` entry, because that is what `WorkstationService` hangs it by |
 | `trigger` | `pressure` (a raider's feet cell is in the trigger set) or `proximity` (a raider within `radius` m of the trap centre, ±2 cells vertically) |
-| `effect` | `damage` (applied at once) or `slow` (`slow_factor`, `slow_seconds`; needs `BasicRaider.apply_slow`, which the next card adds) |
+| `effect` | `damage` (applied at once), `slow` (`slow_factor`, `slow_seconds`) or `push` (`push_speed`, `push_lift`) |
 | `damage` | Damage per firing |
 | `radius` | 0 = only the trigger cells; > 0 = every raider within that many metres (`CoreDefenseService.damage_raiders_within`) |
 | `reset_seconds` | How long the trap is disarmed after it fires. This is the balance knob rule 2 asks for |
@@ -38,6 +38,14 @@ checks it (`TRAP_MOUNTS`, `TRAP_TRIGGERS`, `TRAP_EFFECTS`):
 | `trigger_offsets` | Optional explicit trigger cells, rotated with the entity, instead of the `mount` default |
 | `reach` | Ceiling mounts only: how far down it reaches (3) |
 | `action_travel` | Optional `[x, y, z]` the visual's moving part travels when sprung (default `[0, 0.55, 0]`) |
+| `push_speed` | `push` only: how fast the body leaves along the trap's facing |
+| `push_lift` | Optional upward part of that impulse, so the body is thrown clear instead of skidding |
+| `affects_player` | Optional: the trigger catches the player as well as the raiders (the Spring Plate) |
+| `ignite` | Optional `{munition, radius}`: after the effect, the trigger cells are lit through `FireService` by a fire munition that already exists |
+
+The key set is **closed**: `tools/validate_foundation.py` refuses a `trap`
+block with a key outside that list, so a typo in a tuning value is a failed
+gate rather than a trap that quietly does nothing.
 
 A trap must also carry a `defense` block (integrity, repair item and amount)
 and a `navigation.material_tags` list, because rule 3 makes it attackable and
@@ -54,6 +62,99 @@ and two named nodes the service drives: `TrapAction` (the spike bed, hidden
 under the floor of its own cell at rest, 0.95 m up when sprung) and `TrapLamp`
 (the bead lit only while the trap is armed). Any trap visual that uses those
 two names is animated for free; one that does not still works.
+
+### The four traps of card 2 — the attribute grammar, worked
+
+Nothing below is code. Each trap is one row of `contracts/content.json`, one
+item, one workbench recipe, one icon and one `_build_*_visual` with the
+`TrapAction` / `TrapLamp` nodes the service already drives. `TrapService`
+gained no branch that names any of them.
+
+**Tar Patch** (recipe 230, 2 coal + 1 planks; 16 integrity, repaired with
+coal; `siege_and_defense`):
+
+```json
+"trap": {"mount": "floor", "trigger": "pressure", "effect": "slow",
+         "damage": 0, "radius": 0.0, "reset_seconds": 4.0, "fire_seconds": 1.5,
+         "blocks_movement": false, "slow_factor": 0.4, "slow_seconds": 5.0,
+         "action_travel": [0.0, 0.08, 0.0]}
+```
+
+The seam the first card left open. `BasicRaider.apply_slow(factor, seconds)`
+is now real: `slow_factor` multiplies `move_speed` through one accessor,
+`walk_speed()`, so every path that moves a body — the walk, the shuffle, the
+ghost walk of a far marcher — is slowed by the same number. The strongest
+slow in force wins and the longer clock is kept, so a second tar cell never
+makes a raider faster. It clears itself, and it is simulation state: a live
+slow rides in the wave snapshot (`raider_slow`, and `slow` per extra raider)
+and comes back with the body.
+
+**Wall Blades** (recipe 231, 3 iron ingot + 1 planks; 28 integrity, repaired
+with iron ingots; `mount.allowed` `["wall"]`):
+
+```json
+"trap": {"mount": "wall", "trigger": "pressure", "effect": "damage",
+         "damage": 10, "radius": 0.0, "reset_seconds": 5.0, "fire_seconds": 0.9,
+         "blocks_movement": false, "action_travel": [0.62, 0.0, 0.0]}
+```
+
+Placement already turns a wall-mounted entity to face away from its wall, so
+"the cells in front" is `rotate_offset([1, 0, 0], rotation_quarters)` and
+needs no new idea. `action_travel` sweeps the blade wheel out along that same
+local +x when the trap fires.
+
+**Spring Plate** (recipe 232, 2 iron ingot + 2 planks; 20 integrity):
+
+```json
+"trap": {"mount": "floor", "trigger": "pressure", "effect": "push",
+         "damage": 0, "radius": 0.0, "reset_seconds": 3.0, "fire_seconds": 0.6,
+         "blocks_movement": false, "push_speed": 5.5, "push_lift": 5.0,
+         "affects_player": true, "action_travel": [0.0, 0.50, 0.0]}
+```
+
+`push` is the one new effect verb. It is one impulse along the plate's own
+facing plus `push_lift` straight up, handed to whoever answers `apply_push` —
+`BasicRaider` and, because of `affects_player`, `PlayerController` too. While
+the impulse runs the body is under gravity alone and its route does not steer
+it; when it lands it emits **`displaced`**, and `CoreDefenseService` answers
+by re-capturing the navigation snapshot and re-planning from the cell it came
+down in. That is deliberately not the `stuck` signal: a thrown body has
+nothing to sidestep out of, it is simply not where its plan thought it was.
+
+**Ceiling Pitch Dropper** (recipe 233, 2 iron ingot + 2 coal + 1 planks; 22
+integrity; `mount.allowed` `["ceiling"]`):
+
+```json
+"trap": {"mount": "ceiling", "trigger": "pressure", "effect": "damage",
+         "damage": 6, "radius": 0.0, "reset_seconds": 8.0, "fire_seconds": 1.4,
+         "blocks_movement": false, "reach": 3,
+         "ignite": {"munition": "hot_oil", "radius": 1.0},
+         "action_travel": [0.0, -0.45, 0.0]}
+```
+
+`ignite` is a sub-block, not a second fire system: it names a munition that
+already exists in `contracts/content.json` (the validator checks it is there
+and that its effect is `fire`) and the session hands `FireService.ignite` to
+the service as one callable. The dropper is the trap that needed the ceiling
+mount.
+
+## 1b. The ceiling mount
+
+`WorkstationService._wall_side` scanned the four horizontal neighbours, which
+was the only reason a ceiling did not work. `_ceiling_side` sits beside it and
+hangs an entity whose `mount.allowed` carries `ceiling` under the solid block
+above its anchor. Precedence is **ground > wall > ceiling**: `_ceiling_side`
+is consulted only after `_wall_side` returned nothing, and it stands aside for
+ground it could have stood on and for a wall it could also have taken. The
+record is written with `mount: "ceiling"`, which is what makes `restore` skip
+the support offsets — a hanging trap has nothing under it, and without that a
+loaded save would drop it. Aiming needed nothing: `placement_anchor_from_view`
+already returns the last free cell along the ray, so looking up at a ceiling
+answers the cell under it. `ATTRIBUTE_MOUNTS` already carried an inert
+`"ceiling"`; the entity mount grammar now accepts it too.
+[P4G](P4G_CORE_AND_LIGHTS.md) recorded a "no wall/ceiling mounting" boundary
+whose wall half had already been superseded; that note now says so in writing
+for both halves rather than contradicting the code in silence.
 
 ## 2. `TrapService` — `game/scripts/defense/trap_service.gd`
 
@@ -126,7 +227,17 @@ A new district, `trap_range` (x 56..96, z 60..86), built like any other from
 `tr_spike_funnel`, whose `trap_range` composite terrain authors a walled lane —
 two 3-high castle-stone walls, **three rows of three Spike Traps** in its
 floor, the Core of Power capping the far end and a control pedestal beside the
-mouth — plus a signed, empty parcel for the four traps that do not exist yet.
+mouth — plus (since card 2) the parcel that was signed and empty for exactly this,
+now claimed: a signed bay for the **Tar Patch**, the **Wall Blades**, the
+**Spring Plate** and the **Ceiling Pitch Dropper**, each holding three of its
+trap, and a **combo bay** where a row of Spring Plates faces a spike bed. A
+bay is built from the trap's own `trap.mount` and not from its id — a floor
+trap goes in the floor, a wall trap gets a three-high stub of castle stone to
+hang on, a ceiling trap gets four posts and a slab roof to hang under — so a
+fifth trap needs no new builder code. The same pair sits **at the mouth of the
+funnel itself**: three Spring Plates facing up the lane, inside the
+`trap_range` reset group, so START ATTACK at the pedestal demonstrates the
+combo live rather than only describing it on a board.
 
 The pedestal is the Battlefield's own `battlefield_control` entity. Since this
 card the panel follows **whichever pedestal was opened**: it reads the reset
@@ -149,6 +260,10 @@ walls raised by an earlier one.
 | **T239_BLOCKED_RAIDER** | `--p4-siege-units-automation=gate` — a raider sealed in castle stone with no route picks the weakest obstacle it can reach (the trap at 24 over the barricade at 30 and the stone at 90) and really damages it; with the barricade beaten down to 5 it picks the barricade instead |
 | **T239_TRAP_RANGE** | `--development-expo-automation=gate` — the Trap Range stands as its manifest record describes it: 33 castle-stone cells a side, nine Spike Traps armed as placed and walkable to the planner, the Core at the far end, the pedestal beside the mouth, both parcels signed, the reserved parcel empty, and the pedestal's scenario resolving to this Core rather than the Battlefield's |
 | **T239V_TRAP_RANGE_VIEW** | `--development-expo-automation=visual` — the same lane mid-attack, with a wave coming down it |
+| **T240_TAR_AND_SLOW** | `--p4-siege-units-automation=gate` — a raider crossing tar takes no damage and covers under 60 % of its clear distance over the same second, then recovers on the patch's own clock; the live slow rides in the wave snapshot and restores from it |
+| **T241_WALL_BLADES** | `--p4-siege-units-automation=gate` — the blades hang on a wall face (placement and record both `wall`) and refuse bare ground; 10 damage to the cell they face, then their 5 s reset with no second sweep inside it; a routed raider never names them |
+| **T242_SPRING_PLATE** | `--p4-siege-units-automation=gate` — a raider is thrown at least two cells along the facing for no damage and re-plans from where it lands; the plate-into-spikes combo kills a raider that neither trap kills alone |
+| **T243_CEILING_DROPPER** | `--p4-siege-units-automation=gate` — placed through the player's own aim ray under a roof, refused where there is no ceiling, 6 damage and burning pitch below, and the record still says `ceiling` after a station save round trip |
 
 `--development-expo-automation=gate` also covers the new district and the new
 item through T213 (layout), T215 (signs) and T223 (the Supply Depot).
@@ -167,10 +282,8 @@ item through T213 (layout), T215 (signs) and T223 (the Supply Depot).
 - **`prefer_weakest` is a capability flag, not the planner's new default.** The
   raiders ask for it; `--p2-navigation-automation` and any other caller keep the
   old distance-scored choice, so the navigation contract is untouched.
-- **Effect `slow` is declared but unimplemented.** It is the seam tar needs;
-  `BasicRaider` has no speed factor yet, so a `slow` trap would count its
-  victims and do nothing. The validator accepts it, the service dispatches it,
-  and the next card adds `apply_slow`.
+- **Effect `slow` is declared but unimplemented.** (Card 1.) Closed by card 2:
+  `BasicRaider.apply_slow` is real and the Tar Patch uses it.
 - **The save test is in-process.** T237 round-trips the real
   `GameSession.snapshot()` payload through `TrapService.restore`; the
   cross-process Continue path is already gated for stations and waves by T141
@@ -179,3 +292,44 @@ item through T213 (layout), T215 (signs) and T223 (the Supply Depot).
   does not exist at `b472d16`; this document records what the card implemented
   and [the design direction](DESIGN_DIRECTION_2026-09-18.md) gained a section
   pointing at it.
+
+## 8. Calls made by card 2
+
+- **Two new attribute keys, no new service branch per trap.** `push` is the
+  only new effect verb; `ignite`, `affects_player`, `push_speed` and
+  `push_lift` are tuning. The service dispatches on the vocabulary and never on
+  an entity id, and the validator's key set is closed so the grammar cannot
+  drift.
+- **`ignite` names an existing munition.** The dropper burns through
+  `FireService` with `hot_oil`, the kettle's own munition, rather than
+  inventing a fire model or a new munition row. Radius, burn time and fire
+  damage per second are already that munition's.
+- **A damage trap hits each caught body once, not once per trigger cell.**
+  `CoreDefenseService.damage_raiders_in_cell` forgives a cell of vertical
+  slack, so a ceiling trap reaching three cells down used to hit the same
+  raider three times. The effect now damages the feet cell of each body the
+  trigger actually caught.
+- **`displaced` rather than `stuck`.** A thrown body is not wedged; the
+  sidestep that answers `stuck` would be wrong for it. The new signal re-plans
+  from where it landed and leaves the digging and stall clocks alone.
+- **Every new trap is tagged `breachable_wood`.** Rule 3 only works if a
+  blocked raider can actually beat the trap down, and that is the tag the
+  Spike Trap proved. Iron and stone tags are a balance question for a later
+  card, not a silent experiment in this one.
+- **The player is pushed but not otherwise caught.** `affects_player` widens
+  the *trigger* to the player body; the node-applied effects (push, and slow if
+  a trap ever asks for it) reach them, and a damage trap would hurt them
+  through `take_damage`. No trap in this card damages the player, because the
+  owner's traps are the player's own.
+- **The combo bay is a bay and a live demonstration.** A parcel with its own
+  sign that the owner can read, plus the same pair inside the funnel where the
+  pedestal's wave walks into it. A separate scenario with its own Core and
+  pedestal would have given the Trap Range two cores in one reset group.
+- **The reserved parcel was claimed, not widened.** The manifest's own
+  instruction; `future_district_reserved` still satisfies the validator's
+  "at least one visible reserved parcel" rule.
+- **T234's What's new no longer names the wall-kit exhibit.** That assertion
+  only held while the defence sets card was the newest stamp in the manifest.
+  It now asserts what the panel actually promises: a non-empty list, all of it
+  at the newest stamp, shorter than the unfiltered one.
+
