@@ -232,6 +232,7 @@ func _run_sign_phase1() -> void:
 	var closed_ok: bool = app.state == CraftAndDefendApp.AppState.PLAYING and not app.sign_panel.visible
 	var wide := await _run_wide_board_phase1(grid_items)
 
+	await _run_stacked_board_phase1()
 	_record("T212_SIGN_PLACEMENT_AND_EDITOR", placement_ok and modes_ok and guard_ok and round_trip_ok and migration_ok and panel_ok and edit_ok and closed_ok and bool(wide.get("ok", false)),
 		"a sign places on the ground with a post and on a wall side without one, refuses an occupied cell, keeps each of the four display modes and eight item ids across a save/restore (a record without the block migrates to an empty text sign), and right-click opens the sign editor showing exactly the stored mode, text and items",
 		{"ground": ground.get("reason"), "wall": wall.get("reason"), "blocked": blocked.get("reason"), "placement_ok": placement_ok, "modes": mode_results, "guard_ok": guard_ok, "restored": restored.get("reason"), "restored_wall": restored_wall, "restored_ground": restored_ground, "migration_ok": migration_ok, "panel_ok": panel_ok, "draft": draft, "edited": edited, "closed_ok": closed_ok, "wide_board": wide})
@@ -356,6 +357,116 @@ func _run_wide_board_phase1(grid_items: Array[String]) -> Dictionary:
 	_record("T224_FLIGHT", single_tap and single_ignored and double_tap_a and double_tap_b and flying_on and hovered and follows_view and rose and flying_off and fell,
 		"one Right Shift tap does not start flight; two taps within the double-tap window do; a flying body holds its height with no input, travels along the camera's aim when the movement keys are pressed, rises on Space; a second double tap lands it and gravity pulls it down again",
 		{"single_ignored": single_ignored, "flying_on": flying_on, "hovered": hovered, "follows_view": follows_view, "travelled": str(travelled), "rose": rose, "flying_off": flying_off, "fell": fell})
+
+
+## T232 (signs card 3, docs/SIGNS.md): the stacked board the owner asked for.
+## The `header_body` mode stores and restores its header, subheader and body;
+## the rendered labels come out ordered header > subheader > body with none of
+## them under its readable floor; a ground board hangs at head height on a post
+## that reaches the ground it stands on; and a wall board centres at eye height
+## with no post at all.
+func _run_stacked_board_phase1() -> void:
+	var ws := app.session.workstations
+	var world := app.session.world
+	var entity := WorkstationService.SIGN_BOARD_LARGE_ENTITY
+	var ground_anchor := Vector3i(20, 1, 34)
+	var wall_block := Vector3i(26, 1, 34)
+	var wall_anchor := Vector3i(27, 1, 34)
+	var needed: Array[Vector3i] = [ground_anchor, ground_anchor + Vector3i(0, 0, 1), ground_anchor + Vector3i(0, 0, 2),
+		ground_anchor + Vector3i.DOWN, wall_block, wall_anchor, wall_anchor + Vector3i(0, 0, 1),
+		wall_anchor + Vector3i(0, 0, 2)]
+	if not await _wait_cells(needed):
+		_record("T232_SIGN_STACKED", false, "the stacked board's cells loaded for the test", {"reason": "CELLS_NOT_LOADED"})
+		return
+	app.session.inventory.try_transaction({}, {"sign_board_large": 4})
+	# Three clear cells with something solid under each: the terrain here is
+	# whatever the world generator made of it.
+	for index in range(3):
+		world.set_cell(ground_anchor + Vector3i(0, 0, index), 0)
+		world.set_cell(ground_anchor + Vector3i(0, -1, index), InteractionService.DIRT)
+	var placed := ws.try_place(entity, ground_anchor, world.query_cell, AABB(), 0)
+	var board_id := str(placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	var cells: Array = placed.get("details", {}).get("occupied_cells", [])
+	var reserved_all: bool = cells.size() == 3 and ws.station_at_cell(ground_anchor + Vector3i(0, 0, 2)) == board_id
+	var header := "DEFENSE RANGE"
+	var subheader := "Siege weapons and ammunition."
+	var body := "Every weapon on its own mount.\nAmmunition in the chest beside it.\nTargets down the range."
+	var configured := app.session.configure_sign(board_id,
+		{"mode": "header_body", "text_a": header, "text_b": subheader, "text_c": body})
+	var snapshot: Variant = JSON.parse_string(JSON.stringify(ws.snapshot()))
+	var restored := ws.restore(snapshot if snapshot is Dictionary else {}, world.query_cell)
+	var stored := app.session.sign_data(board_id)
+	var round_trip: bool = bool(restored.get("ok", false)) and str(stored.get("mode", "")) == "header_body" \
+		and str(stored.get("text_a", "")) == header and str(stored.get("text_b", "")) == subheader \
+		and str(stored.get("text_c", "")) == body
+	var sizes := _stacked_sizes(board_id)
+	var ordered: bool = float(sizes.get("header", 0.0)) > float(sizes.get("subheader", 0.0)) \
+		and float(sizes.get("subheader", 0.0)) > float(sizes.get("body", 0.0))
+	var above_floor: bool = float(sizes.get("header", 0.0)) >= GameSession.SIGN_MIN_HEADER_HEIGHT \
+		and float(sizes.get("subheader", 0.0)) >= GameSession.SIGN_MIN_SUBHEADER_HEIGHT \
+		and float(sizes.get("body", 0.0)) >= GameSession.SIGN_MIN_BODY_HEIGHT
+	# Head height on a post that reaches the ground: the board's centre, in
+	# metres above the floor the sign stands on, and the post's own foot.
+	var ground_board := _sign_part_box(board_id, "SignBoard")
+	var ground_post := _sign_part_box(board_id, "SignPost0")
+	var board_height: float = float(ground_board.get("centre", 0.0)) + 0.5
+	var post_foot: float = float(ground_post.get("bottom", 1.0)) + 0.5
+	var head_height: bool = not ground_board.is_empty() and board_height >= 1.5 and board_height <= 1.8
+	var post_grounded: bool = not ground_post.is_empty() and absf(post_foot) <= 0.01 \
+		and float(ground_post.get("top", 0.0)) <= float(ground_board.get("bottom", 0.0)) + 0.01
+	# The wall board: no ground under any of its cells, so it hangs on the
+	# block beside it, centred at eye height and standing on nothing.
+	world.set_cell(wall_block, InteractionService.DIRT)
+	for index in range(3):
+		world.set_cell(wall_anchor + Vector3i(0, -1, index), 0)
+	var wall := ws.try_place(entity, wall_anchor, world.query_cell, AABB(), 0)
+	var wall_id := str(wall.get("details", {}).get("station", {}).get("instance_id", ""))
+	var wall_board := _sign_part_box(wall_id, "SignBoard")
+	var wall_height: float = float(wall_board.get("centre", 0.0)) + 0.5
+	var wall_ok: bool = bool(wall.get("ok", false)) and ws.sign_mount(wall_id) == "wall" \
+		and not wall_board.is_empty() and absf(wall_height - GameSession.SIGN_WALL_BOARD_HEIGHT) <= 0.01 \
+		and _sign_part_box(wall_id, "SignPost0").is_empty()
+	var ok: bool = bool(placed.get("ok", false)) and reserved_all and bool(configured.get("ok", false)) \
+		and round_trip and ordered and above_floor and head_height and post_grounded and wall_ok
+	_record("T232_SIGN_STACKED", ok,
+		"the stacked Header + Subheader + Body board stores and restores all three fields, renders them at sizes ordered header > subheader > body with none under its readable floor, carries its board at head height on a post that reaches the ground, and centres a wall board at eye height with no post",
+		{"placed": placed.get("reason", ""), "cells": cells.size(), "stored": stored, "round_trip": round_trip,
+		"sizes": sizes, "ordered": ordered, "above_floor": above_floor,
+		"board_height_m": board_height, "post_foot_m": post_foot, "wall": wall.get("reason", ""),
+		"wall_height_m": wall_height, "wall_ok": wall_ok})
+
+
+## The cap heights the three stacked roles rendered at (0.0 for a role the
+## board does not carry).
+func _stacked_sizes(instance_id: String) -> Dictionary:
+	var sizes := {"header": 0.0, "subheader": 0.0, "body": 0.0}
+	var body: Node3D = app.session._station_visuals.get(instance_id, null)
+	if body == null:
+		return sizes
+	var face: Node3D = body.get_node_or_null("SignFace") as Node3D
+	if face == null:
+		return sizes
+	for key: String in ["header", "subheader", "body"]:
+		var label: Label3D = face.get_node_or_null("Sign" + key.capitalize()) as Label3D
+		if label != null:
+			sizes[key] = label.pixel_size * float(label.font_size)
+	return sizes
+
+
+## One named box of a placed sign's body, as {centre, top, bottom} in the
+## body's own local space ({} when the sign does not carry that part).
+func _sign_part_box(instance_id: String, part_name: String) -> Dictionary:
+	var body: Node3D = app.session._station_visuals.get(instance_id, null)
+	if body == null:
+		return {}
+	var mesh: MeshInstance3D = body.get_node_or_null(part_name) as MeshInstance3D
+	if mesh == null:
+		return {}
+	var box: BoxMesh = mesh.mesh as BoxMesh
+	if box == null:
+		return {}
+	return {"centre": mesh.position.y, "top": mesh.position.y + box.size.y / 2.0,
+		"bottom": mesh.position.y - box.size.y / 2.0}
 
 
 ## One Right Shift press / release through the real input path.
@@ -523,6 +634,47 @@ func _run_visual() -> void:
 			"face_children": wide_face.get_child_count() if wide_face != null else 0})
 	else:
 		_record("T212_SIGN_WIDE_PRESENTATION", false, "the wide board cells loaded for the capture", {"path": wide_path})
+
+	# T232 (signs card 3): the district board, read the way the owner reads it -
+	# standing five metres in front of it with his eyes at 1.6 m, not looking
+	# down at a board on a stub.
+	var stacked_anchor := Vector3i(20, 1, 34)
+	var stacked_path := app.data_root.path_join("p3d-sign-stacked-board.png")
+	# Quarter turn 1 turns the board's run (its local +z) onto -x and points
+	# its face down +Z, at the camera.
+	var stacked_cells: Array[Vector3i] = [stacked_anchor, stacked_anchor + Vector3i(-1, 0, 0), stacked_anchor + Vector3i(-2, 0, 0)]
+	var stacked_needed: Array[Vector3i] = []
+	for cell: Vector3i in stacked_cells:
+		stacked_needed.append(cell)
+		stacked_needed.append(cell + Vector3i.DOWN)
+	if await _wait_cells(stacked_needed):
+		app.session.inventory.try_transaction({}, {"sign_board_large": 1})
+		for cell: Vector3i in stacked_cells:
+			app.session.world.set_cell(cell + Vector3i.DOWN, InteractionService.DIRT)
+		var stacked_placed := app.session.workstations.try_place(WorkstationService.SIGN_BOARD_LARGE_ENTITY, stacked_anchor, app.session.world.query_cell, AABB(), 1)
+		var stacked_id := str(stacked_placed.get("details", {}).get("station", {}).get("instance_id", ""))
+		var stacked_configured := app.session.configure_sign(stacked_id, {"mode": "header_body",
+			"text_a": "DEFENSE RANGE", "text_b": "Siege weapons and ammunition.",
+			"text_c": "Every weapon on its own mount.\nAmmunition in the chest beside it.\nTargets down the range."})
+		# The board runs from the anchor along -x at this rotation, so the eye
+		# stands on its centre line, five metres out, at standing height.
+		app.session.player.global_position = Vector3(19.5, 1.1, 39.5)
+		app.session.player.look_at(Vector3(19.5, 1.0 + GameSession.SIGN_GROUND_BOARD_HEIGHT, 34.5), Vector3.UP)
+		app.session.inventory.select_hotbar(4)
+		await _settle_frames(6)
+		app.session._hide_placement_preview()
+		await _settle_frames(24)
+		var stacked_sizes := _stacked_sizes(stacked_id)
+		var stacked_ok: bool = bool(stacked_placed.get("ok", false)) and bool(stacked_configured.get("ok", false)) \
+			and float(stacked_sizes.get("header", 0.0)) > float(stacked_sizes.get("subheader", 0.0)) \
+			and float(stacked_sizes.get("subheader", 0.0)) > float(stacked_sizes.get("body", 0.0)) \
+			and await _save_viewport(stacked_path)
+		_record("T232_SIGN_STACKED_PRESENTATION", stacked_ok,
+			"rendered evidence shows the three-cell district board at head height on a full post, its header, subheader and body stacked and readable from five metres at standing eye height",
+			{"path": stacked_path, "placed": stacked_placed.get("reason", ""), "sizes": stacked_sizes,
+			"eye": Vector3(19.5, 1.1, 39.5), "distance_m": 5.0})
+	else:
+		_record("T232_SIGN_STACKED_PRESENTATION", false, "the district board cells loaded for the capture", {"path": stacked_path})
 
 
 func _move_to_hotbar(item_id: String, target: int) -> int:

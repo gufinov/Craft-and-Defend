@@ -3449,8 +3449,24 @@ func _add_lantern_body(parent: Node3D, centre: Vector3, iron: Material, gold: Ma
 ## and stands on a post at each end.
 const SIGN_BOARD_WIDTH := 0.92
 const SIGN_WIDE_BOARD_WIDTH := 1.92
+## The district board (signs card 3): three cells across and a head taller, so
+## a stacked header / subheader / body has room at a size that reads from the
+## far side of an avenue.
+const SIGN_LARGE_BOARD_WIDTH := 2.92
 const SIGN_BOARD_HEIGHT := 0.86
+const SIGN_LARGE_BOARD_HEIGHT := 1.50
 const SIGN_BOARD_THICKNESS := 0.07
+## Where the board hangs (signs card 3). Both heights are measured from the
+## floor under the sign's anchor cell, which is `SIGN_CELL_FLOOR` in the body's
+## own local space: a ground sign carries its board at head height on a post
+## that reaches the ground, and a wall sign centres its board at eye height on
+## the cell it is placed against, with no post. Nothing leaves the sign's own
+## column, so a board still never covers a neighbouring cell.
+const SIGN_CELL_FLOOR := -0.5
+const SIGN_GROUND_BOARD_HEIGHT := 1.65
+const SIGN_WALL_BOARD_HEIGHT := 1.55
+## How far the wall board stands off the wall block behind it.
+const SIGN_WALL_BOARD_X := -0.34
 ## Typography (signs card 2). A board lays its text out before it shrinks it:
 ## every line is wrapped on a word boundary, a heading is sized for the board's
 ## own width and nothing goes below the readable floor - content that still will
@@ -3465,6 +3481,23 @@ const SIGN_LINE_SPACING := 1.3
 const SIGN_CHAR_RATIO := 0.62
 ## The step the fitter walks down while it looks for a size that lays out.
 const SIGN_SIZE_STEP := 0.004
+## The stacked board (`header_body`, signs card 3). The three roles get bands
+## of the board's height in this proportion, share of whichever roles carry
+## text, and each is sized for its own band - header largest, subheader medium,
+## body smallest. Each role's size is also capped under the role above it, so
+## the order header > subheader > body holds even when a long header shrinks.
+const SIGN_STACK_WEIGHTS := {"header": 0.26, "subheader": 0.18, "body": 0.56}
+const SIGN_HEADER_SCALE := 0.26
+const SIGN_SUBHEADER_SCALE := 0.165
+const SIGN_BODY_SCALE := 0.115
+const SIGN_SUBHEADER_CAP := 0.72
+const SIGN_BODY_CAP := 0.85
+## The readable floors of the stacked roles: even a board that has to shrink
+## keeps a header at 0.10 m of cap height and body text at 0.055 m, which still
+## reads at five metres.
+const SIGN_MIN_HEADER_HEIGHT := 0.10
+const SIGN_MIN_SUBHEADER_HEIGHT := 0.070
+const SIGN_MIN_BODY_HEIGHT := 0.055
 
 
 ## True for the wide board, which is two cells across.
@@ -3472,43 +3505,86 @@ static func is_wide_sign(entity_id: String) -> bool:
 	return entity_id == WorkstationService.SIGN_BOARD_ENTITY
 
 
+## True for the district board, which is three cells across.
+static func is_large_sign(entity_id: String) -> bool:
+	return entity_id == WorkstationService.SIGN_BOARD_LARGE_ENTITY
+
+
+## How many cells the board spans along its own local +Z.
+static func sign_board_cells(entity_id: String) -> int:
+	if is_large_sign(entity_id):
+		return 3
+	return 2 if is_wide_sign(entity_id) else 1
+
+
 ## The usable width of the board `entity_id` carries.
 static func sign_board_width(entity_id: String) -> float:
+	if is_large_sign(entity_id):
+		return SIGN_LARGE_BOARD_WIDTH
 	return SIGN_WIDE_BOARD_WIDTH if is_wide_sign(entity_id) else SIGN_BOARD_WIDTH
 
 
+## The height of the board `entity_id` carries.
+static func sign_board_height(entity_id: String) -> float:
+	return SIGN_LARGE_BOARD_HEIGHT if is_large_sign(entity_id) else SIGN_BOARD_HEIGHT
+
+
+## The centre of the board in the station body's own local space: head height
+## on the ground, eye height on a wall, both measured from the floor under the
+## anchor cell. `sign_board_world_height(mount)` is the same number as metres
+## above that floor, which is what a test (and a standing player) reads.
+static func sign_board_centre_y(mount: String) -> float:
+	return SIGN_CELL_FLOOR + sign_board_world_height(mount)
+
+
+static func sign_board_world_height(mount: String) -> float:
+	return SIGN_WALL_BOARD_HEIGHT if mount == "wall" else SIGN_GROUND_BOARD_HEIGHT
+
+
 func _build_sign_visual(parent: Node3D, record: Dictionary) -> void:
-	var wall := str(record.get("mount", "ground")) == "wall"
+	var mount := str(record.get("mount", "ground"))
+	var wall := mount == "wall"
 	var entity_id := str(record.get("entity_id", ""))
-	var wide := is_wide_sign(entity_id)
+	var cells := sign_board_cells(entity_id)
 	var board_width := sign_board_width(entity_id)
-	# The wide board's second cell is the anchor's local +Z, so its centre line
-	# sits half a cell along +Z; the one-cell board is centred on its anchor.
-	var board_z := 0.5 if wide else 0.0
+	var board_height := sign_board_height(entity_id)
+	# A multi-cell board's extra cells are the anchor's local +Z, so its centre
+	# line sits half-way along the run; the one-cell board is centred on its
+	# own anchor.
+	var board_z := (float(cells) - 1.0) / 2.0
 	var oak := _visual_material(Color("b07a41"), "res://assets/blocks/planks.svg")
 	var dark_oak := _visual_material(Color("6b3d1f"), "res://assets/blocks/log.svg")
 	var stone := _visual_material(Color("8b929d"))
 	var iron := _visual_material(Color("6f777f"))
-	var board_x := -0.34 if wall else 0.0
-	var board_y := 0.04 if wall else 0.06
-	var cell_z: Array[float] = [0.0]
-	if wide:
-		cell_z.append(1.0)
-	_add_collision_box(parent, Vector3(0.24, SIGN_BOARD_HEIGHT, board_width), Vector3(board_x, board_y, board_z))
+	var board_x := SIGN_WALL_BOARD_X if wall else 0.0
+	# Head height on the ground, eye height on a wall (signs card 3): a board
+	# is read from four to six metres away, standing.
+	var board_y := sign_board_centre_y(mount)
+	var cell_z: Array[float] = []
+	for index in range(cells):
+		cell_z.append(float(index))
+	_add_collision_box(parent, Vector3(0.24, board_height, board_width), Vector3(board_x, board_y, board_z))
 	if not wall:
-		# A post under each cell: one under a sign, one at each end of a board.
-		for z: float in cell_z:
-			_add_mesh_box(parent, Vector3(0.12, 0.44, 0.12), Vector3(0.0, -0.30, z), dark_oak)
-			_add_mesh_box(parent, Vector3(0.44, 0.14, 0.44), Vector3(0.0, -0.45, z), stone)
-			_add_collision_box(parent, Vector3(0.44, 0.60, 0.44), Vector3(0.0, -0.32, z))
+		# A post under each cell, reaching from the ground under the sign up to
+		# the underside of the board, with a stone foot where it meets it.
+		var board_bottom := board_y - board_height / 2.0
+		var post_height := board_bottom - SIGN_CELL_FLOOR
+		var post_y := (SIGN_CELL_FLOOR + board_bottom) / 2.0
+		for index in range(cells):
+			var z := cell_z[index]
+			_add_mesh_box(parent, Vector3(0.12, post_height, 0.12), Vector3(0.0, post_y, z), dark_oak,
+				"SignPost%d" % index)
+			_add_mesh_box(parent, Vector3(0.44, 0.14, 0.44), Vector3(0.0, SIGN_CELL_FLOOR + 0.07, z), stone)
+			_add_collision_box(parent, Vector3(0.24, post_height, 0.24), Vector3(0.0, post_y, z))
+			_add_collision_box(parent, Vector3(0.44, 0.14, 0.44), Vector3(0.0, SIGN_CELL_FLOOR + 0.07, z))
 	else:
 		# Short brackets hold the board off the wall behind it: one pair per cell.
 		for z: float in cell_z:
 			for offset: float in [-0.28, 0.28]:
 				_add_mesh_box(parent, Vector3(0.12, 0.10, 0.10), Vector3(-0.44, board_y, z + offset), iron)
-	_add_mesh_box(parent, Vector3(SIGN_BOARD_THICKNESS, SIGN_BOARD_HEIGHT, board_width), Vector3(board_x, board_y, board_z), oak)
+	_add_mesh_box(parent, Vector3(SIGN_BOARD_THICKNESS, board_height, board_width), Vector3(board_x, board_y, board_z), oak, "SignBoard")
 	for z: float in [board_z - board_width / 2.0 + 0.04, board_z + board_width / 2.0 - 0.04]:
-		_add_mesh_box(parent, Vector3(SIGN_BOARD_THICKNESS + 0.01, SIGN_BOARD_HEIGHT, 0.07), Vector3(board_x, board_y, z), dark_oak)
+		_add_mesh_box(parent, Vector3(SIGN_BOARD_THICKNESS + 0.01, board_height, 0.07), Vector3(board_x, board_y, z), dark_oak)
 	var face := Node3D.new()
 	face.name = "SignFace"
 	# The face's own +Z is the board's +X, so its contents lay out in plain
@@ -3517,7 +3593,7 @@ func _build_sign_visual(parent: Node3D, record: Dictionary) -> void:
 	face.rotation.y = PI / 2.0
 	parent.add_child(face)
 	var block: Variant = record.get("sign", {})
-	_populate_sign_face(face, workstations.sanitized_sign(block if block is Dictionary else {}), board_width)
+	_populate_sign_face(face, workstations.sanitized_sign(block if block is Dictionary else {}), board_width, board_height)
 
 
 ## Rebuilds the board's contents after the editor (or another system) changed
@@ -3533,16 +3609,20 @@ func _refresh_sign_face(instance_id: String) -> void:
 		face.remove_child(child)
 		child.queue_free()
 	var record: Dictionary = workstations.stations.get(instance_id, {})
-	_populate_sign_face(face, workstations.sign_data(instance_id), sign_board_width(str(record.get("entity_id", ""))))
+	var entity_id := str(record.get("entity_id", ""))
+	_populate_sign_face(face, workstations.sign_data(instance_id), sign_board_width(entity_id), sign_board_height(entity_id))
 
 
-func _populate_sign_face(face: Node3D, data: Dictionary, board_width: float = SIGN_BOARD_WIDTH) -> void:
+func _populate_sign_face(face: Node3D, data: Dictionary, board_width: float = SIGN_BOARD_WIDTH,
+		board_height: float = SIGN_BOARD_HEIGHT) -> void:
 	var mode := str(data.get("mode", "text"))
 	var width := board_width - 0.08
-	var height := SIGN_BOARD_HEIGHT - 0.08
+	var height := board_height - 0.08
 	var text_a := str(data.get("text_a", ""))
 	var text_b := str(data.get("text_b", ""))
 	match mode:
+		"header_body":
+			_add_sign_stack(face, text_a, text_b, str(data.get("text_c", "")), width, height)
 		"split":
 			var divider := _add_mesh_box(face, Vector3(0.02, height, 0.01), Vector3.ZERO, _visual_material(Color("6b3d1f")))
 			divider.rotation.y = -PI / 2.0
@@ -3559,6 +3639,57 @@ func _populate_sign_face(face: Node3D, data: Dictionary, board_width: float = SI
 			_add_sign_item_grid(face, _sign_items(data), Vector3(0.0, -band / 2.0, 0.0), width, height - band)
 		_:
 			_add_sign_text(face, text_a, Vector3.ZERO, width, height, 0.15)
+
+
+## The stacked board (`header_body`, signs card 3): header, subheader and body
+## one under another, each in its own band of the board, each centred.
+##
+## Centred and not left-aligned: every field here is one to three short lines
+## on a board read from four to six metres, and a ragged left column under a
+## centred headline reads as a mistake at that distance. A field that is empty
+## gives its band to the fields that are not, so a header-only board still
+## fills the panel.
+##
+## Returns the cap height each role rendered at, which is what T232 reads back:
+## header > subheader > body, and none of them under its floor.
+func _add_sign_stack(parent: Node3D, header: String, subheader: String, body: String,
+		width: float, height: float) -> Dictionary:
+	var roles: Array[Dictionary] = [
+		{"key": "header", "name": "SignHeader", "text": header, "weight": float(SIGN_STACK_WEIGHTS["header"]),
+			"scale": SIGN_HEADER_SCALE, "floor": SIGN_MIN_HEADER_HEIGHT, "cap": 1.0},
+		{"key": "subheader", "name": "SignSubheader", "text": subheader, "weight": float(SIGN_STACK_WEIGHTS["subheader"]),
+			"scale": SIGN_SUBHEADER_SCALE, "floor": SIGN_MIN_SUBHEADER_HEIGHT, "cap": SIGN_SUBHEADER_CAP},
+		{"key": "body", "name": "SignBody", "text": body, "weight": float(SIGN_STACK_WEIGHTS["body"]),
+			"scale": SIGN_BODY_SCALE, "floor": SIGN_MIN_BODY_HEIGHT, "cap": SIGN_BODY_CAP},
+	]
+	var sizes := {"header": 0.0, "subheader": 0.0, "body": 0.0}
+	var total := 0.0
+	for role: Dictionary in roles:
+		if not str(role["text"]).strip_edges().is_empty():
+			total += float(role["weight"])
+	if total <= 0.0:
+		return sizes
+	var top := height / 2.0
+	var previous := 0.0
+	for role: Dictionary in roles:
+		var text := str(role["text"]).strip_edges()
+		if text.is_empty():
+			continue
+		var band := height * float(role["weight"]) / total
+		var preferred := height * float(role["scale"])
+		if previous > 0.0:
+			# Never as large as the role above it, whatever the band allows.
+			preferred = minf(preferred, previous * float(role["cap"]))
+		var minimum := minf(float(role["floor"]), preferred)
+		var fitted := fitted_sign_text(text, width, band, preferred, minimum)
+		var line_height := float(fitted.get("line_height", preferred))
+		var label := _add_sign_label(parent, str(fitted.get("text", text)),
+			Vector3(0.0, top - band / 2.0, 0.0), width, line_height)
+		label.name = str(role["name"])
+		previous = line_height
+		top -= band
+		sizes[str(role["key"])] = line_height
+	return sizes
 
 
 ## Lays `text` out inside `width` x `height` and adds it as one label: the

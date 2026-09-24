@@ -2,26 +2,32 @@
 
 Owner commission: [Development Expo handoff](DEVELOPMENT_EXPO_HANDOFF.md) section 9. A sign is an ordinary reusable gameplay asset — craftable, placeable, dismantleable, saved — not a development-only prop. The Expo's Supply Depot and district signs use the same item and the same API.
 
-## The two boards
+## The three boards
 
-A sign comes in two sizes. They are **two items and two entities**, not one
-item with a placement option:
+A sign comes in three sizes. They are **three items and three entities**, not
+one item with a placement option:
 
-| | Sign | Wide Board |
-| --- | --- | --- |
-| Item / entity id | `sign` | `sign_board` |
-| Category / stack | `building`, 16 | `building`, 16 |
-| Workbench recipe | 2 Planks + 1 Stick → 1 Sign (`recipe_book_order` 218) | 4 Planks + 2 Sticks → 1 Wide Board (`recipe_book_order` 219, ahead of the defence sets' Gate 220 and Rail Turret 221) |
-| Footprint | one cell (`occupied_offsets` `[[0, 0, 0]]`) | two cells (`[[0, 0, 0], [0, 0, 1]]`) |
-| Support (ground mount) | the cell below | the cell below each of the two |
-| Board | 0.92 m across, one post | 1.92 m across, a post at each end |
-| Integrity | 8, repaired with 2 Planks | 12, repaired with 2 Planks |
-| Icon | `icon_sign` (derived atlas cell 31) | `icon_sign_board` (derived atlas cell 32) |
+| | Sign | Wide Board | District Board |
+| --- | --- | --- | --- |
+| Item / entity id | `sign` | `sign_board` | `sign_board_large` |
+| Category / stack | `building`, 16 | `building`, 16 | `building`, 16 |
+| Workbench recipe | 2 Planks + 1 Stick → 1 Sign (`recipe_book_order` 218) | 4 Planks + 2 Sticks → 1 Wide Board (`recipe_book_order` 219) | 6 Planks + 3 Sticks → 1 District Board (`recipe_book_order` 225) |
+| Footprint | one cell (`occupied_offsets` `[[0, 0, 0]]`) | two cells (`[[0, 0, 0], [0, 0, 1]]`) | three cells (`[[0, 0, 0], [0, 0, 1], [0, 0, 2]]`) |
+| Support (ground mount) | the cell below | the cell below each of the two | the cell below each of the three |
+| Board | 0.92 × 0.86 m, one post | 1.92 × 0.86 m, a post at each end | 2.92 × 1.50 m, a post under each cell |
+| Integrity | 8, repaired with 2 Planks | 12, repaired with 2 Planks | 16, repaired with 2 Planks |
+| Icon | `icon_sign` (derived atlas cell 31) | `icon_sign_board` (derived atlas cell 32) | `icon_sign_board_large` (derived atlas cell 35) |
+
+The Expo's district entrance boards are the District Board and its exhibit
+boards are the Wide Board (signs card 3): the campus is read walking past, from
+four to six metres, and the owner asked for bigger boards. The narrow `sign`
+stays for the player's own use, and none of this restricts placement - any of
+the three places anywhere the mount rules allow.
 
 Everything else is shared: the same stored `sign` block, the same editor panel,
 the same `configure_sign` / `sign_data` API and the same board renderer.
 `WorkstationService.is_sign(entity_id)` is the one predicate that decides
-whether a record is a sign, and both ids are in
+whether a record is a sign, and all three ids are in
 `WorkstationService.SIGN_ENTITIES`.
 
 **Why a second item and not a rotation option.** The build rotation (W / R) is
@@ -40,8 +46,20 @@ Balance is tunable; nothing here copies an external game's asset.
 
 The sign uses the existing mount rules (`WorkstationService.try_place` / `_wall_side`, the same path as the Torch and the Wall Lantern), so `mount.allowed` is `["ground", "wall"]`:
 
-- **ground** — the cell below is solid: the board stands on an oak post with a stone foot, turned by the ordinary build rotation (W / R);
-- **wall** — no ground below, a solid block on one side: the board hangs flat on that block on two iron brackets, with no post, rotated to face away from the wall.
+- **ground** — the cell below is solid: the board rides at **head height** (its centre 1.65 m above the floor the sign stands on) on an oak post that reaches that floor, with a stone foot where it meets it, turned by the ordinary build rotation (W / R);
+- **wall** — no ground below, a solid block on one side: the board hangs flat on that block on two iron brackets, with no post, **centred at eye height** (1.55 m above the floor of the cell it is placed against), rotated to face away from the wall.
+
+**Why the board leaves its own cell upwards** (signs card 3). The owner's
+complaint was a board standing knee-high on a stub post: the old board sat
+0.06 m above its anchor cell's centre, so it was read looking down from two
+metres away instead of straight ahead from five. A board at head height cannot
+also fit inside one 1 m cell, so the rule is now horizontal: every part of the
+sign stays inside its own **column** - its own cell or cells and the air above
+them - and never reaches sideways into a cell another entity owns. The post
+occupies the sign's own cell, not the cell in front of it, so the board is
+still walked up to and read. `GameSession.sign_board_centre_y(mount)` and
+`sign_board_world_height(mount)` are the one place those two heights live, and
+T232 reads them back off the built board.
 
 The chosen mount is stored on the station record as `"mount": "wall"` (absent means ground) so a reload does not ask a wall sign for ground support. Every part of the board, posts and collision stays **inside the sign's own logical cells**: a thin panel can never reach into a cell another entity owns, and a sign cannot be placed into an occupied cell (`OCCUPIED`). To hang a sign above a chest, place it in the cell above — the Expo's authored fixtures do exactly that.
 
@@ -61,21 +79,46 @@ The station record carries one `sign` block of stable ids and text — never a l
 
 ```
 "sign": {
-  "mode": "text" | "split" | "items" | "header_items",
-  "text_a": String,   # the single text, the left text, or the heading
-  "text_b": String,   # the right text of a split sign
+  "mode": "text" | "split" | "items" | "header_items" | "header_body",
+  "text_a": String,   # the single text, the left text, or the header
+  "text_b": String,   # the right text of a split sign, or the subheader
+  "text_c": String,   # the body of a stacked sign
   "items": [item_id, ...]   # up to 8 item ids, in board order
 }
 ```
 
 It is saved by `workstations.snapshot()` with the rest of the record and normalised on `restore()`: an unknown mode falls back to `text`, text is trimmed to `SIGN_TEXT_LIMIT` (256) characters and unknown or surplus item ids are dropped. The SIGN editor's own text line stops at `SIGN_EDITOR_TEXT_LIMIT` (64) so a hand-typed board stays a heading; the longer stored limit exists for an authored board — the Development Expo's district and exhibit signs carry the manifest's whole body paragraph in `text_b`. A record written before this feature (or an authored one without the block) **migrates** to an empty single-text sign instead of failing the load.
 
-## The four display modes
+## The five display modes
 
 1. **Single Text** — `text_a` centred on the board.
-2. **Split Text** — `text_a` and `text_b` side by side with a carved divider.
+2. **Split Text** — `text_a` and `text_b` side by side with a carved divider. It stays for genuinely two-column content; it is no longer what an authored board gets by default.
 3. **Item Grid** — up to eight entries as icon + readable name, 4 rows × 2 columns, filled left column top-to-bottom then right column.
 4. **Header + Item Grid** — `text_a` as a heading above the same grid.
+5. **Header + Subheader + Body** (`header_body`, signs card 3) — `text_a`, `text_b` and `text_c` **stacked**, one under another, each in its own band of the board. This is what the Expo's district and exhibit boards use.
+
+### The stacked board
+
+The owner's words were "over under text, like header, subheader, content".
+The three roles share the board's height in the proportion 0.26 / 0.18 / 0.56,
+and a role with no text gives its band to the roles that have some, so a
+header-only board still fills the panel. Each role is sized for its own band by
+the same typographer every other field uses, and then capped under the role
+above it (subheader ≤ 0.72 of the header, body ≤ 0.85 of the subheader), so the
+rendered order is **header > subheader > body** even when a long header has had
+to shrink. The floors are `SIGN_MIN_HEADER_HEIGHT` 0.10 m,
+`SIGN_MIN_SUBHEADER_HEIGHT` 0.070 m and `SIGN_MIN_BODY_HEIGHT` 0.055 m of cap
+height - all well above the 0.030 m floor the other modes use, because a
+district board is read from five metres, not from arm's length.
+
+**Centred, not left-aligned.** Every field on one of these boards is one to
+three short lines read from four to six metres. A ragged left column under a
+centred headline reads as a mistake at that distance, and a left-aligned header
+over a centred body reads as two boards. Centred keeps the three roles on one
+axis.
+
+The labels are named `SignHeader` / `SignSubheader` / `SignBody` on the board's
+`SignFace`, which is how T232 reads back the size each role rendered at.
 
 The board renders with `Label3D` text and `Sprite3D` item icons (the same `ItemIconCatalog` art the inventory uses), the project's existing in-world text approach. Captions carry a pale outline so they read on the oak grain.
 
@@ -128,6 +171,12 @@ GameSession.sign_data(instance_id) -> Dictionary              # the normalised b
 
 ## Tests
 
+`T232_SIGN_STACKED` (`--p3d-usability-automation=phase1`) for the stacked mode,
+the rendered size order and the two mounting heights, with the rendered
+evidence `T232_SIGN_STACKED_PRESENTATION` (`p3d-sign-stacked-board.png`, read
+from five metres at standing eye height); `T233_EXPO_BOARDS`
+(`--development-expo-automation=gate`) and its `T233V_DISTRICT_BOARD_VIEW` for
+the Expo's district boards;
 `T212_SIGN_PLACEMENT_AND_EDITOR` (`--p3d-usability-automation=phase1`), which
 also places the wide board on the ground and on a wall, checks that it reserves
 both of its cells, refuses a pair whose second cell is taken and round-trips its

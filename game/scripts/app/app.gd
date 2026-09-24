@@ -156,6 +156,7 @@ const SIGN_MODES: Array[Dictionary] = [
 	{"id": "split", "label": "Split Text"},
 	{"id": "items", "label": "Item Grid  ·  4 × 2"},
 	{"id": "header_items", "label": "Header + Item Grid"},
+	{"id": "header_body", "label": "Header + Subheader + Body"},
 ]
 const SIGN_SLOT_SIZE := Vector2(152, 92)
 ## Development Expo Battlefield control station (docs/DEVELOPMENT_EXPO.md).
@@ -178,8 +179,10 @@ var sign_panel: Control
 var sign_mode_buttons: Dictionary = {}
 var sign_text_a_row: HBoxContainer
 var sign_text_b_row: HBoxContainer
+var sign_text_c_row: HBoxContainer
 var sign_text_a_edit: LineEdit
 var sign_text_b_edit: LineEdit
+var sign_text_c_edit: LineEdit
 var sign_items_card: PanelContainer
 var sign_slot_buttons: Array[Button] = []
 var sign_picker_card: PanelContainer
@@ -1970,6 +1973,10 @@ func _build_sign(canvas: CanvasLayer) -> void:
 	sign_text_b_edit = sign_text_b_row.get_child(1) as LineEdit
 	sign_text_b_edit.text_changed.connect(_on_sign_text_changed.bind("text_b"))
 	left.add_child(sign_text_b_row)
+	sign_text_c_row = _sign_text_row("BODY")
+	sign_text_c_edit = sign_text_c_row.get_child(1) as LineEdit
+	sign_text_c_edit.text_changed.connect(_on_sign_text_changed.bind("text_c"))
+	left.add_child(sign_text_c_row)
 
 	sign_items_card = PanelContainer.new()
 	sign_items_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2082,7 +2089,7 @@ func _show_sign(instance_id: String) -> void:
 	var saved_items: Array = data.get("items", [])
 	for index in range(mini(saved_items.size(), WorkstationService.SIGN_ITEM_SLOTS)):
 		slots[index] = str(saved_items[index])
-	_sign_draft = {"mode": str(data.get("mode", "text")), "text_a": str(data.get("text_a", "")), "text_b": str(data.get("text_b", "")), "items": slots}
+	_sign_draft = {"mode": str(data.get("mode", "text")), "text_a": str(data.get("text_a", "")), "text_b": str(data.get("text_b", "")), "text_c": str(data.get("text_c", "")), "items": slots}
 	_sign_selected_slot = 0
 	_sign_picker_category = ""
 	state = AppState.SIGN
@@ -2169,7 +2176,7 @@ func _save_sign() -> void:
 		var item_id := str(value)
 		if not item_id.is_empty():
 			items.append(item_id)
-	var result := session.configure_sign(_sign_station_id, {"mode": str(_sign_draft.get("mode", "text")), "text_a": str(_sign_draft.get("text_a", "")), "text_b": str(_sign_draft.get("text_b", "")), "items": items})
+	var result := session.configure_sign(_sign_station_id, {"mode": str(_sign_draft.get("mode", "text")), "text_a": str(_sign_draft.get("text_a", "")), "text_b": str(_sign_draft.get("text_b", "")), "text_c": str(_sign_draft.get("text_c", "")), "items": items})
 	if result.get("ok", false):
 		sign_message.text = "Sign saved. It reads the same after a save and reload."
 		sign_message.add_theme_color_override("font_color", Color("9fe8b0"))
@@ -2186,16 +2193,22 @@ func _refresh_sign_panel() -> void:
 		var mode_button: Button = sign_mode_buttons[mode_id]
 		mode_button.button_pressed = mode_id == mode
 	var uses_items := mode == "items" or mode == "header_items"
+	var stacked := mode == "header_body"
 	sign_text_a_row.visible = mode != "items"
-	sign_text_b_row.visible = mode == "split"
+	sign_text_b_row.visible = mode == "split" or stacked
+	sign_text_c_row.visible = stacked
 	sign_items_card.visible = uses_items
 	sign_picker_card.visible = uses_items
 	var caption_label: Label = sign_text_a_row.get_child(0) as Label
-	caption_label.text = "LEFT TEXT" if mode == "split" else ("HEADING" if mode == "header_items" else "TEXT")
+	caption_label.text = "LEFT TEXT" if mode == "split" else ("HEADER" if stacked else ("HEADING" if mode == "header_items" else "TEXT"))
+	var caption_b: Label = sign_text_b_row.get_child(0) as Label
+	caption_b.text = "SUBHEADER" if stacked else "RIGHT TEXT"
 	if sign_text_a_edit.text != str(_sign_draft.get("text_a", "")):
 		sign_text_a_edit.text = str(_sign_draft.get("text_a", ""))
 	if sign_text_b_edit.text != str(_sign_draft.get("text_b", "")):
 		sign_text_b_edit.text = str(_sign_draft.get("text_b", ""))
+	if sign_text_c_edit.text != str(_sign_draft.get("text_c", "")):
+		sign_text_c_edit.text = str(_sign_draft.get("text_c", ""))
 	var slots: Array = _sign_draft.get("items", [])
 	for index in range(sign_slot_buttons.size()):
 		var slot_button: Button = sign_slot_buttons[index]

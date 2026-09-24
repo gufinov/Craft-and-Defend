@@ -35,6 +35,10 @@ const BUILD_TIMEOUT_MSEC := 420000
 ## how far from that anchor the board may end up (the builder takes the nearest
 ## free cell around a requested one when the exhibit itself stands there).
 const ANCHORED_EXHIBIT := "battlefield_field"
+## Where the acceptance shot of a board is taken from (signs card 3): standing
+## distance, eyes at standing height, which is how the owner reads the campus.
+const SIGN_READING_DISTANCE := 5.0
+const SIGN_READING_EYE := 1.6
 const SIGN_ANCHOR_TOLERANCE := 4
 ## Miner ticks T216 drives so the Ore Bin holds both an ore and its fuel.
 const INDUSTRY_MINER_TICKS := 24
@@ -127,6 +131,7 @@ func _run_gate() -> void:
 	await _test_mountain()
 	_test_signs()
 	_test_sign_anchors()
+	_test_expo_boards()
 	await _test_industry()
 	await _test_lighting()
 	await _test_construction_yard()
@@ -164,6 +169,8 @@ func _run_visual() -> void:
 	var plaza_shot := await _save_viewport(plaza_path)
 	_record("T214V_PLAZA_VIEW", plaza_shot, "rendered evidence of the Development Expo plaza with its Core", {"path": plaza_path})
 	await _shoot_sign("central_plaza")
+	await _shoot_sign("central_plaza", "T233V_PLAZA_BOARD_VIEW", "development-expo-plaza-board.png",
+		"rendered evidence that the plaza's district board reads from standing distance: header, subheader and body stacked, at head height on a full post")
 	await _shoot_supply_row()
 	var tunnel := app.development.layout.parcel_for("mountain_tunnel")
 	var tunnel_origin: Vector3i = tunnel["origin"]
@@ -244,6 +251,10 @@ func _shoot_card_e_districts() -> void:
 		Vector3(range_origin) + Vector3(float(range_size.x) * 0.5, 2.0, float(range_size.z) * 0.4),
 		"development-expo-range.png",
 		"rendered evidence of the Defense Range: seven weapon booths, each on its mount with its ammunition chest, target and sign")
+	# The owner's own complaint, re-shot: the Defense Range's district board,
+	# read standing five metres away at eye height (signs card 3).
+	await _shoot_sign("defense_range", "T233V_DISTRICT_BOARD_VIEW", "development-expo-district-board.png",
+		"rendered evidence that the Defense Range's district board reads from standing distance: header, subheader and body stacked, at head height on a full post")
 	var core_parcel := app.development.layout.parcel_for("battlefield_player_core")
 	var core_origin: Vector3i = core_parcel["origin"]
 	if not await _walk_to(core_origin + Vector3i(1, 0, 8), "battlefield"):
@@ -592,7 +603,11 @@ func _test_sign_anchors() -> void:
 	var corner: Vector3i = app.development.layout.parcel_for(ANCHORED_EXHIBIT).get("origin", Vector3i.ZERO)
 	var plaza := _sign_request_of(requests, "central_plaza")
 	var plaza_entity := str(workstations.stations.get(str(plaza.get("instance_id", "")), {}).get("entity_id", ""))
-	var plaza_ok: bool = bool(plaza.get("ok", false)) and plaza_entity == WorkstationService.SIGN_BOARD_ENTITY
+	# Signs card 3: the plaza's own entrance board is now the three-cell
+	# district board; a district that had no room for three cells falls back to
+	# the wide one, which is still a board and still owns its second cell.
+	var plaza_ok: bool = bool(plaza.get("ok", false)) \
+		and plaza_entity in [WorkstationService.SIGN_BOARD_LARGE_ENTITY, WorkstationService.SIGN_BOARD_ENTITY]
 	# A wide board owns both of its cells: the second one answers to it too.
 	var plaza_cell: Vector3i = plaza.get("cell", Vector3i.ZERO)
 	var second: Vector3i = plaza_cell + workstations.footprints.rotate_offset(
@@ -603,11 +618,56 @@ func _test_sign_anchors() -> void:
 	var depot_ok: bool = bool(depot.get("ok", false)) and depot_entity == WorkstationService.SIGN_BOARD_ENTITY
 	var ok: bool = arena_ok and plaza_ok and both_cells and depot_ok and builder.pending_signs().is_empty()
 	_record("T225_SIGN_ANCHORS", ok,
-		"an exhibit's `sign_anchor` stands its board where it is read - the Battlefield's arena sign within %d cells of the player-side gate instead of at the parcel corner - the plaza orientation board and the Supply Depot chest boards are the two-cell wide board owning both of their cells, and no sign request is left unfulfilled" % SIGN_ANCHOR_TOLERANCE,
+		"an exhibit's `sign_anchor` stands its board where it is read - the Battlefield's arena sign within %d cells of the player-side gate instead of at the parcel corner - the plaza orientation board is the district board (or at least the two-cell wide one) and the Supply Depot chest boards are the two-cell wide board, each owning both of their cells, and no sign request is left unfulfilled" % SIGN_ANCHOR_TOLERANCE,
 		{"arena_cell": arena_cell, "anchor_cell": anchor_cell, "parcel_corner": corner,
 		"gate": gate.get("origin", Vector3i.ZERO), "distance": distance, "arena_ok": arena_ok,
 		"plaza_cell": plaza_cell, "plaza_entity": plaza_entity, "second_cell": second, "both_cells": both_cells,
 		"depot_entity": depot_entity, "pending": builder.pending_signs().size()})
+
+
+## T233 (signs card 3): every district's entrance board is the stacked board
+## the owner asked for - Header + Subheader + Body, on the three-cell district
+## board (or the two-cell wide board where the campus had no room for three) -
+## and no manifest sign request is lost to the wider boards, which is what
+## T215 and T225 assert in full.
+func _test_expo_boards() -> void:
+	var builder: ExpoBuilder = app.development.expo_builder
+	var workstations: WorkstationService = app.session.workstations
+	var requests := builder.sign_requests()
+	var wide_enough: Array[String] = [WorkstationService.SIGN_BOARD_LARGE_ENTITY, WorkstationService.SIGN_BOARD_ENTITY]
+	var problems: Array[String] = []
+	var boards: Array[Dictionary] = []
+	var large := 0
+	for district_id: String in app.development.layout.district_ids():
+		if app.development.layout.sign_data(district_id).is_empty():
+			continue
+		var request := _sign_request_of(requests, district_id)
+		if request.is_empty() or not bool(request.get("ok", false)):
+			problems.append(district_id + ":no_board")
+			continue
+		var instance_id := str(request.get("instance_id", ""))
+		var entity_id := str(workstations.stations.get(instance_id, {}).get("entity_id", ""))
+		var block := workstations.sign_data(instance_id)
+		var mode := str(block.get("mode", ""))
+		if mode != "header_body":
+			problems.append("%s:mode=%s" % [district_id, mode])
+		if entity_id not in wide_enough:
+			problems.append("%s:board=%s" % [district_id, entity_id])
+		if entity_id == WorkstationService.SIGN_BOARD_LARGE_ENTITY:
+			large += 1
+		if str(block.get("text_a", "")).is_empty():
+			problems.append(district_id + ":no_header")
+		if str(block.get("text_b", "")).is_empty() and str(block.get("text_c", "")).is_empty():
+			problems.append(district_id + ":no_body")
+		boards.append({"district": district_id, "entity": entity_id, "mode": mode,
+			"header": block.get("text_a", ""), "subheader": block.get("text_b", ""),
+			"body": block.get("text_c", "")})
+	var fulfilled := builder.pending_signs().is_empty()
+	var ok: bool = problems.is_empty() and not boards.is_empty() and large > 0 and fulfilled
+	_record("T233_EXPO_BOARDS", ok,
+		"every Expo district's entrance board carries the stacked Header + Subheader + Body block on the three-cell district board (a district with no room for three cells falls back to the two-cell wide board, never to a narrow sign), and every manifest sign request is still fulfilled",
+		{"boards": boards, "district_boards": large, "problems": problems,
+		"requested": requests.size(), "pending": builder.pending_signs().size()})
 
 
 ## The request the builder recorded for `owner_id` ({} when there is none).
@@ -1416,9 +1476,18 @@ static func _parcel_centre(parcel: Dictionary) -> Vector3:
 
 ## Reading evidence for T215: one of the campus's real signs framed from in
 ## front of its board, close enough to read the manifest's words off it.
-func _shoot_sign(owner_id: String) -> void:
+## One placed Expo board, framed the way the owner reads it: standing on the
+## ground `SIGN_READING_DISTANCE` metres in front of it, eyes at
+## `SIGN_READING_EYE` metres, looking at the middle of the board itself rather
+## than at the cell it stands in (signs card 3 - the board is at head height
+## now, not on a stub).
+func _shoot_sign(owner_id: String, test_id: String = "T215V_SIGN_VIEW",
+		file_name: String = "development-expo-sign.png",
+		expected: String = "rendered evidence that the plaza's orientation sign is a real readable board, not a recorded request") -> void:
 	var stand := Vector3.ZERO
 	var normal := Vector3(1.0, 0.0, 0.0)
+	var along := Vector3(0.0, 0.0, 1.0)
+	var entity_id := ""
 	var found := false
 	for request: Dictionary in app.development.expo_builder.sign_requests():
 		if str(request.get("owner", "")) != owner_id:
@@ -1427,23 +1496,32 @@ func _shoot_sign(owner_id: String) -> void:
 		if record.is_empty():
 			continue
 		stand = Vector3(record.get("anchor", Vector3i.ZERO)) + Vector3(0.5, 0.5, 0.5)
-		# The board faces local +X turned by -quarters * 90 degrees.
+		# The board faces local +X turned by -quarters * 90 degrees, and runs
+		# along its own local +Z.
 		var angle := -float(int(record.get("rotation_quarters", 0))) * PI / 2.0
 		normal = Vector3(cos(angle), 0.0, -sin(angle))
+		along = Vector3(sin(angle), 0.0, cos(angle))
+		entity_id = str(record.get("entity_id", ""))
 		found = true
 		break
 	if not found:
-		_record("T215V_SIGN_VIEW", false, "rendered evidence of a placed Expo sign", {"owner": owner_id, "reason": "NO_SIGN"})
+		_record(test_id, false, expected, {"owner": owner_id, "reason": "NO_SIGN"})
 		return
-	var eye := stand + normal * 2.2 + Vector3(0.0, 0.2, 0.0)
-	_look_from(eye, stand)
+	var mount := GameSession.sign_board_centre_y("ground")
+	var run := (float(GameSession.sign_board_cells(entity_id)) - 1.0) / 2.0
+	var target := stand + Vector3(0.0, mount, 0.0) + along * run
+	var eye := stand + along * run + normal * SIGN_READING_DISTANCE \
+		+ Vector3(0.0, SIGN_READING_EYE - 0.5, 0.0)
+	_look_from(eye, target)
 	for _frame in range(60):
 		await get_tree().process_frame
-	_look_from(eye, stand)
+	_look_from(eye, target)
 	await get_tree().process_frame
-	var path := app.data_root.path_join("development-expo-sign.png")
+	var path := app.data_root.path_join(file_name)
 	var shot := await _save_viewport(path)
-	_record("T215V_SIGN_VIEW", shot, "rendered evidence that the plaza's orientation sign is a real readable board, not a recorded request", {"path": path, "owner": owner_id, "cell": stand})
+	_record(test_id, shot, expected, {"path": path, "owner": owner_id, "cell": stand,
+		"entity": entity_id, "eye": eye, "target": target, "distance_m": SIGN_READING_DISTANCE,
+		"eye_height_m": SIGN_READING_EYE})
 
 
 ## Reading evidence for T223: one Supply Depot chest framed from the aisle in
@@ -1554,7 +1632,10 @@ func _sign_spot_check(owner_id: String, requests: Array[Dictionary], workstation
 		var stored := workstations.sign_data(str(request.get("instance_id", "")))
 		if stored.is_empty():
 			return {"ok": false, "owner": owner_id, "reason": "NO_SIGN_DATA"}
-		var text := str(stored.get("text_a", "")) + "\n" + str(stored.get("text_b", ""))
+		# The stacked board (signs card 3) spreads the manifest's lines over the
+		# subheader and the body, so the read-back reads all three fields.
+		var text := str(stored.get("text_a", "")) + "\n" + str(stored.get("text_b", "")) \
+			+ "\n" + str(stored.get("text_c", ""))
 		var carries := str(stored.get("text_a", "")) == str(manifest.get("title", ""))
 		var lines: Variant = manifest.get("lines", [])
 		if lines is Array:
@@ -1599,7 +1680,8 @@ func _stations_in(box: Dictionary, entity_id: String) -> Array[String]:
 		var record: Dictionary = app.session.workstations.stations[instance_id]
 		var standing := str(record.get("entity_id", ""))
 		if entity_id.is_empty():
-			if standing == "sign":
+			# A reserved parcel still carries its own board, of whichever width.
+			if WorkstationService.is_sign(standing):
 				continue
 		elif standing != entity_id:
 			continue

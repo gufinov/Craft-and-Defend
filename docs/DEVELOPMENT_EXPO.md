@@ -209,7 +209,7 @@ the district and overlapping nothing), `connections`, `expansion_priority`,
 | `placements` | Optional `[{entity, offset, rotation}]` — fixtures pinned at manifest offsets inside the parcel (the Industry chain, the light gallery). The entity must also appear in `entities` and the offset must lie inside the footprint; the builder places these instead of its own per-entity default geometry |
 | `terrain` | What the builder authors here (see the terrain kinds below) |
 | `connections` | Which path or line the exhibit must touch |
-| `sign` | `{title, lines, item, board}` — the sign card renders it; `item` must exist, and `board` is `narrow` (the default) or `wide` for the two-cell board ([Signs](SIGNS.md)) |
+| `sign` | `{title, subtitle, lines, item, board}` — the sign card renders it; `item` must exist, `subtitle` is the optional stacked subheader (without it the first body line becomes the subheader), and `board` is `narrow`, `wide` (two cells) or `large` (three cells). A block that names no `board` takes the caller's default: the three-cell district board for a district's entrance sign, the two-cell wide board for an exhibit ([Signs](SIGNS.md)) |
 | `sign_anchor` | Optional: where this exhibit's board stands instead of its parcel corner — a cell offset `[x, y, z]` inside the footprint, `"centre"`, `"entrance"` (the middle of the edge the `orientation` says a visitor reads from) or `"near:<exhibit_id>"` (one cell outside that exhibit's own reading edge, reading back at it). `near:` must name an exhibit that exists |
 | `reset_group` | Optional named group for a partial rebuild |
 | `expansion_priority` | Lower = kept, higher = first to move when the campus grows |
@@ -313,12 +313,25 @@ on both counts reaching zero.
 [Signs](SIGNS.md)) is placed free at the requested cell and its board is
 written through `GameSession.configure_sign`. The manifest block translates
 into the sign's own record — a block naming an `item` becomes Header + Item
-Grid, a title with body lines becomes Split Text, a bare title Single Text —
-and `"board": "wide"` makes it the two-cell `sign_board` instead of the
-one-cell `sign` (`ExpoBuilder.sign_entity_for`). A rebuild that finds a board
-of the other width standing in the cell takes it down and lays the right one.
-The plaza's orientation board and every Supply Depot chest board are wide; a
-depot plinth is two cells wide so both of the board's cells stand on stone.
+Grid, a title with body lines becomes the stacked **Header + Subheader + Body**
+(signs card 3: the subheader is the block's `subtitle`, or its first body line
+when it names none), a bare title Single Text — and `board` chooses the width:
+`large` the three-cell `sign_board_large`, `wide` the two-cell `sign_board`,
+`narrow` the one-cell `sign` (`ExpoBuilder.sign_entity_for`). A block that asks
+for no width takes the caller's default, which is the district board for a
+district's own entrance sign and the wide board for an exhibit — the campus is
+read from standing distance, so the Expo's boards are big by default. A rebuild
+that finds a board of another width standing in the cell takes it down and lays
+the right one.
+
+**A board is never lost to its own width.** `_run_sign` walks a fallback chain,
+widest first (`SIGN_BOARD_FALLBACK`): a district board that finds no run of
+three free, supported cells anywhere in the ring around its anchor is laid as a
+wide board instead, and a wide board as a narrow sign, rather than failing the
+request. T233 reports which districts fell back; the central plaza's own
+entrance board is one of them today, so its six-line directory is smaller than
+the rest of the campus's boards. A depot plinth is two cells wide so both of a
+chest board's cells stand on stone.
 
 **Sign anchors.** An exhibit's board would otherwise stand at its parcel's
 origin corner, which is wrong for a parcel the size of an arena. `sign_anchor`
