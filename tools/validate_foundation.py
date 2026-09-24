@@ -30,7 +30,8 @@ EXPO_ORIENTATIONS = {"north", "south", "east", "west"}
 # Signs card 2: an exhibit may anchor its board instead of taking the parcel
 # corner, and a sign block may ask for the two-cell wide board.
 EXPO_SIGN_ANCHORS = {"centre", "entrance"}
-EXPO_SIGN_BOARDS = {"narrow", "wide"}
+# Signs card 3 (docs/SIGNS.md): "large" is the three-cell district board.
+EXPO_SIGN_BOARDS = {"narrow", "wide", "large"}
 EXPO_TERRAIN = {"level", "natural", "tree", "forest", "quarry", "coal_seam", "surface_ore",
                 "ore_face", "mountain", "tunnel", "ore_core", "chamber", "pavilion",
                 "supply_depot",
@@ -560,6 +561,9 @@ def validate_expo_sign(sign, items, label):
     require(isinstance(sign, dict) and isinstance(sign.get("title"), str) and sign["title"], f"{label}: invalid sign title")
     require(isinstance(sign.get("lines", []), list)
             and all(isinstance(line, str) for line in sign.get("lines", [])), f"{label}: invalid sign lines")
+    # Signs card 3: the optional stacked subheader. Without it the board takes
+    # its first body line as the subheader.
+    require(isinstance(sign.get("subtitle", ""), str), f"{label}: invalid sign subtitle")
     if "item" in sign:
         require(sign["item"] in items, f"{label}: sign names unknown item {sign['item']}")
     if "board" in sign:

@@ -79,6 +79,18 @@ const SIGN_ENTITY := "sign"
 ## The wide board (signs card 2): a manifest sign block whose `board` is
 ## `"wide"` is built from the two-cell `sign_board` instead.
 const SIGN_BOARD_ENTITY := "sign_board"
+## The district board (signs card 3): a manifest sign block whose `board` is
+## `"large"` - and every district's own entrance board by default - is built
+## from the three-cell `sign_board_large`, so a stacked header, subheader and
+## body read from the far side of the avenue.
+const SIGN_BOARD_LARGE_ENTITY := "sign_board_large"
+## Which board a request falls back to when the campus has no room for the one
+## it asked for: never lose a sign to its own width.
+const SIGN_BOARD_FALLBACK := {
+	SIGN_BOARD_LARGE_ENTITY: [SIGN_BOARD_LARGE_ENTITY, SIGN_BOARD_ENTITY, SIGN_ENTITY],
+	SIGN_BOARD_ENTITY: [SIGN_BOARD_ENTITY, SIGN_ENTITY],
+	SIGN_ENTITY: [SIGN_ENTITY],
+}
 ## Where a sign may stand, best first: its own cell, then the ring around it,
 ## then one cell up - an exhibit's corner is sometimes already taken.
 const SIGN_OFFSETS: Array[Vector3i] = [
@@ -161,7 +173,7 @@ func build_district(game_session: GameSession, district_id: String) -> Dictionar
 	var entrance := _cell(record.get("entrance", []))
 	# The entrance sign reads back at the visitor arriving from outside, so it
 	# faces away from the district centre they are walking towards.
-	sign_at(Vector3i(entrance.x, layout.ground_y() + 1, entrance.z), _opposite(_facing_to_centre(entrance, origin, size)), layout.sign_data(district_id), district_id)
+	sign_at(Vector3i(entrance.x, layout.ground_y() + 1, entrance.z), _opposite(_facing_to_centre(entrance, origin, size)), layout.sign_data(district_id), district_id, SIGN_BOARD_LARGE_ENTITY)
 	if str(record.get("prepare", "connect")) != "full":
 		return {"ok": true, "prepared": "connect"}
 	if str(record.get("terrain", "level")) == "level":
@@ -480,11 +492,12 @@ static func _joint_offsets(cell: Vector3i, joints: Variant) -> Array:
 ##
 ## The request is recorded either way, so `sign_requests()` is the list T215
 ## walks and `pending_signs()` is whatever is still unfulfilled.
-func sign_at(cell: Vector3i, facing: String, data: Dictionary, owner_id: String = "") -> Dictionary:
+func sign_at(cell: Vector3i, facing: String, data: Dictionary, owner_id: String = "",
+		default_entity: String = SIGN_BOARD_ENTITY) -> Dictionary:
 	if data.is_empty():
 		return {"ok": false, "reason": "NO_SIGN_DATA"}
 	var block := _sign_block(data)
-	var entity_id := sign_entity_for(data)
+	var entity_id := sign_entity_for(data, default_entity)
 	var request := {"owner": owner_id, "cell": cell, "facing": facing, "data": data.duplicate(true),
 		"sign": block, "entity": entity_id, "instance_id": "", "ok": false, "reason": "QUEUED"}
 	_sign_requests.append(request)
@@ -509,8 +522,12 @@ func pending_signs() -> Array[Dictionary]:
 
 ## Manifest sign block -> the station record's sign (docs/SIGNS.md). A block
 ## naming an `item` becomes Header + Item Grid (the title heads the icon), one
-## with only a title and body lines becomes Split Text (title beside body), and
-## a bare title becomes Single Text.
+## with a title and body lines becomes the stacked Header + Subheader + Body
+## (signs card 3) and a bare title becomes Single Text.
+##
+## The subheader is the block's own `subtitle` when it names one; otherwise it
+## is the first body line, which is how the manifest already writes these
+## boards - one line that says what the district is, then the detail.
 static func _sign_block(data: Dictionary) -> Dictionary:
 	var title := str(data.get("title", ""))
 	var lines: Array[String] = []
@@ -530,16 +547,31 @@ static func _sign_block(data: Dictionary) -> Dictionary:
 			if not extra.is_empty() and extra not in items:
 				items.append(extra)
 	if not items.is_empty():
-		return {"mode": "header_items", "text_a": title, "text_b": body, "items": items}
-	if body.is_empty():
-		return {"mode": "text", "text_a": title, "text_b": "", "items": items}
-	return {"mode": "split", "text_a": title, "text_b": body, "items": items}
+		return {"mode": "header_items", "text_a": title, "text_b": body, "text_c": "", "items": items}
+	var subtitle := str(data.get("subtitle", ""))
+	if subtitle.is_empty() and not lines.is_empty():
+		subtitle = lines[0]
+		lines.remove_at(0)
+		body = "\n".join(lines)
+	if subtitle.is_empty() and body.is_empty():
+		return {"mode": "text", "text_a": title, "text_b": "", "text_c": "", "items": items}
+	return {"mode": "header_body", "text_a": title, "text_b": subtitle, "text_c": body, "items": items}
 
 
-## Which board a manifest block asks for: `"board": "wide"` is the two-cell
-## wide board (signs card 2), anything else the one-cell sign.
-static func sign_entity_for(data: Dictionary) -> String:
-	return SIGN_BOARD_ENTITY if str(data.get("board", "narrow")) == "wide" else SIGN_ENTITY
+## Which board a manifest block asks for: `"board": "large"` is the three-cell
+## district board, `"wide"` the two-cell board, `"narrow"` the one-cell sign.
+## A block that names no board takes the caller's default - the district board
+## for a district entrance, the wide board for an exhibit - because the campus
+## is read from standing distance and the owner asked for bigger boards.
+static func sign_entity_for(data: Dictionary, default_entity: String = SIGN_BOARD_ENTITY) -> String:
+	match str(data.get("board", "")):
+		"large":
+			return SIGN_BOARD_LARGE_ENTITY
+		"wide":
+			return SIGN_BOARD_ENTITY
+		"narrow":
+			return SIGN_ENTITY
+	return default_entity
 
 
 ## Where an exhibit's board stands and which way it reads: its `sign_anchor`
@@ -1018,7 +1050,32 @@ func _run_sign(op: Dictionary) -> bool:
 	if not _loaded(world, anchor) or not _loaded(world, anchor + Vector3i(0, -1, 0)):
 		return false
 	var rotation := int(op.get("rotation", 0))
-	var entity_id := str(op.get("entity", SIGN_ENTITY))
+	var wanted := str(op.get("entity", SIGN_ENTITY))
+	# Widest first, then narrower (signs card 3): a district board that finds
+	# no room for its three cells becomes a wide board rather than a failure,
+	# so no manifest sign is ever lost to its own width.
+	var chain: Array = SIGN_BOARD_FALLBACK.get(wanted, [wanted])
+	var last_reason := "PLACE_FAILED"
+	for step: Variant in chain:
+		var attempt := _place_sign_board(op, request, world, anchor, str(step), rotation)
+		if bool(attempt.get("done", false)):
+			return true
+		last_reason = str(attempt.get("reason", last_reason))
+	# Nothing free yet: the ground here may still be streaming or still queued.
+	if int(op.get("attempts", 0)) < PLACE_ATTEMPTS:
+		op["attempts"] = int(op.get("attempts", 0)) + 1
+		return false
+	request["reason"] = last_reason
+	_failures.append("%s sign at %s: %s" % [str(op.get("label", "")), anchor, last_reason])
+	return true
+
+
+## One width's attempt at one sign request: the ring of candidate cells around
+## `anchor`, tried in order. `done` means the request is settled (placed and
+## written, or written onto the board already standing there); otherwise
+## `reason` is why this width found no room.
+func _place_sign_board(op: Dictionary, request: Dictionary, world: WorldAdapter, anchor: Vector3i,
+		entity_id: String, rotation: int) -> Dictionary:
 	var last_reason := "PLACE_FAILED"
 	for offset: Vector3i in SIGN_OFFSETS:
 		var cell := _sign_stand(world, anchor + offset)
@@ -1041,6 +1098,7 @@ func _run_sign(op: Dictionary) -> bool:
 		var written := session.configure_sign(instance_id, request.get("sign", {}))
 		request["cell"] = cell
 		request["instance_id"] = instance_id
+		request["entity"] = entity_id
 		request["ok"] = bool(written.get("ok", false))
 		request["reason"] = str(written.get("reason", "OK"))
 		_entities_placed += 1
@@ -1048,14 +1106,8 @@ func _run_sign(op: Dictionary) -> bool:
 			_signs_placed += 1
 		else:
 			_failures.append("%s sign at %s: %s" % [str(op.get("label", "")), cell, request["reason"]])
-		return true
-	# Nothing free yet: the ground here may still be streaming or still queued.
-	if int(op.get("attempts", 0)) < PLACE_ATTEMPTS:
-		op["attempts"] = int(op.get("attempts", 0)) + 1
-		return false
-	request["reason"] = last_reason
-	_failures.append("%s sign at %s: %s" % [str(op.get("label", "")), anchor, last_reason])
-	return true
+		return {"done": true, "reason": str(request["reason"])}
+	return {"done": false, "reason": last_reason}
 
 
 ## The cell a sign may stand in above `column`: the first air cell from the

@@ -73,6 +73,7 @@ const ITEM_CATEGORY := {
 	"wood_barricade": "construction",
 	"sign": "construction",
 	"sign_board": "construction",
+	"sign_board_large": "construction",
 	"workbench": "workstations_and_industry",
 	"furnace": "workstations_and_industry",
 	"chest": "workstations_and_industry",

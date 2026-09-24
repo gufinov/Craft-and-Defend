@@ -5,15 +5,19 @@ signal station_changed(result: Dictionary)
 signal job_completed(result: Dictionary)
 
 ## Sign (docs/SIGNS.md, Development Expo section 9): a placed sign carries one
-## `sign` block of stable ids and text - a display mode, two text fields and up
-## to eight item ids. It is saved with the station record and never stores a
+## `sign` block of stable ids and text - a display mode, three text fields and
+## up to eight item ids. It is saved with the station record and never stores a
 ## label or a scene path.
 const SIGN_ENTITY := "sign"
 ## The wide board (signs card 2): the same sign two cells across, its own item
 ## and recipe so the placement rules stay one entity = one footprint. Both
 ## entities carry the identical `sign` block and the identical editor.
 const SIGN_BOARD_ENTITY := "sign_board"
-const SIGN_ENTITIES: Array[String] = [SIGN_ENTITY, SIGN_BOARD_ENTITY]
+## The district board (signs card 3): the same sign three cells across and a
+## head taller, so a stacked header / subheader / body reads from standing
+## distance. Same block, same editor, same API - one more footprint.
+const SIGN_BOARD_LARGE_ENTITY := "sign_board_large"
+const SIGN_ENTITIES: Array[String] = [SIGN_ENTITY, SIGN_BOARD_ENTITY, SIGN_BOARD_LARGE_ENTITY]
 ## Defence sets (docs/DEFENSE_SETS.md): the gate leaf that hangs in a gate
 ## frame's opening. Right-click toggles it; closed it is solid to pathing and
 ## breachable like the rest of the castle kit, open it is a hole in the wall.
@@ -21,7 +25,13 @@ const GATE_ENTITY := "gate"
 ## How long the leaf takes to slide clear (presentation only; the pathing
 ## change is immediate, as a pulled lever would be).
 const GATE_SLIDE_SECONDS := 0.55
-const SIGN_MODES: Array[String] = ["text", "split", "items", "header_items"]
+## `header_body` (signs card 3) is the stacked board the owner asked for:
+## header, subheader and body one under another, the header largest. `split`
+## stays for genuinely two-column content.
+const SIGN_MODES: Array[String] = ["text", "split", "items", "header_items", "header_body"]
+## The stored text fields, in board order: heading / left, subheading / right,
+## body. `text_c` is only read by `header_body`.
+const SIGN_TEXT_FIELDS: Array[String] = ["text_a", "text_b", "text_c"]
 const SIGN_ITEM_SLOTS := 8
 ## What a stored text field may hold. It is longer than what the editor's own
 ## line lets the player type because an authored sign (the Expo's district and
@@ -801,7 +811,7 @@ static func is_sign(entity_id: String) -> bool:
 ## An empty sign: one text line, no items.
 static func default_sign() -> Dictionary:
 	var items: Array[String] = []
-	return {"mode": "text", "text_a": "", "text_b": "", "items": items}
+	return {"mode": "text", "text_a": "", "text_b": "", "text_c": "", "items": items}
 
 
 ## The sign block of a placed sign ({} when the station is not a sign).
@@ -814,7 +824,7 @@ func sign_data(instance_id: String) -> Dictionary:
 
 
 ## Writes the sign's content. `data` may carry any subset of mode / text_a /
-## text_b / items; whatever it omits keeps its current value. Unknown modes,
+## text_b / text_c / items; whatever it omits keeps its current value. Unknown modes,
 ## over-long text, unknown item ids and a ninth item are rejected, so a caller
 ## (the editor panel, an authored Expo fixture) cannot store a record the
 ## renderer or the save cannot read back.
@@ -831,7 +841,7 @@ func configure_sign(instance_id: String, data: Dictionary) -> Dictionary:
 		if mode not in SIGN_MODES:
 			return _result(false, "INVALID_SIGN_MODE")
 		merged["mode"] = mode
-	for field: String in ["text_a", "text_b"]:
+	for field: String in SIGN_TEXT_FIELDS:
 		if data.has(field):
 			merged[field] = str(data[field])
 	if data.has("items"):
@@ -863,7 +873,7 @@ func sanitized_sign(data: Dictionary) -> Dictionary:
 	var clean := default_sign()
 	var mode := str(data.get("mode", "text"))
 	clean["mode"] = mode if mode in SIGN_MODES else "text"
-	for field: String in ["text_a", "text_b"]:
+	for field: String in SIGN_TEXT_FIELDS:
 		var text := str(data.get(field, ""))
 		clean[field] = text.substr(0, SIGN_TEXT_LIMIT)
 	var raw: Variant = data.get("items", [])

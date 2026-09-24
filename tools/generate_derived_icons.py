@@ -53,6 +53,8 @@ DERIVED = [
     "sign_board",
     # Defence sets (docs/DEFENSE_SETS.md): the gate leaf and the rail turret.
     "gate", "rail_turret",
+    # Signs card 3 (docs/SIGNS.md): the District Board, three cells across.
+    "sign_board_large",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -513,6 +515,27 @@ def icon_sign_board() -> Image.Image:
     return canvas
 
 
+def icon_sign_board_large() -> Image.Image:
+    """The district board: a tall three-cell oak board on head-high posts,
+    carrying a stacked header, subheader and body."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    oak = (166, 114, 62, 255)
+    dark = (104, 66, 32, 255)
+    ink = (58, 40, 22, 255)
+    for x in (44, 128, 212):
+        draw.rectangle([x - 10, 176, x + 10, 240], fill=dark)
+    draw.polygon([(22, 240), (234, 240), (226, 250), (30, 250)], fill=dark)
+    draw.rectangle([8, 20, 248, 172], fill=oak, outline=dark, width=7)
+    draw.line([(34, 54), (222, 54)], fill=ink, width=18)
+    draw.line([(52, 92), (204, 92)], fill=ink, width=10)
+    for y in (122, 144):
+        draw.line([(38, y), (218, y)], fill=ink, width=6)
+    for x in (24, 232):
+        draw.ellipse([x - 7, 28, x + 7, 42], fill=(110, 118, 126, 255))
+    return canvas
+
+
 def icon_gate() -> Image.Image:
     """A portcullis leaf: two stiles, a mullion and three cross rails, hanging
     in the dark opening of a castle-stone frame."""
@@ -579,6 +602,7 @@ BUILDERS = {
     "miner": icon_miner, "ore_bin": icon_ore_bin,
     "warehouse": icon_warehouse, "foundry": icon_foundry,
     "sign": icon_sign, "sign_board": icon_sign_board,
+    "sign_board_large": icon_sign_board_large,
     "gate": icon_gate, "rail_turret": icon_rail_turret,
 }
 
