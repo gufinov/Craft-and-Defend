@@ -194,7 +194,12 @@ entrance sign only, its own card builds the rest), `origin` + `size` (a volume
 whose floor sits at `ground_y`), `entrance` (a cell on the district edge),
 `terrain`, `expansion_corridor` (a box at least one avenue wide, flush against
 the district and overlapping nothing), `connections`, `expansion_priority`,
-`sign`, `exhibits`.
+`sign`, `exhibits`, and optionally `sign_anchor` / `sign_facing`.
+
+| field | meaning |
+| --- | --- |
+| `sign_anchor` | Optional (card D2): where this district's own entrance board stands instead of on its `entrance` cell — the same four forms an exhibit's anchor takes, a cell offset `[x, y, z]` being relative to the **district's** origin, plus `"centre"`, `"entrance"` and `"near:<exhibit_id>"`. `near:` must name an exhibit that exists |
+| `sign_facing` | Optional (card D2): the compass direction the board reads towards, overriding "away from the district centre". The plaza uses it because a visitor is already standing inside the plaza — it is the spawn — so its board reads back at the spawn rather than at an arriving traveller |
 
 ### Exhibit
 
@@ -329,10 +334,35 @@ the right one.
 widest first (`SIGN_BOARD_FALLBACK`): a district board that finds no run of
 three free, supported cells anywhere in the ring around its anchor is laid as a
 wide board instead, and a wide board as a narrow sign, rather than failing the
-request. T233 reports which districts fell back; the central plaza's own
-entrance board is one of them today, so its six-line directory is smaller than
-the rest of the campus's boards. A depot plinth is two cells wide so both of a
-chest board's cells stand on stone.
+request. A depot plinth is two cells wide so both of a chest board's cells
+stand on stone.
+
+**A fallback is loud, and for a district it is a failure** (card D2). The
+builder records the width each request asked for beside the width it got;
+`board_fallbacks()` lists every request that shrank and the run prints
+`EXPO_SIGN_BOARD_FALLBACK owner=… wanted=… placed=…` as it happens. **T233
+fails** when a *district* board is in that list: the campus directory is the
+first thing the owner reads, and it must not quietly become the smallest board
+on the campus. An exhibit's board may still fall back; it is reported, not
+fatal.
+
+**Where a district's board stands** (card D2). By default it stands on the
+manifest's `entrance` cell, facing away from the district centre — the way a
+visitor arriving from outside reads it. Two things used to keep the central
+plaza's board at the two-cell width, and both are fixed:
+
+1. the board was queued **before** the district's pad was levelled, so the
+   only guaranteed ground under it was the avenue and there was no run of
+   three supported cells. `build_district` now queues a `full` district's
+   board **after** its pad (a `connect`-only district, which has nothing but
+   an avenue, still queues it straight away);
+2. `sign_anchor` was an exhibit-level field only. A district may now carry its
+   own, resolved by `ExpoBuilder.district_sign_anchor_for(district_id)` /
+   `district_sign_spot(district_id)` under exactly the rules the exhibit field
+   uses. The plaza's is `[23, 1, 10]` with `sign_facing: "south"`: its board
+   stands on its own levelled pad north-east of the spawn, three cells wide,
+   reading back at the player standing at the Core — and its `sign.board` is
+   `large`, not `wide`. **T246** is the check.
 
 **Sign anchors.** An exhibit's board would otherwise stand at its parcel's
 origin corner, which is wrong for a parcel the size of an arena. `sign_anchor`
@@ -735,7 +765,17 @@ newest `remark`.
 **Search** matches a lowercased substring of everything above - ids, display
 names, the sign's words, the district - and filters live as it is typed.
 **Filters**: district, category, **What's new** and status, each a toggle;
-`Clear filters` resets them. The list draws at most 60 rows and says so.
+`Clear filters` resets them.
+
+**Paged, not capped** (card D2). The list draws 60 rows at a time and the
+**◀ Previous / Next ▶** pager under it reaches the rest, so every entry of the
+campus is reachable without first guessing a search term. The count line reads
+`showing 1-60 of 110` (and, when a filter is on, `(of 110 entries)` after it),
+with `PAGE 1 OF 2` between the two buttons; the buttons grey out at the ends.
+Changing the search or any filter goes back to page 1, and a page that a
+narrower filter has emptied clamps to the last page that still exists.
+`directory_page_ids()`, `directory_page_count()` and `directory_page_summary()`
+are the seam **T247** walks the whole list through.
 
 ### 2. Teleport
 
@@ -779,7 +819,27 @@ id** - an exhibit id, or a placed station's instance id:
 - notes live in the **development save's own namespace**:
   `GameSession.snapshot()` writes `expo_notes` only while `development` is
   true, so they survive save / load and a normal or CoasterCraft save carries
-  no such key at all (T236 proves both).
+  no such key at all (T236 proves both);
+- and they are **written through to disk the moment they are saved** (card
+  D2), so a crash or a Quit-without-save cannot take a finding with it.
+
+**The journal.** `<data root>/development/expo_notes.json` is the notes' own
+store, beside the development save and outside the world checkpoint — a
+checkpoint is megabytes of voxels written when the owner says so, the journal
+is a few kilobytes written on every change. `ExpoNotes.flush()` writes it to a
+`.tmp` file and moves that over the real one, so a crash mid-write leaves
+either the old journal or the temporary file and `load_store()` reads both; a
+malformed journal is ignored rather than fatal.
+
+`DevelopmentMode.bind_notes(session)` binds it at Development start, **after**
+the world snapshot has been restored, and **merges** rather than replaces:
+neither side is a subset of the other after a Reset Expo, so the store ends up
+holding the union. An entry is the same entry when its timestamp, status and
+remark all match, which is what makes reading the journal twice a no-op. The
+panel says `Written to disk — it survives a crash.` when a note is saved, and
+says so loudly when it could not be. **T245** is the check, and
+`--expo-notes-export` reads the journal on top of the checkpoint, so a handoff
+table can be written from notes no world save ever saw.
 
 **Export.** The panel's `Export Notes`, and the headless switch
 `--expo-notes-export` (which reads the development checkpoint and opens no
@@ -791,9 +851,12 @@ exported build, where `res://..` is inside the package, it lands in
 
 ### 5. Checks
 
-**T234_DIRECTORY_SEARCH**, **T235_DIRECTORY_TELEPORT** and **T236_EXPO_NOTES**
-in `--development-expo-automation=gate`; **T234V_DIRECTORY_VIEW**
-(`development-expo-directory.png`) in `=visual`.
+**T234_DIRECTORY_SEARCH**, **T235_DIRECTORY_TELEPORT**, **T236_EXPO_NOTES**,
+**T245_NOTES_DURABLE** and **T247_DIRECTORY_PAGING** in
+`--development-expo-automation=gate`; **T234V_DIRECTORY_VIEW**
+(`development-expo-directory.png`) and **T247V_DIRECTORY_PAGING_VIEW**
+(`development-expo-directory-page2.png`, the last page with its count line and
+pager) in `=visual`.
 
 ### 6. Calls made by this card
 
@@ -936,6 +999,21 @@ suite is the milestone's home; later cards add their records to it.
   loaded, solid ground with head room within six cells of its parcel, looking
   at it, for three districts: the Construction Yard, Lighting, and the far
   CoasterCraft park whose terrain has to stream in first.
+- **T245_NOTES_DURABLE** (card D2) — a note saved in the panel is in the
+  journal on disk before anything else happens, with **no** development
+  checkpoint written; a store reopened the way the next Development start
+  reopens it still carries it; reading the journal twice never duplicates it;
+  the markdown export carries it; and an ordinary game writes neither an
+  `expo_notes` key nor a journal of its own.
+- **T246_PLAZA_BOARD** (card D2) — the central plaza's orientation board is
+  the three-cell District Board, standing within four cells of the
+  district-level `sign_anchor` the manifest gives it and owning all three of
+  its cells, and no district board on the campus has fallen back to a
+  narrower width.
+- **T247_DIRECTORY_PAGING** (card D2) — paging the unfiltered Directory from
+  the first page to the last reaches every entry exactly once (the union is
+  the whole entry list), the drawn row count matches the page, and the count
+  line reads the right `showing a-b of n` on every page.
 - **T236_EXPO_NOTES** — a remark and a status are stored per subject and
   appended as a history (a status change keeps the newest remark); the row in
   the panel shows both; the notes go through the development save's own

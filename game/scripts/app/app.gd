@@ -188,8 +188,10 @@ var _battlefield_station_id := ""
 ## only, opened with the raw key K (docs/KEYBINDS.md).
 const DIRECTORY_KEY := KEY_K
 const DIRECTORY_HELP := "K OR ESCAPE CLOSES  ·  THE WORLD KEEPS RUNNING  ·  TELEPORT TAKES YOU THERE  ·  NOTES RECORD WHAT YOU FIND"
-## Rows drawn at once; beyond this the summary asks for a narrower search.
-const DIRECTORY_ROW_LIMIT := 60
+## Rows drawn at once. The list is **paged**, not capped (card D2): every
+## entry is reachable by walking the pages, and the summary says which slice
+## of how many is on screen.
+const DIRECTORY_PAGE_SIZE := 60
 const DIRECTORY_REMARK_LIMIT := 240
 ## Where a teleport puts the player while the column streams in, and how far
 ## up and down the settled surface is looked for afterwards.
@@ -213,6 +215,9 @@ var directory_category_row: HFlowContainer
 var directory_status_row: HFlowContainer
 var directory_list: VBoxContainer
 var directory_summary: Label
+var directory_page_label: Label
+var directory_previous_button: Button
+var directory_next_button: Button
 var directory_message: Label
 var directory_notes_card: PanelContainer
 var directory_notes_title: Label
@@ -223,6 +228,13 @@ var crafting_notes_button: Button
 var sign_notes_button: Button
 var _directory_rows: Array[Dictionary] = []
 var _directory_filters: Dictionary = {"query": "", "district": "", "category": "", "status": "", "whats_new": false}
+## Which page of the filtered list is drawn (0-based). Any change to the
+## filters takes the list back to the first page.
+var _directory_page := 0
+## The ids drawn on the current page, in order: what T247 pages through.
+var _directory_page_ids: Array[String] = []
+## The last summary the list drew, for the gate and for the visual record.
+var _directory_page_summary: Dictionary = {"shown": 0, "total": 0, "first": 0, "last": 0, "page": 1, "pages": 1}
 var _directory_subject := ""
 var _directory_subject_label := ""
 var _directory_subject_kind := ""
@@ -2569,6 +2581,22 @@ func _build_directory(canvas: CanvasLayer) -> void:
 	directory_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	directory_list.add_theme_constant_override("separation", 6)
 	list_scroll.add_child(directory_list)
+	# The pager (card D2): the list shows 60 rows at a time and these reach
+	# the rest of them, so no entry is unreachable behind a cap.
+	var page_row := HBoxContainer.new()
+	page_row.add_theme_constant_override("separation", 8)
+	list_column.add_child(page_row)
+	directory_previous_button = _button("◀ Previous", _directory_previous_page, Vector2(150, 36))
+	page_row.add_child(directory_previous_button)
+	directory_page_label = Label.new()
+	directory_page_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	directory_page_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	directory_page_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	directory_page_label.add_theme_font_size_override("font_size", 13)
+	directory_page_label.add_theme_color_override("font_color", Color("9fd8e8"))
+	page_row.add_child(directory_page_label)
+	directory_next_button = _button("Next ▶", _directory_next_page, Vector2(150, 36))
+	page_row.add_child(directory_next_button)
 
 	directory_notes_card = PanelContainer.new()
 	directory_notes_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2639,6 +2667,7 @@ func _open_directory() -> void:
 	hud_layer.hide()
 	directory_message.text = DIRECTORY_HELP
 	directory_message.add_theme_color_override("font_color", Color("85d5ea"))
+	_directory_page = 0
 	_refresh_directory()
 	directory_panel.show()
 	directory_search.grab_focus()
@@ -2673,18 +2702,64 @@ func _refresh_directory() -> void:
 	for child in directory_list.get_children():
 		directory_list.remove_child(child)
 		child.queue_free()
-	var listed := mini(shown.size(), DIRECTORY_ROW_LIMIT)
-	for index in range(listed):
+	# Paged, never capped: the page is clamped to what the current filters
+	# leave, so narrowing the search from page 3 lands on the last page that
+	# still exists instead of on an empty one.
+	var pages := maxi(1, int(ceil(float(shown.size()) / float(DIRECTORY_PAGE_SIZE))))
+	_directory_page = clampi(_directory_page, 0, pages - 1)
+	var first := _directory_page * DIRECTORY_PAGE_SIZE
+	var last := mini(first + DIRECTORY_PAGE_SIZE, shown.size())
+	_directory_page_ids.clear()
+	for index in range(first, last):
+		_directory_page_ids.append(str(shown[index].get("id", "")))
 		directory_list.add_child(_directory_row_card(shown[index]))
 	if shown.is_empty():
 		var empty := Label.new()
 		empty.text = "Nothing matches. Clear the filters, or search for part of an id or a sign's words."
 		empty.add_theme_color_override("font_color", Color("8fa5af"))
 		directory_list.add_child(empty)
-	directory_summary.text = "%d of %d entries%s  ·  newest stamp %s" % [listed, _directory_rows.size(),
-		"  ·  narrow the search to see the rest" if shown.size() > listed else "",
-		newest if not newest.is_empty() else "—"]
+	_directory_page_summary = {"shown": last - first, "total": _directory_rows.size(), "matched": shown.size(),
+		"first": first + 1 if last > first else 0, "last": last, "page": _directory_page + 1, "pages": pages}
+	var slice_text := "no entries" if shown.is_empty() else "showing %d–%d of %d" % [first + 1, last, shown.size()]
+	var of_all := "" if shown.size() == _directory_rows.size() else " (of %d entries)" % _directory_rows.size()
+	directory_summary.text = "%s%s  ·  newest stamp %s" % [slice_text, of_all, newest if not newest.is_empty() else "—"]
+	directory_page_label.text = "PAGE %d OF %d" % [_directory_page + 1, pages]
+	directory_previous_button.disabled = _directory_page <= 0
+	directory_next_button.disabled = _directory_page >= pages - 1
 	_refresh_directory_notes()
+
+
+## The filtered list's page count, and the ids drawn on the page now on
+## screen: the seam T247 walks the whole list through.
+func directory_page_count() -> int:
+	return int(_directory_page_summary.get("pages", 1))
+
+
+func directory_page_ids() -> Array[String]:
+	return _directory_page_ids.duplicate()
+
+
+func directory_page_summary() -> Dictionary:
+	return _directory_page_summary.duplicate()
+
+
+func _directory_previous_page() -> void:
+	_directory_show_page(_directory_page - 1)
+
+
+func _directory_next_page() -> void:
+	_directory_show_page(_directory_page + 1)
+
+
+func _directory_show_page(page: int) -> void:
+	if state != AppState.DIRECTORY:
+		return
+	var pages := directory_page_count()
+	var wanted := clampi(page, 0, maxi(0, pages - 1))
+	if wanted == _directory_page:
+		return
+	_directory_page = wanted
+	_refresh_directory()
 
 
 func _refresh_directory_filters() -> void:
@@ -2781,6 +2856,7 @@ func _on_directory_search_changed(query: String) -> void:
 	if state != AppState.DIRECTORY:
 		return
 	_directory_filters["query"] = query
+	_directory_page = 0
 	_refresh_directory()
 
 
@@ -2788,6 +2864,7 @@ func _set_directory_filter(field: String, value: String) -> void:
 	if state != AppState.DIRECTORY:
 		return
 	_directory_filters[field] = "" if str(_directory_filters.get(field, "")) == value else value
+	_directory_page = 0
 	_refresh_directory()
 
 
@@ -2795,6 +2872,7 @@ func _toggle_directory_whats_new() -> void:
 	if state != AppState.DIRECTORY:
 		return
 	_directory_filters["whats_new"] = not bool(_directory_filters.get("whats_new", false))
+	_directory_page = 0
 	_refresh_directory()
 
 
@@ -2803,6 +2881,7 @@ func _clear_directory_filters() -> void:
 		return
 	_directory_filters = {"query": "", "district": "", "category": "", "status": "", "whats_new": false}
 	directory_search.text = ""
+	_directory_page = 0
 	_refresh_directory()
 
 
@@ -2910,7 +2989,14 @@ func _add_directory_note() -> void:
 		_directory_subject_label, _directory_subject_kind)
 	if result.get("ok", false):
 		directory_note_edit.text = ""
-		_directory_status("Note kept on %s (%s). Save the game to keep it on disk." % [_directory_subject_label, ExpoNotes.status_label(_directory_note_status)], true)
+		# Card D2: the note is already on disk when this line is drawn - the
+		# owner is never told to save the world to keep a finding.
+		var stored := bool(result.get("stored", false))
+		_directory_status("Note kept on %s (%s). %s" % [_directory_subject_label,
+			ExpoNotes.status_label(_directory_note_status),
+			"Written to disk — it survives a crash." if stored
+				else "NOT WRITTEN TO DISK (%s): save the game to keep it." % str(result.get("store_reason", "")).replace("_", " ").to_lower()],
+			stored)
 	else:
 		_directory_status("Note refused: %s" % str(result.get("reason", "")).replace("_", " ").to_lower(), false)
 	_refresh_directory()
@@ -2920,8 +3006,10 @@ func _add_directory_note() -> void:
 func _apply_directory_status() -> void:
 	if state != AppState.DIRECTORY or session == null or _directory_subject.is_empty():
 		return
-	session.expo_notes.set_status(_directory_subject, _directory_note_status, _directory_subject_label, _directory_subject_kind)
-	_directory_status("%s is now %s." % [_directory_subject_label, ExpoNotes.status_label(_directory_note_status)], true)
+	var result := session.expo_notes.set_status(_directory_subject, _directory_note_status, _directory_subject_label, _directory_subject_kind)
+	_directory_status("%s is now %s.%s" % [_directory_subject_label, ExpoNotes.status_label(_directory_note_status),
+		" Written to disk." if bool(result.get("stored", false)) else " NOT WRITTEN TO DISK — save the game to keep it."],
+		bool(result.get("stored", false)))
 	_refresh_directory()
 
 
@@ -3033,6 +3121,12 @@ func _run_expo_notes_export() -> void:
 			notes.restore(saved)
 	else:
 		print("EXPO_NOTES_EXPORT no development checkpoint (%s)" % str(checkpoint.get("reason", "")))
+	# The journal on top of (not instead of) the checkpoint: a note left in a
+	# session that was never saved exists only there (card D2).
+	notes.attach_store(development.notes_store_path())
+	var journal := notes.load_store()
+	print("EXPO_NOTES_EXPORT journal %s existed=%s merged_entries=%d" % [notes.store_path(),
+		journal.get("existed", false), int(journal.get("entries", 0))])
 	var result := export_expo_notes(notes)
 	if result.get("ok", false):
 		print("EXPO_NOTES_EXPORT_OK")

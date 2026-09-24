@@ -96,6 +96,10 @@ const DIRECTORY_LANDING_CELLS := 6.0
 const NOTES_SUBJECT := "cy_wall_kit"
 const NOTES_FIRST_REMARK := "The stair at the west end leaves a gap."
 const NOTES_SECOND_REMARK := "Merlons look right after a rebuild."
+## T245 (card D2): the subject the durability test leaves its note on, kept
+## apart from T236's so the two tests never read each other's history.
+const DURABLE_SUBJECT := "dr_rail_turret"
+const DURABLE_REMARK := "Left without saving the world - this must still be here."
 ## Frames the parked car is given to ride the whole circuit and come home.
 const RIDE_FRAME_BUDGET := 40000
 const RIDE_TIMEOUT_MSEC := 240000
@@ -147,6 +151,7 @@ func _run_gate() -> void:
 	_test_signs()
 	_test_sign_anchors()
 	_test_expo_boards()
+	_test_plaza_board()
 	await _test_industry()
 	await _test_lighting()
 	await _test_construction_yard()
@@ -165,6 +170,8 @@ func _run_gate() -> void:
 	await _test_grand_coaster()
 	_test_directory_search()
 	await _test_directory_teleport()
+	_test_directory_paging()
+	await _test_notes_durable()
 	await _test_expo_notes()
 	await _settle_near_spawn()
 
@@ -754,11 +761,63 @@ func _test_expo_boards() -> void:
 			"header": block.get("text_a", ""), "subheader": block.get("text_b", ""),
 			"body": block.get("text_c", "")})
 	var fulfilled := builder.pending_signs().is_empty()
-	var ok: bool = problems.is_empty() and not boards.is_empty() and large > 0 and fulfilled
+	# Card D2: a **district** board that could not have the width its manifest
+	# block asked for is a failure, not a note. The campus directory is the
+	# first thing the owner reads; it must not quietly shrink.
+	var district_fallbacks: Array[Dictionary] = []
+	for fell_back: Dictionary in builder.board_fallbacks():
+		var owner_id := str(fell_back.get("owner", ""))
+		if owner_id in app.development.layout.district_ids():
+			district_fallbacks.append({"district": owner_id, "wanted": str(fell_back.get("requested_entity", "")),
+				"placed": str(fell_back.get("entity", "")), "cell": fell_back.get("cell", Vector3i.ZERO)})
+			problems.append("%s:fell_back_to=%s" % [owner_id, str(fell_back.get("entity", ""))])
+	var ok: bool = problems.is_empty() and not boards.is_empty() and large > 0 and fulfilled 		and district_fallbacks.is_empty()
 	_record("T233_EXPO_BOARDS", ok,
-		"every Expo district's entrance board carries the stacked Header + Subheader + Body block on the three-cell district board (a district with no room for three cells falls back to the two-cell wide board, never to a narrow sign), and every manifest sign request is still fulfilled",
+		"every Expo district's entrance board carries the stacked Header + Subheader + Body block on the three-cell district board, no district board falls back to a narrower width, and every manifest sign request is still fulfilled",
 		{"boards": boards, "district_boards": large, "problems": problems,
+		"district_fallbacks": district_fallbacks, "exhibit_fallbacks": builder.board_fallbacks().size() - district_fallbacks.size(),
 		"requested": requests.size(), "pending": builder.pending_signs().size()})
+
+
+## T246 (card D2). The central plaza's own board is the three-cell District
+## Board, standing at the district-level `sign_anchor` the manifest gives it
+## rather than on the avenue where there was no run of three supported cells -
+## and no district board anywhere on the campus has fallen back to a narrower
+## width. The plaza board used to be the smallest board on the campus; it is
+## the biggest one now.
+func _test_plaza_board() -> void:
+	var builder: ExpoBuilder = app.development.expo_builder
+	var workstations: WorkstationService = app.session.workstations
+	var request := _sign_request_of(builder.sign_requests(), "central_plaza")
+	var instance_id := str(request.get("instance_id", ""))
+	var station: Dictionary = workstations.stations.get(instance_id, {})
+	var entity_id := str(station.get("entity_id", ""))
+	var cell: Vector3i = request.get("cell", Vector3i.ZERO)
+	var spot := builder.district_sign_spot("central_plaza")
+	var anchored := builder.district_sign_anchor_for("central_plaza")
+	var anchor_cell: Vector3i = spot.get("cell", Vector3i.ZERO)
+	var distance := Vector2(float(cell.x - anchor_cell.x), float(cell.z - anchor_cell.z)).length()
+	# All three of its cells answer to it, so it really is three cells wide.
+	var rotation := int(station.get("rotation_quarters", 0))
+	var owned: Array[Vector3i] = []
+	var owns_run := true
+	for step in range(3):
+		var part: Vector3i = cell + workstations.footprints.rotate_offset(Vector3i(0, 0, step), rotation)
+		owned.append(part)
+		if workstations.station_at_cell(part) != instance_id:
+			owns_run = false
+	var district_fallbacks: Array[String] = []
+	for fell_back: Dictionary in builder.board_fallbacks():
+		if str(fell_back.get("owner", "")) in app.development.layout.district_ids():
+			district_fallbacks.append(str(fell_back.get("owner", "")))
+	var placed_ok: bool = bool(request.get("ok", false)) 		and entity_id == WorkstationService.SIGN_BOARD_LARGE_ENTITY 		and not bool(request.get("fell_back", true))
+	var anchored_ok: bool = not anchored.is_empty() and distance <= float(SIGN_ANCHOR_TOLERANCE)
+	var ok: bool = placed_ok and anchored_ok and owns_run and district_fallbacks.is_empty()
+	_record("T246_PLAZA_BOARD", ok,
+		"the central plaza's orientation board is the three-cell District Board, standing within %d cells of the district-level `sign_anchor` the manifest gives it and owning all three of its cells, and no district board on the campus falls back to a narrower width" % SIGN_ANCHOR_TOLERANCE,
+		{"entity": entity_id, "cell": cell, "anchor_cell": anchor_cell, "distance": distance,
+		"facing": str(spot.get("facing", "")), "anchor": anchored, "owned_cells": owned, "owns_run": owns_run,
+		"fell_back": bool(request.get("fell_back", false)), "district_fallbacks": district_fallbacks})
 
 
 ## The request the builder recorded for `owner_id` ({} when there is none).
@@ -2243,6 +2302,147 @@ func _test_directory_teleport() -> void:
 	_record("T235_DIRECTORY_TELEPORT", ok, "selecting an exhibit stands the player on loaded, solid ground within %d cells of its parcel, looking at it, in three districts including the far CoasterCraft park" % int(DIRECTORY_LANDING_CELLS), evidence)
 
 
+## T247 (card D2). The Directory pages instead of capping: with no filter on,
+## walking the pages from the first to the last reaches **every** entry
+## exactly once, the union is the whole campus list, and the count line says
+## which slice of how many is on screen.
+func _test_directory_paging() -> void:
+	var evidence: Dictionary = {}
+	if app.state != CraftAndDefendApp.AppState.DIRECTORY:
+		app._open_directory()
+	app._clear_directory_filters()
+	var expected: Array[String] = []
+	for row: Dictionary in app._directory_rows:
+		expected.append(str(row.get("id", "")))
+	var pages := app.directory_page_count()
+	var seen: Array[String] = []
+	var duplicates: Array[String] = []
+	var page_sizes: Array[int] = []
+	var page_lines: Array[String] = []
+	var summary_ok := true
+	var first_button_ok: bool = app.directory_previous_button.disabled
+	for page in range(pages):
+		if page > 0:
+			app._directory_next_page()
+		var summary := app.directory_page_summary()
+		page_lines.append(app.directory_summary.text)
+		var ids := app.directory_page_ids()
+		page_sizes.append(ids.size())
+		# The count line is the promise this test is really about.
+		if int(summary.get("page", 0)) != page + 1 or int(summary.get("pages", 0)) != pages \
+			or int(summary.get("total", 0)) != expected.size() \
+			or int(summary.get("shown", 0)) != ids.size() \
+			or int(summary.get("first", 0)) != seen.size() + 1 \
+			or int(summary.get("last", 0)) != seen.size() + ids.size() \
+			or not app.directory_summary.text.contains("showing %d\u2013%d of %d" % [seen.size() + 1, seen.size() + ids.size(), expected.size()]) \
+			or app.directory_page_label.text != "PAGE %d OF %d" % [page + 1, pages]:
+			summary_ok = false
+		# The rows the panel actually drew, not just the model behind it.
+		if ids.size() != app.directory_list.get_child_count():
+			summary_ok = false
+		for entry_id: String in ids:
+			if seen.has(entry_id):
+				duplicates.append(entry_id)
+			else:
+				seen.append(entry_id)
+	var last_button_ok: bool = app.directory_next_button.disabled
+	var missing: Array[String] = []
+	for entry_id: String in expected:
+		if not seen.has(entry_id):
+			missing.append(entry_id)
+	var ok: bool = not expected.is_empty() and missing.is_empty() and duplicates.is_empty() \
+		and seen.size() == expected.size() and pages > 1 and summary_ok \
+		and first_button_ok and last_button_ok
+	evidence = {"entries": expected.size(), "pages": pages, "page_sizes": page_sizes,
+		"reached": seen.size(), "missing": missing, "duplicates": duplicates,
+		"page_size": CraftAndDefendApp.DIRECTORY_PAGE_SIZE, "summary_lines": page_lines,
+		"summary_ok": summary_ok, "previous_disabled_on_first": first_button_ok,
+		"next_disabled_on_last": last_button_ok}
+	# Back to the first page so the next test (and the visual shot) opens on it.
+	app._directory_show_page(0)
+	_record("T247_DIRECTORY_PAGING", ok,
+		"the Expo Directory pages the whole campus instead of capping at %d rows: paging from the first page to the last reaches every one of the %d entries exactly once, and the count line reads `showing a-b of n` with the right numbers on every page" % [CraftAndDefendApp.DIRECTORY_PAGE_SIZE, expected.size()],
+		evidence)
+
+
+## T245 (card D2). A note is on disk the moment it is saved, not at the next
+## world save: the journal beside the development save carries it, a fresh
+## store opened the way the next Development start opens it finds it there,
+## and the export reads it - all with **no** world checkpoint written. An
+## ordinary game still carries no notes anywhere.
+func _test_notes_durable() -> void:
+	var evidence: Dictionary = {}
+	var notes: ExpoNotes = app.session.expo_notes
+	var store := notes.store_path()
+	var expected_store := ExpoNotes.store_path_for(app.development.saves.data_root)
+	var bound: bool = notes.is_bound() and store == expected_store
+	evidence["store"] = {"path": store, "expected": expected_store, "bound": bound}
+	# A rerun into the same data root would otherwise find the previous run's
+	# note already merged in from the journal, which is exactly the behaviour
+	# this test is about - so the journal starts empty and earns it again.
+	notes.clear()
+	notes.flush()
+	if app.state != CraftAndDefendApp.AppState.DIRECTORY:
+		app._open_directory()
+	app._open_directory_notes(DURABLE_SUBJECT, "Rail Turret", "exhibit")
+	app._set_directory_note_status("broken")
+	app.directory_note_edit.text = DURABLE_REMARK
+	app._add_directory_note()
+	var told := app.directory_message.text
+	app._close_directory()
+	# 1. It is on disk now, before anything has been saved.
+	var written: bool = FileAccess.file_exists(store)
+	var raw := FileAccess.get_file_as_string(store) if written else ""
+	evidence["written_immediately"] = {"exists": written, "bytes": raw.length(),
+		"contains_remark": raw.contains(DURABLE_REMARK), "panel_said": told}
+	# 2. The world was **not** saved: no development checkpoint knows this note.
+	var checkpoint := app.development.saves.read_checkpoint()
+	var checkpoint_notes := ExpoNotes.new()
+	var checkpoint_data: Variant = checkpoint.get("snapshot", {}).get("expo_notes", {})
+	checkpoint_notes.restore(checkpoint_data if checkpoint_data is Dictionary else {})
+	var unsaved: bool = not checkpoint_notes.has_subject(DURABLE_SUBJECT)
+	evidence["world_not_saved"] = {"checkpoint": bool(checkpoint.get("ok", false)),
+		"reason": str(checkpoint.get("reason", "")), "knows_note": not unsaved}
+	# 3. The next Development start finds it: a fresh store, opened the way
+	#    `DevelopmentMode.bind_notes` opens it, with nothing else behind it.
+	var reopened := ExpoNotes.new()
+	reopened.attach_store(store)
+	var loaded := reopened.load_store()
+	var survives: bool = reopened.has_subject(DURABLE_SUBJECT) \
+		and reopened.status_of(DURABLE_SUBJECT) == "broken" \
+		and str(reopened.latest_remark(DURABLE_SUBJECT).get("remark", "")) == DURABLE_REMARK
+	evidence["survives_restart"] = {"loaded": loaded, "status": reopened.status_of(DURABLE_SUBJECT),
+		"remark": str(reopened.latest_remark(DURABLE_SUBJECT).get("remark", "")), "survives": survives}
+	# 4. Loading the journal twice is a no-op, so a merge never duplicates.
+	var before := reopened.note_count(DURABLE_SUBJECT)
+	reopened.load_store()
+	var idempotent: bool = reopened.note_count(DURABLE_SUBJECT) == before and before == 1
+	evidence["merge_idempotent"] = {"entries": reopened.note_count(DURABLE_SUBJECT), "before": before}
+	# 5. The export reads that reopened store, so a handoff table can be
+	#    written from notes the world never saved.
+	var exported := app.export_expo_notes(reopened)
+	var path := str(exported.get("path", ""))
+	var text := FileAccess.get_file_as_string(path) if FileAccess.file_exists(path) else ""
+	var exported_ok: bool = bool(exported.get("ok", false)) and text.contains(DURABLE_REMARK) \
+		and text.contains(DURABLE_SUBJECT)
+	evidence["export"] = {"path": path, "bytes": text.length(), "carries_note": exported_ok}
+	# 6. Normal saves untouched: an ordinary snapshot has no notes namespace,
+	#    and no journal was ever written beside the ordinary game's saves.
+	app.session.development = false
+	var normal := app.session.snapshot()
+	app.session.development = true
+	var normal_store := ExpoNotes.store_path_for(app.saves.data_root)
+	var isolated: bool = not normal.has("expo_notes") and not FileAccess.file_exists(normal_store) \
+		and app.development.data_root() != app.saves.data_root
+	evidence["normal_saves_untouched"] = {"expo_notes_key": normal.has("expo_notes"),
+		"journal_beside_normal_saves": FileAccess.file_exists(normal_store), "path": normal_store}
+	var ok: bool = bound and written and raw.contains(DURABLE_REMARK) and unsaved and survives \
+		and idempotent and exported_ok and isolated
+	_record("T245_NOTES_DURABLE", ok,
+		"a test note is written through to the development namespace's own journal the moment it is saved: it is on disk with no world checkpoint written, a store reopened the way the next Development start reopens it still carries it, re-reading the journal never duplicates it, the markdown export carries it, and an ordinary game still writes no notes anywhere",
+		evidence)
+
+
 ## T236. A note with a status is stored, survives a save/restore, shows in the
 ## panel, keeps its history, exports as the markdown table - and no snapshot
 ## outside Development mode carries the notes namespace at all.
@@ -2371,4 +2571,16 @@ func _shoot_directory() -> void:
 	var path := app.data_root.path_join("development-expo-directory.png")
 	var shot := await _save_viewport(path)
 	_record("T234V_DIRECTORY_VIEW", shot, "rendered evidence of the Expo Directory: the search field, the district / category / status filters and the icon-first rows with their status badges", {"path": path, "rows": app.directory_list.get_child_count()})
+	# Card D2: the second page of the unfiltered list, so the pager, its count
+	# line and the rows beyond the first sixty are all on the picture.
+	app._clear_directory_filters()
+	app._directory_next_page()
+	for _frame in range(30):
+		await get_tree().process_frame
+	var paged_path := app.data_root.path_join("development-expo-directory-page2.png")
+	var paged_shot := await _save_viewport(paged_path)
+	_record("T247V_DIRECTORY_PAGING_VIEW", paged_shot,
+		"rendered evidence that the Directory pages rather than caps: the last page of the unfiltered campus list with its `showing a-b of n` count line and the Previous / Next pager under it",
+		{"path": paged_path, "rows": app.directory_list.get_child_count(),
+		"summary": app.directory_summary.text, "page": app.directory_page_label.text})
 	app._close_directory()

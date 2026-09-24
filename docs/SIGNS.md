@@ -20,7 +20,13 @@ one item with a placement option:
 
 The Expo's district entrance boards are the District Board and its exhibit
 boards are the Wide Board (signs card 3): the campus is read walking past, from
-four to six metres, and the owner asked for bigger boards. The narrow `sign`
+four to six metres, and the owner asked for bigger boards. A district board
+that finds no run of three supported cells still falls back to the Wide Board
+rather than being lost — but for a **district** that is now a gate failure and
+not a footnote (card D2, T233/T246), and a district may carry its own
+`sign_anchor` / `sign_facing` in the Expo manifest to stand its board where
+three cells do fit. The central plaza's board is a District Board on its own
+pad, no longer the narrowest board on the campus. The narrow `sign`
 stays for the player's own use, and none of this restricts placement - any of
 the three places anywhere the mount rules allow.
 
@@ -184,4 +190,6 @@ content through a real save; the rendered evidence `T212_SIGN_PRESENTATION` and
 `T212_SIGN_WIDE_PRESENTATION` (`--p3d-usability-automation=visual`,
 `p3d-sign-item-grid.png` and `p3d-sign-wide-board.png`); and
 `T225_SIGN_ANCHORS` (`--development-expo-automation=gate`) for the Expo's use of
-both boards. See [the test plan](TEST_PLAN.md).
+both boards; and `T246_PLAZA_BOARD` (`--development-expo-automation=gate`) for
+the plaza's three-cell board at its district anchor, with no district board
+anywhere falling back to a narrower width. See [the test plan](TEST_PLAN.md).

@@ -502,6 +502,11 @@ def validate_development_expo(expo, content, root=ROOT):
         if isinstance(anchor, str) and anchor.startswith("near:"):
             require(anchor[5:] in exhibits,
                     f"expo exhibit {name}: sign anchor names unknown exhibit {anchor[5:]}")
+    for name, district in districts.items():
+        anchor = district.get("sign_anchor")
+        if isinstance(anchor, str) and anchor.startswith("near:"):
+            require(anchor[5:] in exhibits,
+                    f"expo district {name}: sign anchor names unknown exhibit {anchor[5:]}")
     require(reserved >= 1, "expo: at least one visible reserved future-expansion parcel is required")
     boxes = expo_boxes(expo)
     for first in range(len(boxes)):
@@ -565,6 +570,27 @@ def validate_expo_sign_anchor(exhibit, label):
         require(vector(anchor), f"{label}: invalid sign anchor")
         require(all(0 <= anchor[axis] < exhibit["footprint"][axis] for axis in range(3)),
                 f"{label}: sign anchor falls outside the footprint")
+        return
+    require(isinstance(anchor, str) and (anchor in EXPO_SIGN_ANCHORS or anchor.startswith("near:")),
+            f"{label}: invalid sign anchor {anchor}")
+
+
+def validate_expo_district_sign_anchor(district, label):
+    """A district's optional `sign_anchor` / `sign_facing` (card D2): the same
+    four forms an exhibit's anchor takes, an offset being relative to the
+    district's own origin, plus an optional compass facing for the board. The
+    plaza uses both, because its entrance cell sits on the avenue where there
+    is no run of three supported cells for the three-cell district board."""
+    if "sign_facing" in district:
+        require(district["sign_facing"] in EXPO_ORIENTATIONS,
+                f"{label}: invalid sign facing {district['sign_facing']}")
+    if "sign_anchor" not in district:
+        return
+    anchor = district["sign_anchor"]
+    if isinstance(anchor, list):
+        require(vector(anchor), f"{label}: invalid sign anchor")
+        require(all(0 <= anchor[axis] < district["size"][axis] for axis in range(3)),
+                f"{label}: sign anchor falls outside the district")
         return
     require(isinstance(anchor, str) and (anchor in EXPO_SIGN_ANCHORS or anchor.startswith("near:")),
             f"{label}: invalid sign anchor {anchor}")
