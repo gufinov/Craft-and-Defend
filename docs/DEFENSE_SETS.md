@@ -19,7 +19,7 @@ later mechanisms" ([castle plan](CASTLE_CONSTRUCTION_AND_CRAFTING.md)). The
 |---|---|
 | Entity | `gate`, 1 × 2 cells (`occupied_offsets` `[0,0,0]`, `[0,1,0]`) |
 | Mount | `gate_mount` — a new socket `gate_channel` on `gate_frame` at offset `[1,0,0]`; the leaf's `support_offsets` are the two jambs beside it, so the only place it fits is a frame's opening |
-| Recipe | Workbench, order 219: 6 castle stone + 2 iron ingot → 1 |
+| Recipe | Workbench, order 220: 6 castle stone + 2 iron ingot → 1 |
 | Integrity | 120, repaired with castle stone (+20 a piece), like the rest of the kit |
 | Control | **Right-click** the leaf. No lever, no plate (out of scope by the card) |
 
@@ -117,7 +117,7 @@ catapult's `siege` block with `rail_speed`, mounted on `rail_mount`:
 | Fire mode | `ballistic` (the existing class), 8 damage, 4–26 cells, 3.0 s, arc 6 |
 | Munitions | stone shot or flame shot, capacity 4 (and `starting_ammo` 4 — see below) |
 | Rail speed | 1.6 cells/s |
-| Recipe | Workbench, order 220: 3 planks + 3 iron ingot + 2 stone → 1 |
+| Recipe | Workbench, order 221: 3 planks + 3 iron ingot + 2 stone → 1 |
 | Integrity | 40, repaired with planks |
 
 Everything else is already built: `SiegeDefenseService.advance` rides the rails

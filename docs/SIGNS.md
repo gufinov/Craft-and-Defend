@@ -11,7 +11,7 @@ item with a placement option:
 | --- | --- | --- |
 | Item / entity id | `sign` | `sign_board` |
 | Category / stack | `building`, 16 | `building`, 16 |
-| Workbench recipe | 2 Planks + 1 Stick → 1 Sign (`recipe_book_order` 218) | 4 Planks + 2 Sticks → 1 Wide Board (`recipe_book_order` 219, last in the book) |
+| Workbench recipe | 2 Planks + 1 Stick → 1 Sign (`recipe_book_order` 218) | 4 Planks + 2 Sticks → 1 Wide Board (`recipe_book_order` 219, ahead of the defence sets' Gate 220 and Rail Turret 221) |
 | Footprint | one cell (`occupied_offsets` `[[0, 0, 0]]`) | two cells (`[[0, 0, 0], [0, 0, 1]]`) |
 | Support (ground mount) | the cell below | the cell below each of the two |
 | Board | 0.92 m across, one post | 1.92 m across, a post at each end |
