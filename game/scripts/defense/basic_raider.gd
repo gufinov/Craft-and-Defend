@@ -10,6 +10,10 @@ signal stuck
 ## PROGRESS_STAGE_SECONDS[stage - 1] seconds (1: re-plan wide, 2: unstick
 ## hop, 3: stalled out). The drill owns the goal (set_goal / clear_goal).
 signal progress_stalled(stage: int)
+## Traps card 2 (docs/TRAPS.md): the body was moved by something that is not
+## its route - today a Spring Plate's push - and has come to rest again. The
+## drill answers by re-planning from where the body actually landed.
+signal displaced
 
 const MOVE_SPEED := 2.8
 const GRAVITY := 14.0
@@ -71,6 +75,19 @@ var _shuffle_side := 1.0
 ## Counters diagnostics read: one-block step-ups taken and shuffles started.
 var step_ups := 0
 var shuffles := 0
+## Traps card 2 (docs/TRAPS.md), the `slow` effect: a timed multiplier on the
+## walking speed. 1.0 = unslowed. It is simulation state, so it rides in the
+## wave snapshot with the body's health and position and comes back with it.
+var slow_factor := 1.0
+var slow_seconds_left := 0.0
+## The `push` effect: while this runs down the body is in the air on the
+## impulse the trap gave it and its route does not steer it. On landing it
+## emits `displaced` once so the drill re-plans from where it came down.
+var _push_seconds_left := 0.0
+var _push_airborne := 0.0
+## Counters diagnostics read: pushes taken and slows applied.
+var pushes := 0
+var slows := 0
 var _death_tween: Tween
 var _attack_tween: Tween
 ## Model root (feet at its origin, 0.9 below the body origin); the limb pivots
@@ -260,6 +277,87 @@ func progress_stall_seconds() -> float:
 	return _goal_stall_timer
 
 
+## --- Trap effects (docs/TRAPS.md, traps card 2) ---------------------------
+## The two things a trap can do to a body that are not damage. Both are
+## driven entirely by the trap's attribute block; nothing here knows which
+## trap called it.
+
+## How fast the body actually walks right now: its kind's speed times any
+## slow a trap has laid on it.
+func walk_speed() -> float:
+	return move_speed * slow_factor
+
+
+## The `slow` effect (the Tar Patch). A timed multiplier on the walking
+## speed; the strongest slow in force wins and the longer clock is kept, so
+## crossing a second tar cell never makes a raider faster. It clears itself.
+func apply_slow(factor: float, seconds: float) -> void:
+	if dead:
+		return
+	var wanted := clampf(factor, 0.05, 0.99)
+	slow_factor = minf(slow_factor, wanted) if slow_seconds_left > 0.0 else wanted
+	slow_seconds_left = maxf(slow_seconds_left, maxf(0.1, seconds))
+	slows += 1
+
+
+## Puts a saved slow back on a restored body (CoreDefenseService).
+func restore_slow(factor: float, seconds: float) -> void:
+	if seconds <= 0.0:
+		clear_slow()
+		return
+	slow_factor = clampf(factor, 0.05, 1.0)
+	slow_seconds_left = seconds
+
+
+func clear_slow() -> void:
+	slow_factor = 1.0
+	slow_seconds_left = 0.0
+
+
+func is_slowed() -> bool:
+	return slow_seconds_left > 0.0
+
+
+func _tick_slow(delta: float) -> void:
+	if slow_seconds_left <= 0.0:
+		return
+	slow_seconds_left = maxf(0.0, slow_seconds_left - delta)
+	if slow_seconds_left <= 0.0:
+		slow_factor = 1.0
+
+
+## The `push` effect (the Spring Plate). One impulse, then the body is in the
+## air under gravity and its route does not steer it; when it lands it emits
+## `displaced` so the drill re-plans from where it came down. `max_seconds`
+## is only the safety cap for a body that somehow never touches down.
+func apply_push(impulse: Vector3, max_seconds: float = 2.5) -> void:
+	if dead:
+		return
+	velocity = impulse
+	_push_seconds_left = maxf(0.2, max_seconds)
+	_push_airborne = 0.0
+	pushes += 1
+
+
+func is_pushed() -> bool:
+	return _push_seconds_left > 0.0
+
+
+## One physics step of a body in the air on a trap's impulse.
+func _tick_push(delta: float) -> void:
+	_push_seconds_left = maxf(0.0, _push_seconds_left - delta)
+	_push_airborne += delta
+	velocity.y -= GRAVITY * delta
+	move_and_slide()
+	_animate_walk(delta, false)
+	if (_push_airborne > 0.15 and is_on_floor()) or _push_seconds_left <= 0.0:
+		_push_seconds_left = 0.0
+		velocity = Vector3.ZERO
+		_best_distance = INF
+		_stuck_timer = 0.0
+		displaced.emit()
+
+
 ## The progress watchdog: the best horizontal distance to the goal must
 ## improve by PROGRESS_EPSILON within each stage's window, else the stage is
 ## reported once. Stage 3 stops the clock until the drill resets the goal.
@@ -282,6 +380,11 @@ func _physics_process(delta: float) -> void:
 	if dead:
 		return
 	_tick_progress(delta)
+	_tick_slow(delta)
+	if _push_seconds_left > 0.0:
+		# Thrown by a Spring Plate: gravity and nothing else until it lands.
+		_tick_push(delta)
+		return
 	if not active or route_index >= route.size():
 		# Idle bodies still settle onto the ground (restored or shoved raiders).
 		velocity.x = 0.0
@@ -321,25 +424,28 @@ func _physics_process(delta: float) -> void:
 	var direction := horizontal.normalized()
 	if direction.length_squared() > 0.0:
 		look_at(global_position + direction, Vector3.UP)
+	# A trap's slow (docs/TRAPS.md) is a multiplier on this one number, so
+	# every path below - ghost walk, walk, shuffle - is slowed by it at once.
+	var speed := walk_speed()
 	if ground_loaded.is_valid() and not bool(ground_loaded.call(feet_cell() + Vector3i.DOWN)):
 		# Ghost walk: slide along the route at walking speed, y from the route.
-		var step := minf(move_speed * delta, horizontal.length())
+		var step := minf(speed * delta, horizontal.length())
 		global_position += direction * step
 		global_position.y = move_toward(global_position.y, target.y, 4.0 * delta)
-		velocity = Vector3(direction.x * move_speed, 0.0, direction.z * move_speed)
+		velocity = Vector3(direction.x * speed, 0.0, direction.z * speed)
 		_walk_distance += step
 		_animate_walk(delta, true)
 		return
 	var push := _separation()
-	velocity.x = direction.x * move_speed + push.x
-	velocity.z = direction.z * move_speed + push.z
+	velocity.x = direction.x * speed + push.x
+	velocity.z = direction.z * speed + push.z
 	# Shuffle: pressed against another body and not moving, step sideways for
 	# a moment (alternating sides) instead of leaning into it.
 	if _shuffle_timer > 0.0:
 		_shuffle_timer -= delta
 		var side := Vector3(-direction.z, 0.0, direction.x) * _shuffle_side
-		velocity.x = side.x * move_speed * 0.8
-		velocity.z = side.z * move_speed * 0.8
+		velocity.x = side.x * speed * 0.8
+		velocity.z = side.z * speed * 0.8
 	# Step-up assist: blocked by a single block with air above it, climb it.
 	var stepped := _try_step_up(Vector3(velocity.x, 0.0, velocity.z) * delta)
 	var normal_snap := floor_snap_length
@@ -357,7 +463,7 @@ func _physics_process(delta: float) -> void:
 	floor_snap_length = normal_snap
 	var travelled := Vector2(global_position.x - before.x, global_position.z - before.z).length()
 	_walk_distance += travelled
-	if _shuffle_timer <= 0.0 and travelled < move_speed * delta * 0.15 and push.length_squared() > 0.0:
+	if _shuffle_timer <= 0.0 and travelled < speed * delta * 0.15 and push.length_squared() > 0.0:
 		_contact_timer += delta
 		if _contact_timer >= SHUFFLE_AFTER_SECONDS:
 			_contact_timer = 0.0

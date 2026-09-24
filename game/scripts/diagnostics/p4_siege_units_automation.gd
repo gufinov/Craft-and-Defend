@@ -1133,10 +1133,14 @@ func _run_trap_tests() -> void:
 	Engine.time_scale = RAIDER_TIME_SCALE
 	await _run_spike_trap_test()
 	await _run_traps_untargeted_test()
+	await _run_tar_and_slow_test()
+	await _run_wall_blades_test()
+	await _run_spring_plate_test()
 	Engine.time_scale = 1.0
 	Engine.physics_ticks_per_second = normal_ticks
 	await get_tree().process_frame
 	await _run_blocked_raider_test()
+	await _run_ceiling_dropper_test()
 
 
 ## T237: a raider that walks onto an armed Spike Trap takes its damage; the
@@ -1356,6 +1360,404 @@ func _run_blocked_raider_test() -> void:
 	for cell in box:
 		for y in range(2):
 			world.set_cell(cell + Vector3i(0, y, 0), 0)
+	await get_tree().process_frame
+
+
+## --- Traps card 2 (docs/TRAPS.md): the four new traps ---------------------
+## Each is content: one `trap` attribute block, the same service. These tests
+## therefore check the behaviour the block asks for, not a code path.
+
+## T240: the Tar Patch. A raider crossing it takes no damage at all and walks
+## measurably slower for the slow's whole duration, then recovers; and the
+## slow rides in the wave snapshot and comes back from it.
+func _run_tar_and_slow_test() -> void:
+	var core := app.session.core_defense
+	var ws := app.session.workstations
+	var traps := app.session.trap_service
+	var origin := Vector3i(-80, 0, 4)
+	var plate := await _raider_plate(origin)
+	var core_id := str(plate.get("core_id", ""))
+	var tar_cell := origin + Vector3i(7, 0, 4)
+	app.session.inventory.try_transaction({}, {"tar_patch": 1})
+	var placed := ws.try_place("tar_patch", tar_cell, app.session.world.query_cell, AABB(), 0)
+	var trap_id := str(placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	await get_tree().physics_frame
+	traps.sync()
+	var drill := core.start_prototype()
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var lead: BasicRaider = core.raider
+	lead.active = false
+	lead.clear_goal()
+
+	# How far the body walks in a second with nothing on it.
+	var walked_clear := await _walk_metres(lead, origin + Vector3i(2, 0, 10), origin + Vector3i(12, 0, 10), 1.0)
+
+	# One tick on the tar: no damage, and the slow is on the body.
+	lead.active = false
+	lead.global_position = Vector3(tar_cell) + Vector3(0.5, 0.9, 0.5)
+	await _trap_seconds(traps, 0.4)
+	var health_on_tar := core.raider_health
+	var slowed_now := lead.is_slowed()
+	var factor := lead.slow_factor
+	var fired: bool = int(traps.state_of(trap_id).get("fired_count", 0)) == 1
+
+	# The save round trip: the wave snapshot carries the live slow, the body
+	# is cleared by hand, and the saved record is put back on it.
+	var saved: Dictionary = core.snapshot()
+	var saved_slow: Dictionary = saved.get("raider_slow", {})
+	lead.clear_slow()
+	var cleared_by_hand: bool = not lead.is_slowed()
+	core._restore_slow(lead, saved_slow)
+	var restored: bool = lead.is_slowed() and is_equal_approx(lead.slow_factor, float(saved_slow.get("factor", -1.0)))
+
+	# The same walk, slowed. The tar owns the speed, not the route.
+	var walked_slowed := await _walk_metres(lead, origin + Vector3i(2, 0, 12), origin + Vector3i(12, 0, 12), 1.0)
+
+	# It wears off on its own clock and the body walks at full speed again.
+	lead.active = false
+	await _trap_seconds(traps, 0.1)
+	var waited := 0.0
+	while lead.is_slowed() and waited < 12.0:
+		await get_tree().physics_frame
+		waited += 1.0 / 60.0
+	var recovered_flag: bool = not lead.is_slowed() and is_equal_approx(lead.slow_factor, 1.0)
+	var walked_after := await _walk_metres(lead, origin + Vector3i(2, 0, 14), origin + Vector3i(12, 0, 14), 1.0)
+
+	var ok: bool = drill.get("ok", false) and not core_id.is_empty() and placed.get("ok", false) \
+		and fired and health_on_tar == core.raider_max_health and slowed_now \
+		and is_equal_approx(factor, 0.4) and cleared_by_hand and restored \
+		and walked_clear > 2.0 and walked_slowed < walked_clear * 0.6 \
+		and recovered_flag and walked_after > walked_clear * 0.85
+	_record("T240_TAR_AND_SLOW", ok,
+		"a raider crossing the Tar Patch takes no damage at all and walks measurably slower - under 60% of its clear distance over the same second - for the slow's five seconds, then recovers its full speed on the patch's own clock; and the live slow is written into the wave snapshot and restored from it",
+		{"drill": drill.get("reason"), "plate": plate, "placed": placed.get("reason"), "trap": trap_id,
+		"fired": fired, "health_on_tar": health_on_tar, "max_health": core.raider_max_health,
+		"slowed": slowed_now, "factor": snappedf(factor, 0.01), "saved_slow": saved_slow,
+		"cleared": cleared_by_hand, "restored": restored,
+		"walked_clear": snappedf(walked_clear, 0.01), "walked_slowed": snappedf(walked_slowed, 0.01),
+		"walked_after": snappedf(walked_after, 0.01), "recovered": recovered_flag,
+		"waited_for_recovery": snappedf(waited, 0.01)})
+	core.clear_for_other_mode()
+	ws.try_damage(trap_id, 9999)
+	ws.try_damage(core_id, 9999)
+	await get_tree().process_frame
+
+
+## Walks `node` from `from_cell` toward `to_cell` for `seconds` of raider time
+## and returns the horizontal distance it actually covered. The trap service
+## is ticked alongside, as GameSession would.
+func _walk_metres(node: BasicRaider, from_cell: Vector3i, to_cell: Vector3i, seconds: float) -> float:
+	var traps := app.session.trap_service
+	node.active = false
+	node.global_position = Vector3(from_cell) + Vector3(0.5, 0.9, 0.5)
+	await get_tree().physics_frame
+	var route: Array[Vector3i] = [from_cell, to_cell]
+	node.set_route(route)
+	node.active = true
+	var start := node.global_position
+	var elapsed := 0.0
+	while elapsed < seconds:
+		await get_tree().physics_frame
+		elapsed += 1.0 / 60.0
+		traps.advance(1.0 / 60.0, false)
+	node.active = false
+	return Vector2(node.global_position.x - start.x, node.global_position.z - start.z).length()
+
+
+## T241: the Wall Blades. They hang on a wall face (the record says so),
+## damage the cell directly in front of that wall, respect their own reset,
+## and are never named as a target by a raider that still has a route.
+func _run_wall_blades_test() -> void:
+	var core := app.session.core_defense
+	var ws := app.session.workstations
+	var world := app.session.world
+	var traps := app.session.trap_service
+	var origin := Vector3i(-80, 0, 32)
+	var plate := await _raider_plate(origin)
+	var core_id := str(plate.get("core_id", ""))
+	var wall_cell := origin + Vector3i(5, 0, 8)
+	for y in range(3):
+		world.set_cell(wall_cell + Vector3i(0, y, 0), TRAP_CASTLE_STONE)
+	var blades_cell := wall_cell + Vector3i(1, 0, 0)
+	var front_cell := blades_cell + Vector3i(1, 0, 0)
+	app.session.inventory.try_transaction({}, {"wall_blades": 2})
+	var placed := ws.try_place("wall_blades", blades_cell, world.query_cell, AABB(), 0)
+	var blades_id := str(placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	var mount := str(placed.get("details", {}).get("mount", ""))
+	var record_mount := str(ws.station(blades_id).get("mount", ""))
+	# With no wall beside it the same trap refuses the ground.
+	var on_ground := ws.try_place("wall_blades", origin + Vector3i(10, 0, 2), world.query_cell, AABB(), 0)
+	await get_tree().physics_frame
+	traps.sync()
+	var drill := core.start_prototype()
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var lead: BasicRaider = core.raider
+	lead.active = false
+	lead.clear_goal()
+	var parking := origin + Vector3i(10, 0, 16)
+
+	# Standing in the cell the blades face: one sweep, then the reset.
+	lead.global_position = Vector3(front_cell) + Vector3(0.5, 0.9, 0.5)
+	await _trap_seconds(traps, 0.4)
+	var health_hit := core.raider_health
+	var disarmed: bool = not traps.is_armed(blades_id)
+	lead.global_position = Vector3(parking) + Vector3(0.5, 0.9, 0.5)
+	await _trap_seconds(traps, 1.5)
+	lead.global_position = Vector3(front_cell) + Vector3(0.5, 0.9, 0.5)
+	await _trap_seconds(traps, 0.4)
+	var health_in_window := core.raider_health
+	lead.global_position = Vector3(parking) + Vector3(0.5, 0.9, 0.5)
+	await _trap_seconds(traps, 4.0)
+	var rearmed := traps.is_armed(blades_id)
+
+	# A routed raider walks past without ever naming them.
+	core.clear_for_other_mode()
+	var routed := core.start_prototype()
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var targets: Dictionary = {}
+	var seconds := 0.0
+	while seconds < 30.0 and core.state != CoreDefenseService.ATTACKING_CORE:
+		await get_tree().physics_frame
+		seconds += 1.0 / 60.0
+		traps.advance(1.0 / 60.0, false)
+		targets[core.active_target_type + ":" + core.active_target_id] = true
+	var named := false
+	for key: String in targets:
+		if key.ends_with(":" + blades_id):
+			named = true
+	var integrity := int(ws.defense_status(blades_id).get("details", {}).get("integrity", -1))
+	var ok: bool = drill.get("ok", false) and routed.get("ok", false) and not core_id.is_empty() \
+		and placed.get("ok", false) and mount == "wall" and record_mount == "wall" \
+		and not on_ground.get("ok", false) \
+		and health_hit == core.raider_max_health - 10 and disarmed \
+		and health_in_window == health_hit and rearmed and not named and integrity == 28 \
+		and core.state == CoreDefenseService.ATTACKING_CORE
+	_record("T241_WALL_BLADES", ok,
+		"the Wall Blades hang on the face of a castle-stone wall (the placement and the saved record both say `wall`) and refuse bare ground; a raider standing in the cell the blades face takes their 10 damage and the trap disarms for its 5 s reset, a second sweep inside that window never comes, and it re-arms itself; and a raider that still has a route walks past to the core without ever naming them as a target, leaving them at full integrity",
+		{"drill": drill.get("reason"), "routed": routed.get("reason"), "plate": plate,
+		"placed": placed.get("reason"), "mount": mount, "record_mount": record_mount,
+		"on_ground": on_ground.get("reason"), "blades": blades_id,
+		"health_hit": health_hit, "max_health": core.raider_max_health, "disarmed": disarmed,
+		"health_in_window": health_in_window, "rearmed": rearmed, "named": named,
+		"targets": targets.keys(), "integrity": integrity, "state": core.state,
+		"seconds": snappedf(seconds, 0.01)})
+	core.clear_for_other_mode()
+	ws.try_damage(blades_id, 9999)
+	ws.try_damage(core_id, 9999)
+	for y in range(3):
+		world.set_cell(wall_cell + Vector3i(0, y, 0), 0)
+	await get_tree().process_frame
+
+
+## T242: the Spring Plate. It throws a raider along its facing and the body
+## re-plans from where it lands; and the plate-into-spikes combo kills a
+## raider that neither trap kills on its own - the plate does no damage at
+## all, and one Spike Trap firing leaves a full-health raider standing.
+func _run_spring_plate_test() -> void:
+	var core := app.session.core_defense
+	var ws := app.session.workstations
+	var traps := app.session.trap_service
+	var origin := Vector3i(-80, 0, 60)
+	var plate_ground := await _raider_plate(origin)
+	var core_id := str(plate_ground.get("core_id", ""))
+	# The plate faces -z (rotation 3 turns its local +x to -z), so a body it
+	# throws is thrown AWAY from the core and has to walk back over the bed.
+	var plate_cell := origin + Vector3i(7, 0, 6)
+	app.session.inventory.try_transaction({}, {"spring_plate": 1, "spike_trap": 9})
+	var placed := ws.try_place("spring_plate", plate_cell, app.session.world.query_cell, AABB(), 3)
+	var plate_id := str(placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	# Three rows of three between the plate and the Core, so a body thrown
+	# backwards off the plate has to walk the whole bed to reach the Core
+	# whichever way its route bends.
+	var spike_ids: Array[String] = []
+	for row in range(3):
+		for lane in range(-1, 2):
+			var spike := ws.try_place("spike_trap", plate_cell + Vector3i(lane, 0, 2 + row * 2), app.session.world.query_cell, AABB(), 0)
+			spike_ids.append(str(spike.get("details", {}).get("station", {}).get("instance_id", "")))
+	await get_tree().physics_frame
+	traps.sync()
+	var drill := core.start_prototype()
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var lead: BasicRaider = core.raider
+	lead.active = false
+
+	# Thrown: the body leaves the plate's cell along the facing and lands.
+	lead.global_position = Vector3(plate_cell) + Vector3(0.5, 0.9, 0.5)
+	var before_cell := lead.feet_cell()
+	await _trap_seconds(traps, 0.2)
+	var thrown := lead.is_pushed()
+	var flight := 0.0
+	while lead.is_pushed() and flight < 4.0:
+		await get_tree().physics_frame
+		flight += 1.0 / 60.0
+		traps.advance(1.0 / 60.0, false)
+	var landed_cell := lead.feet_cell()
+	var displacement := landed_cell - before_cell
+	var thrown_along_facing: bool = displacement.z <= -2 and absi(displacement.x) <= 1
+	var health_after_push := core.raider_health
+	# The drill answered the landing by re-planning from the new cell.
+	await get_tree().physics_frame
+	var replanned: bool = core.last_route_reason == "OK" and not lead.route.is_empty() \
+		and lead.route[0] == landed_cell
+
+	# One Spike Trap on a full-health raider is not a kill.
+	core.clear_for_other_mode()
+	var single := core.start_prototype()
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var solo: BasicRaider = core.raider
+	solo.active = false
+	for spike_id: String in spike_ids:
+		ws.restore_integrity(spike_id)
+	traps.sync()
+	solo.global_position = Vector3(plate_cell) + Vector3(0.5, 0.9, 2.5)
+	await _trap_seconds(traps, 0.4)
+	var after_one_spike := core.raider_health
+	var survives_one: bool = after_one_spike > 0 and after_one_spike == core.raider_max_health - 8
+
+	# The combo: thrown off the plate, the body walks back through the whole
+	# bed on its own route and the three hits together finish it.
+	var fired_before := traps.fired_total
+	# From full health: three Spike Trap hits at 8 are what it takes, and the
+	# single-spike step above proved one hit is not enough.
+	core.raider_health = core.raider_max_health
+	for spike_id: String in spike_ids:
+		ws.restore_integrity(spike_id)
+	solo.active = false
+	solo.global_position = Vector3(plate_cell) + Vector3(0.5, 0.9, -4.5)
+	# Every trap in the bay is persistent, not consumable: given its own reset
+	# the whole bed is armed again for the combo.
+	await _trap_seconds(traps, 7.0)
+	var all_armed := true
+	for trap_id: String in spike_ids + [plate_id]:
+		all_armed = all_armed and traps.is_armed(trap_id)
+	solo.global_position = Vector3(plate_cell) + Vector3(0.5, 0.9, 0.5)
+	await _trap_seconds(traps, 0.3)
+	var combo_flight := 0.0
+	while solo.is_pushed() and combo_flight < 4.0:
+		await get_tree().physics_frame
+		combo_flight += 1.0 / 60.0
+		traps.advance(1.0 / 60.0, false)
+	var combo_landed := solo.feet_cell()
+	# Thrown backwards, the only way to the Core is back up through the bed.
+	var walk_back: Array[Vector3i] = []
+	for z in range(combo_landed.z, plate_cell.z + 8):
+		walk_back.append(Vector3i(plate_cell.x, plate_cell.y, z))
+	solo.set_route(walk_back)
+	solo.active = true
+	var combo_seconds := 0.0
+	while combo_seconds < 20.0 and core.raider_health > 0 and solo.active:
+		await get_tree().physics_frame
+		combo_seconds += 1.0 / 60.0
+		traps.advance(1.0 / 60.0, false)
+	var combo_killed: bool = core.raider_health <= 0
+	var firings := traps.fired_total - fired_before
+	var ok: bool = drill.get("ok", false) and single.get("ok", false) and not core_id.is_empty() \
+		and placed.get("ok", false) and thrown and thrown_along_facing \
+		and health_after_push == core.raider_max_health and replanned \
+		and survives_one and all_armed and combo_killed and firings >= 3
+	_record("T242_SPRING_PLATE", ok,
+		"the Spring Plate throws a raider along its own facing - at least two cells, no damage at all - and the body re-plans from the cell it lands in; and the plate-into-spikes combo kills a raider that neither trap kills alone: the plate deals nothing, one Spike Trap leaves a full-health raider standing at 12, and the body thrown back over the bed takes the whole bed on its way in and dies",
+		{"drill": drill.get("reason"), "single": single.get("reason"), "plate": plate_ground,
+		"placed": placed.get("reason"), "plate_id": plate_id, "spikes": spike_ids,
+		"thrown": thrown, "before_cell": before_cell, "landed_cell": landed_cell,
+		"displacement": displacement, "flight": snappedf(flight, 0.01),
+		"health_after_push": health_after_push, "max_health": core.raider_max_health,
+		"replanned": replanned, "route_reason": core.last_route_reason,
+		"after_one_spike": after_one_spike, "survives_one": survives_one,
+		"combo_killed": combo_killed, "firings": firings, "all_armed": all_armed, "combo_landed": combo_landed,
+		"combo_route": walk_back.size(), "combo_flight": snappedf(combo_flight, 0.01),
+		"combo_seconds": snappedf(combo_seconds, 0.01)})
+	core.clear_for_other_mode()
+	ws.try_damage(plate_id, 9999)
+	for spike_id: String in spike_ids:
+		ws.try_damage(spike_id, 9999)
+	ws.try_damage(core_id, 9999)
+	await get_tree().process_frame
+
+
+## T243: the Ceiling Pitch Dropper. It is placed through the real placement
+## path - aimed up at a ceiling from the player's own view ray - refuses a
+## cell with no ceiling over it, damages and ignites the cells below, and its
+## record still says `ceiling` after a station save round trip.
+func _run_ceiling_dropper_test() -> void:
+	var core := app.session.core_defense
+	var ws := app.session.workstations
+	var world := app.session.world
+	var traps := app.session.trap_service
+	var fire := app.session.fire_service
+	var origin := Vector3i(-80, 0, 88)
+	var plate := await _raider_plate(origin)
+	var core_id := str(plate.get("core_id", ""))
+	# A roof three cells up on four corner posts.
+	var bay := origin + Vector3i(5, 0, 6)
+	for corner: Vector3i in [Vector3i(0, 0, 0), Vector3i(2, 0, 0), Vector3i(0, 0, 2), Vector3i(2, 0, 2)]:
+		for y in range(3):
+			world.set_cell(bay + corner + Vector3i(0, y, 0), TRAP_CASTLE_STONE)
+	for x in range(3):
+		for z in range(3):
+			world.set_cell(bay + Vector3i(x, 3, z), TRAP_CASTLE_STONE)
+	await get_tree().physics_frame
+	app.session.inventory.try_transaction({}, {"ceiling_dropper": 2})
+	# Aimed up at the underside of the roof, exactly as the player does it.
+	var aim_origin := Vector3(bay) + Vector3(1.5, 0.9, 1.5)
+	var aim_cell := app.session.interaction.placement_anchor_from_view(aim_origin, Vector3.UP)
+	var under_roof := bay + Vector3i(1, 2, 1)
+	var aimed_under_roof: bool = aim_cell == under_roof
+	var placed := app.session.interaction.try_place_item(aim_cell, "ceiling_dropper")
+	var dropper_id := ws.station_at_cell(under_roof)
+	var record_mount := str(ws.station(dropper_id).get("mount", ""))
+	# The same item refuses a cell with nothing over it.
+	var open_air := origin + Vector3i(11, 2, 2)
+	var refused := app.session.interaction.try_place_item(open_air, "ceiling_dropper")
+	await get_tree().physics_frame
+	traps.sync()
+	var drill := core.start_prototype()
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var lead: BasicRaider = core.raider
+	lead.active = false
+	lead.clear_goal()
+	var burning_before := fire.burning_cells().size()
+	lead.global_position = Vector3(bay + Vector3i(1, 0, 1)) + Vector3(0.5, 0.9, 0.5)
+	await _trap_seconds(traps, 0.4)
+	var health := core.raider_health
+	var fired: bool = int(traps.state_of(dropper_id).get("fired_count", 0)) == 1
+	var burning_under: bool = fire.is_burning(bay + Vector3i(1, 0, 1))
+	var burning_after := fire.burning_cells().size()
+
+	# The station save round trip: the record comes back mounted on a ceiling,
+	# with nothing under it to hold it up.
+	var saved := ws.snapshot()
+	var restored := ws.restore(saved, world.query_cell)
+	var restored_mount := str(ws.station(dropper_id).get("mount", ""))
+	var stands_again: bool = not ws.station(dropper_id).is_empty() \
+		and ws.station(dropper_id).get("anchor", Vector3i.ZERO) == under_roof
+	var ok: bool = drill.get("ok", false) and not core_id.is_empty() and aimed_under_roof \
+		and placed.get("ok", false) and not dropper_id.is_empty() and record_mount == "ceiling" \
+		and not refused.get("ok", false) and fired \
+		and health == core.raider_max_health - 6 and burning_under and burning_after > burning_before \
+		and restored.get("ok", false) and restored_mount == "ceiling" and stands_again
+	_record("T243_CEILING_DROPPER", ok,
+		"looking up at a roof from under it, the player's own placement ray answers the cell under the slab and the Ceiling Pitch Dropper hangs there with its record mounted `ceiling`; the same item refuses a cell with no ceiling over it; a raider below takes its 6 damage and the pitch lights the ground through the ordinary fire; and after a station save round trip the record still says `ceiling` and the trap still stands, although nothing holds it up from below",
+		{"drill": drill.get("reason"), "plate": plate, "aim_cell": aim_cell, "under_roof": under_roof,
+		"aimed": aimed_under_roof, "placed": placed.get("reason"), "dropper": dropper_id,
+		"record_mount": record_mount, "refused": refused.get("reason"), "fired": fired,
+		"health": health, "max_health": core.raider_max_health, "burning_under": burning_under,
+		"burning_before": burning_before, "burning_after": burning_after,
+		"restored": restored.get("reason"), "restored_mount": restored_mount, "stands": stands_again})
+	core.clear_for_other_mode()
+	fire.extinguish_all()
+	ws.try_damage(dropper_id, 9999)
+	ws.try_damage(core_id, 9999)
+	for x in range(3):
+		for z in range(3):
+			for y in range(4):
+				world.set_cell(bay + Vector3i(x, y, z), 0)
 	await get_tree().process_frame
 
 

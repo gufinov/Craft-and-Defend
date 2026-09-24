@@ -12,6 +12,11 @@ const REGEN_DELAY_SECONDS := 6.0
 var health := MAX_HEALTH
 var _regen_delay := 0.0
 var _regen_accumulator := 0.0
+## Trap push (docs/TRAPS.md): seconds of the impulse left, how long the body
+## has been in the air, and how many pushes it has taken (diagnostics).
+var _push_seconds_left := 0.0
+var _push_airborne := 0.0
+var pushes := 0
 
 
 func take_damage(amount: int, source: String = "raider") -> Dictionary:
@@ -176,6 +181,20 @@ func _physics_process(delta: float) -> void:
 	if flying:
 		_fly(delta)
 		return
+	if _push_seconds_left > 0.0:
+		# Thrown by a trap (docs/TRAPS.md, the Spring Plate): the impulse
+		# carries the body until it lands, exactly as it carries a raider -
+		# input does not steer a player in mid-flight.
+		_push_seconds_left = maxf(0.0, _push_seconds_left - delta)
+		_push_airborne += delta
+		velocity.y -= GRAVITY * delta
+		move_and_slide()
+		_position_inside_world()
+		if (_push_airborne > 0.15 and is_on_floor()) or _push_seconds_left <= 0.0:
+			_push_seconds_left = 0.0
+			velocity = Vector3.ZERO
+		_walk_previous = global_position
+		return
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
 	elif Input.is_action_just_pressed("jump"):
@@ -203,6 +222,23 @@ func _physics_process(delta: float) -> void:
 		var travelled := Vector3(global_position.x - _walk_previous.x, 0.0, global_position.z - _walk_previous.z).length()
 		hero.animate_walk(delta, travelled > 0.002, travelled)
 	_walk_previous = global_position
+
+
+## Traps card 2 (docs/TRAPS.md): a trap threw the player. One impulse, then
+## gravity, then the player has their controls back - the same `apply_push`
+## contract `BasicRaider` answers, so a Spring Plate does not care who stood
+## on it. Flying ignores it (there is nothing to be thrown off).
+func apply_push(impulse: Vector3, max_seconds: float = 2.5) -> void:
+	if flying or health <= 0:
+		return
+	velocity = impulse
+	_push_seconds_left = maxf(0.2, max_seconds)
+	_push_airborne = 0.0
+	pushes += 1
+
+
+func is_pushed() -> bool:
+	return _push_seconds_left > 0.0
 
 
 ## Double-tap Right Shift: flight on / off. Landing keeps the body where it
@@ -286,6 +322,14 @@ func _perform_primary() -> void:
 			_report(primary_result)
 			return
 	_report(interaction.break_from_view(view_origin(), -camera.global_basis.z))
+
+
+## The cell the player is standing in. The body origin sits at its feet, so
+## half a block up is inside the feet cell whether the body rests exactly on
+## the surface or has sunk a hair into it. `BasicRaider` answers the same
+## call, which is how TrapService can catch either without knowing which.
+func feet_cell() -> Vector3i:
+	return Vector3i(floori(global_position.x), floori(global_position.y + 0.5), floori(global_position.z))
 
 
 func get_body_aabb() -> AABB:

@@ -60,6 +60,9 @@ DERIVED = [
     "double_gate_frame", "double_gate", "great_gate_frame", "great_gate",
     # Traps wave 1 (docs/TRAPS.md): the Spike Trap.
     "spike_trap",
+    # Traps card 2 (docs/TRAPS.md): tar, wall blades, the spring plate and the
+    # ceiling pitch dropper, in recipe order 230-233.
+    "tar_patch", "wall_blades", "spring_plate", "ceiling_dropper",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -679,6 +682,99 @@ def icon_spike_trap() -> Image.Image:
     return canvas
 
 
+def icon_tar_patch() -> Image.Image:
+    """A black tar slick sunk into a plank-framed tray, still bubbling."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    oak = (150, 102, 56, 255)
+    oak_dark = (96, 62, 30, 255)
+    tar = (26, 22, 20, 255)
+    tar_light = (58, 52, 48, 255)
+    sheen = (120, 118, 112, 255)
+    draw.rectangle([16, 74, 240, 214], fill=oak, outline=oak_dark, width=6)
+    draw.ellipse([34, 88, 222, 200], fill=tar, outline=(12, 10, 9, 255), width=5)
+    # Bubbles rising out of the slick.
+    for cx, cy, r in ((96, 128, 20), (152, 152, 15), (186, 120, 11), (118, 172, 9)):
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=tar_light, outline=sheen, width=3)
+    # Threads of tar running over the frame.
+    for x in (60, 128, 198):
+        draw.rectangle([x - 7, 196, x + 7, 226], fill=tar)
+    return canvas
+
+
+def icon_wall_blades() -> Image.Image:
+    """A bracket bolted to a wall face, its blade wheel swung out of it."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    iron = (150, 158, 166, 255)
+    iron_dark = (74, 80, 87, 255)
+    stone = (118, 118, 122, 255)
+    stone_dark = (78, 78, 82, 255)
+    # The wall it hangs on, down the left edge.
+    draw.rectangle([12, 20, 74, 236], fill=stone, outline=stone_dark, width=5)
+    for y in range(28, 232, 36):
+        draw.line([(12, y), (74, y)], fill=stone_dark, width=3)
+    # Bracket and axle.
+    draw.rectangle([74, 108, 128, 148], fill=iron_dark)
+    draw.ellipse([116, 106, 156, 150], fill=iron, outline=iron_dark, width=5)
+    # Four sweeping blades around the axle.
+    for dx, dy in ((1, 0), (0, 1), (-1, 0), (0, -1)):
+        tip = (136 + dx * 96 + dy * 20, 128 + dy * 96 - dx * 20)
+        draw.polygon([(136 + dx * 18, 128 + dy * 18), (136 - dx * 8 + dy * 22, 128 - dy * 8 - dx * 22), tip],
+                     fill=iron, outline=iron_dark, width=4)
+    draw.ellipse([126, 118, 146, 138], fill=iron_dark)
+    return canvas
+
+
+def icon_spring_plate() -> Image.Image:
+    """A sprung floor plate with its coils under it and the throw it gives."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    iron = (154, 162, 170, 255)
+    iron_dark = (70, 76, 83, 255)
+    gold = (206, 166, 62, 255)
+    # The throw, as an arrow standing on the plate: one unbroken column, so
+    # the atlas measurement reads the whole icon as one blob.
+    draw.polygon([(88, 78), (168, 78), (128, 20)], fill=gold)
+    draw.rectangle([112, 78, 144, 140], fill=gold)
+    # The plate.
+    draw.rectangle([24, 132, 232, 172], fill=iron, outline=iron_dark, width=5)
+    # Coils under it.
+    for x in (62, 128, 194):
+        for index in range(3):
+            y = 154 + index * 12
+            draw.arc([x - 26, y, x + 26, y + 26], 0, 180, fill=iron_dark, width=8)
+    draw.rectangle([24, 196, 232, 222], fill=iron_dark)
+    return canvas
+
+
+def icon_ceiling_dropper() -> Image.Image:
+    """A hopper bolted under a ceiling slab, tipping burning pitch out of it."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    iron = (140, 148, 156, 255)
+    iron_dark = (68, 74, 80, 255)
+    stone = (118, 118, 122, 255)
+    stone_dark = (78, 78, 82, 255)
+    pitch = (30, 26, 24, 255)
+    flame = (240, 148, 40, 255)
+    flame_hot = (255, 214, 96, 255)
+    # The ceiling slab it hangs from.
+    draw.rectangle([16, 14, 240, 62], fill=stone, outline=stone_dark, width=5)
+    draw.rectangle([120, 62, 136, 84], fill=iron_dark)
+    # The hopper.
+    draw.polygon([(68, 84), (188, 84), (156, 156), (100, 156)], fill=iron, outline=iron_dark, width=5)
+    draw.rectangle([96, 150, 160, 168], fill=iron_dark)
+    # The pitch falling, and the fire it lands in - one unbroken stream, so
+    # the atlas measurement reads the whole icon as one blob.
+    draw.rectangle([118, 164, 138, 206], fill=pitch)
+    for cx, cy, r in ((128, 188, 16), (110, 216, 11), (148, 218, 9)):
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=pitch)
+    draw.polygon([(72, 244), (104, 196), (128, 230), (152, 192), (184, 244)], fill=flame)
+    draw.polygon([(104, 244), (128, 212), (152, 244)], fill=flame_hot)
+    return canvas
+
+
 BUILDERS = {
     "flame_shot": icon_flame_shot, "chest": icon_chest, "cannon": icon_cannon, "cannonball": icon_cannonball,
     "turret_catapult": icon_turret_catapult, "hot_oil": icon_hot_oil, "kettle": icon_kettle, "rail": icon_rail,
@@ -700,6 +796,8 @@ BUILDERS = {
     "double_gate_frame": icon_double_gate_frame, "double_gate": icon_double_gate,
     "great_gate_frame": icon_great_gate_frame, "great_gate": icon_great_gate,
     "spike_trap": icon_spike_trap,
+    "tar_patch": icon_tar_patch, "wall_blades": icon_wall_blades,
+    "spring_plate": icon_spring_plate, "ceiling_dropper": icon_ceiling_dropper,
 }
 
 

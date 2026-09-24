@@ -50,6 +50,9 @@ DERIVED_ORDER = [
     "double_gate_frame", "double_gate", "great_gate_frame", "great_gate",
     # Traps wave 1 (docs/TRAPS.md): the Spike Trap.
     "spike_trap",
+    # Traps card 2 (docs/TRAPS.md): tar, wall blades, the spring plate and the
+    # ceiling pitch dropper.
+    "tar_patch", "wall_blades", "spring_plate", "ceiling_dropper",
 ]
 # Nominal search cells. Row heights for the item atlas follow the shipped
 # ItemIconCatalog grid; the ammunition atlas is two square halves.

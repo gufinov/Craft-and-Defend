@@ -75,17 +75,21 @@ func preview_placement(entity_id: String, anchor: Vector3i, rotation_quarters: i
 	if definition.is_empty():
 		return _result(false, "UNKNOWN_ENTITY")
 	var wall_side := _wall_side(definition, anchor, world_query)
+	var ceiling_side := _ceiling_side(definition, anchor, world_query) if wall_side == Vector3i.ZERO else Vector3i.ZERO
 	if wall_side != Vector3i.ZERO:
 		rotation_quarters = _rotation_facing_away(wall_side)
-	else:
+	elif ceiling_side == Vector3i.ZERO:
 		rotation_quarters = _socket_aligned_rotation(definition, anchor, rotation_quarters, world_query)
-	var validated := footprints.validate_placement("preview", anchor, _vector_list(definition.get("occupied_offsets", [])), rotation_quarters, world_query, player_aabb, [] if wall_side != Vector3i.ZERO else _vector_list(definition.get("support_offsets", [])))
+	var hangs := wall_side != Vector3i.ZERO or ceiling_side != Vector3i.ZERO
+	var validated := footprints.validate_placement("preview", anchor, _vector_list(definition.get("occupied_offsets", [])), rotation_quarters, world_query, player_aabb, [] if hangs else _vector_list(definition.get("support_offsets", [])))
 	if not validated.get("ok", false):
 		return validated
 	if not _gate_frame_opening_clear(entity_id, anchor, rotation_quarters, world_query):
 		return _result(false, "OPENING_BLOCKED")
 	if wall_side != Vector3i.ZERO:
 		return _result(true, "OK", {"mount": "wall", "wall_side": wall_side, "rotation_quarters": rotation_quarters})
+	if ceiling_side != Vector3i.ZERO:
+		return _result(true, "OK", {"mount": "ceiling", "ceiling_side": ceiling_side, "rotation_quarters": rotation_quarters})
 	return _validate_mount(definition, anchor, rotation_quarters, world_query)
 
 
@@ -108,6 +112,38 @@ func _wall_side(definition: Dictionary, anchor: Vector3i, world_query: Callable)
 		var query: Dictionary = world_query.call(anchor + side)
 		if str(query.get("state", "")) == "LOADED" and int(query.get("voxel_id", 0)) != 0:
 			return side
+	return Vector3i.ZERO
+
+
+## Ceiling mounting (traps card 2, docs/TRAPS.md): an entity whose mount
+## allows "ceiling" may hang from the underside of a solid block. Returns
+## Vector3i.UP when it does, or ZERO when it does not. Mount precedence is
+## **ground > wall > ceiling**: this is only consulted after `_wall_side`
+## returned ZERO, and it still stands aside for the ground (and for a wall it
+## could also have taken) so an entity that allows several mounts keeps the
+## sturdier one. `_wall_side` was the only reason ceilings did not work; the
+## scan there is horizontal by construction.
+func _ceiling_side(definition: Dictionary, anchor: Vector3i, world_query: Callable) -> Vector3i:
+	var allowed: Array = definition.get("mount", {}).get("allowed", [])
+	if not allowed.has("ceiling"):
+		return Vector3i.ZERO
+	if allowed.has("ground"):
+		# Prefer standing on the ground when there is ground (as a wall does).
+		var below: Dictionary = world_query.call(anchor + Vector3i.DOWN)
+		if str(below.get("state", "")) == "LOADED" and int(below.get("voxel_id", 0)) != 0:
+			return Vector3i.ZERO
+		if not footprints.owner_at(anchor + Vector3i.DOWN).is_empty():
+			return Vector3i.ZERO
+	if allowed.has("wall"):
+		for side in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+			var beside: Dictionary = world_query.call(anchor + side)
+			if str(beside.get("state", "")) == "LOADED" and int(beside.get("voxel_id", 0)) != 0:
+				return Vector3i.ZERO
+	var above: Dictionary = world_query.call(anchor + Vector3i.UP)
+	if str(above.get("state", "")) == "LOADED" and int(above.get("voxel_id", 0)) != 0:
+		return Vector3i.UP
+	if not footprints.owner_at(anchor + Vector3i.UP).is_empty():
+		return Vector3i.UP
 	return Vector3i.ZERO
 
 
@@ -152,10 +188,15 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 	if bool(definition.get("linear", false)):
 		rotation_quarters = _aligned_rotation(entity_id, anchor, rotation_quarters)
 	var wall_side := _wall_side(definition, anchor, world_query)
+	var ceiling_side := _ceiling_side(definition, anchor, world_query) if wall_side == Vector3i.ZERO else Vector3i.ZERO
 	var mount_result: Dictionary
 	if wall_side != Vector3i.ZERO:
 		rotation_quarters = _rotation_facing_away(wall_side)
 		mount_result = _result(true, "OK", {"mount": "wall"})
+	elif ceiling_side != Vector3i.ZERO:
+		# A ceiling mount hangs under the block above it and keeps the
+		# rotation the player is holding (nothing else can orient it).
+		mount_result = _result(true, "OK", {"mount": "ceiling"})
 	else:
 		rotation_quarters = _socket_aligned_rotation(definition, anchor, rotation_quarters, world_query)
 		mount_result = _validate_mount(definition, anchor, rotation_quarters, world_query)
@@ -163,8 +204,9 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		return mount_result
 	if not _gate_frame_opening_clear(entity_id, anchor, rotation_quarters, world_query):
 		return _result(false, "OPENING_BLOCKED")
+	var hangs := wall_side != Vector3i.ZERO or ceiling_side != Vector3i.ZERO
 	var instance_id := "%s_%04d" % [entity_id, _next_instance]
-	var reserved := footprints.try_reserve(instance_id, anchor, _vector_list(definition.get("occupied_offsets", [])), rotation_quarters, world_query, player_aabb, [] if wall_side != Vector3i.ZERO else _vector_list(definition.get("support_offsets", [])))
+	var reserved := footprints.try_reserve(instance_id, anchor, _vector_list(definition.get("occupied_offsets", [])), rotation_quarters, world_query, player_aabb, [] if hangs else _vector_list(definition.get("support_offsets", [])))
 	if not reserved.get("ok", false):
 		return reserved
 	if not free:
@@ -191,6 +233,9 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		# under it; the record remembers that so restore does not ask for the
 		# support the placement never needed.
 		record["mount"] = "wall"
+	elif ceiling_side != Vector3i.ZERO:
+		# The same for a ceiling mount, which hangs under the block above it.
+		record["mount"] = "ceiling"
 	if is_sign(entity_id):
 		record["sign"] = default_sign()
 	if is_gate_entity(entity_id):
@@ -1751,9 +1796,11 @@ func _restored_station(value: Variant, world_query: Callable) -> Dictionary:
 		record["fuel_model"] = 2
 	var offsets := _vector_list(definition.occupied_offsets)
 	var rotation := int(record.get("rotation_quarters", 0))
-	# A wall-mounted record (a sign, a lantern) hangs on a block's side and
-	# never had ground under it, so it restores without support offsets.
-	var restore_support: Array = [] if str(record.get("mount", "")) == "wall" else _vector_list(definition.support_offsets)
+	# A wall-mounted record (a sign, a lantern) hangs on a block's side and a
+	# ceiling-mounted one (the Ceiling Pitch Dropper) hangs under the block
+	# above it; neither ever had ground under it, so neither restores with
+	# support offsets.
+	var restore_support: Array = [] if str(record.get("mount", "")) in ["wall", "ceiling"] else _vector_list(definition.support_offsets)
 	var reserved := footprints.try_reserve(str(record.instance_id), record.anchor, offsets, rotation, world_query, AABB(), restore_support)
 	if not reserved.get("ok", false):
 		# The cells no longer pass a placement check (the ground under the

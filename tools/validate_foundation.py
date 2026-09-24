@@ -28,7 +28,7 @@ ATTRIBUTE_MOUNTS = {"ground", "wall", "ceiling", "any_solid_top", "any_solid_top
 # about any particular trap.
 TRAP_MOUNTS = {"floor", "wall", "ceiling"}
 TRAP_TRIGGERS = {"pressure", "proximity"}
-TRAP_EFFECTS = {"damage", "slow"}
+TRAP_EFFECTS = {"damage", "slow", "push"}
 # Development Expo manifest (docs/DEVELOPMENT_EXPO.md). `reserved` is the
 # empty-parcel kind the growth rule needs on top of the five exhibit scales.
 EXPO_KINDS = {"catalog", "functional", "system_demo", "environmental", "scenario", "showcase", "reserved"}
@@ -51,7 +51,10 @@ EXPO_TERRAIN = {"level", "natural", "tree", "forest", "quarry", "coal_seam", "su
                 "wall_kit_demo",
                 # Traps (docs/TRAPS.md): the walled lane with the spike bed in
                 # its floor, its Core at the far end and its control pedestal.
-                "trap_range"}
+                "trap_range",
+                # Traps card 2: one bay per new trap, built from that trap's own
+                # mount, and the Spring-Plate-into-Spike-Trap combo bay.
+                "trap_bay", "trap_combo"}
 # Supply Depot (docs/DEVELOPMENT_EXPO.md, handoff sections 8 and 9). The
 # categories and the item -> category map are read out of the one runtime
 # source, `game/scripts/ui/item_categories.gd`, rather than copied here: the
@@ -172,6 +175,51 @@ def reachable_items(content, world):
                 available.update(recipe["outputs"])
         changed = before != (frozenset(available), frozenset(stations))
     return available
+
+
+def validate_trap_extras(entity, trap, munitions):
+    """The optional half of the `trap` block (docs/TRAPS.md).
+
+    Everything a trap can do lives in this block; nothing in TrapService knows
+    one trap from another. The key set is closed, so a typo in a tuning key is
+    a validation failure rather than a trap that silently does nothing.
+    """
+    label = entity["id"]
+    known = {"mount", "trigger", "effect", "damage", "radius", "reset_seconds", "fire_seconds",
+             "blocks_movement", "trigger_offsets", "reach", "action_travel",
+             "slow_factor", "slow_seconds", "push_speed", "push_lift", "affects_player", "ignite"}
+    unknown = sorted(set(trap) - known)
+    require(not unknown, f"unknown trap keys {unknown}: {label}")
+    if "trigger_offsets" in trap:
+        require(isinstance(trap["trigger_offsets"], list) and trap["trigger_offsets"]
+                and all(vector(offset) for offset in trap["trigger_offsets"]), f"invalid trap trigger offsets: {label}")
+    if "reach" in trap:
+        require(integer(trap["reach"], 1), f"invalid trap reach: {label}")
+    if "action_travel" in trap:
+        require(numeric_vector(trap["action_travel"]), f"invalid trap action travel: {label}")
+    if "affects_player" in trap:
+        require(isinstance(trap["affects_player"], bool), f"trap affects_player must be bool: {label}")
+    # `push` (the Spring Plate): a one-frame impulse along the trap's facing.
+    if trap["effect"] == "push":
+        require(type(trap.get("push_speed")) in (int, float) and not isinstance(trap.get("push_speed"), bool)
+                and trap["push_speed"] > 0, f"a push trap needs a positive push_speed: {label}")
+        require(trap["damage"] == 0, f"a push trap deals no damage: {label}")
+    if "push_lift" in trap:
+        require(type(trap["push_lift"]) in (int, float) and not isinstance(trap["push_lift"], bool)
+                and trap["push_lift"] >= 0, f"invalid trap push_lift: {label}")
+    # `ignite` (the Ceiling Pitch Dropper): the existing FireService path, by
+    # the id of a fire munition that already exists - never a second fire model.
+    if "ignite" in trap:
+        ignite = trap["ignite"]
+        require(isinstance(ignite, dict) and set(ignite) == {"munition", "radius"}, f"trap ignite must hold munition/radius: {label}")
+        require(ignite["munition"] in munitions and munitions[ignite["munition"]].get("effect") == "fire",
+                f"trap ignite names no fire munition: {label}")
+        require(type(ignite["radius"]) in (int, float) and not isinstance(ignite["radius"], bool)
+                and ignite["radius"] >= 0, f"invalid trap ignite radius: {label}")
+    # A ceiling trap has to be placeable on a ceiling, and a wall trap on a wall.
+    allowed = entity.get("mount", {}).get("allowed", [])
+    if trap["mount"] in ("wall", "ceiling"):
+        require(trap["mount"] in allowed, f"a {trap['mount']} trap must allow the {trap['mount']} mount: {label}")
 
 
 def validate_attributes(entity):
@@ -719,7 +767,10 @@ def validate_bundle(bundle):
             allowed = mount.get("allowed", []) if isinstance(mount, dict) else []
             require(isinstance(allowed, list) and allowed and all(isinstance(value, str) for value in allowed)
                     and len(set(allowed)) == len(allowed)
-                    and all(value in ("ground", "wall") or value in mount_types for value in allowed), "invalid entity mount")
+                    # "ceiling" (traps card 2): WorkstationService._ceiling_side
+                    # hangs the entity under the block above it, after ground
+                    # and wall have had their turn.
+                    and all(value in ("ground", "wall", "ceiling") or value in mount_types for value in allowed), "invalid entity mount")
         siege = entity.get("siege")
         if siege is not None:
             require(isinstance(siege, dict) and siege.get("fire_mode") in ("direct", "ballistic", "dump")
@@ -761,6 +812,7 @@ def validate_bundle(bundle):
             require(trap["effect"] != "damage" or trap["damage"] > 0, "a damage trap needs damage: " + entity["id"])
             require(trap["effect"] != "slow" or (type(trap.get("slow_factor")) in (int, float) and 0 < trap["slow_factor"] < 1
                     and type(trap.get("slow_seconds")) in (int, float) and trap["slow_seconds"] > 0), "invalid slow trap: " + entity["id"])
+            validate_trap_extras(entity, trap, content.get("munitions", {}))
         if entity.get("container_slots") is not None:
             # Industry wave 1: warehouses and ore bins are chest-style containers
             # (same slot list, same modal) under their own station type.

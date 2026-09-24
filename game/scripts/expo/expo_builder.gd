@@ -65,8 +65,9 @@ const STOCK_ATTEMPTS := 600
 ## must not also drop one of each in the middle of the parcel.
 const COMPOSITE_TERRAIN: Array[String] = ["wall_demo", "blueprint_demo", "wall_kit_demo", "castle_demo",
 	"siege_booth", "field", "camp", "battery", "fortification", "magazine",
-	# Traps (docs/TRAPS.md): the Trap Range's walled spike funnel.
-	"trap_range"]
+	# Traps (docs/TRAPS.md): the Trap Range's walled spike funnel, the bay the
+	# range builds from a trap's own mount, and the combo bay.
+	"trap_range", "trap_bay", "trap_combo"]
 ## Defence sets (docs/DEFENSE_SETS.md): the kit the Construction Yard's Wall
 ## Kit exhibit stamps.
 const WALL_KIT := "wall_kit_8"
@@ -1509,6 +1510,10 @@ func _build_terrain(exhibit_id: String, terrain: String, origin: Vector3i, size:
 			_build_siege_booth(exhibit_id, origin, size, record)
 		"trap_range":
 			_build_trap_range(exhibit_id, origin, size, record)
+		"trap_bay":
+			_build_trap_bay(exhibit_id, origin, size, record)
+		"trap_combo":
+			_build_trap_combo(exhibit_id, origin, size, record)
 		"battery":
 			_build_battery(exhibit_id, origin, size, record)
 		"fortification":
@@ -1945,8 +1950,68 @@ func _build_trap_range(exhibit_id: String, origin: Vector3i, size: Vector3i, rec
 		for row: int in [8, 11, 14]:
 			for step in range(3):
 				place_entity("spike_trap", Vector3i(lane_x + step, origin.y, origin.z + row), 0, label)
+	if entities.has("spring_plate"):
+		# Traps card 2: the combo at the mouth of the lane. A plate throws a
+		# body forward into the first spike row, which is the pair the combo
+		# bay's sign describes - here where the pedestal's wave walks into it.
+		for step in range(3):
+			place_entity("spring_plate", Vector3i(lane_x + step, origin.y, origin.z + 6), 1, label)
 	if entities.has("battlefield_control"):
 		place_entity("battlefield_control", Vector3i(origin.x + 9, origin.y, origin.z + 6), 0, label)
+
+
+## Traps card 2 (docs/TRAPS.md): one bay per new trap. What the bay builds is
+## read off the trap's own `trap.mount`, not off its id - a floor trap goes in
+## the floor, a wall trap gets a wall to hang on and a ceiling trap gets a roof
+## to hang under - so a fifth trap needs no new builder code.
+func _build_trap_bay(exhibit_id: String, origin: Vector3i, size: Vector3i, record: Dictionary) -> void:
+	var label := "traps:" + exhibit_id
+	level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), label)
+	var lane_x := origin.x + 3
+	var lane_z := origin.z + 2
+	for value in record.get("entities", []):
+		var entity_id := str(value)
+		var tuning: Dictionary = session.registry.entity(entity_id).get("trap", {})
+		if tuning.is_empty():
+			continue
+		match str(tuning.get("mount", "floor")):
+			"wall":
+				# A three-high stub of castle stone, the traps on its +x face.
+				fill_box(Vector3i(lane_x, origin.y, lane_z), Vector3i(1, 3, 3), CASTLE_STONE, false, label)
+				for step in range(3):
+					place_entity(entity_id, Vector3i(lane_x + 1, origin.y + 1, lane_z + step), 0, label)
+			"ceiling":
+				# Four corner posts and a slab roof; the traps hang under it.
+				for corner: Vector3i in [Vector3i(0, 0, 0), Vector3i(2, 0, 0), Vector3i(0, 0, 2), Vector3i(2, 0, 2)]:
+					fill_box(Vector3i(lane_x, origin.y, lane_z) + corner, Vector3i(1, 3, 1), CASTLE_STONE, false, label)
+				fill_box(Vector3i(lane_x, origin.y + 3, lane_z), Vector3i(3, 1, 3), CASTLE_STONE, false, label)
+				for step in range(3):
+					place_entity(entity_id, Vector3i(lane_x + step, origin.y + 2, lane_z + 1), 0, label)
+			_:
+				for step in range(3):
+					place_entity(entity_id, Vector3i(lane_x + step, origin.y, lane_z + 1), 0, label)
+
+
+## The combo bay: a short walled lane with a row of Spring Plates at its mouth
+## facing up the lane and a spike bed where a thrown body comes down. Neither
+## trap kills a raider on its own; the pair does.
+func _build_trap_combo(exhibit_id: String, origin: Vector3i, size: Vector3i, record: Dictionary) -> void:
+	var label := "traps:" + exhibit_id
+	level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), label)
+	var entities: Array = record.get("entities", [])
+	var lane_x := origin.x + 3
+	var lane_z := origin.z + 1
+	for offset: int in [-1, 3]:
+		fill_box(Vector3i(lane_x + offset, origin.y, lane_z), Vector3i(1, 3, 9), CASTLE_STONE, false, label)
+	if entities.has("spring_plate"):
+		# Rotation 1 turns the plate's facing (its own local +x) to +z, up the
+		# lane, so whatever it throws lands in the bed.
+		for step in range(3):
+			place_entity("spring_plate", Vector3i(lane_x + step, origin.y, lane_z + 1), 1, label)
+	if entities.has("spike_trap"):
+		for row: int in [4, 6]:
+			for step in range(3):
+				place_entity("spike_trap", Vector3i(lane_x + step, origin.y, lane_z + row), 0, label)
 
 
 ## One Battlefield battery: every siege weapon the exhibit declares, in a row
