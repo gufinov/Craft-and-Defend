@@ -3,7 +3,11 @@
   "status": "development_expo_1",
   "expo_version": 2,
   "ground_y": -1,
-  "spawn_feet": [0.5, 2.0, 40.5],
+  "spawn_feet": [
+    0.5,
+    2.0,
+    40.5
+  ],
   "chunk_size": 16,
   "expansion_margin": 24,
   "vertical_margin": 8,
@@ -19,17 +23,123 @@
       "name": "CENTRAL PLAZA",
       "owner_card": "C",
       "prepare": "full",
-      "origin": [-16, -1, 26],
-      "size": [32, 16, 28],
-      "entrance": [0, 0, 26],
+      "origin": [
+        -16,
+        -1,
+        26
+      ],
+      "size": [
+        32,
+        16,
+        28
+      ],
+      "entrance": [
+        0,
+        0,
+        26
+      ],
       "terrain": "level",
-      "expansion_corridor": {"origin": [16, -1, 26], "size": [7, 16, 28]},
-      "connections": ["supply_depot", "day_one", "equipment", "resources", "future_expansion", "industry", "defense_range", "lighting"],
+      "expansion_corridor": {
+        "origin": [
+          16,
+          -1,
+          26
+        ],
+        "size": [
+          7,
+          16,
+          28
+        ]
+      },
+      "connections": [
+        "supply_depot",
+        "day_one",
+        "equipment",
+        "resources",
+        "future_expansion",
+        "industry",
+        "defense_range",
+        "lighting"
+      ],
       "expansion_priority": 1,
-      "sign": {"title": "DEVELOPMENT EXPO", "lines": ["NORTH  Supply Depot / Industry", "WEST  Resources / Mining Mountain", "SOUTHWEST  Day One / Equipment", "EAST  Defense Range / Battlefield", "SOUTH  Lighting  SOUTHEAST  CoasterCraft", "EAST of the plaza  reserved for future districts"], "scale": "orientation"},
+      "sign": {
+        "title": "DEVELOPMENT EXPO",
+        "lines": [
+          "NORTH  Supply Depot / Industry",
+          "WEST  Resources / Mining Mountain",
+          "SOUTHWEST  Day One / Equipment",
+          "EAST  Defense Range / Battlefield",
+          "SOUTH  Lighting  SOUTHEAST  CoasterCraft",
+          "EAST of the plaza  reserved for future districts"
+        ],
+        "scale": "orientation"
+      },
       "exhibits": [
-        {"id": "plaza_core", "kind": "functional", "footprint": [3, 4, 3], "clearance": 3, "orientation": "north", "offset": [10, 1, 10], "entities": ["core_of_power"], "items": [], "terrain": "level", "connections": ["plaza_path"], "reset_group": "plaza", "expansion_priority": 1, "sign": {"title": "CORE OF POWER", "lines": ["The development Core stands in the open.", "Raids are off in the Expo world."], "item": "core_of_power"}},
-        {"id": "plaza_reset_point", "kind": "reserved", "footprint": [3, 1, 3], "clearance": 2, "orientation": "north", "offset": [24, 1, 6], "entities": [], "items": [], "terrain": "level", "connections": ["plaza_path"], "owner_card": "A", "expansion_priority": 1, "sign": {"title": "RESET EXPO", "lines": ["Access point for the canonical rebuild.", "Development pause menu > Reset Expo."]}}
+        {
+          "id": "plaza_core",
+          "kind": "functional",
+          "footprint": [
+            3,
+            4,
+            3
+          ],
+          "clearance": 3,
+          "orientation": "north",
+          "offset": [
+            10,
+            1,
+            10
+          ],
+          "entities": [
+            "core_of_power"
+          ],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "plaza_path"
+          ],
+          "reset_group": "plaza",
+          "expansion_priority": 1,
+          "sign": {
+            "title": "CORE OF POWER",
+            "lines": [
+              "The development Core stands in the open.",
+              "Raids are off in the Expo world."
+            ],
+            "item": "core_of_power"
+          }
+        },
+        {
+          "id": "plaza_reset_point",
+          "kind": "reserved",
+          "footprint": [
+            3,
+            1,
+            3
+          ],
+          "clearance": 2,
+          "orientation": "north",
+          "offset": [
+            24,
+            1,
+            6
+          ],
+          "entities": [],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "plaza_path"
+          ],
+          "owner_card": "A",
+          "expansion_priority": 1,
+          "sign": {
+            "title": "RESET EXPO",
+            "lines": [
+              "Access point for the canonical rebuild.",
+              "Development pause menu > Reset Expo."
+            ]
+          }
+        }
       ]
     },
     {
@@ -37,33 +147,156 @@
       "name": "SUPPLY DEPOT",
       "owner_card": "G",
       "prepare": "full",
-      "origin": [-48, -1, 8],
-      "size": [64, 10, 14],
-      "entrance": [0, 0, 21],
+      "origin": [
+        -48,
+        -1,
+        8
+      ],
+      "size": [
+        64,
+        10,
+        14
+      ],
+      "entrance": [
+        0,
+        0,
+        21
+      ],
       "terrain": "level",
-      "expansion_corridor": {"origin": [-48, -1, 1], "size": [64, 10, 7]},
-      "connections": ["central_plaza"],
+      "expansion_corridor": {
+        "origin": [
+          -48,
+          -1,
+          1
+        ],
+        "size": [
+          64,
+          10,
+          7
+        ]
+      },
+      "connections": [
+        "central_plaza"
+      ],
       "expansion_priority": 1,
-      "sign": {"title": "SUPPLY DEPOT", "lines": ["Abundant test stock, canonical reset."]},
+      "sign": {
+        "title": "SUPPLY DEPOT",
+        "lines": [
+          "Abundant test stock, canonical reset."
+        ]
+      },
       "exhibits": [
-        {"id": "supply_depot_stock", "kind": "catalog", "footprint": [58, 4, 8], "clearance": 1, "orientation": "south", "offset": [3, 1, 3], "entities": [], "items": [], "terrain": "supply_depot", "connections": ["plaza_avenue"], "owner_card": "G", "reset_group": "supply_depot", "expansion_priority": 1, "sign": {"title": "SUPPLY DEPOT", "lines": ["Eight of every item the game has today.", "One chest per category; its board lists what is inside.", "Chests and boards are generated from the registry,", "so a new item joins this row by being classified."]}}
+        {
+          "id": "supply_depot_stock",
+          "kind": "catalog",
+          "footprint": [
+            58,
+            4,
+            8
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            3,
+            1,
+            3
+          ],
+          "entities": [],
+          "items": [],
+          "terrain": "supply_depot",
+          "connections": [
+            "plaza_avenue"
+          ],
+          "owner_card": "G",
+          "reset_group": "supply_depot",
+          "expansion_priority": 1,
+          "sign": {
+            "title": "SUPPLY DEPOT",
+            "lines": [
+              "Eight of every item the game has today.",
+              "One chest per category; its board lists what is inside.",
+              "Chests and boards are generated from the registry,",
+              "so a new item joins this row by being classified."
+            ]
+          }
+        }
       ]
     },
     {
       "id": "future_expansion",
-      "name": "RESERVED — FUTURE DISTRICTS",
+      "name": "RESERVED \u00e2\u20ac\u201d FUTURE DISTRICTS",
       "owner_card": "C",
       "prepare": "full",
-      "origin": [24, -1, 26],
-      "size": [24, 10, 28],
-      "entrance": [24, 0, 40],
+      "origin": [
+        24,
+        -1,
+        26
+      ],
+      "size": [
+        24,
+        10,
+        28
+      ],
+      "entrance": [
+        24,
+        0,
+        40
+      ],
       "terrain": "level",
-      "expansion_corridor": {"origin": [48, -1, 26], "size": [7, 10, 28]},
-      "connections": ["central_plaza"],
+      "expansion_corridor": {
+        "origin": [
+          48,
+          -1,
+          26
+        ],
+        "size": [
+          7,
+          10,
+          28
+        ]
+      },
+      "connections": [
+        "central_plaza"
+      ],
       "expansion_priority": 2,
-      "sign": {"title": "RESERVED", "lines": ["Kept empty on purpose."]},
+      "sign": {
+        "title": "RESERVED",
+        "lines": [
+          "Kept empty on purpose."
+        ]
+      },
       "exhibits": [
-        {"id": "future_district_reserved", "kind": "reserved", "footprint": [18, 6, 22], "clearance": 3, "orientation": "west", "offset": [3, 1, 3], "entities": [], "items": [], "terrain": "level", "connections": ["plaza_avenue"], "expansion_priority": 2, "sign": {"title": "RESERVED FOR FUTURE EXPO DISTRICTS", "lines": ["A new system claims this parcel by adding", "one exhibit record to development_expo.json.", "Left empty until that system exists."]}}
+        {
+          "id": "future_district_reserved",
+          "kind": "reserved",
+          "footprint": [
+            18,
+            6,
+            22
+          ],
+          "clearance": 3,
+          "orientation": "west",
+          "offset": [
+            3,
+            1,
+            3
+          ],
+          "entities": [],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "plaza_avenue"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "RESERVED FOR FUTURE EXPO DISTRICTS",
+            "lines": [
+              "A new system claims this parcel by adding",
+              "one exhibit record to development_expo.json.",
+              "Left empty until that system exists."
+            ]
+          }
+        }
       ]
     },
     {
@@ -71,26 +304,356 @@
       "name": "DAY ONE",
       "owner_card": "C",
       "prepare": "full",
-      "origin": [-60, -1, 56],
-      "size": [44, 12, 40],
-      "entrance": [-17, 0, 60],
+      "origin": [
+        -60,
+        -1,
+        56
+      ],
+      "size": [
+        44,
+        12,
+        40
+      ],
+      "entrance": [
+        -17,
+        0,
+        60
+      ],
       "terrain": "level",
-      "expansion_corridor": {"origin": [-60, -1, 96], "size": [44, 12, 7]},
-      "connections": ["central_plaza", "equipment"],
+      "expansion_corridor": {
+        "origin": [
+          -60,
+          -1,
+          96
+        ],
+        "size": [
+          44,
+          12,
+          7
+        ]
+      },
+      "connections": [
+        "central_plaza",
+        "equipment"
+      ],
       "expansion_priority": 2,
-      "sign": {"title": "DAY ONE", "lines": ["Tree to iron pick, in order.", "Walk the row from the plaza end."]},
+      "sign": {
+        "title": "DAY ONE",
+        "lines": [
+          "Tree to iron pick, in order.",
+          "Walk the row from the plaza end."
+        ]
+      },
       "exhibits": [
-        {"id": "day_one_tree", "kind": "environmental", "footprint": [5, 8, 5], "clearance": 1, "orientation": "east", "entities": [], "items": ["log"], "terrain": "tree", "connections": ["district_path"], "reset_group": "day_one", "expansion_priority": 3, "sign": {"title": "1  TREE", "lines": ["Chop it with the Wood Axe."], "item": "wood_axe"}},
-        {"id": "day_one_log", "kind": "catalog", "footprint": [3, 2, 3], "clearance": 1, "orientation": "east", "entities": [], "items": ["log"], "terrain": "level", "connections": ["district_path"], "reset_group": "day_one", "expansion_priority": 3, "sign": {"title": "2  LOG", "lines": ["The chopped tree drops Logs."], "item": "log"}},
-        {"id": "day_one_planks", "kind": "catalog", "footprint": [3, 2, 3], "clearance": 1, "orientation": "east", "entities": [], "items": ["planks"], "terrain": "level", "connections": ["district_path"], "reset_group": "day_one", "expansion_priority": 3, "sign": {"title": "3  PLANKS", "lines": ["One Log in hand crafts Planks."], "item": "planks"}},
-        {"id": "day_one_sticks", "kind": "catalog", "footprint": [3, 2, 3], "clearance": 1, "orientation": "east", "entities": [], "items": ["stick"], "terrain": "level", "connections": ["district_path"], "reset_group": "day_one", "expansion_priority": 3, "sign": {"title": "4  STICKS", "lines": ["Planks split into Sticks."], "item": "stick"}},
-        {"id": "day_one_workbench", "kind": "functional", "footprint": [3, 2, 3], "clearance": 1, "orientation": "east", "entities": ["workbench"], "items": [], "terrain": "level", "connections": ["district_path"], "reset_group": "day_one", "expansion_priority": 3, "sign": {"title": "5  WORKBENCH", "lines": ["Right-click for the recipe book."], "item": "workbench"}},
-        {"id": "day_one_wood_pick", "kind": "catalog", "footprint": [3, 2, 3], "clearance": 1, "orientation": "east", "entities": [], "items": ["wood_pick"], "terrain": "level", "connections": ["district_path"], "reset_group": "day_one", "expansion_priority": 3, "sign": {"title": "6  WOOD PICK", "lines": ["Planks and Sticks at the bench."], "item": "wood_pick"}},
-        {"id": "day_one_stone", "kind": "environmental", "footprint": [5, 4, 5], "clearance": 1, "orientation": "east", "entities": [], "items": ["stone"], "terrain": "quarry", "connections": ["district_path"], "reset_group": "day_one", "expansion_priority": 3, "sign": {"title": "7  STONE", "lines": ["The Wood Pick breaks stone."], "item": "stone"}},
-        {"id": "day_one_stone_pick", "kind": "catalog", "footprint": [3, 2, 3], "clearance": 1, "orientation": "east", "entities": [], "items": ["stone_pick"], "terrain": "level", "connections": ["district_path"], "reset_group": "day_one", "expansion_priority": 3, "sign": {"title": "8  STONE PICK", "lines": ["Stone and Sticks at the bench."], "item": "stone_pick"}},
-        {"id": "day_one_furnace", "kind": "functional", "footprint": [3, 2, 3], "clearance": 1, "orientation": "east", "entities": ["furnace"], "items": [], "terrain": "level", "connections": ["district_path"], "reset_group": "day_one", "expansion_priority": 3, "sign": {"title": "9  FURNACE", "lines": ["Iron Ore plus Coal makes an Ingot."], "item": "furnace"}},
-        {"id": "day_one_iron", "kind": "environmental", "footprint": [5, 4, 5], "clearance": 1, "orientation": "east", "entities": [], "items": ["iron_ore", "coal"], "terrain": "ore_face", "connections": ["district_path"], "reset_group": "day_one", "expansion_priority": 3, "sign": {"title": "10  IRON AND COAL", "lines": ["The Stone Pick breaks Iron Ore."], "item": "iron_ore"}},
-        {"id": "day_one_iron_pick", "kind": "catalog", "footprint": [3, 2, 3], "clearance": 1, "orientation": "east", "entities": [], "items": ["iron_pick"], "terrain": "level", "connections": ["district_path"], "reset_group": "day_one", "expansion_priority": 3, "sign": {"title": "11  IRON PICK", "lines": ["Ingots and Sticks. Day One is done."], "item": "iron_pick"}}
+        {
+          "id": "day_one_tree",
+          "kind": "environmental",
+          "footprint": [
+            5,
+            8,
+            5
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [],
+          "items": [
+            "log"
+          ],
+          "terrain": "tree",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "day_one",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "1  TREE",
+            "lines": [
+              "Chop it with the Wood Axe."
+            ],
+            "item": "wood_axe"
+          }
+        },
+        {
+          "id": "day_one_log",
+          "kind": "catalog",
+          "footprint": [
+            3,
+            2,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [],
+          "items": [
+            "log"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "day_one",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "2  LOG",
+            "lines": [
+              "The chopped tree drops Logs."
+            ],
+            "item": "log"
+          }
+        },
+        {
+          "id": "day_one_planks",
+          "kind": "catalog",
+          "footprint": [
+            3,
+            2,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [],
+          "items": [
+            "planks"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "day_one",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "3  PLANKS",
+            "lines": [
+              "One Log in hand crafts Planks."
+            ],
+            "item": "planks"
+          }
+        },
+        {
+          "id": "day_one_sticks",
+          "kind": "catalog",
+          "footprint": [
+            3,
+            2,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [],
+          "items": [
+            "stick"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "day_one",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "4  STICKS",
+            "lines": [
+              "Planks split into Sticks."
+            ],
+            "item": "stick"
+          }
+        },
+        {
+          "id": "day_one_workbench",
+          "kind": "functional",
+          "footprint": [
+            3,
+            2,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [
+            "workbench"
+          ],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "day_one",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "5  WORKBENCH",
+            "lines": [
+              "Right-click for the recipe book."
+            ],
+            "item": "workbench"
+          }
+        },
+        {
+          "id": "day_one_wood_pick",
+          "kind": "catalog",
+          "footprint": [
+            3,
+            2,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [],
+          "items": [
+            "wood_pick"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "day_one",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "6  WOOD PICK",
+            "lines": [
+              "Planks and Sticks at the bench."
+            ],
+            "item": "wood_pick"
+          }
+        },
+        {
+          "id": "day_one_stone",
+          "kind": "environmental",
+          "footprint": [
+            5,
+            4,
+            5
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [],
+          "items": [
+            "stone"
+          ],
+          "terrain": "quarry",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "day_one",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "7  STONE",
+            "lines": [
+              "The Wood Pick breaks stone."
+            ],
+            "item": "stone"
+          }
+        },
+        {
+          "id": "day_one_stone_pick",
+          "kind": "catalog",
+          "footprint": [
+            3,
+            2,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [],
+          "items": [
+            "stone_pick"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "day_one",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "8  STONE PICK",
+            "lines": [
+              "Stone and Sticks at the bench."
+            ],
+            "item": "stone_pick"
+          }
+        },
+        {
+          "id": "day_one_furnace",
+          "kind": "functional",
+          "footprint": [
+            3,
+            2,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [
+            "furnace"
+          ],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "day_one",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "9  FURNACE",
+            "lines": [
+              "Iron Ore plus Coal makes an Ingot."
+            ],
+            "item": "furnace"
+          }
+        },
+        {
+          "id": "day_one_iron",
+          "kind": "environmental",
+          "footprint": [
+            5,
+            4,
+            5
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [],
+          "items": [
+            "iron_ore",
+            "coal"
+          ],
+          "terrain": "ore_face",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "day_one",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "10  IRON AND COAL",
+            "lines": [
+              "The Stone Pick breaks Iron Ore."
+            ],
+            "item": "iron_ore"
+          }
+        },
+        {
+          "id": "day_one_iron_pick",
+          "kind": "catalog",
+          "footprint": [
+            3,
+            2,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [],
+          "items": [
+            "iron_pick"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "day_one",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "11  IRON PICK",
+            "lines": [
+              "Ingots and Sticks. Day One is done."
+            ],
+            "item": "iron_pick"
+          }
+        }
       ]
     },
     {
@@ -98,22 +661,243 @@
       "name": "EQUIPMENT",
       "owner_card": "C",
       "prepare": "full",
-      "origin": [-9, -1, 60],
-      "size": [34, 10, 34],
-      "entrance": [0, 0, 60],
+      "origin": [
+        -9,
+        -1,
+        60
+      ],
+      "size": [
+        34,
+        10,
+        34
+      ],
+      "entrance": [
+        0,
+        0,
+        60
+      ],
       "terrain": "level",
-      "expansion_corridor": {"origin": [25, -1, 60], "size": [7, 10, 34]},
-      "connections": ["central_plaza", "day_one"],
+      "expansion_corridor": {
+        "origin": [
+          25,
+          -1,
+          60
+        ],
+        "size": [
+          7,
+          10,
+          34
+        ]
+      },
+      "connections": [
+        "central_plaza",
+        "day_one"
+      ],
       "expansion_priority": 2,
-      "sign": {"title": "EQUIPMENT", "lines": ["Everything the player carries today."]},
+      "sign": {
+        "title": "EQUIPMENT",
+        "lines": [
+          "Everything the player carries today."
+        ]
+      },
       "exhibits": [
-        {"id": "equip_wood_pick", "kind": "catalog", "footprint": [3, 2, 3], "clearance": 1, "orientation": "south", "entities": [], "items": ["wood_pick"], "terrain": "level", "connections": ["district_path"], "reset_group": "equipment", "expansion_priority": 3, "sign": {"title": "WOOD PICK", "lines": ["Dirt and stone, slowly."], "item": "wood_pick"}},
-        {"id": "equip_stone_pick", "kind": "catalog", "footprint": [3, 2, 3], "clearance": 1, "orientation": "south", "entities": [], "items": ["stone_pick"], "terrain": "level", "connections": ["district_path"], "reset_group": "equipment", "expansion_priority": 3, "sign": {"title": "STONE PICK", "lines": ["Adds Coal and Iron Ore."], "item": "stone_pick"}},
-        {"id": "equip_iron_pick", "kind": "catalog", "footprint": [3, 2, 3], "clearance": 1, "orientation": "south", "entities": [], "items": ["iron_pick"], "terrain": "level", "connections": ["district_path"], "reset_group": "equipment", "expansion_priority": 3, "sign": {"title": "IRON PICK", "lines": ["Adds Gold Ore. Fastest pick."], "item": "iron_pick"}},
-        {"id": "equip_wood_axe", "kind": "catalog", "footprint": [3, 2, 3], "clearance": 1, "orientation": "south", "entities": [], "items": ["wood_axe"], "terrain": "level", "connections": ["district_path"], "reset_group": "equipment", "expansion_priority": 3, "sign": {"title": "WOOD AXE", "lines": ["Logs and planks."], "item": "wood_axe"}},
-        {"id": "equip_iron_sword", "kind": "catalog", "footprint": [3, 2, 3], "clearance": 1, "orientation": "south", "entities": [], "items": ["iron_sword"], "terrain": "level", "connections": ["district_path"], "reset_group": "equipment", "expansion_priority": 3, "sign": {"title": "IRON SWORD", "lines": ["The only melee weapon so far."], "item": "iron_sword"}},
-        {"id": "equip_sign", "kind": "functional", "footprint": [3, 3, 3], "clearance": 1, "orientation": "south", "entities": ["sign"], "items": ["sign"], "terrain": "level", "connections": ["district_path"], "reset_group": "equipment", "expansion_priority": 3, "sign": {"title": "SIGN", "lines": ["2 Planks + 1 Stick at the Workbench.", "Right-click a placed sign to write it.", "Every board in this Expo is one of these."], "item": "sign"}},
-        {"id": "equip_armour_reserved", "kind": "reserved", "footprint": [8, 4, 8], "clearance": 2, "orientation": "south", "entities": [], "items": [], "terrain": "level", "connections": ["district_path"], "expansion_priority": 2, "sign": {"title": "ARMOUR — RESERVED", "lines": ["No armour exists yet.", "This parcel stays empty until it does."]}}
+        {
+          "id": "equip_wood_pick",
+          "kind": "catalog",
+          "footprint": [
+            3,
+            2,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "entities": [],
+          "items": [
+            "wood_pick"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "equipment",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "WOOD PICK",
+            "lines": [
+              "Dirt and stone, slowly."
+            ],
+            "item": "wood_pick"
+          }
+        },
+        {
+          "id": "equip_stone_pick",
+          "kind": "catalog",
+          "footprint": [
+            3,
+            2,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "entities": [],
+          "items": [
+            "stone_pick"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "equipment",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "STONE PICK",
+            "lines": [
+              "Adds Coal and Iron Ore."
+            ],
+            "item": "stone_pick"
+          }
+        },
+        {
+          "id": "equip_iron_pick",
+          "kind": "catalog",
+          "footprint": [
+            3,
+            2,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "entities": [],
+          "items": [
+            "iron_pick"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "equipment",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "IRON PICK",
+            "lines": [
+              "Adds Gold Ore. Fastest pick."
+            ],
+            "item": "iron_pick"
+          }
+        },
+        {
+          "id": "equip_wood_axe",
+          "kind": "catalog",
+          "footprint": [
+            3,
+            2,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "entities": [],
+          "items": [
+            "wood_axe"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "equipment",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "WOOD AXE",
+            "lines": [
+              "Logs and planks."
+            ],
+            "item": "wood_axe"
+          }
+        },
+        {
+          "id": "equip_iron_sword",
+          "kind": "catalog",
+          "footprint": [
+            3,
+            2,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "entities": [],
+          "items": [
+            "iron_sword"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "equipment",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "IRON SWORD",
+            "lines": [
+              "The only melee weapon so far."
+            ],
+            "item": "iron_sword"
+          }
+        },
+        {
+          "id": "equip_sign",
+          "kind": "functional",
+          "footprint": [
+            3,
+            3,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "entities": [
+            "sign"
+          ],
+          "items": [
+            "sign"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "equipment",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "SIGN",
+            "lines": [
+              "2 Planks + 1 Stick at the Workbench.",
+              "Right-click a placed sign to write it.",
+              "Every board in this Expo is one of these."
+            ],
+            "item": "sign"
+          }
+        },
+        {
+          "id": "equip_armour_reserved",
+          "kind": "reserved",
+          "footprint": [
+            8,
+            4,
+            8
+          ],
+          "clearance": 2,
+          "orientation": "south",
+          "entities": [],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "ARMOUR \u00e2\u20ac\u201d RESERVED",
+            "lines": [
+              "No armour exists yet.",
+              "This parcel stays empty until it does."
+            ]
+          }
+        }
       ]
     },
     {
@@ -121,19 +905,159 @@
       "name": "RESOURCES",
       "owner_card": "C",
       "prepare": "full",
-      "origin": [-88, -1, 8],
-      "size": [40, 16, 40],
-      "entrance": [-49, 0, 40],
+      "origin": [
+        -88,
+        -1,
+        8
+      ],
+      "size": [
+        40,
+        16,
+        40
+      ],
+      "entrance": [
+        -49,
+        0,
+        40
+      ],
       "terrain": "natural",
-      "expansion_corridor": {"origin": [-95, -1, 8], "size": [7, 16, 40]},
-      "connections": ["central_plaza", "mining_mountain"],
+      "expansion_corridor": {
+        "origin": [
+          -95,
+          -1,
+          8
+        ],
+        "size": [
+          7,
+          16,
+          40
+        ]
+      },
+      "connections": [
+        "central_plaza",
+        "mining_mountain"
+      ],
       "expansion_priority": 2,
-      "sign": {"title": "RESOURCES", "lines": ["Where each raw material comes from."]},
+      "sign": {
+        "title": "RESOURCES",
+        "lines": [
+          "Where each raw material comes from."
+        ]
+      },
       "exhibits": [
-        {"id": "res_forest", "kind": "environmental", "footprint": [14, 10, 14], "clearance": 1, "orientation": "east", "entities": [], "items": ["log"], "terrain": "forest", "connections": ["district_path"], "reset_group": "resources", "expansion_priority": 3, "sign": {"title": "FOREST", "lines": ["Logs and leaves. Ordinary voxels."], "item": "log"}},
-        {"id": "res_quarry", "kind": "environmental", "footprint": [12, 6, 12], "clearance": 1, "orientation": "east", "entities": [], "items": ["stone"], "terrain": "quarry", "connections": ["district_path"], "reset_group": "resources", "expansion_priority": 3, "sign": {"title": "QUARRY", "lines": ["Cut rock face, stepped for climbing."], "item": "stone"}},
-        {"id": "res_coal_seam", "kind": "environmental", "footprint": [10, 5, 10], "clearance": 1, "orientation": "east", "entities": [], "items": ["coal"], "terrain": "coal_seam", "connections": ["district_path"], "reset_group": "resources", "expansion_priority": 3, "sign": {"title": "COAL SEAM", "lines": ["Fuel for furnace and foundry."], "item": "coal"}},
-        {"id": "res_surface_ore", "kind": "environmental", "footprint": [10, 4, 10], "clearance": 1, "orientation": "east", "entities": [], "items": ["iron_ore", "gold_ore"], "terrain": "surface_ore", "connections": ["district_path"], "reset_group": "resources", "expansion_priority": 3, "sign": {"title": "SURFACE ORE", "lines": ["Iron and gold outcrops."], "item": "gold_ore"}}
+        {
+          "id": "res_forest",
+          "kind": "environmental",
+          "footprint": [
+            14,
+            10,
+            14
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [],
+          "items": [
+            "log"
+          ],
+          "terrain": "forest",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "resources",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "FOREST",
+            "lines": [
+              "Logs and leaves. Ordinary voxels."
+            ],
+            "item": "log"
+          }
+        },
+        {
+          "id": "res_quarry",
+          "kind": "environmental",
+          "footprint": [
+            12,
+            6,
+            12
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [],
+          "items": [
+            "stone"
+          ],
+          "terrain": "quarry",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "resources",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "QUARRY",
+            "lines": [
+              "Cut rock face, stepped for climbing."
+            ],
+            "item": "stone"
+          }
+        },
+        {
+          "id": "res_coal_seam",
+          "kind": "environmental",
+          "footprint": [
+            10,
+            5,
+            10
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [],
+          "items": [
+            "coal"
+          ],
+          "terrain": "coal_seam",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "resources",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "COAL SEAM",
+            "lines": [
+              "Fuel for furnace and foundry."
+            ],
+            "item": "coal"
+          }
+        },
+        {
+          "id": "res_surface_ore",
+          "kind": "environmental",
+          "footprint": [
+            10,
+            4,
+            10
+          ],
+          "clearance": 1,
+          "orientation": "east",
+          "entities": [],
+          "items": [
+            "iron_ore",
+            "gold_ore"
+          ],
+          "terrain": "surface_ore",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "resources",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "SURFACE ORE",
+            "lines": [
+              "Iron and gold outcrops."
+            ],
+            "item": "gold_ore"
+          }
+        }
       ]
     },
     {
@@ -141,21 +1065,261 @@
       "name": "MINING MOUNTAIN",
       "owner_card": "C",
       "prepare": "full",
-      "origin": [-124, -1, -68],
-      "size": [72, 25, 72],
-      "entrance": [-53, 0, -32],
+      "origin": [
+        -124,
+        -1,
+        -68
+      ],
+      "size": [
+        72,
+        25,
+        72
+      ],
+      "entrance": [
+        -53,
+        0,
+        -32
+      ],
       "terrain": "mountain",
-      "expansion_corridor": {"origin": [-131, -1, -68], "size": [7, 25, 72]},
-      "connections": ["resources", "industry"],
+      "expansion_corridor": {
+        "origin": [
+          -131,
+          -1,
+          -68
+        ],
+        "size": [
+          7,
+          25,
+          72
+        ]
+      },
+      "connections": [
+        "resources",
+        "industry"
+      ],
       "expansion_priority": 2,
-      "sign": {"title": "MINING MOUNTAIN", "lines": ["A real voxel mass. Dig it anywhere.", "The lit tunnel runs east to west."]},
+      "sign": {
+        "title": "MINING MOUNTAIN",
+        "lines": [
+          "A real voxel mass. Dig it anywhere.",
+          "The lit tunnel runs east to west."
+        ]
+      },
       "exhibits": [
-        {"id": "mountain_mass", "kind": "environmental", "footprint": [72, 25, 72], "clearance": 0, "orientation": "east", "offset": [0, 0, 0], "entities": [], "items": ["stone"], "terrain": "mountain", "connections": ["mountain_path"], "reset_group": "mining_mountain", "expansion_priority": 4, "sign": {"title": "MOUNTAIN", "lines": ["Stone and dirt, editable everywhere."], "item": "stone"}},
-        {"id": "mountain_tunnel", "nested": true, "kind": "environmental", "footprint": [72, 7, 9], "clearance": 0, "orientation": "east", "offset": [0, 1, 32], "entities": ["post_lantern"], "items": [], "terrain": "tunnel", "connections": ["mountain_path", "rail_line"], "reset_group": "mining_mountain", "expansion_priority": 4, "sign": {"title": "MAIN TUNNEL", "lines": ["Nine wide, seven high, lit end to end.", "Rail runs the whole length."], "item": "post_lantern"}},
-        {"id": "mountain_rail", "nested": true, "kind": "system_demo", "footprint": [68, 2, 1], "clearance": 0, "orientation": "east", "offset": [4, 1, 34], "entities": ["rail"], "items": [], "terrain": "tunnel", "connections": ["rail_line"], "reset_group": "mining_mountain", "expansion_priority": 4, "sign": {"title": "MINE RAIL", "lines": ["ORE > CART > INDUSTRY", "The line runs out of the east mouth and", "on into the Industry yard."], "item": "rail"}},
-        {"id": "mountain_ore_core", "nested": true, "kind": "environmental", "footprint": [40, 14, 40], "clearance": 0, "orientation": "east", "offset": [16, 1, 16], "entities": [], "items": ["coal", "iron_ore", "gold_ore"], "terrain": "ore_core", "connections": ["mountain_path"], "reset_group": "mining_mountain", "expansion_priority": 4, "sign": {"title": "ORE CORE", "lines": ["Coal, iron and gold, deliberately placed."], "item": "gold_ore"}},
-        {"id": "mountain_manual_mine", "nested": true, "kind": "environmental", "footprint": [13, 6, 13], "clearance": 1, "orientation": "north", "offset": [20, 1, 20], "entities": [], "items": ["iron_pick"], "terrain": "chamber", "connections": ["mountain_path"], "reset_group": "mining_mountain", "expansion_priority": 4, "sign": {"title": "MANUAL MINING", "lines": ["Exposed ore faces. Swing a pick."], "item": "iron_pick"}},
-        {"id": "mountain_auto_mine", "nested": true, "kind": "system_demo", "footprint": [15, 6, 15], "clearance": 1, "orientation": "south", "offset": [20, 1, 42], "entities": ["miner", "ore_bin"], "items": ["iron_ore"], "terrain": "chamber", "connections": ["mountain_path", "rail_line"], "reset_group": "mining_mountain", "expansion_priority": 4, "sign": {"title": "AUTOMATED MINING", "lines": ["ORE > MINER > ORE BIN", "Walk round the machines while they run."], "item": "miner"}}
+        {
+          "id": "mountain_mass",
+          "kind": "environmental",
+          "footprint": [
+            72,
+            25,
+            72
+          ],
+          "clearance": 0,
+          "orientation": "east",
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "entities": [],
+          "items": [
+            "stone"
+          ],
+          "terrain": "mountain",
+          "connections": [
+            "mountain_path"
+          ],
+          "reset_group": "mining_mountain",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "MOUNTAIN",
+            "lines": [
+              "Stone and dirt, editable everywhere."
+            ],
+            "item": "stone"
+          }
+        },
+        {
+          "id": "mountain_tunnel",
+          "nested": true,
+          "kind": "environmental",
+          "footprint": [
+            72,
+            7,
+            9
+          ],
+          "clearance": 0,
+          "orientation": "east",
+          "offset": [
+            0,
+            1,
+            32
+          ],
+          "entities": [
+            "post_lantern"
+          ],
+          "items": [],
+          "terrain": "tunnel",
+          "connections": [
+            "mountain_path",
+            "rail_line"
+          ],
+          "reset_group": "mining_mountain",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "MAIN TUNNEL",
+            "lines": [
+              "Nine wide, seven high, lit end to end.",
+              "Rail runs the whole length."
+            ],
+            "item": "post_lantern"
+          }
+        },
+        {
+          "id": "mountain_rail",
+          "nested": true,
+          "kind": "system_demo",
+          "footprint": [
+            68,
+            2,
+            1
+          ],
+          "clearance": 0,
+          "orientation": "east",
+          "offset": [
+            4,
+            1,
+            34
+          ],
+          "entities": [
+            "rail"
+          ],
+          "items": [],
+          "terrain": "tunnel",
+          "connections": [
+            "rail_line"
+          ],
+          "reset_group": "mining_mountain",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "MINE RAIL",
+            "lines": [
+              "ORE > CART > INDUSTRY",
+              "The line runs out of the east mouth and",
+              "on into the Industry yard."
+            ],
+            "item": "rail"
+          }
+        },
+        {
+          "id": "mountain_ore_core",
+          "nested": true,
+          "kind": "environmental",
+          "footprint": [
+            40,
+            14,
+            40
+          ],
+          "clearance": 0,
+          "orientation": "east",
+          "offset": [
+            16,
+            1,
+            16
+          ],
+          "entities": [],
+          "items": [
+            "coal",
+            "iron_ore",
+            "gold_ore"
+          ],
+          "terrain": "ore_core",
+          "connections": [
+            "mountain_path"
+          ],
+          "reset_group": "mining_mountain",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "ORE CORE",
+            "lines": [
+              "Coal, iron and gold, deliberately placed."
+            ],
+            "item": "gold_ore"
+          }
+        },
+        {
+          "id": "mountain_manual_mine",
+          "nested": true,
+          "kind": "environmental",
+          "footprint": [
+            13,
+            6,
+            13
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "offset": [
+            20,
+            1,
+            20
+          ],
+          "entities": [],
+          "items": [
+            "iron_pick"
+          ],
+          "terrain": "chamber",
+          "connections": [
+            "mountain_path"
+          ],
+          "reset_group": "mining_mountain",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "MANUAL MINING",
+            "lines": [
+              "Exposed ore faces. Swing a pick."
+            ],
+            "item": "iron_pick"
+          }
+        },
+        {
+          "id": "mountain_auto_mine",
+          "nested": true,
+          "kind": "system_demo",
+          "footprint": [
+            15,
+            6,
+            15
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            20,
+            1,
+            42
+          ],
+          "entities": [
+            "miner",
+            "ore_bin"
+          ],
+          "items": [
+            "iron_ore"
+          ],
+          "terrain": "chamber",
+          "connections": [
+            "mountain_path",
+            "rail_line"
+          ],
+          "reset_group": "mining_mountain",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "AUTOMATED MINING",
+            "lines": [
+              "ORE > MINER > ORE BIN",
+              "Walk round the machines while they run."
+            ],
+            "item": "miner"
+          }
+        }
       ]
     },
     {
@@ -163,24 +1327,490 @@
       "name": "INDUSTRY",
       "owner_card": "D",
       "prepare": "full",
-      "origin": [-52, -1, -44],
-      "size": [68, 16, 40],
-      "entrance": [-12, 0, -5],
+      "origin": [
+        -52,
+        -1,
+        -44
+      ],
+      "size": [
+        68,
+        16,
+        40
+      ],
+      "entrance": [
+        -12,
+        0,
+        -5
+      ],
       "terrain": "level",
-      "expansion_corridor": {"origin": [-52, -1, -51], "size": [68, 16, 7]},
-      "connections": ["central_plaza", "mining_mountain", "construction_yard"],
+      "expansion_corridor": {
+        "origin": [
+          -52,
+          -1,
+          -51
+        ],
+        "size": [
+          68,
+          16,
+          7
+        ]
+      },
+      "connections": [
+        "central_plaza",
+        "mining_mountain",
+        "construction_yard"
+      ],
       "expansion_priority": 2,
-      "sign": {"title": "INDUSTRY", "lines": ["ORE > MINER > ORE BIN > CART > WAREHOUSE > FOUNDRY", "The rail runs in from the Mining Mountain.", "Walk the chain west to east."]},
+      "sign": {
+        "title": "INDUSTRY",
+        "lines": [
+          "ORE > MINER > ORE BIN > CART > WAREHOUSE > FOUNDRY",
+          "The rail runs in from the Mining Mountain.",
+          "Walk the chain west to east."
+        ]
+      },
       "exhibits": [
-        {"id": "industry_ore_face", "kind": "system_demo", "footprint": [10, 4, 4], "clearance": 2, "orientation": "south", "offset": [4, 1, 6], "entities": ["miner", "ore_bin"], "items": ["iron_ore", "coal"], "terrain": "ore_face", "connections": ["rail_line", "district_path"], "placements": [{"entity": "miner", "offset": [4, 0, 3]}, {"entity": "ore_bin", "offset": [5, 0, 3]}], "reset_group": "industry", "expansion_priority": 3, "sign": {"title": "1  ORE > MINER > ORE BIN", "lines": ["The Miner drills the face behind it", "every eight seconds and drops the ore", "into the bin beside it. Both start empty."], "item": "miner"}},
-        {"id": "industry_rail", "kind": "system_demo", "footprint": [39, 2, 1], "clearance": 0, "orientation": "south", "offset": [0, 1, 10], "entities": ["rail", "mine_cart"], "items": [], "terrain": "level", "connections": ["rail_line"], "placements": [{"entity": "mine_cart", "offset": [2, 1, 0]}], "reset_group": "industry", "expansion_priority": 4, "sign": {"title": "2  MINE CART ON RAIL", "lines": ["One line from the mountain tunnel.", "The cart loads beside the Ore Bin and", "unloads beside the Warehouse."], "item": "mine_cart"}},
-        {"id": "industry_warehouse", "kind": "system_demo", "footprint": [8, 4, 6], "clearance": 2, "orientation": "north", "offset": [34, 1, 11], "entities": ["warehouse", "foundry"], "items": ["iron_ore", "coal", "iron_ingot"], "terrain": "level", "connections": ["rail_line", "district_path"], "placements": [{"entity": "warehouse", "offset": [2, 0, 0]}, {"entity": "foundry", "offset": [2, 0, 2]}], "reset_group": "industry", "expansion_priority": 3, "sign": {"title": "3  WAREHOUSE > FOUNDRY", "lines": ["The cart unloads into the Warehouse.", "The Foundry touching it pulls ore and", "coal out and puts the ingots back."], "item": "warehouse"}},
-        {"id": "industry_ingots", "kind": "catalog", "footprint": [3, 2, 3], "clearance": 2, "orientation": "north", "offset": [46, 1, 11], "entities": [], "items": ["iron_ingot", "gold_ingot"], "terrain": "level", "connections": ["district_path"], "reset_group": "industry", "expansion_priority": 3, "sign": {"title": "4  INGOTS", "lines": ["What the chain makes. Pick the target", "in the Foundry's own panel."], "item": "gold_ingot"}},
-        {"id": "industry_net_chest", "kind": "system_demo", "footprint": [8, 3, 6], "clearance": 2, "orientation": "north", "offset": [4, 1, 20], "entities": ["warehouse", "chest"], "items": [], "terrain": "level", "connections": ["district_path"], "placements": [{"entity": "warehouse", "offset": [1, 0, 0]}, {"entity": "chest", "offset": [1, 0, 2]}], "reset_group": "industry", "expansion_priority": 3, "sign": {"title": "STORAGE NETWORK  WAREHOUSE + CHEST", "lines": ["A Chest touching a Warehouse pools", "with it: one store, 36 slots."], "item": "chest"}},
-        {"id": "industry_net_chain", "kind": "system_demo", "footprint": [8, 3, 6], "clearance": 2, "orientation": "north", "offset": [16, 1, 20], "entities": ["warehouse"], "items": [], "terrain": "level", "connections": ["district_path"], "placements": [{"entity": "warehouse", "offset": [1, 0, 0]}, {"entity": "warehouse", "offset": [1, 0, 2]}], "reset_group": "industry", "expansion_priority": 3, "sign": {"title": "STORAGE NETWORK  DAISY CHAIN", "lines": ["Warehouses beside each other chain.", "Fill the first and the next takes over."], "item": "warehouse"}},
-        {"id": "industry_net_foundry", "kind": "system_demo", "footprint": [8, 3, 6], "clearance": 2, "orientation": "north", "offset": [28, 1, 20], "entities": ["warehouse", "foundry"], "items": [], "terrain": "level", "connections": ["district_path"], "placements": [{"entity": "warehouse", "offset": [1, 0, 0]}, {"entity": "foundry", "offset": [1, 0, 2]}], "reset_group": "industry", "expansion_priority": 3, "sign": {"title": "STORAGE NETWORK  FOUNDRY", "lines": ["A Foundry touching storage feeds itself:", "ore and coal in, ingots back out.", "Its three slots start empty."], "item": "foundry"}},
-        {"id": "industry_net_furnace", "kind": "system_demo", "footprint": [8, 3, 6], "clearance": 2, "orientation": "north", "offset": [40, 1, 20], "entities": ["chest", "furnace"], "items": [], "terrain": "level", "connections": ["district_path"], "placements": [{"entity": "chest", "offset": [1, 0, 0]}, {"entity": "furnace", "offset": [1, 0, 1]}], "reset_group": "industry", "expansion_priority": 3, "sign": {"title": "STORAGE NETWORK  FURNACE", "lines": ["A Furnace touching storage tops its own", "Raw and Fuel slots up. It keeps its", "output for you to collect."], "item": "furnace"}},
-        {"id": "industry_expansion", "kind": "reserved", "footprint": [10, 4, 10], "clearance": 2, "orientation": "west", "offset": [56, 1, 6], "entities": [], "items": [], "terrain": "level", "connections": ["district_path"], "expansion_priority": 2, "sign": {"title": "INDUSTRY — EXPANSION EDGE", "lines": ["Kept clear for the next machine.", "The avenue from the plaza stays open."]}}
+        {
+          "id": "industry_ore_face",
+          "kind": "system_demo",
+          "footprint": [
+            10,
+            4,
+            4
+          ],
+          "clearance": 2,
+          "orientation": "south",
+          "offset": [
+            4,
+            1,
+            6
+          ],
+          "entities": [
+            "miner",
+            "ore_bin"
+          ],
+          "items": [
+            "iron_ore",
+            "coal"
+          ],
+          "terrain": "ore_face",
+          "connections": [
+            "rail_line",
+            "district_path"
+          ],
+          "placements": [
+            {
+              "entity": "miner",
+              "offset": [
+                4,
+                0,
+                3
+              ]
+            },
+            {
+              "entity": "ore_bin",
+              "offset": [
+                5,
+                0,
+                3
+              ]
+            }
+          ],
+          "reset_group": "industry",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "1  ORE > MINER > ORE BIN",
+            "lines": [
+              "The Miner drills the face behind it",
+              "every eight seconds and drops the ore",
+              "into the bin beside it. Both start empty."
+            ],
+            "item": "miner"
+          }
+        },
+        {
+          "id": "industry_rail",
+          "kind": "system_demo",
+          "footprint": [
+            39,
+            2,
+            1
+          ],
+          "clearance": 0,
+          "orientation": "south",
+          "offset": [
+            0,
+            1,
+            10
+          ],
+          "entities": [
+            "rail",
+            "mine_cart"
+          ],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "rail_line"
+          ],
+          "placements": [
+            {
+              "entity": "mine_cart",
+              "offset": [
+                2,
+                1,
+                0
+              ]
+            }
+          ],
+          "reset_group": "industry",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "2  MINE CART ON RAIL",
+            "lines": [
+              "One line from the mountain tunnel.",
+              "The cart loads beside the Ore Bin and",
+              "unloads beside the Warehouse."
+            ],
+            "item": "mine_cart"
+          }
+        },
+        {
+          "id": "industry_warehouse",
+          "kind": "system_demo",
+          "footprint": [
+            8,
+            4,
+            6
+          ],
+          "clearance": 2,
+          "orientation": "north",
+          "offset": [
+            34,
+            1,
+            11
+          ],
+          "entities": [
+            "warehouse",
+            "foundry"
+          ],
+          "items": [
+            "iron_ore",
+            "coal",
+            "iron_ingot"
+          ],
+          "terrain": "level",
+          "connections": [
+            "rail_line",
+            "district_path"
+          ],
+          "placements": [
+            {
+              "entity": "warehouse",
+              "offset": [
+                2,
+                0,
+                0
+              ]
+            },
+            {
+              "entity": "foundry",
+              "offset": [
+                2,
+                0,
+                2
+              ]
+            }
+          ],
+          "reset_group": "industry",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "3  WAREHOUSE > FOUNDRY",
+            "lines": [
+              "The cart unloads into the Warehouse.",
+              "The Foundry touching it pulls ore and",
+              "coal out and puts the ingots back."
+            ],
+            "item": "warehouse"
+          }
+        },
+        {
+          "id": "industry_ingots",
+          "kind": "catalog",
+          "footprint": [
+            3,
+            2,
+            3
+          ],
+          "clearance": 2,
+          "orientation": "north",
+          "offset": [
+            46,
+            1,
+            11
+          ],
+          "entities": [],
+          "items": [
+            "iron_ingot",
+            "gold_ingot"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "industry",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "4  INGOTS",
+            "lines": [
+              "What the chain makes. Pick the target",
+              "in the Foundry's own panel."
+            ],
+            "item": "gold_ingot"
+          }
+        },
+        {
+          "id": "industry_net_chest",
+          "kind": "system_demo",
+          "footprint": [
+            8,
+            3,
+            6
+          ],
+          "clearance": 2,
+          "orientation": "north",
+          "offset": [
+            4,
+            1,
+            20
+          ],
+          "entities": [
+            "warehouse",
+            "chest"
+          ],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "placements": [
+            {
+              "entity": "warehouse",
+              "offset": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "entity": "chest",
+              "offset": [
+                1,
+                0,
+                2
+              ]
+            }
+          ],
+          "reset_group": "industry",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "STORAGE NETWORK  WAREHOUSE + CHEST",
+            "lines": [
+              "A Chest touching a Warehouse pools",
+              "with it: one store, 36 slots."
+            ],
+            "item": "chest"
+          }
+        },
+        {
+          "id": "industry_net_chain",
+          "kind": "system_demo",
+          "footprint": [
+            8,
+            3,
+            6
+          ],
+          "clearance": 2,
+          "orientation": "north",
+          "offset": [
+            16,
+            1,
+            20
+          ],
+          "entities": [
+            "warehouse"
+          ],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "placements": [
+            {
+              "entity": "warehouse",
+              "offset": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "entity": "warehouse",
+              "offset": [
+                1,
+                0,
+                2
+              ]
+            }
+          ],
+          "reset_group": "industry",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "STORAGE NETWORK  DAISY CHAIN",
+            "lines": [
+              "Warehouses beside each other chain.",
+              "Fill the first and the next takes over."
+            ],
+            "item": "warehouse"
+          }
+        },
+        {
+          "id": "industry_net_foundry",
+          "kind": "system_demo",
+          "footprint": [
+            8,
+            3,
+            6
+          ],
+          "clearance": 2,
+          "orientation": "north",
+          "offset": [
+            28,
+            1,
+            20
+          ],
+          "entities": [
+            "warehouse",
+            "foundry"
+          ],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "placements": [
+            {
+              "entity": "warehouse",
+              "offset": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "entity": "foundry",
+              "offset": [
+                1,
+                0,
+                2
+              ]
+            }
+          ],
+          "reset_group": "industry",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "STORAGE NETWORK  FOUNDRY",
+            "lines": [
+              "A Foundry touching storage feeds itself:",
+              "ore and coal in, ingots back out.",
+              "Its three slots start empty."
+            ],
+            "item": "foundry"
+          }
+        },
+        {
+          "id": "industry_net_furnace",
+          "kind": "system_demo",
+          "footprint": [
+            8,
+            3,
+            6
+          ],
+          "clearance": 2,
+          "orientation": "north",
+          "offset": [
+            40,
+            1,
+            20
+          ],
+          "entities": [
+            "chest",
+            "furnace"
+          ],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "placements": [
+            {
+              "entity": "chest",
+              "offset": [
+                1,
+                0,
+                0
+              ]
+            },
+            {
+              "entity": "furnace",
+              "offset": [
+                1,
+                0,
+                1
+              ]
+            }
+          ],
+          "reset_group": "industry",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "STORAGE NETWORK  FURNACE",
+            "lines": [
+              "A Furnace touching storage tops its own",
+              "Raw and Fuel slots up. It keeps its",
+              "output for you to collect."
+            ],
+            "item": "furnace"
+          }
+        },
+        {
+          "id": "industry_expansion",
+          "kind": "reserved",
+          "footprint": [
+            10,
+            4,
+            10
+          ],
+          "clearance": 2,
+          "orientation": "west",
+          "offset": [
+            56,
+            1,
+            6
+          ],
+          "entities": [],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "INDUSTRY \u00e2\u20ac\u201d EXPANSION EDGE",
+            "lines": [
+              "Kept clear for the next machine.",
+              "The avenue from the plaza stays open."
+            ]
+          }
+        }
       ]
     },
     {
@@ -188,26 +1818,513 @@
       "name": "CONSTRUCTION YARD",
       "owner_card": "E",
       "prepare": "full",
-      "origin": [28, -1, -44],
-      "size": [44, 16, 40],
-      "entrance": [50, 0, -5],
+      "origin": [
+        28,
+        -1,
+        -44
+      ],
+      "size": [
+        44,
+        16,
+        40
+      ],
+      "entrance": [
+        50,
+        0,
+        -5
+      ],
       "terrain": "level",
-      "expansion_corridor": {"origin": [28, -1, -51], "size": [44, 16, 7]},
-      "connections": ["central_plaza", "industry", "defense_range"],
+      "expansion_corridor": {
+        "origin": [
+          28,
+          -1,
+          -51
+        ],
+        "size": [
+          44,
+          16,
+          7
+        ]
+      },
+      "connections": [
+        "central_plaza",
+        "industry",
+        "defense_range"
+      ],
       "expansion_priority": 3,
-      "sign": {"title": "CONSTRUCTION YARD", "lines": ["Castle kit and blueprints."]},
+      "sign": {
+        "title": "CONSTRUCTION YARD",
+        "lines": [
+          "Castle kit and blueprints."
+        ]
+      },
       "exhibits": [
-        {"id": "cy_castle_stone", "kind": "catalog", "footprint": [4, 4, 4], "clearance": 1, "orientation": "south", "offset": [4, 1, 4], "entities": [], "items": ["castle_stone"], "terrain": "level", "connections": ["district_path"], "reset_group": "construction_yard", "expansion_priority": 3, "sign": {"title": "CASTLE STONE", "lines": ["The block every fortification is cut from.", "Drag a run of it to raise a wall."], "item": "castle_stone"}},
-        {"id": "cy_stone_stair", "kind": "functional", "footprint": [4, 4, 4], "clearance": 1, "orientation": "south", "offset": [9, 1, 4], "entities": ["stone_stair"], "items": ["stone_stair"], "terrain": "level", "connections": ["district_path"], "reset_group": "construction_yard", "expansion_priority": 3, "sign": {"title": "STONE STAIR", "lines": ["Climbs one cell. Chain them up a tower."], "item": "stone_stair"}},
-        {"id": "cy_wall_walk_slab", "kind": "functional", "footprint": [4, 4, 4], "clearance": 1, "orientation": "south", "offset": [14, 1, 4], "entities": ["wall_walk_slab"], "items": ["wall_walk_slab"], "terrain": "level", "connections": ["district_path"], "reset_group": "construction_yard", "expansion_priority": 3, "sign": {"title": "WALL-WALK SLAB", "lines": ["The half-height deck along a wall top.", "Lays in a line the whole way."], "item": "wall_walk_slab"}},
-        {"id": "cy_parapet_merlon", "kind": "functional", "footprint": [4, 4, 4], "clearance": 1, "orientation": "south", "offset": [19, 1, 4], "entities": ["parapet_merlon"], "items": ["parapet_merlon"], "terrain": "level", "connections": ["district_path"], "reset_group": "construction_yard", "expansion_priority": 3, "sign": {"title": "PARAPET MERLON", "lines": ["The tooth on the wall top: cover for a", "weapon standing on the wall-walk."], "item": "parapet_merlon"}},
-        {"id": "cy_tower_platform", "kind": "functional", "footprint": [4, 4, 4], "clearance": 1, "orientation": "south", "offset": [24, 1, 4], "entities": ["tower_platform"], "items": ["tower_platform"], "terrain": "level", "connections": ["district_path"], "reset_group": "construction_yard", "expansion_priority": 3, "sign": {"title": "TOWER PLATFORM", "lines": ["Two by two deck with a light-siege mount.", "A ballista or turret stands on it."], "item": "tower_platform"}},
-        {"id": "cy_gate_frame", "kind": "functional", "footprint": [4, 5, 4], "clearance": 1, "orientation": "south", "offset": [29, 1, 4], "entities": ["gate_frame"], "items": ["gate_frame"], "terrain": "level", "connections": ["district_path"], "reset_group": "construction_yard", "expansion_priority": 3, "sign": {"title": "GATE FRAME", "lines": ["Three wide, three high, open in the middle.", "The way through a closed wall."], "item": "gate_frame"}},
-        {"id": "cy_wood_barricade", "kind": "functional", "footprint": [4, 4, 4], "clearance": 1, "orientation": "south", "offset": [34, 1, 4], "entities": ["wood_barricade"], "items": ["wood_barricade"], "terrain": "level", "connections": ["district_path"], "reset_group": "construction_yard", "expansion_priority": 3, "sign": {"title": "WOOD BARRICADE", "lines": ["Cheap, breachable, buys time.", "Raiders chew through it first."], "item": "wood_barricade"}},
-        {"id": "cy_drag_wall", "kind": "showcase", "footprint": [18, 6, 4], "clearance": 1, "orientation": "south", "offset": [4, 1, 12], "entities": [], "items": ["castle_stone", "wall_walk_slab", "parapet_merlon"], "terrain": "wall_demo", "connections": ["district_path"], "reset_group": "construction_yard", "expansion_priority": 3, "sign": {"title": "DRAG-BUILT WALL", "lines": ["One drag of Castle Stone, a wall-walk", "deck on top and merlons above it."], "item": "castle_stone"}},
-        {"id": "cy_blueprint_stamp", "kind": "system_demo", "footprint": [10, 8, 10], "clearance": 1, "orientation": "south", "offset": [26, 1, 12], "entities": [], "items": ["castle_stone"], "terrain": "blueprint_demo", "connections": ["district_path"], "reset_group": "construction_yard", "expansion_priority": 3, "sign": {"title": "STAMPED BLUEPRINT", "lines": ["FOUNDATION 4 > TOWER SEGMENT 4 > CAP 4", "The blueprint tool stamps whole pieces;", "what lands is ordinary editable stone."], "item": "castle_stone"}},
-        {"id": "cy_castle_demo", "kind": "showcase", "footprint": [16, 10, 12], "clearance": 1, "orientation": "south", "offset": [4, 1, 24], "entities": ["tower_platform", "gate_frame"], "items": ["castle_stone", "stone_stair", "wall_walk_slab", "parapet_merlon"], "terrain": "castle_demo", "connections": ["district_path"], "reset_group": "construction_yard", "expansion_priority": 2, "sign": {"title": "SMALL CASTLE", "lines": ["Piece > assembly > defensive structure.", "Curtain wall, gate, stair, wall-walk,", "merlons and a tower platform on top."], "item": "tower_platform"}},
-        {"id": "cy_expansion_reserved", "kind": "reserved", "footprint": [12, 6, 12], "clearance": 2, "orientation": "south", "offset": [24, 1, 24], "entities": [], "items": [], "terrain": "level", "connections": ["district_path"], "expansion_priority": 2, "sign": {"title": "CASTLE TECHNOLOGY — RESERVED", "lines": ["Kept empty for gates, roofs, bridges", "and tower caps that do not exist yet."]}}
+        {
+          "id": "cy_castle_stone",
+          "kind": "catalog",
+          "footprint": [
+            4,
+            4,
+            4
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            4,
+            1,
+            4
+          ],
+          "entities": [],
+          "items": [
+            "castle_stone"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "construction_yard",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "CASTLE STONE",
+            "lines": [
+              "The block every fortification is cut from.",
+              "Drag a run of it to raise a wall."
+            ],
+            "item": "castle_stone"
+          }
+        },
+        {
+          "id": "cy_stone_stair",
+          "kind": "functional",
+          "footprint": [
+            4,
+            4,
+            4
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            9,
+            1,
+            4
+          ],
+          "entities": [
+            "stone_stair"
+          ],
+          "items": [
+            "stone_stair"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "construction_yard",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "STONE STAIR",
+            "lines": [
+              "Climbs one cell. Chain them up a tower."
+            ],
+            "item": "stone_stair"
+          }
+        },
+        {
+          "id": "cy_wall_walk_slab",
+          "kind": "functional",
+          "footprint": [
+            4,
+            4,
+            4
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            14,
+            1,
+            4
+          ],
+          "entities": [
+            "wall_walk_slab"
+          ],
+          "items": [
+            "wall_walk_slab"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "construction_yard",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "WALL-WALK SLAB",
+            "lines": [
+              "The half-height deck along a wall top.",
+              "Lays in a line the whole way."
+            ],
+            "item": "wall_walk_slab"
+          }
+        },
+        {
+          "id": "cy_parapet_merlon",
+          "kind": "functional",
+          "footprint": [
+            4,
+            4,
+            4
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            19,
+            1,
+            4
+          ],
+          "entities": [
+            "parapet_merlon"
+          ],
+          "items": [
+            "parapet_merlon"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "construction_yard",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "PARAPET MERLON",
+            "lines": [
+              "The tooth on the wall top: cover for a",
+              "weapon standing on the wall-walk."
+            ],
+            "item": "parapet_merlon"
+          }
+        },
+        {
+          "id": "cy_tower_platform",
+          "kind": "functional",
+          "footprint": [
+            4,
+            4,
+            4
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            24,
+            1,
+            4
+          ],
+          "entities": [
+            "tower_platform"
+          ],
+          "items": [
+            "tower_platform"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "construction_yard",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "TOWER PLATFORM",
+            "lines": [
+              "Two by two deck with a light-siege mount.",
+              "A ballista or turret stands on it."
+            ],
+            "item": "tower_platform"
+          }
+        },
+        {
+          "id": "cy_gate_frame",
+          "kind": "functional",
+          "footprint": [
+            4,
+            5,
+            4
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            29,
+            1,
+            4
+          ],
+          "entities": [
+            "gate_frame"
+          ],
+          "items": [
+            "gate_frame"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "construction_yard",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "GATE FRAME",
+            "lines": [
+              "Three wide, three high, open in the middle.",
+              "The way through a closed wall."
+            ],
+            "item": "gate_frame"
+          }
+        },
+        {
+          "id": "cy_gate",
+          "kind": "functional",
+          "footprint": [
+            4,
+            5,
+            4
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            39,
+            1,
+            4
+          ],
+          "entities": [
+            "gate_frame",
+            "gate"
+          ],
+          "items": [
+            "gate"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "construction_yard",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "GATE",
+            "lines": [
+              "Right-click the leaf: open or shut.",
+              "Shut it is wall - raiders route around it",
+              "or break it. Open it is the way you chose."
+            ],
+            "item": "gate"
+          }
+        },
+        {
+          "id": "cy_wood_barricade",
+          "kind": "functional",
+          "footprint": [
+            4,
+            4,
+            4
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            34,
+            1,
+            4
+          ],
+          "entities": [
+            "wood_barricade"
+          ],
+          "items": [
+            "wood_barricade"
+          ],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "construction_yard",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "WOOD BARRICADE",
+            "lines": [
+              "Cheap, breachable, buys time.",
+              "Raiders chew through it first."
+            ],
+            "item": "wood_barricade"
+          }
+        },
+        {
+          "id": "cy_drag_wall",
+          "kind": "showcase",
+          "footprint": [
+            18,
+            6,
+            4
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            4,
+            1,
+            12
+          ],
+          "entities": [],
+          "items": [
+            "castle_stone",
+            "wall_walk_slab",
+            "parapet_merlon"
+          ],
+          "terrain": "wall_demo",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "construction_yard",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "DRAG-BUILT WALL",
+            "lines": [
+              "One drag of Castle Stone, a wall-walk",
+              "deck on top and merlons above it."
+            ],
+            "item": "castle_stone"
+          }
+        },
+        {
+          "id": "cy_blueprint_stamp",
+          "kind": "system_demo",
+          "footprint": [
+            10,
+            8,
+            10
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            26,
+            1,
+            12
+          ],
+          "entities": [],
+          "items": [
+            "castle_stone"
+          ],
+          "terrain": "blueprint_demo",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "construction_yard",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "STAMPED BLUEPRINT",
+            "lines": [
+              "FOUNDATION 4 > TOWER SEGMENT 4 > CAP 4",
+              "The blueprint tool stamps whole pieces;",
+              "what lands is ordinary editable stone."
+            ],
+            "item": "castle_stone"
+          }
+        },
+        {
+          "id": "cy_wall_kit",
+          "kind": "system_demo",
+          "footprint": [
+            8,
+            6,
+            4
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            36,
+            1,
+            24
+          ],
+          "entities": [],
+          "items": [
+            "wall_walk_slab",
+            "parapet_merlon",
+            "stone_stair"
+          ],
+          "terrain": "wall_kit_demo",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "construction_yard",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "WALL KIT",
+            "lines": [
+              "One stamp, a finished wall section:",
+              "two courses, a wall-walk, merlons and",
+              "a stair up at each end. U undoes it whole."
+            ],
+            "item": "wall_walk_slab"
+          }
+        },
+        {
+          "id": "cy_castle_demo",
+          "kind": "showcase",
+          "footprint": [
+            16,
+            10,
+            12
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            4,
+            1,
+            24
+          ],
+          "entities": [
+            "tower_platform",
+            "gate_frame"
+          ],
+          "items": [
+            "castle_stone",
+            "stone_stair",
+            "wall_walk_slab",
+            "parapet_merlon"
+          ],
+          "terrain": "castle_demo",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "construction_yard",
+          "expansion_priority": 2,
+          "sign": {
+            "title": "SMALL CASTLE",
+            "lines": [
+              "Piece > assembly > defensive structure.",
+              "Curtain wall, gate, stair, wall-walk,",
+              "merlons and a tower platform on top."
+            ],
+            "item": "tower_platform"
+          }
+        },
+        {
+          "id": "cy_expansion_reserved",
+          "kind": "reserved",
+          "footprint": [
+            12,
+            6,
+            12
+          ],
+          "clearance": 2,
+          "orientation": "south",
+          "offset": [
+            24,
+            1,
+            24
+          ],
+          "entities": [],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "district_path"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "CASTLE TECHNOLOGY \u00e2\u20ac\u201d RESERVED",
+            "lines": [
+              "Kept empty for gates, roofs, bridges",
+              "and tower caps that do not exist yet."
+            ]
+          }
+        }
       ]
     },
     {
@@ -215,22 +2332,365 @@
       "name": "DEFENSE RANGE",
       "owner_card": "E",
       "prepare": "full",
-      "origin": [56, -1, 12],
-      "size": [48, 16, 40],
-      "entrance": [56, 0, 40],
+      "origin": [
+        56,
+        -1,
+        12
+      ],
+      "size": [
+        55,
+        16,
+        40
+      ],
+      "entrance": [
+        56,
+        0,
+        40
+      ],
       "terrain": "level",
-      "expansion_corridor": {"origin": [104, -1, 12], "size": [7, 16, 40]},
-      "connections": ["central_plaza", "construction_yard", "battlefield"],
+      "expansion_corridor": {
+        "origin": [
+          56,
+          -1,
+          52
+        ],
+        "size": [
+          55,
+          16,
+          7
+        ]
+      },
+      "connections": [
+        "central_plaza",
+        "construction_yard",
+        "battlefield"
+      ],
       "expansion_priority": 3,
-      "sign": {"title": "DEFENSE RANGE", "lines": ["Siege weapons and ammunition."]},
+      "sign": {
+        "title": "DEFENSE RANGE",
+        "lines": [
+          "Siege weapons and ammunition."
+        ]
+      },
       "exhibits": [
-        {"id": "dr_ballista", "kind": "functional", "footprint": [6, 5, 28], "clearance": 1, "orientation": "north", "offset": [3, 1, 4], "entities": ["tower_platform", "ballista", "chest"], "items": ["ballista_bolt"], "terrain": "siege_booth", "connections": ["range_line"], "reset_group": "defense_range", "expansion_priority": 3, "sign": {"title": "BALLISTA", "lines": ["AMMUNITION  Ballista Bolt", "Direct shot, 4 to 28 cells.", "On a tower platform; the chest beside it", "tops the clip up through the storage network."], "item": "ballista_bolt"}},
-        {"id": "dr_catapult", "kind": "functional", "footprint": [6, 5, 28], "clearance": 1, "orientation": "north", "offset": [10, 1, 4], "entities": ["catapult", "chest"], "items": ["stone_shot", "flame_shot"], "terrain": "siege_booth", "connections": ["range_line"], "reset_group": "defense_range", "expansion_priority": 3, "sign": {"title": "CATAPULT", "lines": ["AMMUNITION  Stone Shot or Flame Shot", "Lobbed arc, 8 to 34 cells, ground mount only.", "Flame Shot sets the ground alight."], "item": "stone_shot", "items": ["flame_shot"]}},
-        {"id": "dr_turret_catapult", "kind": "functional", "footprint": [6, 5, 28], "clearance": 1, "orientation": "north", "offset": [17, 1, 4], "entities": ["tower_platform", "turret_catapult", "chest"], "items": ["stone_shot", "flame_shot"], "terrain": "siege_booth", "connections": ["range_line"], "reset_group": "defense_range", "expansion_priority": 3, "sign": {"title": "TURRET CATAPULT", "lines": ["AMMUNITION  Stone Shot or Flame Shot", "Turntable arc, 6 to 30 cells.", "Mounts on a tower platform."], "item": "stone_shot", "items": ["flame_shot"]}},
-        {"id": "dr_turret_catapult_mk2", "kind": "functional", "footprint": [6, 5, 28], "clearance": 1, "orientation": "north", "offset": [24, 1, 4], "entities": ["tower_platform", "turret_catapult_mk2", "chest"], "items": ["stone_shot", "flame_shot"], "terrain": "siege_booth", "connections": ["range_line"], "reset_group": "defense_range", "expansion_priority": 3, "sign": {"title": "TURRET CATAPULT MK2", "lines": ["AMMUNITION  Stone Shot or Flame Shot", "The heavier turret: same arc, sturdier deck."], "item": "stone_shot", "items": ["flame_shot"]}},
-        {"id": "dr_cannon", "kind": "functional", "footprint": [6, 5, 28], "clearance": 1, "orientation": "north", "offset": [31, 1, 4], "entities": ["cannon", "chest"], "items": ["cannonball"], "terrain": "siege_booth", "connections": ["range_line"], "reset_group": "defense_range", "expansion_priority": 3, "sign": {"title": "CANNON", "lines": ["AMMUNITION  Cannonball", "Flat shot, 3 to 32 cells, the hardest hit.", "It opens with two of four loaded; watch it", "draw the rest out of the chest beside it."], "item": "cannonball"}},
-        {"id": "dr_kettle", "kind": "functional", "footprint": [6, 5, 28], "clearance": 1, "orientation": "north", "offset": [38, 1, 4], "entities": ["rail", "kettle", "chest"], "items": ["hot_oil"], "terrain": "siege_booth", "connections": ["range_line"], "reset_group": "defense_range", "expansion_priority": 3, "sign": {"title": "KETTLE ON RAIL", "lines": ["AMMUNITION  Hot Oil", "Rides the rail along the wall top and", "dumps straight down on whatever is below."], "item": "hot_oil"}},
-        {"id": "dr_expansion_reserved", "kind": "reserved", "footprint": [42, 6, 4], "clearance": 2, "orientation": "north", "offset": [3, 1, 34], "entities": [], "items": [], "terrain": "level", "connections": ["range_line"], "expansion_priority": 2, "sign": {"title": "RANGE EXPANSION — RESERVED", "lines": ["Signed and empty for the siege machines", "that do not exist yet."]}}
+        {
+          "id": "dr_ballista",
+          "kind": "functional",
+          "footprint": [
+            6,
+            5,
+            28
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "offset": [
+            3,
+            1,
+            4
+          ],
+          "entities": [
+            "tower_platform",
+            "ballista",
+            "chest"
+          ],
+          "items": [
+            "ballista_bolt"
+          ],
+          "terrain": "siege_booth",
+          "connections": [
+            "range_line"
+          ],
+          "reset_group": "defense_range",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "BALLISTA",
+            "lines": [
+              "AMMUNITION  Ballista Bolt",
+              "Direct shot, 4 to 28 cells.",
+              "On a tower platform; the chest beside it",
+              "tops the clip up through the storage network."
+            ],
+            "item": "ballista_bolt"
+          }
+        },
+        {
+          "id": "dr_catapult",
+          "kind": "functional",
+          "footprint": [
+            6,
+            5,
+            28
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "offset": [
+            10,
+            1,
+            4
+          ],
+          "entities": [
+            "catapult",
+            "chest"
+          ],
+          "items": [
+            "stone_shot",
+            "flame_shot"
+          ],
+          "terrain": "siege_booth",
+          "connections": [
+            "range_line"
+          ],
+          "reset_group": "defense_range",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "CATAPULT",
+            "lines": [
+              "AMMUNITION  Stone Shot or Flame Shot",
+              "Lobbed arc, 8 to 34 cells, ground mount only.",
+              "Flame Shot sets the ground alight."
+            ],
+            "item": "stone_shot",
+            "items": [
+              "flame_shot"
+            ]
+          }
+        },
+        {
+          "id": "dr_turret_catapult",
+          "kind": "functional",
+          "footprint": [
+            6,
+            5,
+            28
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "offset": [
+            17,
+            1,
+            4
+          ],
+          "entities": [
+            "tower_platform",
+            "turret_catapult",
+            "chest"
+          ],
+          "items": [
+            "stone_shot",
+            "flame_shot"
+          ],
+          "terrain": "siege_booth",
+          "connections": [
+            "range_line"
+          ],
+          "reset_group": "defense_range",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "TURRET CATAPULT",
+            "lines": [
+              "AMMUNITION  Stone Shot or Flame Shot",
+              "Turntable arc, 6 to 30 cells.",
+              "Mounts on a tower platform."
+            ],
+            "item": "stone_shot",
+            "items": [
+              "flame_shot"
+            ]
+          }
+        },
+        {
+          "id": "dr_turret_catapult_mk2",
+          "kind": "functional",
+          "footprint": [
+            6,
+            5,
+            28
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "offset": [
+            24,
+            1,
+            4
+          ],
+          "entities": [
+            "tower_platform",
+            "turret_catapult_mk2",
+            "chest"
+          ],
+          "items": [
+            "stone_shot",
+            "flame_shot"
+          ],
+          "terrain": "siege_booth",
+          "connections": [
+            "range_line"
+          ],
+          "reset_group": "defense_range",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "TURRET CATAPULT MK2",
+            "lines": [
+              "AMMUNITION  Stone Shot or Flame Shot",
+              "The heavier turret: same arc, sturdier deck."
+            ],
+            "item": "stone_shot",
+            "items": [
+              "flame_shot"
+            ]
+          }
+        },
+        {
+          "id": "dr_cannon",
+          "kind": "functional",
+          "footprint": [
+            6,
+            5,
+            28
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "offset": [
+            31,
+            1,
+            4
+          ],
+          "entities": [
+            "cannon",
+            "chest"
+          ],
+          "items": [
+            "cannonball"
+          ],
+          "terrain": "siege_booth",
+          "connections": [
+            "range_line"
+          ],
+          "reset_group": "defense_range",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "CANNON",
+            "lines": [
+              "AMMUNITION  Cannonball",
+              "Flat shot, 3 to 32 cells, the hardest hit.",
+              "It opens with two of four loaded; watch it",
+              "draw the rest out of the chest beside it."
+            ],
+            "item": "cannonball"
+          }
+        },
+        {
+          "id": "dr_kettle",
+          "kind": "functional",
+          "footprint": [
+            6,
+            5,
+            28
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "offset": [
+            38,
+            1,
+            4
+          ],
+          "entities": [
+            "rail",
+            "kettle",
+            "chest"
+          ],
+          "items": [
+            "hot_oil"
+          ],
+          "terrain": "siege_booth",
+          "connections": [
+            "range_line"
+          ],
+          "reset_group": "defense_range",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "KETTLE ON RAIL",
+            "lines": [
+              "AMMUNITION  Hot Oil",
+              "Rides the rail along the wall top and",
+              "dumps straight down on whatever is below."
+            ],
+            "item": "hot_oil"
+          }
+        },
+        {
+          "id": "dr_rail_turret",
+          "kind": "functional",
+          "footprint": [
+            6,
+            5,
+            28
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "offset": [
+            45,
+            1,
+            4
+          ],
+          "entities": [
+            "rail",
+            "rail_turret",
+            "chest"
+          ],
+          "items": [
+            "stone_shot"
+          ],
+          "terrain": "siege_booth",
+          "connections": [
+            "range_line"
+          ],
+          "reset_group": "defense_range",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "RAIL TURRET",
+            "lines": [
+              "AMMUNITION  Stone Shot or Flame Shot",
+              "A turret catapult on a rail carriage.",
+              "Park it, or set Patrol and it rides the line,",
+              "reloading from any chest beside the rail."
+            ],
+            "item": "stone_shot",
+            "items": [
+              "flame_shot"
+            ]
+          }
+        },
+        {
+          "id": "dr_expansion_reserved",
+          "kind": "reserved",
+          "footprint": [
+            42,
+            6,
+            4
+          ],
+          "clearance": 2,
+          "orientation": "north",
+          "offset": [
+            3,
+            1,
+            34
+          ],
+          "entities": [],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "range_line"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "RANGE EXPANSION \u00e2\u20ac\u201d RESERVED",
+            "lines": [
+              "Signed and empty for the siege machines",
+              "that do not exist yet."
+            ]
+          }
+        }
       ]
     },
     {
@@ -238,26 +2698,457 @@
       "name": "BATTLEFIELD",
       "owner_card": "E",
       "prepare": "full",
-      "origin": [112, -1, -16],
-      "size": [72, 16, 72],
-      "entrance": [112, 0, 32],
+      "origin": [
+        112,
+        -1,
+        -16
+      ],
+      "size": [
+        72,
+        16,
+        72
+      ],
+      "entrance": [
+        112,
+        0,
+        32
+      ],
       "terrain": "natural",
-      "expansion_corridor": {"origin": [184, -1, -16], "size": [7, 16, 72]},
-      "connections": ["defense_range"],
+      "expansion_corridor": {
+        "origin": [
+          184,
+          -1,
+          -16
+        ],
+        "size": [
+          7,
+          16,
+          72
+        ]
+      },
+      "connections": [
+        "defense_range"
+      ],
       "expansion_priority": 3,
-      "sign": {"title": "BATTLEFIELD", "lines": ["Live scenario. Buffered from the campus."]},
+      "sign": {
+        "title": "BATTLEFIELD",
+        "lines": [
+          "Live scenario. Buffered from the campus."
+        ]
+      },
       "exhibits": [
-        {"id": "battlefield_field", "kind": "environmental", "footprint": [60, 12, 54], "clearance": 0, "orientation": "north", "offset": [4, 1, 14], "entities": [], "items": ["dirt"], "terrain": "field", "connections": ["battlefield_avenue"], "reset_group": "battlefield", "expansion_priority": 4, "sign": {"title": "BATTLEFIELD", "lines": ["Forty cells of open dirt between the two", "cores: far enough to watch a wave march,", "route, break formation and arrive."], "item": "dirt"}},
-        {"id": "battlefield_enemy_core", "nested": true, "kind": "functional", "footprint": [3, 4, 3], "clearance": 0, "orientation": "south", "offset": [34, 1, 20], "entities": ["enemy_core"], "items": [], "terrain": "level", "connections": ["battlefield_avenue"], "reset_group": "battlefield", "expansion_priority": 4, "sign": {"title": "ENEMY CORE", "lines": ["The red core of the attacking side.", "Placed by the fixture, never by wandering."], "item": "enemy_core"}},
-        {"id": "battlefield_enemy_muster", "nested": true, "kind": "scenario", "footprint": [20, 6, 16], "clearance": 0, "orientation": "south", "offset": [26, 1, 24], "entities": [], "items": [], "terrain": "camp", "connections": ["battlefield_avenue"], "reset_group": "battlefield", "expansion_priority": 4, "sign": {"title": "MUSTER GROUND", "lines": ["START ATTACK enters the wave on the", "paved line: orcs lead, brutes hold the", "middle, trolls hang back and shoot."]}},
-        {"id": "battlefield_enemy_reserved", "nested": true, "kind": "reserved", "footprint": [12, 6, 10], "clearance": 0, "orientation": "south", "offset": [48, 1, 20], "entities": [], "items": [], "terrain": "level", "connections": ["battlefield_avenue"], "reset_group": "battlefield", "expansion_priority": 4, "sign": {"title": "ENEMY KINDS — RESERVED", "lines": ["Orc, brute and troll are all that exist.", "This parcel waits for the next kind."]}},
-        {"id": "battlefield_west_battery", "nested": true, "kind": "functional", "footprint": [15, 6, 8], "clearance": 0, "orientation": "north", "offset": [10, 1, 48], "entities": ["tower_platform", "turret_catapult", "ballista", "catapult", "chest"], "items": ["stone_shot", "flame_shot", "ballista_bolt"], "terrain": "battery", "connections": ["battlefield_avenue"], "reset_group": "battlefield", "expansion_priority": 4, "sign": {"title": "WEST BATTERY", "lines": ["Turret Catapult on a platform, Ballista,", "Catapult. The chests behind them reload", "through the storage network."], "item": "ballista"}},
-        {"id": "battlefield_east_battery", "nested": true, "kind": "functional", "footprint": [15, 6, 8], "clearance": 0, "orientation": "north", "offset": [49, 1, 48], "entities": ["tower_platform", "cannon", "turret_catapult_mk2", "chest"], "items": ["cannonball", "stone_shot"], "terrain": "battery", "connections": ["battlefield_avenue"], "reset_group": "battlefield", "expansion_priority": 4, "sign": {"title": "EAST BATTERY", "lines": ["Cannon and Turret Catapult Mk2.", "Both cover the gate at point-blank range."], "item": "cannon"}},
-        {"id": "battlefield_fortification", "nested": true, "kind": "showcase", "footprint": [22, 8, 6], "clearance": 0, "orientation": "north", "offset": [26, 1, 54], "entities": ["tower_platform", "gate_frame"], "items": ["castle_stone", "stone_stair", "wall_walk_slab", "parapet_merlon", "wood_barricade"], "terrain": "fortification", "connections": ["battlefield_avenue"], "reset_group": "battlefield", "expansion_priority": 4, "sign": {"title": "CURTAIN WALL AND GATE", "lines": ["The Construction Yard kit, assembled", "in front of the Core: tower, wall-walk,", "merlons and the gate the wave uses."], "item": "gate_frame"}},
-        {"id": "battlefield_player_core", "nested": true, "kind": "functional", "footprint": [3, 4, 3], "clearance": 0, "orientation": "north", "offset": [34, 1, 60], "entities": ["core_of_power"], "items": [], "terrain": "level", "connections": ["battlefield_avenue"], "reset_group": "battlefield", "expansion_priority": 4, "sign": {"title": "CORE OF POWER", "lines": ["The blue core this scenario defends.", "Every wave routes here."], "item": "core_of_power"}},
-        {"id": "battlefield_magazine", "nested": true, "kind": "functional", "footprint": [8, 3, 3], "clearance": 0, "orientation": "north", "offset": [38, 1, 60], "entities": ["chest"], "items": ["ballista_bolt", "stone_shot", "flame_shot", "cannonball", "hot_oil"], "terrain": "magazine", "connections": ["battlefield_avenue"], "reset_group": "battlefield", "expansion_priority": 4, "sign": {"title": "MAGAZINE", "lines": ["Every munition in the game, sixteen of each.", "RESET BATTLEFIELD fills these chests again."], "item": "stone_shot", "items": ["ballista_bolt", "flame_shot", "cannonball", "hot_oil"]}},
-        {"id": "battlefield_control", "nested": true, "kind": "functional", "footprint": [4, 4, 4], "clearance": 0, "orientation": "north", "offset": [38, 1, 64], "entities": ["battlefield_control"], "items": [], "terrain": "level", "connections": ["battlefield_avenue"], "reset_group": "battlefield", "expansion_priority": 4, "sign": {"title": "BATTLEFIELD CONTROL", "lines": ["Right-click the pedestal.", "START ATTACK  ·  RESET BATTLEFIELD", "Nothing else in the Expo starts a fight."]}},
-        {"id": "battlefield_reinforcements_reserved", "nested": true, "kind": "reserved", "footprint": [14, 6, 8], "clearance": 0, "orientation": "north", "offset": [12, 1, 60], "entities": [], "items": [], "terrain": "level", "connections": ["battlefield_avenue"], "reset_group": "battlefield", "expansion_priority": 4, "sign": {"title": "ARCHERS AND SOLDIERS — RESERVED", "lines": ["No allied units exist yet.", "Their muster ground is already cut."]}}
+        {
+          "id": "battlefield_field",
+          "kind": "environmental",
+          "footprint": [
+            60,
+            12,
+            54
+          ],
+          "clearance": 0,
+          "orientation": "north",
+          "offset": [
+            4,
+            1,
+            14
+          ],
+          "entities": [],
+          "items": [
+            "dirt"
+          ],
+          "terrain": "field",
+          "connections": [
+            "battlefield_avenue"
+          ],
+          "reset_group": "battlefield",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "BATTLEFIELD",
+            "lines": [
+              "Forty cells of open dirt between the two",
+              "cores: far enough to watch a wave march,",
+              "route, break formation and arrive."
+            ],
+            "item": "dirt"
+          }
+        },
+        {
+          "id": "battlefield_enemy_core",
+          "nested": true,
+          "kind": "functional",
+          "footprint": [
+            3,
+            4,
+            3
+          ],
+          "clearance": 0,
+          "orientation": "south",
+          "offset": [
+            34,
+            1,
+            20
+          ],
+          "entities": [
+            "enemy_core"
+          ],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "battlefield_avenue"
+          ],
+          "reset_group": "battlefield",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "ENEMY CORE",
+            "lines": [
+              "The red core of the attacking side.",
+              "Placed by the fixture, never by wandering."
+            ],
+            "item": "enemy_core"
+          }
+        },
+        {
+          "id": "battlefield_enemy_muster",
+          "nested": true,
+          "kind": "scenario",
+          "footprint": [
+            20,
+            6,
+            16
+          ],
+          "clearance": 0,
+          "orientation": "south",
+          "offset": [
+            26,
+            1,
+            24
+          ],
+          "entities": [],
+          "items": [],
+          "terrain": "camp",
+          "connections": [
+            "battlefield_avenue"
+          ],
+          "reset_group": "battlefield",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "MUSTER GROUND",
+            "lines": [
+              "START ATTACK enters the wave on the",
+              "paved line: orcs lead, brutes hold the",
+              "middle, trolls hang back and shoot."
+            ]
+          }
+        },
+        {
+          "id": "battlefield_enemy_reserved",
+          "nested": true,
+          "kind": "reserved",
+          "footprint": [
+            12,
+            6,
+            10
+          ],
+          "clearance": 0,
+          "orientation": "south",
+          "offset": [
+            48,
+            1,
+            20
+          ],
+          "entities": [],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "battlefield_avenue"
+          ],
+          "reset_group": "battlefield",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "ENEMY KINDS \u00e2\u20ac\u201d RESERVED",
+            "lines": [
+              "Orc, brute and troll are all that exist.",
+              "This parcel waits for the next kind."
+            ]
+          }
+        },
+        {
+          "id": "battlefield_west_battery",
+          "nested": true,
+          "kind": "functional",
+          "footprint": [
+            15,
+            6,
+            8
+          ],
+          "clearance": 0,
+          "orientation": "north",
+          "offset": [
+            10,
+            1,
+            48
+          ],
+          "entities": [
+            "tower_platform",
+            "turret_catapult",
+            "ballista",
+            "catapult",
+            "chest"
+          ],
+          "items": [
+            "stone_shot",
+            "flame_shot",
+            "ballista_bolt"
+          ],
+          "terrain": "battery",
+          "connections": [
+            "battlefield_avenue"
+          ],
+          "reset_group": "battlefield",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "WEST BATTERY",
+            "lines": [
+              "Turret Catapult on a platform, Ballista,",
+              "Catapult. The chests behind them reload",
+              "through the storage network."
+            ],
+            "item": "ballista"
+          }
+        },
+        {
+          "id": "battlefield_east_battery",
+          "nested": true,
+          "kind": "functional",
+          "footprint": [
+            15,
+            6,
+            8
+          ],
+          "clearance": 0,
+          "orientation": "north",
+          "offset": [
+            49,
+            1,
+            48
+          ],
+          "entities": [
+            "tower_platform",
+            "cannon",
+            "turret_catapult_mk2",
+            "chest"
+          ],
+          "items": [
+            "cannonball",
+            "stone_shot"
+          ],
+          "terrain": "battery",
+          "connections": [
+            "battlefield_avenue"
+          ],
+          "reset_group": "battlefield",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "EAST BATTERY",
+            "lines": [
+              "Cannon and Turret Catapult Mk2.",
+              "Both cover the gate at point-blank range."
+            ],
+            "item": "cannon"
+          }
+        },
+        {
+          "id": "battlefield_fortification",
+          "nested": true,
+          "kind": "showcase",
+          "footprint": [
+            22,
+            8,
+            6
+          ],
+          "clearance": 0,
+          "orientation": "north",
+          "offset": [
+            26,
+            1,
+            54
+          ],
+          "entities": [
+            "tower_platform",
+            "gate_frame"
+          ],
+          "items": [
+            "castle_stone",
+            "stone_stair",
+            "wall_walk_slab",
+            "parapet_merlon",
+            "wood_barricade"
+          ],
+          "terrain": "fortification",
+          "connections": [
+            "battlefield_avenue"
+          ],
+          "reset_group": "battlefield",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "CURTAIN WALL AND GATE",
+            "lines": [
+              "The Construction Yard kit, assembled",
+              "in front of the Core: tower, wall-walk,",
+              "merlons and the gate the wave uses."
+            ],
+            "item": "gate_frame"
+          }
+        },
+        {
+          "id": "battlefield_player_core",
+          "nested": true,
+          "kind": "functional",
+          "footprint": [
+            3,
+            4,
+            3
+          ],
+          "clearance": 0,
+          "orientation": "north",
+          "offset": [
+            34,
+            1,
+            60
+          ],
+          "entities": [
+            "core_of_power"
+          ],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "battlefield_avenue"
+          ],
+          "reset_group": "battlefield",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "CORE OF POWER",
+            "lines": [
+              "The blue core this scenario defends.",
+              "Every wave routes here."
+            ],
+            "item": "core_of_power"
+          }
+        },
+        {
+          "id": "battlefield_magazine",
+          "nested": true,
+          "kind": "functional",
+          "footprint": [
+            8,
+            3,
+            3
+          ],
+          "clearance": 0,
+          "orientation": "north",
+          "offset": [
+            38,
+            1,
+            60
+          ],
+          "entities": [
+            "chest"
+          ],
+          "items": [
+            "ballista_bolt",
+            "stone_shot",
+            "flame_shot",
+            "cannonball",
+            "hot_oil"
+          ],
+          "terrain": "magazine",
+          "connections": [
+            "battlefield_avenue"
+          ],
+          "reset_group": "battlefield",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "MAGAZINE",
+            "lines": [
+              "Every munition in the game, sixteen of each.",
+              "RESET BATTLEFIELD fills these chests again."
+            ],
+            "item": "stone_shot",
+            "items": [
+              "ballista_bolt",
+              "flame_shot",
+              "cannonball",
+              "hot_oil"
+            ]
+          }
+        },
+        {
+          "id": "battlefield_control",
+          "nested": true,
+          "kind": "functional",
+          "footprint": [
+            4,
+            4,
+            4
+          ],
+          "clearance": 0,
+          "orientation": "north",
+          "offset": [
+            38,
+            1,
+            64
+          ],
+          "entities": [
+            "battlefield_control"
+          ],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "battlefield_avenue"
+          ],
+          "reset_group": "battlefield",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "BATTLEFIELD CONTROL",
+            "lines": [
+              "Right-click the pedestal.",
+              "START ATTACK  \u00c2\u00b7  RESET BATTLEFIELD",
+              "Nothing else in the Expo starts a fight."
+            ]
+          }
+        },
+        {
+          "id": "battlefield_reinforcements_reserved",
+          "nested": true,
+          "kind": "reserved",
+          "footprint": [
+            14,
+            6,
+            8
+          ],
+          "clearance": 0,
+          "orientation": "north",
+          "offset": [
+            12,
+            1,
+            60
+          ],
+          "entities": [],
+          "items": [],
+          "terrain": "level",
+          "connections": [
+            "battlefield_avenue"
+          ],
+          "reset_group": "battlefield",
+          "expansion_priority": 4,
+          "sign": {
+            "title": "ARCHERS AND SOLDIERS \u00e2\u20ac\u201d RESERVED",
+            "lines": [
+              "No allied units exist yet.",
+              "Their muster ground is already cut."
+            ]
+          }
+        }
       ]
     },
     {
@@ -265,22 +3156,364 @@
       "name": "LIGHTING AND UTILITIES",
       "owner_card": "D",
       "prepare": "full",
-      "origin": [-8, -1, 96],
-      "size": [44, 12, 32],
-      "entrance": [-2, 0, 96],
+      "origin": [
+        -8,
+        -1,
+        96
+      ],
+      "size": [
+        44,
+        12,
+        32
+      ],
+      "entrance": [
+        -2,
+        0,
+        96
+      ],
       "terrain": "level",
-      "expansion_corridor": {"origin": [-8, -1, 128], "size": [44, 12, 7]},
-      "connections": ["central_plaza", "equipment"],
+      "expansion_corridor": {
+        "origin": [
+          -8,
+          -1,
+          128
+        ],
+        "size": [
+          44,
+          12,
+          7
+        ]
+      },
+      "connections": [
+        "central_plaza",
+        "equipment"
+      ],
       "expansion_priority": 3,
-      "sign": {"title": "LIGHTING", "lines": ["Every light source, day and night.", "The gallery is roofed, so each one", "reads even at midday."]},
+      "sign": {
+        "title": "LIGHTING",
+        "lines": [
+          "Every light source, day and night.",
+          "The gallery is roofed, so each one",
+          "reads even at midday."
+        ]
+      },
       "exhibits": [
-        {"id": "light_pavilion", "kind": "environmental", "footprint": [40, 6, 12], "clearance": 0, "orientation": "north", "offset": [4, 1, 8], "entities": [], "items": ["stone"], "terrain": "pavilion", "connections": ["district_path"], "reset_group": "lighting", "expansion_priority": 3, "sign": {"title": "LIGHT WALK", "lines": ["A roofed gallery, open at both ends,", "with a door on the plaza side.", "Six light sources side by side."]}},
-        {"id": "light_torch", "nested": true, "kind": "catalog", "footprint": [3, 3, 3], "clearance": 1, "orientation": "south", "offset": [12, 1, 9], "entities": ["torch"], "items": ["torch"], "terrain": "natural", "connections": ["district_path"], "placements": [{"entity": "torch", "offset": [1, 0, 1]}], "reset_group": "lighting", "expansion_priority": 3, "sign": {"title": "TORCH", "lines": ["Warm and short (range 7), and it", "flickers. Stands on any solid top."], "item": "torch"}},
-        {"id": "light_wall_lantern", "nested": true, "kind": "catalog", "footprint": [3, 3, 3], "clearance": 1, "orientation": "south", "offset": [18, 1, 9], "entities": ["wall_lantern"], "items": ["wall_lantern"], "terrain": "natural", "connections": ["district_path"], "placements": [{"entity": "wall_lantern", "offset": [1, 0, 0]}], "reset_group": "lighting", "expansion_priority": 3, "sign": {"title": "WALL LANTERN", "lines": ["Hangs on the wall beside it, no post,", "steady, range 9."], "item": "wall_lantern"}},
-        {"id": "light_post_lantern", "nested": true, "kind": "catalog", "footprint": [3, 3, 3], "clearance": 1, "orientation": "south", "offset": [24, 1, 9], "entities": ["post_lantern"], "items": ["post_lantern"], "terrain": "natural", "connections": ["district_path"], "placements": [{"entity": "post_lantern", "offset": [1, 0, 1]}], "reset_group": "lighting", "expansion_priority": 3, "sign": {"title": "POST LANTERN", "lines": ["Three cells tall, steady, the longest", "reach (range 12). Lights the mine tunnel."], "item": "post_lantern"}},
-        {"id": "light_campfire", "nested": true, "kind": "catalog", "footprint": [5, 3, 4], "clearance": 1, "orientation": "south", "offset": [30, 1, 9], "entities": ["campfire"], "items": ["campfire"], "terrain": "natural", "connections": ["district_path"], "placements": [{"entity": "campfire", "offset": [1, 0, 1]}], "reset_group": "lighting", "expansion_priority": 3, "sign": {"title": "CAMPFIRE", "lines": ["Three by three on the ground, the", "brightest flicker (range 11)."], "item": "campfire"}},
-        {"id": "light_blue_block", "nested": true, "kind": "catalog", "footprint": [3, 3, 3], "clearance": 1, "orientation": "south", "offset": [36, 1, 9], "entities": ["light_block_blue"], "items": ["light_block_blue"], "terrain": "natural", "connections": ["district_path"], "placements": [{"entity": "light_block_blue", "offset": [1, 0, 1]}], "reset_group": "lighting", "expansion_priority": 3, "sign": {"title": "BLUE LIGHT BLOCK", "lines": ["Block sized, steady cold blue,", "range 10. Stack it like a block."], "item": "light_block_blue"}},
-        {"id": "light_red_block", "nested": true, "kind": "catalog", "footprint": [3, 3, 3], "clearance": 1, "orientation": "south", "offset": [40, 1, 9], "entities": ["light_block_red"], "items": ["light_block_red"], "terrain": "natural", "connections": ["district_path"], "placements": [{"entity": "light_block_red", "offset": [1, 0, 1]}], "reset_group": "lighting", "expansion_priority": 3, "sign": {"title": "RED LIGHT BLOCK", "lines": ["The same block in red, range 10.", "Side by side the colours read at once."], "item": "light_block_red"}}
+        {
+          "id": "light_pavilion",
+          "kind": "environmental",
+          "footprint": [
+            40,
+            6,
+            12
+          ],
+          "clearance": 0,
+          "orientation": "north",
+          "offset": [
+            4,
+            1,
+            8
+          ],
+          "entities": [],
+          "items": [
+            "stone"
+          ],
+          "terrain": "pavilion",
+          "connections": [
+            "district_path"
+          ],
+          "reset_group": "lighting",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "LIGHT WALK",
+            "lines": [
+              "A roofed gallery, open at both ends,",
+              "with a door on the plaza side.",
+              "Six light sources side by side."
+            ]
+          }
+        },
+        {
+          "id": "light_torch",
+          "nested": true,
+          "kind": "catalog",
+          "footprint": [
+            3,
+            3,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            12,
+            1,
+            9
+          ],
+          "entities": [
+            "torch"
+          ],
+          "items": [
+            "torch"
+          ],
+          "terrain": "natural",
+          "connections": [
+            "district_path"
+          ],
+          "placements": [
+            {
+              "entity": "torch",
+              "offset": [
+                1,
+                0,
+                1
+              ]
+            }
+          ],
+          "reset_group": "lighting",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "TORCH",
+            "lines": [
+              "Warm and short (range 7), and it",
+              "flickers. Stands on any solid top."
+            ],
+            "item": "torch"
+          }
+        },
+        {
+          "id": "light_wall_lantern",
+          "nested": true,
+          "kind": "catalog",
+          "footprint": [
+            3,
+            3,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            18,
+            1,
+            9
+          ],
+          "entities": [
+            "wall_lantern"
+          ],
+          "items": [
+            "wall_lantern"
+          ],
+          "terrain": "natural",
+          "connections": [
+            "district_path"
+          ],
+          "placements": [
+            {
+              "entity": "wall_lantern",
+              "offset": [
+                1,
+                0,
+                0
+              ]
+            }
+          ],
+          "reset_group": "lighting",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "WALL LANTERN",
+            "lines": [
+              "Hangs on the wall beside it, no post,",
+              "steady, range 9."
+            ],
+            "item": "wall_lantern"
+          }
+        },
+        {
+          "id": "light_post_lantern",
+          "nested": true,
+          "kind": "catalog",
+          "footprint": [
+            3,
+            3,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            24,
+            1,
+            9
+          ],
+          "entities": [
+            "post_lantern"
+          ],
+          "items": [
+            "post_lantern"
+          ],
+          "terrain": "natural",
+          "connections": [
+            "district_path"
+          ],
+          "placements": [
+            {
+              "entity": "post_lantern",
+              "offset": [
+                1,
+                0,
+                1
+              ]
+            }
+          ],
+          "reset_group": "lighting",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "POST LANTERN",
+            "lines": [
+              "Three cells tall, steady, the longest",
+              "reach (range 12). Lights the mine tunnel."
+            ],
+            "item": "post_lantern"
+          }
+        },
+        {
+          "id": "light_campfire",
+          "nested": true,
+          "kind": "catalog",
+          "footprint": [
+            5,
+            3,
+            4
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            30,
+            1,
+            9
+          ],
+          "entities": [
+            "campfire"
+          ],
+          "items": [
+            "campfire"
+          ],
+          "terrain": "natural",
+          "connections": [
+            "district_path"
+          ],
+          "placements": [
+            {
+              "entity": "campfire",
+              "offset": [
+                1,
+                0,
+                1
+              ]
+            }
+          ],
+          "reset_group": "lighting",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "CAMPFIRE",
+            "lines": [
+              "Three by three on the ground, the",
+              "brightest flicker (range 11)."
+            ],
+            "item": "campfire"
+          }
+        },
+        {
+          "id": "light_blue_block",
+          "nested": true,
+          "kind": "catalog",
+          "footprint": [
+            3,
+            3,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            36,
+            1,
+            9
+          ],
+          "entities": [
+            "light_block_blue"
+          ],
+          "items": [
+            "light_block_blue"
+          ],
+          "terrain": "natural",
+          "connections": [
+            "district_path"
+          ],
+          "placements": [
+            {
+              "entity": "light_block_blue",
+              "offset": [
+                1,
+                0,
+                1
+              ]
+            }
+          ],
+          "reset_group": "lighting",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "BLUE LIGHT BLOCK",
+            "lines": [
+              "Block sized, steady cold blue,",
+              "range 10. Stack it like a block."
+            ],
+            "item": "light_block_blue"
+          }
+        },
+        {
+          "id": "light_red_block",
+          "nested": true,
+          "kind": "catalog",
+          "footprint": [
+            3,
+            3,
+            3
+          ],
+          "clearance": 1,
+          "orientation": "south",
+          "offset": [
+            40,
+            1,
+            9
+          ],
+          "entities": [
+            "light_block_red"
+          ],
+          "items": [
+            "light_block_red"
+          ],
+          "terrain": "natural",
+          "connections": [
+            "district_path"
+          ],
+          "placements": [
+            {
+              "entity": "light_block_red",
+              "offset": [
+                1,
+                0,
+                1
+              ]
+            }
+          ],
+          "reset_group": "lighting",
+          "expansion_priority": 3,
+          "sign": {
+            "title": "RED LIGHT BLOCK",
+            "lines": [
+              "The same block in red, range 10.",
+              "Side by side the colours read at once."
+            ],
+            "item": "light_block_red"
+          }
+        }
       ]
     },
     {
@@ -288,29 +3521,439 @@
       "name": "COASTERCRAFT",
       "owner_card": "F",
       "prepare": "full",
-      "origin": [64, -1, 88],
-      "size": [88, 24, 96],
-      "entrance": [64, 0, 100],
+      "origin": [
+        64,
+        -1,
+        88
+      ],
+      "size": [
+        88,
+        24,
+        96
+      ],
+      "entrance": [
+        64,
+        0,
+        100
+      ],
       "terrain": "level",
-      "expansion_corridor": {"origin": [64, -1, 184], "size": [88, 24, 7]},
-      "connections": ["central_plaza", "lighting"],
+      "expansion_corridor": {
+        "origin": [
+          64,
+          -1,
+          184
+        ],
+        "size": [
+          88,
+          24,
+          7
+        ]
+      },
+      "connections": [
+        "central_plaza",
+        "lighting"
+      ],
       "expansion_priority": 4,
-      "sign": {"title": "COASTERCRAFT", "lines": ["Component gallery and the grand coaster."]},
+      "sign": {
+        "title": "COASTERCRAFT",
+        "lines": [
+          "Component gallery and the grand coaster."
+        ]
+      },
       "exhibits": [
-        {"id": "coaster_arrival", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "west", "entities": ["post_lantern"], "items": [], "terrain": "level", "build": "arrival", "connections": ["coastercraft_avenue"], "expansion_priority": 1, "sign": {"title": "COASTERCRAFT", "lines": ["Component gallery straight ahead.", "The Grand Demonstration Coaster is south.", "Board the car at its station."]}},
-        {"id": "coaster_rail", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["rail"], "items": ["rail"], "terrain": "level", "build": "rail", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "RAIL", "lines": ["The plain track piece.", "Two rails that touch shape themselves."], "item": "rail"}},
-        {"id": "coaster_rail_slope", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["rail_slope", "rail"], "items": ["rail_slope"], "terrain": "level", "build": "slope", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "RAIL SLOPE", "lines": ["Climbs one level at 45 degrees.", "Rails join it flush at both ends."], "item": "rail_slope"}},
-        {"id": "coaster_rail_loop", "kind": "functional", "footprint": [12, 12, 10], "clearance": 1, "orientation": "north", "entities": ["rail_loop", "rail"], "items": ["rail_loop"], "terrain": "level", "build": "loop", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "RAIL LOOP", "lines": ["The true loop: one helix turn.", "It lands one lane beside its entry."], "item": "rail_loop"}},
-        {"id": "coaster_rail_switch", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["rail_switch", "rail"], "items": ["rail_switch"], "terrain": "level", "build": "switch", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "RAIL SWITCH", "lines": ["The smooth lane switcher.", "Four cells, one lane over."], "item": "rail_switch"}},
-        {"id": "coaster_rail_cross", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["rail_cross", "rail"], "items": ["rail_cross"], "terrain": "level", "build": "cross", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "RAIL CROSS", "lines": ["Two tracks swap lanes and cross.", "A rider keeps to the track it entered."], "item": "rail_cross"}},
-        {"id": "coaster_rail_curve", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["rail_curve", "rail"], "items": ["rail_curve"], "terrain": "level", "build": "curve", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "RAIL CURVE", "lines": ["A banked 90 degree arc.", "U-turns come from the same tool."], "item": "rail_curve"}},
-        {"id": "coaster_rail_climb", "kind": "functional", "footprint": [12, 10, 10], "clearance": 1, "orientation": "north", "entities": ["rail_climb", "rail"], "items": ["rail_climb"], "terrain": "level", "build": "climb", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "RAIL CLIMB", "lines": ["Slope-in, grade and slope-out in one.", "A negative rise makes a descent."], "item": "rail_climb"}},
-        {"id": "coaster_mine_cart", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["mine_cart", "rail"], "items": ["mine_cart"], "terrain": "level", "build": "mine_cart", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "MINE CART", "lines": ["Rides the chain on its own.", "Hauls ore between bin and warehouse."], "item": "mine_cart"}},
-        {"id": "coaster_car", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["coaster_car", "rail"], "items": ["coaster_car"], "terrain": "level", "build": "coaster_car", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "COASTER CAR", "lines": ["Parked until a rider boards it.", "Shift to ride, 1-9 for speed."], "item": "coaster_car"}},
-        {"id": "coaster_shop", "kind": "functional", "footprint": [12, 6, 10], "clearance": 1, "orientation": "north", "entities": ["coastercraft_shop"], "items": ["coastercraft_shop"], "terrain": "level", "build": "shop", "connections": ["coaster_gallery"], "expansion_priority": 2, "sign": {"title": "COASTERCRAFT SHOP", "lines": ["Every track recipe is crafted here.", "Right-click to open its book."], "item": "coastercraft_shop"}},
-        {"id": "grand_coaster", "kind": "showcase", "footprint": [80, 22, 26], "clearance": 1, "orientation": "north", "entities": ["coaster_car", "rail", "rail_climb", "rail_loop", "rail_switch", "rail_cross", "rail_curve"], "items": ["coaster_car"], "terrain": "level", "build": "grand_coaster", "reset_group": "coaster", "connections": ["coaster_gallery"], "expansion_priority": 3, "sign": {"title": "GRAND DEMONSTRATION COASTER", "lines": ["Lift hill, crest, drop, true loop,", "lane switcher, crossing and two U-turns", "in one closed circuit. Shift on the car."], "item": "coaster_car"}}
+        {
+          "id": "coaster_arrival",
+          "kind": "functional",
+          "footprint": [
+            12,
+            6,
+            10
+          ],
+          "clearance": 1,
+          "orientation": "west",
+          "entities": [
+            "post_lantern"
+          ],
+          "items": [],
+          "terrain": "level",
+          "build": "arrival",
+          "connections": [
+            "coastercraft_avenue"
+          ],
+          "expansion_priority": 1,
+          "sign": {
+            "title": "COASTERCRAFT",
+            "lines": [
+              "Component gallery straight ahead.",
+              "The Grand Demonstration Coaster is south.",
+              "Board the car at its station."
+            ]
+          }
+        },
+        {
+          "id": "coaster_rail",
+          "kind": "functional",
+          "footprint": [
+            12,
+            6,
+            10
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "entities": [
+            "rail"
+          ],
+          "items": [
+            "rail"
+          ],
+          "terrain": "level",
+          "build": "rail",
+          "connections": [
+            "coaster_gallery"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "RAIL",
+            "lines": [
+              "The plain track piece.",
+              "Two rails that touch shape themselves."
+            ],
+            "item": "rail"
+          }
+        },
+        {
+          "id": "coaster_rail_slope",
+          "kind": "functional",
+          "footprint": [
+            12,
+            6,
+            10
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "entities": [
+            "rail_slope",
+            "rail"
+          ],
+          "items": [
+            "rail_slope"
+          ],
+          "terrain": "level",
+          "build": "slope",
+          "connections": [
+            "coaster_gallery"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "RAIL SLOPE",
+            "lines": [
+              "Climbs one level at 45 degrees.",
+              "Rails join it flush at both ends."
+            ],
+            "item": "rail_slope"
+          }
+        },
+        {
+          "id": "coaster_rail_loop",
+          "kind": "functional",
+          "footprint": [
+            12,
+            12,
+            10
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "entities": [
+            "rail_loop",
+            "rail"
+          ],
+          "items": [
+            "rail_loop"
+          ],
+          "terrain": "level",
+          "build": "loop",
+          "connections": [
+            "coaster_gallery"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "RAIL LOOP",
+            "lines": [
+              "The true loop: one helix turn.",
+              "It lands one lane beside its entry."
+            ],
+            "item": "rail_loop"
+          }
+        },
+        {
+          "id": "coaster_rail_switch",
+          "kind": "functional",
+          "footprint": [
+            12,
+            6,
+            10
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "entities": [
+            "rail_switch",
+            "rail"
+          ],
+          "items": [
+            "rail_switch"
+          ],
+          "terrain": "level",
+          "build": "switch",
+          "connections": [
+            "coaster_gallery"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "RAIL SWITCH",
+            "lines": [
+              "The smooth lane switcher.",
+              "Four cells, one lane over."
+            ],
+            "item": "rail_switch"
+          }
+        },
+        {
+          "id": "coaster_rail_cross",
+          "kind": "functional",
+          "footprint": [
+            12,
+            6,
+            10
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "entities": [
+            "rail_cross",
+            "rail"
+          ],
+          "items": [
+            "rail_cross"
+          ],
+          "terrain": "level",
+          "build": "cross",
+          "connections": [
+            "coaster_gallery"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "RAIL CROSS",
+            "lines": [
+              "Two tracks swap lanes and cross.",
+              "A rider keeps to the track it entered."
+            ],
+            "item": "rail_cross"
+          }
+        },
+        {
+          "id": "coaster_rail_curve",
+          "kind": "functional",
+          "footprint": [
+            12,
+            6,
+            10
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "entities": [
+            "rail_curve",
+            "rail"
+          ],
+          "items": [
+            "rail_curve"
+          ],
+          "terrain": "level",
+          "build": "curve",
+          "connections": [
+            "coaster_gallery"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "RAIL CURVE",
+            "lines": [
+              "A banked 90 degree arc.",
+              "U-turns come from the same tool."
+            ],
+            "item": "rail_curve"
+          }
+        },
+        {
+          "id": "coaster_rail_climb",
+          "kind": "functional",
+          "footprint": [
+            12,
+            10,
+            10
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "entities": [
+            "rail_climb",
+            "rail"
+          ],
+          "items": [
+            "rail_climb"
+          ],
+          "terrain": "level",
+          "build": "climb",
+          "connections": [
+            "coaster_gallery"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "RAIL CLIMB",
+            "lines": [
+              "Slope-in, grade and slope-out in one.",
+              "A negative rise makes a descent."
+            ],
+            "item": "rail_climb"
+          }
+        },
+        {
+          "id": "coaster_mine_cart",
+          "kind": "functional",
+          "footprint": [
+            12,
+            6,
+            10
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "entities": [
+            "mine_cart",
+            "rail"
+          ],
+          "items": [
+            "mine_cart"
+          ],
+          "terrain": "level",
+          "build": "mine_cart",
+          "connections": [
+            "coaster_gallery"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "MINE CART",
+            "lines": [
+              "Rides the chain on its own.",
+              "Hauls ore between bin and warehouse."
+            ],
+            "item": "mine_cart"
+          }
+        },
+        {
+          "id": "coaster_car",
+          "kind": "functional",
+          "footprint": [
+            12,
+            6,
+            10
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "entities": [
+            "coaster_car",
+            "rail"
+          ],
+          "items": [
+            "coaster_car"
+          ],
+          "terrain": "level",
+          "build": "coaster_car",
+          "connections": [
+            "coaster_gallery"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "COASTER CAR",
+            "lines": [
+              "Parked until a rider boards it.",
+              "Shift to ride, 1-9 for speed."
+            ],
+            "item": "coaster_car"
+          }
+        },
+        {
+          "id": "coaster_shop",
+          "kind": "functional",
+          "footprint": [
+            12,
+            6,
+            10
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "entities": [
+            "coastercraft_shop"
+          ],
+          "items": [
+            "coastercraft_shop"
+          ],
+          "terrain": "level",
+          "build": "shop",
+          "connections": [
+            "coaster_gallery"
+          ],
+          "expansion_priority": 2,
+          "sign": {
+            "title": "COASTERCRAFT SHOP",
+            "lines": [
+              "Every track recipe is crafted here.",
+              "Right-click to open its book."
+            ],
+            "item": "coastercraft_shop"
+          }
+        },
+        {
+          "id": "grand_coaster",
+          "kind": "showcase",
+          "footprint": [
+            80,
+            22,
+            26
+          ],
+          "clearance": 1,
+          "orientation": "north",
+          "entities": [
+            "coaster_car",
+            "rail",
+            "rail_climb",
+            "rail_loop",
+            "rail_switch",
+            "rail_cross",
+            "rail_curve"
+          ],
+          "items": [
+            "coaster_car"
+          ],
+          "terrain": "level",
+          "build": "grand_coaster",
+          "reset_group": "coaster",
+          "connections": [
+            "coaster_gallery"
+          ],
+          "expansion_priority": 3,
+          "sign": {
+            "title": "GRAND DEMONSTRATION COASTER",
+            "lines": [
+              "Lift hill, crest, drop, true loop,",
+              "lane switcher, crossing and two U-turns",
+              "in one closed circuit. Shift on the car."
+            ],
+            "item": "coaster_car"
+          }
+        }
       ]
     }
   ],
-  "supply": {"units_per_item": 8, "types_per_chest": 8, "slots_per_chest": 8, "hidden_whitelist": []}
+  "supply": {
+    "units_per_item": 8,
+    "types_per_chest": 8,
+    "slots_per_chest": 8,
+    "hidden_whitelist": []
+  }
 }

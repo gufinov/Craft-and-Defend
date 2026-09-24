@@ -63,8 +63,11 @@ const STOCK_ATTEMPTS := 600
 ## declared entities are placed by the terrain builder itself - a weapon on its
 ## mount with its chest beside it and its target down range - so `place_exhibit`
 ## must not also drop one of each in the middle of the parcel.
-const COMPOSITE_TERRAIN: Array[String] = ["wall_demo", "blueprint_demo", "castle_demo",
+const COMPOSITE_TERRAIN: Array[String] = ["wall_demo", "blueprint_demo", "wall_kit_demo", "castle_demo",
 	"siege_booth", "field", "camp", "battery", "fortification", "magazine"]
+## Defence sets (docs/DEFENSE_SETS.md): the kit the Construction Yard's Wall
+## Kit exhibit stamps.
+const WALL_KIT := "wall_kit_8"
 ## How many of each munition an authored ammunition chest opens with.
 const MUNITIONS_PER_CHEST := 16
 ## The blueprint pieces the Construction Yard stamps, bottom course first
@@ -400,8 +403,20 @@ func stamp_blueprint(blueprint_id: String, anchor: Vector3i, quarters: int = 0, 
 			continue
 		cells.append({"cell": anchor + InteractionService.rotate_blueprint_offset(offset, size, quarters), "voxel": voxel})
 	_queue_cells(label, cells)
+	# Defence sets (docs/DEFENSE_SETS.md): a kit blueprint also stamps the
+	# one-cell castle-kit entities. They are queued as ordinary fixture
+	# placements after the blocks, so the course each stands on exists first.
+	var pieces := 0
+	for entry: Variant in definition.get("entities", []):
+		if not entry is Dictionary:
+			continue
+		var piece: Dictionary = entry
+		var piece_offsets: Array = piece.get("offset", [0, 0, 0])
+		var piece_offset := Vector3i(int(piece_offsets[0]), int(piece_offsets[1]), int(piece_offsets[2]))
+		place_entity(str(piece.get("entity", "")), anchor + InteractionService.rotate_blueprint_offset(piece_offset, size, quarters), posmod(int(piece.get("rotation", 0)) + quarters, 4), label)
+		pieces += 1
 	queue_action(label, _record_stamp.bind(blueprint_id, anchor, quarters))
-	return cells.size()
+	return cells.size() + pieces
 
 
 func _record_stamp(blueprint_id: String, anchor: Vector3i, quarters: int) -> void:
@@ -1072,6 +1087,8 @@ func _build_terrain(exhibit_id: String, terrain: String, origin: Vector3i, size:
 			_build_drag_wall(exhibit_id, origin, size)
 		"blueprint_demo":
 			_build_blueprint_stamp(exhibit_id, origin, size)
+		"wall_kit_demo":
+			_build_wall_kit_demo(exhibit_id, origin, size)
 		"castle_demo":
 			_build_castle_demo(exhibit_id, origin, size)
 		"siege_booth":
@@ -1408,6 +1425,15 @@ func _build_blueprint_stamp(exhibit_id: String, origin: Vector3i, size: Vector3i
 		anchor.y += maxi(1, int(size_values[1]))
 
 
+## Defence sets: what one Wall Kit stamp leaves behind - the base course, the
+## wall-walk, the merlons and the stairs up at both ends, in the same order
+## the player's own stamp places them.
+func _build_wall_kit_demo(exhibit_id: String, origin: Vector3i, size: Vector3i) -> void:
+	var label := "wall_kit:" + exhibit_id
+	level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), label)
+	stamp_blueprint(WALL_KIT, Vector3i(origin.x, origin.y, origin.z + 1), 0, label)
+
+
 ## The Construction Yard's payoff: the same pieces assembled into something
 ## that defends. A curtain wall with a battlemented north face, a gate through
 ## the south face, a stair up to the wall-walk and a solid tower carrying a
@@ -1498,9 +1524,9 @@ func _build_battery(exhibit_id: String, origin: Vector3i, size: Vector3i, record
 
 ## The Battlefield's curtain wall: the Construction Yard kit assembled in front
 ## of the Core - a solid tower carrying a light-siege platform, a battlemented
-## wall and a gate frame through it. The gateway is left open on purpose: a
-## wave that can walk in shows the routing, one that cannot stands and chews
-## stone.
+## wall and a gate frame through it. Since the defence sets card the gateway
+## carries a real gate, hung shut: RESET BATTLEFIELD restores it closed, and
+## the owner decides whether a wave walks in or stands and chews stone.
 func _build_fortification(exhibit_id: String, origin: Vector3i, size: Vector3i, _record: Dictionary) -> void:
 	var label := "wall:" + exhibit_id
 	level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), label)
@@ -1520,6 +1546,7 @@ func _build_fortification(exhibit_id: String, origin: Vector3i, size: Vector3i, 
 	_build_battlements(label, run, origin.y + 3)
 	place_entity("tower_platform", Vector3i(origin.x + 1, origin.y + 4, origin.z + 3), 0, label)
 	place_entity("gate_frame", Vector3i(gate_x, origin.y, wall_z), 0, label)
+	place_entity(WorkstationService.GATE_ENTITY, Vector3i(gate_x + 1, origin.y, wall_z), 0, label)
 	var barricade_z := wall_z - 2
 	for step in range(2):
 		place_entity("wood_barricade", Vector3i(gate_x + step * 2, origin.y, barricade_z), 0, label)

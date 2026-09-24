@@ -166,6 +166,9 @@ func undo_last() -> Dictionary:
 	var entry: Dictionary = _undo.pop_back()
 	if not _drag.is_empty():
 		_drag = {}
+	var stamps_before := int(entry.get("stamps_before", -1))
+	if stamps_before >= 0 and stamps_before < _stamps.size():
+		_stamps.resize(stamps_before)
 	var removed := 0
 	for instance_id: String in entry.get("stations", []):
 		if workstations == null or not workstations.stations.has(instance_id):
@@ -722,6 +725,7 @@ func commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 				touched.append(clear_cell)
 	var label := str(_drag.get("mode", "drag"))
 	var line_entity := str(_drag.get("entity_id", "")) if label == "entity_line" else ""
+	var stamps_before := _stamps.size()
 	var snapshot := _undo_snapshot(touched)
 	var committed := _commit_drag_place(expected_world_revision)
 	if committed.get("ok", false):
@@ -732,6 +736,10 @@ func commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 					laid.append(laid_cell)
 			_auto_shape_result(committed, _auto_shape_rails(laid))
 		_undo_record(snapshot, label)
+		# Undoing a stamp has to forget the piece as well, or its sockets keep
+		# attracting the next one to a wall that is no longer there.
+		if label == "blueprint" and not _undo.is_empty():
+			_undo[_undo.size() - 1]["stamps_before"] = stamps_before
 	return committed
 
 
@@ -760,19 +768,27 @@ func _commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 		_replan_drag()
 	var cells: Array[Vector3i] = []
 	var voxels: Array[int] = []
+	var pieces: Array[Dictionary] = []
 	var removals: Dictionary = {}
 	for entry in _drag.cells:
 		if str(entry.state) != "ok":
 			continue
-		cells.append(entry.cell)
-		voxels.append(int(entry.get("voxel_id", default_voxel)))
 		var entry_item := str(entry.get("item_id", default_item))
 		removals[entry_item] = int(removals.get(entry_item, 0)) + 1
+		var entry_entity := str(entry.get("entity_id", ""))
+		if entry_entity.is_empty():
+			cells.append(entry.cell)
+			voxels.append(int(entry.get("voxel_id", default_voxel)))
+		else:
+			# Defence sets: kit entity cells are placed after the voxels, so
+			# the course they stand on already exists. `_drag.cells` is
+			# ordered bottom-up, which is what a stack of stairs needs.
+			pieces.append({"cell": entry.cell, "entity_id": entry_entity, "rotation_quarters": int(entry.get("rotation_quarters", 0)), "item_id": entry_item})
 	var blueprint_id := str(_drag.get("blueprint_id", ""))
 	var stamp_anchor: Vector3i = _drag.anchor
 	var stamp_rotation := int(_drag.get("rotation", 0))
 	_drag = {}
-	if cells.is_empty():
+	if cells.is_empty() and pieces.is_empty():
 		return _finish(false, "DRAG_EMPTY")
 	for needed_item: String in removals:
 		if inventory.count(needed_item) < int(removals[needed_item]):
@@ -784,8 +800,23 @@ func _commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 				world.set_cell(undo, AIR)
 			return _finish(false, "WORLD_WRITE_FAILED")
 		written.append(cells[index])
+	# One stamp is one purchase: the entity pieces are placed `_free` and the
+	# single transaction below pays for them together with the blocks, so the
+	# whole kit is one atomic cost and one undo step. Anything that refuses
+	# takes the whole stamp back out again.
+	var raised: Array[String] = []
+	var player_aabb: AABB = player_body_aabb.call() if player_body_aabb.is_valid() else AABB()
+	for piece in pieces:
+		var placed := workstations.try_place(str(piece.entity_id), piece.cell, world.query_cell, player_aabb, int(piece.rotation_quarters), {"_free": true})
+		if not placed.get("ok", false):
+			_revert_stamped_pieces(raised, player_aabb)
+			for undo in written:
+				world.set_cell(undo, AIR)
+			return _finish(false, "PLACEMENT_FAILED", {"cell": piece.cell, "entity_id": str(piece.entity_id), "reason_detail": str(placed.get("reason", ""))})
+		raised.append(str(placed.get("details", {}).get("station", {}).get("instance_id", "")))
 	var committed := inventory.try_transaction(removals, {})
 	if not committed.get("ok", false):
+		_revert_stamped_pieces(raised, player_aabb)
 		for undo in written:
 			world.set_cell(undo, AIR)
 		return _finish(false, "INVENTORY_COMMIT_FAILED")
@@ -794,7 +825,17 @@ func _commit_drag_place(expected_world_revision: int = -1) -> Dictionary:
 		items[spent_item] = -int(removals[spent_item])
 	if mode == "blueprint":
 		_stamps.append({"blueprint_id": blueprint_id, "anchor": [stamp_anchor.x, stamp_anchor.y, stamp_anchor.z], "rotation": stamp_rotation})
-	return _finish(true, "BLUEPRINT_STAMPED" if mode == "blueprint" else "DRAG_PLACED", {"cells": cells, "count": cells.size(), "voxel_after": default_voxel, "items": items, "blueprint_id": blueprint_id, "stamps": _stamps.size()})
+	return _finish(true, "BLUEPRINT_STAMPED" if mode == "blueprint" else "DRAG_PLACED", {"cells": cells, "count": cells.size() + raised.size(), "entities": raised.duplicate(), "voxel_after": default_voxel, "items": items, "blueprint_id": blueprint_id, "stamps": _stamps.size()})
+
+
+## Takes a half-finished stamp's entity pieces back out, newest first so a
+## stacked pair of stairs releases from the top. No refund: the transaction
+## that would have paid for them has not run (or has just failed).
+func _revert_stamped_pieces(instance_ids: Array[String], player_aabb: AABB) -> void:
+	for index in range(instance_ids.size() - 1, -1, -1):
+		var instance_id := instance_ids[index]
+		if not instance_id.is_empty():
+			workstations.try_dismantle(instance_id, world.query_cell, player_aabb, false)
 
 
 func _commit_entity_line() -> Dictionary:
@@ -1924,6 +1965,9 @@ func drag_plan_cells(anchor: Vector3i, end: Vector3i) -> Dictionary:
 # ---------------------------------------------------------------------------
 
 const BLUEPRINTS_PATH := "res://data/blueprints.json"
+## The block a kit blueprint's entity cells are ghosted as; the castle kit is
+## cut from castle stone, so that is what the preview shows.
+const BLUEPRINT_ENTITY_GHOST_BLOCK := "castle_stone"
 
 static var _blueprints: Dictionary = {}
 static var _blueprints_loaded := false
@@ -1971,7 +2015,23 @@ func blueprint_cells(blueprint_id: String, anchor: Vector3i, quarters: int) -> A
 		var item_id := _item_placing_voxel(voxel_id)
 		if voxel_id <= 0 or item_id.is_empty():
 			continue
-		cells.append({"cell": anchor + rotate_blueprint_offset(offset, size, quarters), "block": block_name, "voxel_id": voxel_id, "item_id": item_id})
+		cells.append({"cell": anchor + rotate_blueprint_offset(offset, size, quarters), "block": block_name, "voxel_id": voxel_id, "item_id": item_id, "entity_id": ""})
+	# Defence sets (docs/DEFENSE_SETS.md): a kit blueprint also stamps the
+	# one-cell castle-kit entities that have no voxel form - the wall-walk
+	# slab, the merlon and the stone stair. They plan through the same
+	# per-cell rules and the same per-item budget as the blocks; only the
+	# commit differs. `voxel_id` on these rows is the ghost's colour, not
+	# something the commit writes: the drag preview textures a cell by the
+	# block it will become, and castle stone is what these pieces are cut from.
+	for entry in definition.get("entities", []):
+		var entity_offsets: Array = entry.get("offset", [0, 0, 0])
+		var entity_offset := Vector3i(int(entity_offsets[0]), int(entity_offsets[1]), int(entity_offsets[2]))
+		var entity_id := str(entry.get("entity", ""))
+		var entity_item := _item_placing_entity(entity_id)
+		if entity_id.is_empty() or entity_item.is_empty():
+			continue
+		var ghost_voxel := WorldAdapter.BLOCK_NAMES.find(BLUEPRINT_ENTITY_GHOST_BLOCK)
+		cells.append({"cell": anchor + rotate_blueprint_offset(entity_offset, size, quarters), "block": BLUEPRINT_ENTITY_GHOST_BLOCK, "voxel_id": maxi(0, ghost_voxel), "item_id": entity_item, "entity_id": entity_id, "rotation_quarters": posmod(int(entry.get("rotation", 0)) + quarters, 4)})
 	cells.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		var ca: Vector3i = a.cell
 		var cb: Vector3i = b.cell
@@ -2109,11 +2169,21 @@ func _replan_blueprint() -> void:
 				budgets[item_id] = int(budgets[item_id]) - 1
 			if state == "ok":
 				planned[cell] = true
-			entries.append({"cell": cell, "state": state, "reason": reason, "voxel_id": int(planned_cell.voxel_id), "item_id": item_id, "block": str(planned_cell.block)})
+			entries.append({"cell": cell, "state": state, "reason": reason, "voxel_id": int(planned_cell.voxel_id), "item_id": item_id, "block": str(planned_cell.block), "entity_id": str(planned_cell.get("entity_id", "")), "rotation_quarters": int(planned_cell.get("rotation_quarters", 0))})
 		pending = deferred
 	for planned_cell in pending:
-		entries.append({"cell": planned_cell.cell, "state": "blocked", "reason": "UNSUPPORTED", "voxel_id": int(planned_cell.voxel_id), "item_id": str(planned_cell.item_id), "block": str(planned_cell.block)})
+		entries.append({"cell": planned_cell.cell, "state": "blocked", "reason": "UNSUPPORTED", "voxel_id": int(planned_cell.voxel_id), "item_id": str(planned_cell.item_id), "block": str(planned_cell.block), "entity_id": str(planned_cell.get("entity_id", "")), "rotation_quarters": int(planned_cell.get("rotation_quarters", 0))})
 	_drag.cells = entries
+
+
+func _item_placing_entity(entity_id: String) -> String:
+	if entity_id.is_empty():
+		return ""
+	for item_id in registry.items.keys():
+		var item: Dictionary = registry.items[item_id]
+		if str(item.get("places_entity", "")) == entity_id:
+			return str(item_id)
+	return ""
 
 
 func _item_placing_voxel(voxel_id: int) -> String:

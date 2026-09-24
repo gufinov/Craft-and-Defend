@@ -49,6 +49,8 @@ DERIVED = [
     "warehouse", "foundry",
     # Development Expo (docs/DEVELOPMENT_EXPO_HANDOFF.md section 9): the Sign.
     "sign",
+    # Defence sets (docs/DEFENSE_SETS.md): the gate leaf and the rail turret.
+    "gate", "rail_turret",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -488,6 +490,56 @@ def icon_sign() -> Image.Image:
     return canvas
 
 
+def icon_gate() -> Image.Image:
+    """A portcullis leaf: two stiles, a mullion and three cross rails, hanging
+    in the dark opening of a castle-stone frame."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    stone = (200, 206, 212, 255)
+    mortar = (132, 139, 147, 255)
+    shadow = (36, 40, 45, 255)
+    iron = (118, 126, 134, 255)
+    iron_dark = (72, 78, 85, 255)
+    # Frame: two jambs and a lintel.
+    draw.rectangle([28, 36, 76, 228], fill=stone, outline=mortar, width=4)
+    draw.rectangle([180, 36, 228, 228], fill=stone, outline=mortar, width=4)
+    draw.rectangle([28, 36, 228, 78], fill=stone, outline=mortar, width=4)
+    # The opening behind the leaf.
+    draw.rectangle([76, 78, 180, 228], fill=shadow)
+    # The leaf.
+    for x in (84, 124, 164):
+        draw.rectangle([x, 80, x + 12, 226], fill=iron, outline=iron_dark, width=3)
+    for y in (96, 148, 200):
+        draw.rectangle([78, y, 178, y + 12], fill=iron, outline=iron_dark, width=3)
+    # Spiked feet.
+    for x in (84, 124, 164):
+        draw.polygon([(x, 226), (x + 12, 226), (x + 6, 242)], fill=iron_dark)
+    return canvas
+
+
+def icon_rail_turret() -> Image.Image:
+    """The pedestal catapult's throwing arm on an iron carriage riding a rail."""
+    base = fit(source_region("catapult"), 168)
+    base = base.crop((0, 0, base.width, int(base.height * 0.68)))
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    iron = (126, 134, 142, 255)
+    iron_dark = (68, 74, 80, 255)
+    oak = (166, 114, 62, 255)
+    canvas.alpha_composite(base, ((CELL - base.width) // 2, 24))
+    # Carriage deck and turntable.
+    draw.rectangle([46, 168, 210, 200], fill=oak, outline=(104, 66, 32, 255), width=4)
+    draw.ellipse([80, 152, 176, 184], fill=iron, outline=iron_dark, width=5)
+    # Wheels.
+    for x in (68, 176):
+        draw.ellipse([x - 16, 196, x + 16, 228], fill=iron_dark, outline=(40, 44, 48, 255), width=4)
+    # Rail under it.
+    draw.rectangle([24, 228, 232, 240], fill=iron, outline=iron_dark, width=3)
+    for x in range(34, 226, 32):
+        draw.rectangle([x, 240, x + 16, 248], fill=(104, 66, 32, 255))
+    return canvas
+
+
 BUILDERS = {
     "flame_shot": icon_flame_shot, "chest": icon_chest, "cannon": icon_cannon, "cannonball": icon_cannonball,
     "turret_catapult": icon_turret_catapult, "hot_oil": icon_hot_oil, "kettle": icon_kettle, "rail": icon_rail,
@@ -504,6 +556,7 @@ BUILDERS = {
     "miner": icon_miner, "ore_bin": icon_ore_bin,
     "warehouse": icon_warehouse, "foundry": icon_foundry,
     "sign": icon_sign,
+    "gate": icon_gate, "rail_turret": icon_rail_turret,
 }
 
 

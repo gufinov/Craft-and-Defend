@@ -6,6 +6,8 @@ const EXPECTED_WORKBENCH_ORDER: Array[String] = [
 	"miner", "ore_bin", "warehouse", "foundry",
 	# Development Expo section 9 (docs/SIGNS.md): the Sign.
 	"sign",
+	# Defence sets (docs/DEFENSE_SETS.md): the gate leaf and the rail turret.
+	"gate", "rail_turret",
 ]
 ## The CoasterCraft Shop's own book (docs/INDUSTRY_PLAN.md wave 1): the coaster
 ## recipes keep their workbench-era orders (194, 204-212) and live only here.

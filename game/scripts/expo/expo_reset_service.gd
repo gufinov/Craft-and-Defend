@@ -152,6 +152,11 @@ func _restore_standing(session: GameSession, bounds: Dictionary) -> void:
 		workstations.restore_integrity(instance_id)
 		if workstations.siege_status(instance_id).get("ok", false):
 			workstations.restore_siege_ammo(instance_id)
+		# Defence sets (docs/DEFENSE_SETS.md): a gate the last fight was
+		# fought through is hung shut again, like every other piece of the
+		# fixture going back to the state it opens in.
+		if workstations.is_gate(instance_id):
+			workstations.set_gate_open(instance_id, false)
 
 
 static func _box_contains(box: Dictionary, cell: Vector3i) -> bool:

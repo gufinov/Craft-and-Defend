@@ -554,6 +554,24 @@
         207
       ]
     },
+    "gate": {
+      "atlas": "derived",
+      "rect": [
+        540,
+        1316,
+        201,
+        207
+      ]
+    },
+    "rail_turret": {
+      "atlas": "derived",
+      "rect": [
+        792,
+        1304,
+        209,
+        114
+      ]
+    },
     "gold_ore": {
       "atlas": "gold",
       "rect": [

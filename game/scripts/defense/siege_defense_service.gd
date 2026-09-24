@@ -127,7 +127,7 @@ func _poll_storage_reload(instance_id: String, details: Dictionary, delta: float
 	_storage_reload_timers[instance_id] = SIEGE_AUTO_RELOAD_SECONDS
 	if storage == null:
 		return false
-	var network := storage.network_of(instance_id)
+	var network := _supply_network(instance_id)
 	if network.is_empty():
 		return false
 	var definition: Dictionary = details.get("definition", {})
@@ -152,6 +152,26 @@ func _poll_storage_reload(instance_id: String, details: Dictionary, delta: float
 	var message := "%s reloaded from storage: %d %s." % [_display(instance_id), moved, item_id.replace("_", " ")]
 	storage_reloaded.emit(instance_id, details.get("anchor", Vector3i.ZERO), message)
 	return true
+
+
+## The containers a weapon can draw from. A machine standing on the ground
+## draws from what touches its own footprint, as it always has. A rail rider
+## has left that footprint behind, so it also draws from whatever touches the
+## rail cell it is on right now - a magazine anywhere along the line supplies
+## it (docs/DEFENSE_SETS.md). Ids are de-duplicated; order is preserved, so
+## the anchor's own chests are still asked first.
+func _supply_network(instance_id: String) -> Array[String]:
+	var network := storage.network_of(instance_id)
+	if not _rail_riders.has(instance_id):
+		return network
+	var cell := rail_rider_cell(instance_id)
+	if cell.y < -9000:
+		return network
+	var here: Array[Vector3i] = [cell, cell + Vector3i(0, 1, 0)]
+	for container_id in storage.network_for(here):
+		if not network.has(container_id):
+			network.append(container_id)
+	return network
 
 
 func _display(instance_id: String) -> String:
