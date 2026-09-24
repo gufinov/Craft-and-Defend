@@ -70,6 +70,8 @@ const COMPOSITE_TERRAIN: Array[String] = ["wall_demo", "blueprint_demo", "wall_k
 ## Defence sets (docs/DEFENSE_SETS.md): the kit the Construction Yard's Wall
 ## Kit exhibit stamps.
 const WALL_KIT := "wall_kit_8"
+## One authored cell in this many is remembered for the T244 write audit.
+const AUDIT_SAMPLE := 3000
 ## How many of each munition an authored ammunition chest opens with.
 const MUNITIONS_PER_CHEST := 16
 ## The blueprint pieces the Construction Yard stamps, bottom course first
@@ -138,6 +140,15 @@ var _supply_stands: Array[Dictionary] = []
 var _cells_written := 0
 var _entities_placed := 0
 var _failures: Array[String] = []
+## The write audit (T244): one authored cell in `AUDIT_SAMPLE`, chosen by the
+## same deterministic hash the ore uses, mapped to the value this builder last
+## wrote there. `T244_EXPO_BUILD_VERIFIED` re-reads every entry once the campus
+## is built, so a write that was issued and then lost to streaming is a named
+## mismatch rather than a suite that happens to pass on a lucky run.
+var _audit: Dictionary = {}
+## True only while an op of this builder is writing, so `_on_cell_changed` can
+## tell an authored write from the game's own.
+var _authoring := false
 
 
 func configure(expo_layout: ExpoLayout) -> void:
@@ -147,6 +158,12 @@ func configure(expo_layout: ExpoLayout) -> void:
 
 func bind_session(game_session: GameSession) -> void:
 	session = game_session
+	# The write audit (T244) needs to know when something other than this
+	# builder changes an authored cell - a pick, a siege drill, a trap - so a
+	# legitimate later edit is dropped from the audit instead of being reported
+	# as a write the world lost.
+	if session != null and session.world != null and not session.world.cell_changed.is_connected(_on_cell_changed):
+		session.world.cell_changed.connect(_on_cell_changed)
 
 
 ## Queues every district the manifest marks `prepare: "full"`, and the avenue
@@ -806,6 +823,61 @@ func _region_loaded(op: Dictionary) -> bool:
 	return true
 
 
+## True while any authored terrain op is still queued or parked anywhere on the
+## campus. A fixture refused for want of ground (UNLOADED / UNSUPPORTED /
+## INVALID_MOUNT) must not spend an attempt while that is true: its mount may
+## simply not have been laid yet. `MAX_REQUEUES` was already gated this way for
+## the requeue path, but `PLACE_ATTEMPTS` / `STOCK_ATTEMPTS` were not, so a
+## fixture on the far side of the campus could burn its sixty attempts while
+## the builder worked elsewhere and then be dropped with a failure recorded
+## against a district nobody was waiting on - which is how the Industry rail
+## line lost a cell without the mountain's build wait ever seeing it.
+func _terrain_outstanding() -> bool:
+	for op: Dictionary in _ops:
+		var kind := str(op.get("kind", ""))
+		if kind == "columns" or kind == "cells":
+			return true
+	for op: Dictionary in _deferred:
+		var kind := str(op.get("kind", ""))
+		if kind == "columns" or kind == "cells":
+			return true
+	return false
+
+
+## Spends one of an op's `limit` attempts, unless the campus still has terrain
+## to lay. Returns true while the op should keep waiting.
+func _spend_attempt(op: Dictionary, limit: int) -> bool:
+	if _terrain_outstanding():
+		return true
+	if int(op.get("attempts", 0)) >= limit:
+		return false
+	op["attempts"] = int(op.get("attempts", 0)) + 1
+	return true
+
+
+## The write audit: {Vector3i cell: int voxel} - the value this builder last
+## wrote to a sampled cell, for `T244_EXPO_BUILD_VERIFIED` to read back.
+func audit_cells() -> Dictionary:
+	return _audit.duplicate()
+
+
+## Remembers a sampled authored write. Called after the write is known to have
+## taken, so the audit holds what the world said it held, not what was asked.
+func _audit_write(cell: Vector3i, voxel: int) -> void:
+	if _hash_cell(cell, 7) % AUDIT_SAMPLE != 0:
+		return
+	_audit[cell] = voxel
+
+
+## A cell changed by anything other than this builder - the player's pick, a
+## siege drill, a spike trap - is no longer an authored cell, so it leaves the
+## audit rather than being reported as a lost write.
+func _on_cell_changed(cell: Vector3i, _previous_voxel_id: int, _new_voxel_id: int, _revision: int) -> void:
+	if _authoring or not _audit.has(cell):
+		return
+	_audit.erase(cell)
+
+
 func failures() -> Array[String]:
 	return _failures.duplicate()
 
@@ -935,6 +1007,13 @@ func _run_batch(op: Dictionary, field: String, budget: int, runner: Callable) ->
 
 ## fill (optionally only where air/water) -> surface cell -> clear to air.
 func _run_column(job: Dictionary) -> bool:
+	_authoring = true
+	var wrote := _write_column(job)
+	_authoring = false
+	return wrote
+
+
+func _write_column(job: Dictionary) -> bool:
 	var world: WorldAdapter = session.world
 	var x := int(job["x"])
 	var z := int(job["z"])
@@ -952,23 +1031,34 @@ func _run_column(job: Dictionary) -> bool:
 		if _carved.has(cell) and fill_voxel != AIR:
 			continue
 		if air_only:
-			var voxel := int(world.query_cell(cell).get("voxel_id", fill_voxel))
+			# Read the cell honestly. A cell whose chunk has not arrived has no
+			# voxel_id, and defaulting that to "already solid" retired the
+			# column as fully written while a cell in it had never been touched
+			# - a silent lost write. An unread cell leaves the job unfinished.
+			var query := world.query_cell(cell)
+			if str(query.get("state", "")) != "LOADED":
+				wrote_all = false
+				continue
+			var voxel := int(query.get("voxel_id", AIR))
 			if voxel != AIR and voxel != WATER:
 				continue
 		if world.set_cell(cell, fill_voxel):
 			_cells_written += 1
+			_audit_write(cell, fill_voxel)
 		else:
 			wrote_all = false
 	var surface_y := int(job["surface_y"])
 	if surface_y > -9999 and not _carved.has(Vector3i(x, surface_y, z)):
 		if world.set_cell(Vector3i(x, surface_y, z), int(job["surface_voxel"])):
 			_cells_written += 1
+			_audit_write(Vector3i(x, surface_y, z), int(job["surface_voxel"]))
 		else:
 			wrote_all = false
 	for y in range(int(job["clear_from"]), int(job["clear_to"]) + 1):
 		var clear_cell := Vector3i(x, y, z)
 		if world.set_cell(clear_cell, AIR):
 			_cells_written += 1
+			_audit_write(clear_cell, AIR)
 			if carving:
 				_carved[clear_cell] = true
 		else:
@@ -977,6 +1067,13 @@ func _run_column(job: Dictionary) -> bool:
 
 
 func _run_cell_batch(batch: Dictionary) -> bool:
+	_authoring = true
+	var wrote := _write_cell_batch(batch)
+	_authoring = false
+	return wrote
+
+
+func _write_cell_batch(batch: Dictionary) -> bool:
 	var world: WorldAdapter = session.world
 	var cells: Array = batch.get("cells", [])
 	var missed: Array = []
@@ -994,6 +1091,7 @@ func _run_cell_batch(batch: Dictionary) -> bool:
 			continue
 		if world.set_cell(cell, int(record["voxel"])):
 			_cells_written += 1
+			_audit_write(cell, int(record["voxel"]))
 		else:
 			# The cell read as LOADED but the write did not take; run it again
 			# rather than leaving a hole in authored terrain.
@@ -1022,8 +1120,7 @@ func _run_place(op: Dictionary) -> bool:
 	# not run yet: retry until PLACE_ATTEMPTS, then record it rather than
 	# queueing for ever.
 	if reason == "UNLOADED" or reason == "UNSUPPORTED" or reason == "INVALID_MOUNT":
-		if int(op.get("attempts", 0)) < PLACE_ATTEMPTS:
-			op["attempts"] = int(op.get("attempts", 0)) + 1
+		if _spend_attempt(op, PLACE_ATTEMPTS):
 			return false
 	# OCCUPIED means the fixture is already standing (a rebuild): not a failure.
 	# A `strict` op (a track piece, whose cells an authored layout owns) accepts
@@ -1050,8 +1147,7 @@ func _run_stock(op: Dictionary) -> bool:
 		return false
 	var instance_id := session.workstations.station_at_cell(anchor)
 	if instance_id.is_empty() or not session.workstations.is_container(instance_id):
-		if int(op.get("attempts", 0)) < STOCK_ATTEMPTS:
-			op["attempts"] = int(op.get("attempts", 0)) + 1
+		if _spend_attempt(op, STOCK_ATTEMPTS):
 			return false
 		_failures.append("%s stock at %s: NO_CONTAINER" % [str(op.get("label", "")), anchor])
 		return true
@@ -1107,8 +1203,7 @@ func _run_sign(op: Dictionary) -> bool:
 			return true
 		last_reason = str(attempt.get("reason", last_reason))
 	# Nothing free yet: the ground here may still be streaming or still queued.
-	if int(op.get("attempts", 0)) < PLACE_ATTEMPTS:
-		op["attempts"] = int(op.get("attempts", 0)) + 1
+	if _spend_attempt(op, PLACE_ATTEMPTS):
 		return false
 	request["reason"] = last_reason
 	_failures.append("%s sign at %s: %s" % [str(op.get("label", "")), anchor, last_reason])

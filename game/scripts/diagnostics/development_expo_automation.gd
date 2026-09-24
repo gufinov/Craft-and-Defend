@@ -30,6 +30,10 @@ const TUNNEL_WALK := 56
 const LIGHT_RANGE := 12.0
 ## Frames one walked cell is given for the terrain around it to stream in.
 const STREAM_FRAMES := 240
+## Frames T244 gives one sampled cell's chunk to arrive after standing on it.
+const VERIFY_FRAMES := 120
+## Fewer sampled cells than this and the write audit has not proved anything.
+const VERIFY_MINIMUM := 80
 const BUILD_TIMEOUT_MSEC := 420000
 ## Signs card 2 (T225): the exhibit whose board is anchored by its gate, and
 ## how far from that anchor the board may end up (the builder takes the nearest
@@ -163,6 +167,7 @@ func _run_gate() -> void:
 	await _test_battlefield()
 	await _test_gate_family()
 	await _test_grand_coaster()
+	await _test_build_verified()
 	_test_directory_search()
 	await _test_directory_teleport()
 	await _test_expo_notes()
@@ -646,13 +651,15 @@ func _walk_to_depot() -> Dictionary:
 	var blocked: Array[Vector3i] = []
 	var checked := 0
 	for cell: Vector3i in cells:
-		var feet := world.query_cell(cell)
-		var head := world.query_cell(cell + Vector3i(0, 1, 0))
-		if str(feet.get("state", "")) != "LOADED" or str(head.get("state", "")) != "LOADED":
+		var feet := _read_voxel(world, cell)
+		var head := _read_voxel(world, cell + Vector3i(0, 1, 0))
+		# The ground cell is in the data block below this one; an unread ground
+		# is an unread step, not a missing floor.
+		var ground := _read_voxel(world, cell + Vector3i(0, -1, 0))
+		if feet < 0 or head < 0 or ground < 0:
 			continue
 		checked += 1
-		var ground := int(world.query_cell(cell + Vector3i(0, -1, 0)).get("voxel_id", AIR))
-		if int(feet.get("voxel_id", 1)) != AIR or int(head.get("voxel_id", 1)) != AIR or ground == AIR:
+		if feet != AIR or head != AIR or ground == AIR:
 			blocked.append(cell)
 	return {"ok": checked == cells.size() and blocked.is_empty(), "cells": cells.size(),
 		"checked": checked, "blocked": blocked.size(), "first_blocked": blocked[0] if not blocked.is_empty() else Vector3i.ZERO}
@@ -800,6 +807,12 @@ func _test_mountain() -> void:
 	var walkable := 0
 	var lit := 0
 	var walked := 0
+	## Steps whose three cells never all became readable: reported, never
+	## counted as terrain.
+	var unread := 0
+	## Steps where the floor's own data block had not arrived when the walked
+	## block had. Evidence, not a verdict.
+	var floor_late := 0
 	var blocked: Array[Dictionary] = []
 	var lights := _light_positions()
 	# The tunnel is longer than one streaming region, so this is a real walk:
@@ -808,24 +821,43 @@ func _test_mountain() -> void:
 	for step in range(TUNNEL_WALK):
 		var cell := Vector3i(tunnel_origin.x + tunnel_size.x - 3 - step, tunnel_origin.y, centre_z)
 		_teleport(Vector3(float(cell.x) + 0.5, float(cell.y) + 1.1, float(cell.z) + 0.5))
-		var head := world.query_cell(cell + Vector3i(0, 1, 0))
-		var feet := world.query_cell(cell)
+		# The floor is one cell below the walked cell, which puts it in the data
+		# block *underneath* the one the walker stands in: it arrives on its own
+		# schedule and must be waited for like the other two, or its absence is
+		# read as air and authored stone is reported missing (T244).
+		var head_cell := cell + Vector3i(0, 1, 0)
+		var floor_cell := cell + Vector3i(0, -1, 0)
+		# Measured, and kept measured. The old walk broke out of its wait the
+		# instant the feet and head cells were readable and read the floor in
+		# the same breath; `floor_late` counts the steps where this run passed
+		# through at least one frame in that exact state with the floor's block
+		# still absent - every one of them a step the old walk could have
+		# reported as authored stone gone missing.
+		var raced := false
 		for _frame in range(STREAM_FRAMES):
-			if str(feet.get("state", "")) == "LOADED" and str(head.get("state", "")) == "LOADED":
+			var feet_ready: bool = str(world.query_cell(cell).get("state", "")) == "LOADED"
+			var head_ready: bool = str(world.query_cell(head_cell).get("state", "")) == "LOADED"
+			var floor_ready: bool = str(world.query_cell(floor_cell).get("state", "")) == "LOADED"
+			if feet_ready and head_ready and not floor_ready:
+				raced = true
+			if feet_ready and head_ready and floor_ready:
 				break
 			await get_tree().process_frame
-			head = world.query_cell(cell + Vector3i(0, 1, 0))
-			feet = world.query_cell(cell)
-		if str(feet.get("state", "")) != "LOADED" or str(head.get("state", "")) != "LOADED":
+		if raced:
+			floor_late += 1
+		var feet_voxel := _read_voxel(world, cell)
+		var head_voxel := _read_voxel(world, cell + Vector3i(0, 1, 0))
+		var floor_voxel := _read_voxel(world, floor_cell)
+		if feet_voxel < 0 or head_voxel < 0 or floor_voxel < 0:
+			unread += 1
 			continue
 		walked += 1
-		var floor_voxel := int(world.query_cell(cell + Vector3i(0, -1, 0)).get("voxel_id", AIR))
-		if int(feet.get("voxel_id", 1)) == AIR and int(head.get("voxel_id", 1)) == AIR and floor_voxel != AIR:
+		if feet_voxel == AIR and head_voxel == AIR and floor_voxel != AIR:
 			walkable += 1
 		elif blocked.size() < 8:
 			# Name the first few obstructions so a failure says where and what.
-			blocked.append({"cell": str(cell), "feet": int(feet.get("voxel_id", -1)),
-				"head": int(head.get("voxel_id", -1)), "floor": floor_voxel})
+			blocked.append({"cell": str(cell), "feet": feet_voxel,
+				"head": head_voxel, "floor": floor_voxel})
 		for light: Vector3 in lights:
 			if light.distance_to(Vector3(cell)) <= LIGHT_RANGE:
 				lit += 1
@@ -856,6 +888,7 @@ func _test_mountain() -> void:
 	_record("T214_EXPO_MOUNTAIN", ok,
 		"the mountain's authored ore core holds coal, iron and gold voxels; a straight walk of %d cells down the tunnel is unobstructed, floored and within %d cells of a light the whole way; the rail line inside chains cell by cell; the automated-mining exhibit's Miner and Ore Bin stand" % [TUNNEL_WALK, int(LIGHT_RANGE)],
 		{"ores": ores, "core_sampled": core_sampled, "walked": walked, "walkable": walkable, "lit": lit, "blocked": blocked,
+		"tunnel_origin": tunnel_origin, "unread": unread, "floor_late": floor_late,
 		"rails": rails.size(), "chained": chained, "lights": lights.size(), "miner": miner_ok, "ore_bin": bin_ok,
 		"builder": app.development.expo_builder.progress()})
 
@@ -906,9 +939,13 @@ func _test_industry() -> void:
 			rails.append(anchor)
 	rails.sort_custom(func(first: Vector3i, second: Vector3i) -> bool: return first.x < second.x)
 	var rail_chained: bool = not rails.is_empty() and rails[0] == rail_from and rails[rails.size() - 1] == rail_to
+	# Name every break in the line: a failure has to say which cell is missing,
+	# not just that the chain is broken.
+	var rail_gaps: Array[String] = []
 	for index in range(1, rails.size()):
 		if rails[index] - rails[index - 1] != Vector3i(1, 0, 0):
 			rail_chained = false
+			rail_gaps.append("%s -> %s" % [rails[index - 1], rails[index]])
 	# Every container of the district starts empty: the owner watches them fill.
 	var containers: Dictionary = {"ore_bin": bin_id, "warehouse": warehouse_id}
 	for exhibit_id: String in ["industry_net_chest", "industry_net_chain", "industry_net_foundry", "industry_net_furnace"]:
@@ -969,6 +1006,7 @@ func _test_industry() -> void:
 	_record("T216_EXPO_INDUSTRY", ok,
 		"after a Development New the Industry district holds the whole chain - a Miner on an authored ore face, an Ore Bin beside it, one unbroken rail line continuing out of the mountain tunnel with a Mine Cart on it, a Warehouse at the dock and a Foundry touching it - with every container and every foundry slot empty as built; advancing the services runs it end to end (the miner fills the bin, the cart hauls the ore into the warehouse, the foundry smelts an ingot back into storage) and the four storage-network booths each pool exactly as their signs say",
 		{"stations": standing, "rails": rails.size(), "rail_from": rail_from, "rail_to": rail_to, "rail_chained": rail_chained,
+		"rail_gaps": rail_gaps,
 		"empty_start": empty_start, "stocked": stocked, "slots_empty": slots_empty, "cart_empty": cart_empty,
 		"bin": bin_contents, "mined": mined, "hauled": hauled, "cart_steps": cart_steps,
 		"warehouse": _container_contents(warehouse_id), "smelted": smelted, "foundry_steps": foundry_steps,
@@ -1864,6 +1902,109 @@ func _parcel_box(exhibit_id: String) -> Dictionary:
 	if parcel.is_empty():
 		return {}
 	return {"origin": parcel["origin"] as Vector3i, "size": parcel["size"] as Vector3i}
+
+
+## T244: every authored write is read back out of the world it was written to.
+##
+## The builder samples one authored cell in `ExpoBuilder.AUDIT_SAMPLE` as it
+## writes, keeping the value it last put there (and dropping a cell the game
+## itself later changes - a mined ore face, a siege drill, a spike trap). Once
+## the whole campus has been built and walked, this stands on each sampled cell
+## in turn, waits for its chunk, and compares. A write that was issued and then
+## lost - to an eviction, a reload from the generator, a chunk that was never
+## really there - is a named mismatch here instead of a suite that passes on a
+## lucky run. Cells that never became readable are counted separately and are
+## never scored as terrain: an unread cell is not a missing one.
+func _test_build_verified() -> void:
+	var world: WorldAdapter = app.session.world
+	var builder: ExpoBuilder = app.development.expo_builder
+	var audit: Dictionary = builder.audit_cells()
+	var cells: Array = audit.keys()
+	# Walk them in campus order so consecutive reads share a streaming region.
+	cells.sort_custom(func(first: Vector3i, second: Vector3i) -> bool:
+		if first.x != second.x:
+			return first.x < second.x
+		if first.z != second.z:
+			return first.z < second.z
+		return first.y < second.y)
+	var checked := 0
+	var unread_cells := 0
+	var mismatched: Array[Dictionary] = []
+	var districts: Dictionary = {}
+	for entry: Variant in cells:
+		var cell: Vector3i = entry
+		var expected := int(audit[cell])
+		_teleport(Vector3(float(cell.x) + 0.5, float(cell.y) + 2.0, float(cell.z) + 0.5))
+		await _await_loaded(world, [cell], VERIFY_FRAMES)
+		var found := _read_voxel(world, cell)
+		if found < 0:
+			unread_cells += 1
+			continue
+		checked += 1
+		var district := _district_of(cell)
+		var seen: Dictionary = districts.get(district, {"checked": 0, "wrong": 0})
+		seen["checked"] = int(seen["checked"]) + 1
+		if found != expected:
+			seen["wrong"] = int(seen["wrong"]) + 1
+			if mismatched.size() < 12:
+				mismatched.append({"cell": str(cell), "expected": expected, "found": found, "district": district})
+		districts[district] = seen
+	# The sample has to be big enough to mean anything, and nearly all of it has
+	# to have been readable - a run that could only read a handful of its own
+	# authored cells has not verified the build.
+	var ok: bool = mismatched.is_empty() and cells.size() >= VERIFY_MINIMUM \
+		and checked >= int(float(cells.size()) * 0.9)
+	_record("T244_EXPO_BUILD_VERIFIED", ok,
+		"every sampled authored cell of the built campus still reads back the voxel the builder wrote there: at least %d cells sampled across the districts, at least nine in ten of them readable, and not one of them holding something other than what was authored" % VERIFY_MINIMUM,
+		{"sampled": cells.size(), "checked": checked, "unread": unread_cells,
+		"mismatched": mismatched.size(), "first_mismatches": mismatched, "districts": districts,
+		"builder": builder.progress()})
+	_teleport(app.development.layout.spawn_feet())
+
+
+## Which district a cell falls in ("" when it is outside every district box):
+## the audit reports its coverage district by district so a sample that misses
+## one is visible.
+func _district_of(cell: Vector3i) -> String:
+	var layout: ExpoLayout = app.development.layout
+	for district_id: String in layout.district_ids():
+		if _inside(layout.district_bounds(district_id), cell):
+			return district_id
+	return ""
+
+
+## Reads one cell honestly. Returns -1 when the cell could not be read at all -
+## its chunk has not streamed in, or it is outside the world - instead of the
+## AIR that `query_cell(...).get("voxel_id", AIR)` used to invent for a cell
+## nobody could see. That invented air is what made this gate report authored
+## terrain as missing: the cell one below a walked cell sits in the data block
+## underneath it, which streams in separately from the block the walker is
+## standing in (see docs/DEVELOPMENT_EXPO.md, "Streaming and the exported
+## build"). Callers must distinguish -1 (unread) from 0 (read, and it is air).
+static func _read_voxel(world: WorldAdapter, cell: Vector3i) -> int:
+	var query := world.query_cell(cell)
+	if str(query.get("state", "")) != "LOADED":
+		return -1
+	return int(query.get("voxel_id", -1))
+
+
+## Gives `cells` up to `frames` frames to stream in, and answers whether every
+## one of them is readable. A read taken without this is a read of whatever
+## happened to have arrived.
+func _await_loaded(world: WorldAdapter, cells: Array[Vector3i], frames: int) -> bool:
+	for _frame in range(frames):
+		var all_loaded := true
+		for cell: Vector3i in cells:
+			if str(world.query_cell(cell).get("state", "")) != "LOADED":
+				all_loaded = false
+				break
+		if all_loaded:
+			return true
+		await get_tree().process_frame
+	for cell: Vector3i in cells:
+		if str(world.query_cell(cell).get("state", "")) != "LOADED":
+			return false
+	return true
 
 
 ## A cell is in a parcel when its column is: a weapon standing on a platform,
