@@ -387,49 +387,79 @@ someone walks to it; that is expected, not an error. Never widen a wait to the
 whole campus to make a far district finish sooner, and never treat the global
 `failures()` list as one district's verdict.
 
-**An unreadable cell is not a cell whose value you know** (T244). Three places
-turned a cell nobody could read into a cell reported as air or as already
-built, which is how this suite spent two sessions being "fixed" with settle
-waits that could not fix it:
+**A cell that is not free yet is not a cell that will never be free** (T244).
+This is the fault behind the Expo gate's long-running intermittent failure.
+Reproduced at the pre-fix head `34949eb`, from fresh data roots: 2 failures in
+20 runs, one of each historical shape.
+
+*T216, the rail line one cell short.* `EntityFootprintService` answers
+`OCCUPIED` for two quite different things — a station already owns the cell, or
+**the cell still holds a solid voxel**. An authored fixture and the carve that
+opens ground for it are separate queued ops, and a parcel whose chunks have not
+streamed in is deferred and taken up later, so the rail could reach its cell
+before the tunnel carve cleared it. `try_place` answered `OCCUPIED`,
+`_run_place` retired the op on the spot with nothing recorded (only a `strict`
+op treated OCCUPIED-by-another as a collision), and the line stood short:
+`rails: 106` of 107, `rail_chained: false`, **not one builder failure**. The
+exported build showed the same thing six cells wide (`-87..-82`), naming
+`OCCUPIED by TERRAIN(stone)` once the message was made honest.
+
+The builder cannot tell a temporary obstruction from a permanent one from
+there, so it now does what it does for ground: it waits, through
+`_spend_attempt`, and reports only once the campus has no terrain work left to
+lay. `_blocker_at` names what is in the way — the entity standing there, or the
+voxel still filling the cell. **Rule for a new exhibit: a fixture refused on
+ground its own build has not finished is a fixture that waits, never one that
+is dropped, and never one that is dropped quietly.**
+
+*T214, the tunnel floor reported missing.* The campus surface is `ground_y` =
+-1, the **top** cell of the data block `y ∈ [-16, -1]`, while a walker standing
+in the tunnel is at `y = 0`, the **bottom** cell of the block above it. The
+floor therefore always lives in a different data block from the feet and the
+head and arrives on its own schedule. The walk waited for the feet and head
+cells and then read the floor through `query_cell(...).get("voxel_id", AIR)`,
+so a floor block that had not arrived was read as air — authored stone reported
+missing. The reproduction shows it exactly: sixteen consecutive cells at
+`floor 0 / feet 0 / head 0` in a run whose ore-core sample had collapsed from
+1372 cells to 140, i.e. a run where whole regions were still absent.
+`_read_voxel` now returns -1 for a cell that could not be read, the walk waits
+for the floor's block too, and `T214_EXPO_MOUNTAIN` carries `unread` (steps
+that never became readable, counted separately and never scored as terrain) and
+`floor_late` (steps that passed through the exact window the old walk broke out
+on) as standing evidence.
+
+**Two more of the same family**, found while measuring and fixed with them:
 
 - `ExpoBuilder._run_column`'s air-only pre-read defaulted an UNLOADED cell to
   the fill voxel, so a cell whose chunk had not arrived counted as already
   solid and the column retired as fully written — a silent lost write. It now
   leaves the job unfinished instead.
-- The gate's tunnel walk read the cell *below* the walked cell through
-  `query_cell(...).get("voxel_id", AIR)`. The campus surface is `ground_y` =
-  -1, the **top** cell of the data block `y ∈ [-16, -1]`, while a walker
-  standing in the tunnel is at `y = 0`, the **bottom** cell of the block above
-  it. The floor is therefore always in a different data block from the feet and
-  the head, arriving on its own schedule, and its absence was read as air —
-  authored stone reported missing. `_read_voxel` now returns -1 for a cell that
-  could not be read, both walks wait for the floor's block too, and
-  `T214_EXPO_MOUNTAIN` carries `floor_late` (steps that passed through the exact
-  window the old walk broke out on) and `unread` as standing evidence.
 - `PLACE_ATTEMPTS` / `STOCK_ATTEMPTS` were not region-gated the way
-  `MAX_REQUEUES` is. A fixture on the far side of the campus could burn its
-  sixty attempts while the builder laid ground elsewhere, then be dropped with
-  a failure recorded against a district nobody was waiting on — a rail line
-  quietly one cell short. `_spend_attempt` holds the count while any terrain op
-  is still queued or parked anywhere.
+  `MAX_REQUEUES` is, so a fixture on the far side of the campus could burn its
+  sixty attempts while the builder laid ground elsewhere and then be dropped
+  with a failure recorded against a district nobody was waiting on.
+  `_spend_attempt` holds the count while any terrain op is still queued or
+  parked anywhere.
 
-**What is measured, and what is not.** Across 19 consecutive gate runs from
-fresh data roots (9 in the editor and 10 in the exported build after the fix,
-plus 10 at the pre-fix head `34949eb`) the reported intermittent failure did
-not reproduce, and `floor_late` read 0 every time: the block-boundary window is
-real but did not fire on this machine. `WorldAdapter.set_cell` is already
-honest — it refuses a write to an unloaded cell and reads the cell back before
-it reports success — so a write is never *issued and lost* at the moment it is
-made. What remains possible is loss after the fact, in the engine's own
-streaming: a modified block evicted and reloaded from the generator rather than
-from the SQLite stream. That is not something this project can assert away, so
-the mitigation is verification: `T244_EXPO_BUILD_VERIFIED` re-reads a sample of
-every district's authored cells after the whole campus has been built, walked
-and long since evicted, and fails loudly with the cell, the district, the
-authored value and the value found. It has read back 153 cells across 15
-districts on every run with no mismatch and nothing unread. If the Expo gate
-ever fails on authored terrain again, T244's evidence is what says whether the
-world lost a write or the gate misread one.
+**And one invariant worth having:** every authored `place` op claims its anchor
+when it is queued, and `_sign_stand` skips a claimed cell whether or not the
+fixture has arrived yet. A board never stands on a cell the manifest gave to a
+fixture. All 137 sign requests still place.
+
+**What the world itself is trusted for.** `WorldAdapter.set_cell` is honest: it
+refuses a write to an unloaded cell and reads the cell back before it reports
+success, so a write is never issued and lost at the moment it is made. What no
+project code can assert away is loss *after* the fact, in the engine's own
+streaming — a modified block evicted and reloaded from the generator rather
+than from the SQLite stream. The mitigation for that is verification, not
+faith: `T244_EXPO_BUILD_VERIFIED` samples one authored cell in
+`ExpoBuilder.AUDIT_SAMPLE` (1500) as the builder writes, drops any cell the
+running game later changes, and after the whole campus has been built, walked
+and long since evicted it stands on each sample in turn and reads it back,
+naming the cell, the district, the authored value and the value found. It reads
+back ~325 cells across 15 districts, and has never found a mismatch or an
+unreadable cell. If the Expo gate ever fails on authored terrain again, T244's
+evidence is what says whether the world lost a write or the gate misread one.
 
 ---
 

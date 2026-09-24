@@ -1135,26 +1135,43 @@ func _run_place(op: Dictionary) -> bool:
 	# A `strict` op (a track piece, whose cells an authored layout owns) accepts
 	# that only when the piece standing there is the same one - anything else in
 	# the way is a real collision the gate must see.
-	# OCCUPIED means something is already standing here. Its being the same
-	# fixture is an ordinary rebuild. Its being anything else is a collision,
-	# and retiring the op quietly is how an authored rail line went one cell
-	# short without a single failure being recorded: never do that again,
-	# whether or not the op is `strict`.
+	# OCCUPIED means the cell is not free, and `EntityFootprintService` says it
+	# for two quite different things: a station already owns the cell, or the
+	# cell still holds a **solid voxel**. The second is the Expo flake. An
+	# authored fixture and the carve that opens ground for it are separate
+	# queued ops, and a parcel whose chunks have not streamed in is deferred and
+	# taken up later, so the rail could reach its cell before the tunnel carve
+	# cleared it. `try_place` answered OCCUPIED, the op was retired on the spot
+	# with nothing recorded, and the line stood one cell short - "rails: 106" of
+	# 107, no failure, once in ten runs.
+	#
+	# The builder cannot tell a temporary obstruction from a permanent one from
+	# here, so it does what it does for ground: it waits, and only reports once
+	# the campus has no terrain work left to lay. The same fixture standing on
+	# the cell is an ordinary rebuild and retires as before.
 	if reason == "OCCUPIED" and not _same_entity_at(anchor, entity_id):
-		_failures.append("%s %s at %s: OCCUPIED by %s" % [str(op.get("label", "")), entity_id, anchor, _entity_at(anchor)])
+		if _spend_attempt(op, PLACE_ATTEMPTS):
+			return false
+		_failures.append("%s %s at %s: OCCUPIED by %s" % [str(op.get("label", "")), entity_id, anchor, _blocker_at(anchor)])
 		return true
 	if reason != "OCCUPIED":
 		_failures.append("%s %s at %s: %s" % [str(op.get("label", "")), entity_id, anchor, reason])
 	return true
 
 
-## The entity id standing on `cell` ("NOTHING" when the cell is free), for a
-## collision message that names what is in the way.
-func _entity_at(cell: Vector3i) -> String:
+## What is in the way at `cell`: the entity standing there, or the voxel still
+## filling it, so a collision message never reads "occupied by nothing".
+func _blocker_at(cell: Vector3i) -> String:
 	var instance_id := session.workstations.station_at_cell(cell)
-	if instance_id.is_empty():
-		return "NOTHING"
-	return str((session.workstations.stations.get(instance_id, {}) as Dictionary).get("entity_id", instance_id))
+	if not instance_id.is_empty():
+		return str((session.workstations.stations.get(instance_id, {}) as Dictionary).get("entity_id", instance_id))
+	var query := session.world.query_cell(cell)
+	if str(query.get("state", "")) != "LOADED":
+		return "UNREADABLE(%s)" % str(query.get("state", ""))
+	var voxel := int(query.get("voxel_id", AIR))
+	if voxel != AIR:
+		return "TERRAIN(%s)" % (WorldAdapter.BLOCK_NAMES[voxel] if voxel < WorldAdapter.BLOCK_NAMES.size() else str(voxel))
+	return "NOTHING"
 
 
 ## Fills one authored container: `units` (card G's supply chests) or `per_item`
