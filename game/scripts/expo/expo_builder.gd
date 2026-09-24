@@ -71,7 +71,7 @@ const COMPOSITE_TERRAIN: Array[String] = ["wall_demo", "blueprint_demo", "wall_k
 ## Kit exhibit stamps.
 const WALL_KIT := "wall_kit_8"
 ## One authored cell in this many is remembered for the T244 write audit.
-const AUDIT_SAMPLE := 3000
+const AUDIT_SAMPLE := 1500
 ## How many of each munition an authored ammunition chest opens with.
 const MUNITIONS_PER_CHEST := 16
 ## The blueprint pieces the Construction Yard stamps, bottom course first
@@ -146,6 +146,13 @@ var _failures: Array[String] = []
 ## is built, so a write that was issued and then lost to streaming is a named
 ## mismatch rather than a suite that happens to pass on a lucky run.
 var _audit: Dictionary = {}
+## Cells an authored `place` op has been queued for and has not yet taken. A
+## sign looking for somewhere to stand must not take one of them: the build
+## order is a queue, but a parcel whose chunks are not streamed in is deferred
+## and taken up again later, so a sign queued *after* a rail line can reach a
+## rail cell before the rail does. The sign stands there, the rail is then
+## refused as OCCUPIED, and the line is one cell short with nothing reported.
+var _claimed: Dictionary = {}
 ## True only while an op of this builder is writing, so `_on_cell_changed` can
 ## tell an authored write from the game's own.
 var _authoring := false
@@ -396,6 +403,7 @@ func plant_tree(base: Vector3i, height: int = 5, label: String = "tree") -> void
 ## Places one authored entity through the ordinary workstation path, free of
 ## its item cost (handoff section 13).
 func place_entity(entity_id: String, anchor: Vector3i, rotation_quarters: int = 0, label: String = "entity") -> void:
+	_claimed[anchor] = entity_id
 	_ops.append({"kind": "place", "label": label, "entity": entity_id, "anchor": anchor, "rotation": rotation_quarters, "passes": 0})
 
 
@@ -491,6 +499,7 @@ func place_track(pieces: Array, label: String = "track") -> void:
 		var joints_b := _joint_offsets(cell, piece.get("joints_b", []))
 		if not joints_b.is_empty():
 			extra["coaster_joints_b"] = joints_b
+		_claimed[cell] = str(piece.get("entity_id", "rail"))
 		_ops.append({"kind": "place", "label": label, "entity": str(piece.get("entity_id", "rail")),
 			"anchor": cell, "rotation": int(piece.get("rotation", 0)), "extra": extra, "strict": true, "passes": 0})
 
@@ -1126,12 +1135,26 @@ func _run_place(op: Dictionary) -> bool:
 	# A `strict` op (a track piece, whose cells an authored layout owns) accepts
 	# that only when the piece standing there is the same one - anything else in
 	# the way is a real collision the gate must see.
-	if reason == "OCCUPIED" and bool(op.get("strict", false)) and not _same_entity_at(anchor, entity_id):
-		_failures.append("%s %s at %s: OCCUPIED by another piece" % [str(op.get("label", "")), entity_id, anchor])
+	# OCCUPIED means something is already standing here. Its being the same
+	# fixture is an ordinary rebuild. Its being anything else is a collision,
+	# and retiring the op quietly is how an authored rail line went one cell
+	# short without a single failure being recorded: never do that again,
+	# whether or not the op is `strict`.
+	if reason == "OCCUPIED" and not _same_entity_at(anchor, entity_id):
+		_failures.append("%s %s at %s: OCCUPIED by %s" % [str(op.get("label", "")), entity_id, anchor, _entity_at(anchor)])
 		return true
 	if reason != "OCCUPIED":
 		_failures.append("%s %s at %s: %s" % [str(op.get("label", "")), entity_id, anchor, reason])
 	return true
+
+
+## The entity id standing on `cell` ("NOTHING" when the cell is free), for a
+## collision message that names what is in the way.
+func _entity_at(cell: Vector3i) -> String:
+	var instance_id := session.workstations.station_at_cell(cell)
+	if instance_id.is_empty():
+		return "NOTHING"
+	return str((session.workstations.stations.get(instance_id, {}) as Dictionary).get("entity_id", instance_id))
 
 
 ## Fills one authored container: `units` (card G's supply chests) or `per_item`
@@ -1260,6 +1283,8 @@ func _sign_stand(world: WorldAdapter, column: Vector3i) -> Vector3i:
 		var cell := Vector3i(column.x, column.y + rise, column.z)
 		if not _loaded(world, cell) or not _loaded(world, cell + Vector3i(0, -1, 0)):
 			return Vector3i(column.x, SIGN_NO_STAND, column.z)
+		if _claimed.has(cell):
+			continue  # an authored fixture owns this cell, placed or not yet
 		if int(world.query_cell(cell).get("voxel_id", AIR)) != AIR:
 			continue
 		if int(world.query_cell(cell + Vector3i(0, -1, 0)).get("voxel_id", AIR)) != AIR:

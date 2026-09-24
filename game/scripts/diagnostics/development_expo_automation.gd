@@ -33,7 +33,7 @@ const STREAM_FRAMES := 240
 ## Frames T244 gives one sampled cell's chunk to arrive after standing on it.
 const VERIFY_FRAMES := 120
 ## Fewer sampled cells than this and the write audit has not proved anything.
-const VERIFY_MINIMUM := 80
+const VERIFY_MINIMUM := 150
 const BUILD_TIMEOUT_MSEC := 420000
 ## Signs card 2 (T225): the exhibit whose board is anchored by its gate, and
 ## how far from that anchor the board may end up (the builder takes the nearest

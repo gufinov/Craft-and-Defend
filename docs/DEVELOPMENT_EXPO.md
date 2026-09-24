@@ -387,6 +387,50 @@ someone walks to it; that is expected, not an error. Never widen a wait to the
 whole campus to make a far district finish sooner, and never treat the global
 `failures()` list as one district's verdict.
 
+**An unreadable cell is not a cell whose value you know** (T244). Three places
+turned a cell nobody could read into a cell reported as air or as already
+built, which is how this suite spent two sessions being "fixed" with settle
+waits that could not fix it:
+
+- `ExpoBuilder._run_column`'s air-only pre-read defaulted an UNLOADED cell to
+  the fill voxel, so a cell whose chunk had not arrived counted as already
+  solid and the column retired as fully written — a silent lost write. It now
+  leaves the job unfinished instead.
+- The gate's tunnel walk read the cell *below* the walked cell through
+  `query_cell(...).get("voxel_id", AIR)`. The campus surface is `ground_y` =
+  -1, the **top** cell of the data block `y ∈ [-16, -1]`, while a walker
+  standing in the tunnel is at `y = 0`, the **bottom** cell of the block above
+  it. The floor is therefore always in a different data block from the feet and
+  the head, arriving on its own schedule, and its absence was read as air —
+  authored stone reported missing. `_read_voxel` now returns -1 for a cell that
+  could not be read, both walks wait for the floor's block too, and
+  `T214_EXPO_MOUNTAIN` carries `floor_late` (steps that passed through the exact
+  window the old walk broke out on) and `unread` as standing evidence.
+- `PLACE_ATTEMPTS` / `STOCK_ATTEMPTS` were not region-gated the way
+  `MAX_REQUEUES` is. A fixture on the far side of the campus could burn its
+  sixty attempts while the builder laid ground elsewhere, then be dropped with
+  a failure recorded against a district nobody was waiting on — a rail line
+  quietly one cell short. `_spend_attempt` holds the count while any terrain op
+  is still queued or parked anywhere.
+
+**What is measured, and what is not.** Across 19 consecutive gate runs from
+fresh data roots (9 in the editor and 10 in the exported build after the fix,
+plus 10 at the pre-fix head `34949eb`) the reported intermittent failure did
+not reproduce, and `floor_late` read 0 every time: the block-boundary window is
+real but did not fire on this machine. `WorldAdapter.set_cell` is already
+honest — it refuses a write to an unloaded cell and reads the cell back before
+it reports success — so a write is never *issued and lost* at the moment it is
+made. What remains possible is loss after the fact, in the engine's own
+streaming: a modified block evicted and reloaded from the generator rather than
+from the SQLite stream. That is not something this project can assert away, so
+the mitigation is verification: `T244_EXPO_BUILD_VERIFIED` re-reads a sample of
+every district's authored cells after the whole campus has been built, walked
+and long since evicted, and fails loudly with the cell, the district, the
+authored value and the value found. It has read back 153 cells across 15
+districts on every run with no mismatch and nothing unread. If the Expo gate
+ever fails on authored terrain again, T244's evidence is what says whether the
+world lost a write or the gate misread one.
+
 ---
 
 ## 4. Districts — the western campus (§7)
