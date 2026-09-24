@@ -17,6 +17,9 @@ const EXPECTED_WORKBENCH_ORDER: Array[String] = [
 	"great_gate",
 	# Traps wave 1 (docs/TRAPS.md): the Spike Trap (229).
 	"spike_trap",
+	# Traps card 2 (docs/TRAPS.md): the Tar Patch, the Wall Blades, the Spring
+	# Plate and the Ceiling Pitch Dropper (230-233).
+	"tar_patch", "wall_blades", "spring_plate", "ceiling_dropper",
 ]
 ## The CoasterCraft Shop's own book (docs/INDUSTRY_PLAN.md wave 1): the coaster
 ## recipes keep their workbench-era orders (194, 204-212) and live only here.

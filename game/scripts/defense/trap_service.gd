@@ -40,6 +40,14 @@ var damage_cell: Callable
 var damage_area: Callable
 ## `() -> Array[BasicRaider]`: CoreDefenseService.raider_nodes.
 var raiders: Callable
+## `() -> Node3D`: the player body, for a trap whose block says
+## `affects_player`. Anything with `feet_cell()` and `global_position` will
+## do; the service never asks what kind of body it caught.
+var player_body: Callable
+## `(cell, munition_id, radius) -> lit`: FireService.ignite through the
+## session, for a trap whose block carries an `ignite` sub-block. Fire stays
+## one system; a trap only names a munition that already exists.
+var ignite_cells: Callable
 ## instance_id -> {cell, cells, entity_id, tuning, armed, reset_seconds_left,
 ## fire_seconds_left, fired_count}
 var traps: Dictionary = {}
@@ -51,12 +59,14 @@ var _dirty := true
 var _pending_restore: Dictionary = {}
 
 
-func initialize(station_service: WorkstationService, content_registry: ContentRegistry, cell_damage: Callable, area_damage: Callable, raider_source: Callable, saved: Variant = []) -> void:
+func initialize(station_service: WorkstationService, content_registry: ContentRegistry, cell_damage: Callable, area_damage: Callable, raider_source: Callable, saved: Variant = [], player_source: Callable = Callable(), ignite_source: Callable = Callable()) -> void:
 	workstations = station_service
 	registry = content_registry
 	damage_cell = cell_damage
 	damage_area = area_damage
 	raiders = raider_source
+	player_body = player_source
+	ignite_cells = ignite_source
 	if workstations != null and not workstations.station_changed.is_connected(_on_station_changed):
 		workstations.station_changed.connect(_on_station_changed)
 	_sync()
@@ -128,18 +138,23 @@ func _step(dt: float) -> void:
 ## now. `feet` is the pre-computed feet cell of every living raider.
 func _triggered_by(trap: Dictionary, feet: Array) -> Array:
 	var tuning: Dictionary = trap.tuning
+	var player_too := bool(tuning.get("affects_player", false))
 	var caught: Array = []
 	match str(tuning.get("trigger", "pressure")):
 		"proximity":
 			var centre := Vector3(trap.cell) + Vector3(0.5, 0.5, 0.5)
 			var reach := maxf(float(tuning.get("radius", 0.0)), 1.0)
 			for entry in feet:
+				if bool(entry.get("player", false)) and not player_too:
+					continue
 				var point: Vector3 = entry["position"]
 				if Vector2(point.x - centre.x, point.z - centre.z).length() <= reach and absf(point.y - centre.y) <= 2.0:
 					caught.append(entry["node"])
 		_:
 			var cells: Dictionary = trap.trigger_cells
 			for entry in feet:
+				if bool(entry.get("player", false)) and not player_too:
+					continue
 				if cells.has(entry["cell"]):
 					caught.append(entry["node"])
 	return caught
@@ -157,6 +172,7 @@ func _fire(instance_id: String, caught: Array) -> void:
 	traps[instance_id] = trap
 	fired_total += 1
 	var hits := _apply_effect(trap, caught)
+	_apply_ignition(trap)
 	trap_fired.emit(instance_id, trap.cell, hits)
 	feedback.emit("%s sprang on %d attacker%s and resets in %d s." % [
 		registry.display_name(str(trap.entity_id)), hits, "" if hits == 1 else "s",
@@ -180,34 +196,65 @@ func _apply_effect(trap: Dictionary, caught: Array) -> int:
 			var hits := 0
 			for cell: Vector3i in trap.trigger_cells.keys():
 				hits += int(damage_cell.call(cell, amount, "trap"))
+			# A body that is not a raider (the player, when the block says
+			# `affects_player`) is hurt through its own method: the cell
+			# damage above only reaches the wave.
+			for node in caught:
+				if not node is BasicRaider and node.has_method("take_damage"):
+					node.take_damage(amount, "trap")
+					hits += 1
 			return hits
 		"slow":
-			# Tar and its relatives (the next trap card): the body keeps its
-			# route and loses its speed for a while.
+			# Tar and its relatives: the body keeps its route and loses its
+			# speed for a while.
 			var factor := clampf(float(tuning.get("slow_factor", 0.5)), 0.05, 0.99)
 			var seconds := maxf(0.1, float(tuning.get("slow_seconds", 3.0)))
 			var slowed := 0
 			for node in caught:
-				if node is BasicRaider and node.has_method("apply_slow"):
+				if node.has_method("apply_slow"):
 					node.apply_slow(factor, seconds)
 					slowed += 1
 			return slowed
+		"push":
+			# The Spring Plate: one impulse along the trap's own facing, up
+			# and out. Whoever answers `apply_push` is thrown - a raider or
+			# the player - and the service never asks which it caught.
+			var impulse := _push_impulse(trap)
+			var thrown := 0
+			for node in caught:
+				if node.has_method("apply_push"):
+					node.apply_push(impulse)
+					thrown += 1
+			return thrown
 	push_warning("TrapService: unknown trap effect '%s' on %s" % [str(tuning.get("effect", "")), str(trap.entity_id)])
 	return 0
 
 
-## Every living raider body's feet cell and position, computed once a tick.
+## Every body a trap could catch this tick, with its feet cell and position:
+## the living raiders always, and the player as well while any standing trap
+## says `affects_player`. Computed once a tick for every trap.
 func _raider_feet() -> Array:
 	var feet: Array = []
-	if not raiders.is_valid():
-		return feet
-	var nodes: Variant = raiders.call()
-	if not nodes is Array:
-		return feet
-	for value in nodes:
-		if value is BasicRaider and is_instance_valid(value) and not value.dead:
-			feet.append({"node": value, "cell": value.feet_cell(), "position": value.global_position})
+	if raiders.is_valid():
+		var nodes: Variant = raiders.call()
+		if nodes is Array:
+			for value in nodes:
+				if value is BasicRaider and is_instance_valid(value) and not value.dead:
+					feet.append({"node": value, "cell": value.feet_cell(), "position": value.global_position})
+	if _catches_player() and player_body.is_valid():
+		var player: Variant = player_body.call()
+		if player is Node3D and is_instance_valid(player) and player.has_method("feet_cell"):
+			feet.append({"node": player, "cell": player.feet_cell(), "position": player.global_position, "player": true})
 	return feet
+
+
+## True while any standing trap's block asks to catch the player too. It is
+## an attribute, so no trap is named here.
+func _catches_player() -> bool:
+	for instance_id: String in traps:
+		if bool((traps[instance_id].tuning as Dictionary).get("affects_player", false)):
+			return true
+	return false
 
 
 func _on_station_changed(_result: Dictionary) -> void:
@@ -240,6 +287,8 @@ func _sync() -> void:
 		traps[instance_id] = {
 			"cell": cell,
 			"entity_id": entity_id,
+			"rotation_quarters": int(record.get("rotation_quarters", 0)),
+			"mount": str(record.get("mount", "ground")),
 			"cells": _occupied_cells(record, entity_id),
 			"trigger_cells": _trigger_cells(record, entity_id, tuning),
 			"tuning": tuning.duplicate(true),
@@ -291,10 +340,18 @@ func _trigger_cells(record: Dictionary, entity_id: String, tuning: Dictionary) -
 				for step in range(1, reach + 1):
 					cells[cell - Vector3i(0, step, 0)] = true
 		"wall":
+			# A wall mount faces away from the block it hangs on (placement
+			# turns it there), so it catches the cells directly in front of
+			# it - and the cell under each of those, so a trap hung a block
+			# above the floor still reaches the feet walking past beneath it.
+			var quarters := int(record.get("rotation_quarters", 0))
+			var facing := workstations.footprints.rotate_offset(Vector3i(1, 0, 0), quarters)
 			for cell: Vector3i in occupied:
-				for offset: Vector3i in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
-					if not occupied.has(cell + offset):
-						cells[cell + offset] = true
+				var front := cell + facing
+				if occupied.has(front):
+					continue
+				cells[front] = true
+				cells[front + Vector3i(0, -1, 0)] = true
 		_:
 			for cell: Vector3i in occupied:
 				cells[cell + Vector3i(0, 1, 0) if bool(tuning.get("blocks_movement", false)) else cell] = true
@@ -395,6 +452,32 @@ func _apply_visual_state(instance_id: String, snap: bool) -> void:
 	var lamp: Node3D = visual.get("lamp")
 	if lamp != null and is_instance_valid(lamp):
 		lamp.visible = bool(trap.armed)
+
+
+## The impulse a `push` trap gives, in world space: `push_speed` along the
+## trap's facing (its own local +x, turned by its rotation) plus `push_lift`
+## straight up, so the body is thrown clear instead of skidding.
+func _push_impulse(trap: Dictionary) -> Vector3:
+	var tuning: Dictionary = trap.tuning
+	var facing: Vector3i = workstations.footprints.rotate_offset(Vector3i(1, 0, 0), int(trap.get("rotation_quarters", 0)))
+	var speed := maxf(0.0, float(tuning.get("push_speed", 0.0)))
+	var lift := maxf(0.0, float(tuning.get("push_lift", 0.0)))
+	return Vector3(facing.x, 0.0, facing.z).normalized() * speed + Vector3.UP * lift
+
+
+## The optional `ignite` sub-block: the trap lights its trigger cells through
+## the one fire system there is (FireService), by the id of a fire munition
+## that already exists. Nothing about fire is re-implemented here.
+func _apply_ignition(trap: Dictionary) -> void:
+	var ignite: Dictionary = (trap.tuning as Dictionary).get("ignite", {})
+	if ignite.is_empty() or not ignite_cells.is_valid():
+		return
+	var munition_id := str(ignite.get("munition", ""))
+	var radius := float(ignite.get("radius", 0.0))
+	if munition_id.is_empty():
+		return
+	for cell: Vector3i in trap.trigger_cells.keys():
+		ignite_cells.call(cell, munition_id, radius)
 
 
 func _travel(trap: Dictionary) -> Vector3:

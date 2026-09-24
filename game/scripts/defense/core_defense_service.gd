@@ -208,6 +208,7 @@ func restore_after_world_ready() -> Dictionary:
 	if state in [ROUTING, ATTACKING_STRUCTURE, ATTACKING_CORE] and raider_health > 0 and core_integrity > 0:
 		var saved_position := _vector3_from_array(saved.get("raider_position", []), _start_position())
 		_spawn_raider(_settled_position(saved_position))
+		_restore_slow(raider, saved.get("raider_slow", {}))
 		if far_mode and not _within_local_area(raider):
 			last_route_reason = "MARCHING"
 			active_target_type = ""
@@ -222,6 +223,7 @@ func restore_after_world_ready() -> Dictionary:
 					continue
 				var entry := _spawn_extra_raider(_settled_position(_vector3_from_array(value.get("position", []), _start_position())), str(value.get("kind", BasicRaider.KIND_RAIDER)))
 				entry.health = clampi(int(value.get("health", entry.max_health)), 1, int(entry.max_health))
+				_restore_slow(entry.node, value.get("slow", {}))
 				if far_mode and not _within_local_area(entry.node):
 					entry.phase = "marching"
 					_remarch(entry.node)
@@ -520,6 +522,7 @@ func snapshot() -> Dictionary:
 		"core_integrity": core_integrity,
 		"raider_health": raider_health,
 		"raider_position": _vector3_to_array(raider.global_position) if is_instance_valid(raider) else [],
+		"raider_slow": _slow_snapshot(raider),
 		"active_target_type": active_target_type,
 		"active_target_id": active_target_id,
 		"active_target_cell": _vector3i_to_array(active_target_cell),
@@ -538,8 +541,23 @@ func _extras_snapshot() -> Array:
 	for entry in extra_raiders:
 		if int(entry.health) <= 0 or not is_instance_valid(entry.node):
 			continue
-		entries.append({"kind": str(entry.kind), "health": int(entry.health), "position": _vector3_to_array(entry.node.global_position)})
+		entries.append({"kind": str(entry.kind), "health": int(entry.health), "position": _vector3_to_array(entry.node.global_position), "slow": _slow_snapshot(entry.node)})
 	return entries
+
+
+## A body's live trap slow (docs/TRAPS.md), for the wave snapshot. An
+## unslowed body writes an empty dictionary, so old saves restore as unslowed.
+func _slow_snapshot(node: BasicRaider) -> Dictionary:
+	if not is_instance_valid(node) or not node.is_slowed():
+		return {}
+	return {"factor": snappedf(node.slow_factor, 0.01), "seconds": snappedf(node.slow_seconds_left, 0.01)}
+
+
+func _restore_slow(node: BasicRaider, value: Variant) -> void:
+	if not is_instance_valid(node) or not value is Dictionary:
+		return
+	var saved: Dictionary = value
+	node.restore_slow(float(saved.get("factor", 1.0)), float(saved.get("seconds", 0.0)))
 
 
 func try_damage_raider(amount: int, source: String = "player") -> Dictionary:
@@ -939,6 +957,7 @@ func _spawn_extra_raider(spawn_position: Vector3, kind: String) -> Dictionary:
 	extra_raiders.append(entry)
 	node.route_finished.connect(_on_extra_route_finished.bind(node))
 	node.stuck.connect(_on_extra_stuck.bind(node))
+	node.displaced.connect(_on_extra_displaced.bind(node))
 	node.progress_stalled.connect(_on_extra_progress_stalled.bind(node))
 	return entry
 
@@ -991,6 +1010,35 @@ func _walkable_cell(cell: Vector3i) -> bool:
 	var head := _query_navigation_cell(cell + Vector3i.UP)
 	var floor := _query_navigation_cell(cell + Vector3i.DOWN)
 	return str(feet.get("state", "")) == "LOADED" and not bool(feet.get("solid", false)) and not bool(head.get("solid", false)) and bool(floor.get("solid", false))
+
+
+## Traps card 2 (docs/TRAPS.md): a Spring Plate threw the body somewhere its
+## route never went, and it has landed. Unlike `stuck` there is nothing to
+## sidestep out of - the body simply is not where the plan thought it was -
+## so the snapshot is refreshed and the body re-planned from the cell it came
+## down in. Digging and stall clocks are untouched: being thrown is progress
+## of a kind, and the watchdog decides on its own if it was not.
+func _on_raider_displaced() -> void:
+	if not (is_active() and is_instance_valid(raider) and raider_health > 0):
+		return
+	raider.set_meta("sidestepping", false)
+	if far_mode and last_route_reason == "MARCHING":
+		_remarch(raider)
+		return
+	_capture_navigation()
+	_plan_from_raider()
+
+
+func _on_extra_displaced(node: BasicRaider) -> void:
+	for entry in extra_raiders:
+		if entry.node == node and int(entry.health) > 0:
+			node.set_meta("sidestepping", false)
+			if str(entry.get("phase", "")) == "marching":
+				_remarch(node)
+				return
+			_capture_navigation()
+			_plan_extra(entry)
+			return
 
 
 func _on_extra_stuck(node: BasicRaider) -> void:
@@ -1649,6 +1697,7 @@ func _spawn_raider(spawn_position: Vector3) -> void:
 	raider.global_position = spawn_position
 	raider.route_finished.connect(_on_raider_route_finished)
 	raider.stuck.connect(_on_raider_stuck)
+	raider.displaced.connect(_on_raider_displaced)
 	raider.progress_stalled.connect(_on_raider_progress_stalled)
 
 

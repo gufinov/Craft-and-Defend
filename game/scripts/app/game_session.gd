@@ -285,8 +285,9 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	trap_service = TrapService.new()
 	trap_service.name = "TrapService"
 	add_child(trap_service)
-	trap_service.initialize(workstations, registry, core_defense.damage_raiders_in_cell, core_defense.damage_raiders_within, core_defense.raider_nodes, snapshot.get("traps", []))
+	trap_service.initialize(workstations, registry, core_defense.damage_raiders_in_cell, core_defense.damage_raiders_within, core_defense.raider_nodes, snapshot.get("traps", []), _trap_player_body, _trap_ignite_cell)
 	trap_service.feedback.connect(_on_interaction_feedback)
+
 	siege_defense = SiegeDefenseService.new()
 	siege_defense.name = "SiegeDefenseService"
 	add_child(siege_defense)
@@ -1359,6 +1360,14 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_wrap_siege_turret(body, definition)
 	elif entity_id == "spike_trap":
 		_build_spike_trap_visual(body)
+	elif entity_id == "tar_patch":
+		_build_tar_patch_visual(body)
+	elif entity_id == "wall_blades":
+		_build_wall_blades_visual(body)
+	elif entity_id == "spring_plate":
+		_build_spring_plate_visual(body)
+	elif entity_id == "ceiling_dropper":
+		_build_ceiling_dropper_visual(body)
 	elif not definition.get("trap", {}).is_empty():
 		# Any other trap (docs/TRAPS.md): its authored parts, and collision
 		# only when its block says it blocks movement - a trap lies flush in
@@ -4243,6 +4252,174 @@ func _build_spike_trap_visual(parent: Node3D) -> void:
 	parent.add_child(lamp)
 
 
+## The four traps of card 2 (docs/TRAPS.md). Each is built the way the Spike
+## Trap is - authored parts, a `TrapAction` node TrapService drives when the
+## trap springs and a `TrapLamp` bead lit only while it is armed - so armed /
+## firing / resetting reads on the ground. None of them has collision: a trap
+## is walked over, which is the whole point of it.
+
+## Tar Patch: a plank tray of black tar sunk into the floor. The slick is the
+## action node, so it swells when the patch catches somebody and settles back
+## as it resets.
+func _build_tar_patch_visual(parent: Node3D) -> void:
+	var oak := _visual_material(Color("6b4526"), "res://assets/blocks/planks.svg")
+	var tar := _visual_material(Color("171412"))
+	var tar_wet := _visual_material(Color("2c2724"), "", Color("0d0c0b"))
+	for offset in [Vector3(0.0, -0.44, 0.46), Vector3(0.0, -0.44, -0.46)]:
+		_add_mesh_box(parent, Vector3(0.98, 0.14, 0.06), offset, oak)
+	for offset in [Vector3(0.46, -0.44, 0.0), Vector3(-0.46, -0.44, 0.0)]:
+		_add_mesh_box(parent, Vector3(0.06, 0.14, 0.98), offset, oak)
+	_add_mesh_box(parent, Vector3(0.92, 0.06, 0.92), Vector3(0.0, -0.49, 0.0), tar)
+	var action := Node3D.new()
+	action.name = "TrapAction"
+	action.position = Vector3(0.0, -0.46, 0.0)
+	parent.add_child(action)
+	_add_mesh_box(action, Vector3(0.90, 0.07, 0.90), Vector3.ZERO, tar_wet)
+	for spot in [Vector3(-0.22, 0.04, -0.18), Vector3(0.18, 0.04, 0.10), Vector3(0.02, 0.04, 0.26)]:
+		var bubble := MeshInstance3D.new()
+		var dome := SphereMesh.new()
+		dome.radius = 0.09
+		dome.height = 0.12
+		dome.radial_segments = 8
+		dome.rings = 4
+		bubble.mesh = dome
+		bubble.material_override = tar_wet
+		bubble.position = spot
+		action.add_child(bubble)
+	_add_trap_lamp(parent, Vector3(0.40, -0.36, 0.40))
+
+
+## Wall Blades: an oak back plate against the wall face (local -x) and an iron
+## arm carrying a blade wheel on the action node, which sweeps out over the
+## cells in front when the trap fires.
+func _build_wall_blades_visual(parent: Node3D) -> void:
+	var iron := _visual_material(Color("8d959d"))
+	var iron_dark := _visual_material(Color("3c4249"))
+	var oak := _visual_material(Color("6b4526"), "res://assets/blocks/planks.svg")
+	_add_mesh_box(parent, Vector3(0.10, 0.82, 0.82), Vector3(-0.44, 0.0, 0.0), oak)
+	for corner in [Vector3(-0.38, 0.32, 0.32), Vector3(-0.38, 0.32, -0.32), Vector3(-0.38, -0.32, 0.32), Vector3(-0.38, -0.32, -0.32)]:
+		_add_mesh_box(parent, Vector3(0.08, 0.10, 0.10), corner, iron_dark)
+	_add_mesh_box(parent, Vector3(0.44, 0.14, 0.14), Vector3(-0.16, 0.0, 0.0), iron_dark)
+	var action := Node3D.new()
+	action.name = "TrapAction"
+	action.position = Vector3(-0.06, 0.0, 0.0)
+	parent.add_child(action)
+	var hub := MeshInstance3D.new()
+	var hub_mesh := CylinderMesh.new()
+	hub_mesh.top_radius = 0.09
+	hub_mesh.bottom_radius = 0.09
+	hub_mesh.height = 0.14
+	hub_mesh.radial_segments = 8
+	hub.mesh = hub_mesh
+	hub.material_override = iron_dark
+	hub.rotation_degrees = Vector3(0.0, 0.0, 90.0)
+	action.add_child(hub)
+	for turn in range(4):
+		var blade := MeshInstance3D.new()
+		var prism := PrismMesh.new()
+		prism.size = Vector3(0.16, 0.40, 0.04)
+		blade.mesh = prism
+		blade.material_override = iron
+		var angle := TAU * float(turn) / 4.0
+		blade.position = Vector3(0.0, cos(angle) * 0.24, sin(angle) * 0.24)
+		blade.rotation = Vector3(angle, 0.0, 0.0)
+		action.add_child(blade)
+	_add_trap_lamp(parent, Vector3(-0.34, 0.34, 0.34))
+
+
+## Spring Plate: an iron plate on four coils. The plate is the action node, so
+## it snaps up when it fires; the gold arrow on it points along the facing the
+## push is given (the plate's own local +x).
+func _build_spring_plate_visual(parent: Node3D) -> void:
+	var iron := _visual_material(Color("9aa2aa"))
+	var iron_dark := _visual_material(Color("3c4249"))
+	var gold := _visual_material(Color("cea63e"), "", Color("4a3a10"))
+	_add_mesh_box(parent, Vector3(0.96, 0.06, 0.96), Vector3(0.0, -0.49, 0.0), iron_dark)
+	for spot in [Vector3(-0.28, -0.44, -0.28), Vector3(0.28, -0.44, 0.28), Vector3(-0.28, -0.44, 0.28), Vector3(0.28, -0.44, -0.28)]:
+		var coil := MeshInstance3D.new()
+		var mesh := CylinderMesh.new()
+		mesh.top_radius = 0.10
+		mesh.bottom_radius = 0.12
+		mesh.height = 0.12
+		mesh.radial_segments = 8
+		coil.mesh = mesh
+		coil.material_override = iron_dark
+		coil.position = spot
+		parent.add_child(coil)
+	var action := Node3D.new()
+	action.name = "TrapAction"
+	action.position = Vector3(0.0, -0.38, 0.0)
+	parent.add_child(action)
+	_add_mesh_box(action, Vector3(0.92, 0.10, 0.92), Vector3.ZERO, iron)
+	_add_mesh_box(action, Vector3(0.44, 0.03, 0.12), Vector3(-0.06, 0.07, 0.0), gold)
+	var head := MeshInstance3D.new()
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.0
+	cone.bottom_radius = 0.15
+	cone.height = 0.22
+	cone.radial_segments = 6
+	head.mesh = cone
+	head.material_override = gold
+	head.position = Vector3(0.28, 0.07, 0.0)
+	head.rotation_degrees = Vector3(0.0, 0.0, -90.0)
+	action.add_child(head)
+	_add_trap_lamp(parent, Vector3(0.40, -0.40, 0.40))
+
+
+## Ceiling Pitch Dropper: an iron hopper bolted under the block above it. The
+## hatch and the pitch bead hang on the action node, which drops when it fires.
+func _build_ceiling_dropper_visual(parent: Node3D) -> void:
+	var iron := _visual_material(Color("8d959d"))
+	var iron_dark := _visual_material(Color("3c4249"))
+	var pitch := _visual_material(Color("1a1614"), "", Color("602a08"))
+	_add_mesh_box(parent, Vector3(0.14, 0.18, 0.14), Vector3(0.0, 0.44, 0.0), iron_dark)
+	_add_mesh_box(parent, Vector3(0.76, 0.34, 0.76), Vector3(0.0, 0.20, 0.0), iron)
+	for side in [Vector3(0.40, 0.20, 0.0), Vector3(-0.40, 0.20, 0.0), Vector3(0.0, 0.20, 0.40), Vector3(0.0, 0.20, -0.40)]:
+		_add_mesh_box(parent, Vector3(0.06, 0.30, 0.06), side, iron_dark)
+	var funnel := MeshInstance3D.new()
+	var funnel_mesh := CylinderMesh.new()
+	funnel_mesh.top_radius = 0.36
+	funnel_mesh.bottom_radius = 0.16
+	funnel_mesh.height = 0.26
+	funnel_mesh.radial_segments = 8
+	funnel.mesh = funnel_mesh
+	funnel.material_override = iron
+	funnel.position = Vector3(0.0, -0.10, 0.0)
+	parent.add_child(funnel)
+	var action := Node3D.new()
+	action.name = "TrapAction"
+	action.position = Vector3(0.0, -0.26, 0.0)
+	parent.add_child(action)
+	_add_mesh_box(action, Vector3(0.34, 0.05, 0.34), Vector3.ZERO, iron_dark)
+	var drop := MeshInstance3D.new()
+	var bead := SphereMesh.new()
+	bead.radius = 0.13
+	bead.height = 0.26
+	bead.radial_segments = 8
+	bead.rings = 5
+	drop.mesh = bead
+	drop.material_override = pitch
+	drop.position = Vector3(0.0, -0.16, 0.0)
+	action.add_child(drop)
+	_add_trap_lamp(parent, Vector3(0.34, 0.06, 0.34))
+
+
+## The armed bead every trap visual of this card carries. TrapService shows it
+## only while the trap is armed.
+func _add_trap_lamp(parent: Node3D, offset: Vector3) -> void:
+	var lamp := MeshInstance3D.new()
+	lamp.name = "TrapLamp"
+	var bead := SphereMesh.new()
+	bead.radius = 0.055
+	bead.height = 0.11
+	bead.radial_segments = 8
+	bead.rings = 4
+	lamp.mesh = bead
+	lamp.material_override = _visual_material(Color("6fe08a"), "", Color("3bd45f"))
+	lamp.position = offset
+	parent.add_child(lamp)
+
+
 func _add_collision_box(parent: Node3D, size: Vector3, offset: Vector3) -> CollisionShape3D:
 	var collision := CollisionShape3D.new()
 	var box := BoxShape3D.new()
@@ -4597,6 +4774,23 @@ func _fire_damage_at(cell: Vector3i, damage: int) -> void:
 	if core_defense == null:
 		return
 	core_defense.damage_raiders_in_cell(cell, damage, "fire")
+
+
+## The two seams TrapService needs from the session (docs/TRAPS.md): the
+## player body, for a trap whose block says `affects_player`, and the one
+## ignition path there is, for a trap whose block carries an `ignite`
+## sub-block. Neither knows which trap asked.
+func _trap_player_body() -> Node3D:
+	return player
+
+
+func _trap_ignite_cell(cell: Vector3i, munition_id: String, radius: float) -> int:
+	if fire_service == null:
+		return 0
+	var munition := registry.munition(munition_id)
+	if munition.is_empty():
+		return 0
+	return fire_service.ignite(cell, munition, radius)
 
 
 func _player_primary_action(origin: Vector3, direction: Vector3) -> Dictionary:

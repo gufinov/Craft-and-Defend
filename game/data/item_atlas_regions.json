@@ -20,7 +20,7 @@
       "file": "derived_atlas_p4.png",
       "size": [
         1536,
-        1792
+        2048
       ]
     },
     "gold": {
@@ -633,6 +633,42 @@
         1594,
         225,
         179
+      ]
+    },
+    "tar_patch": {
+      "atlas": "derived",
+      "rect": [
+        1296,
+        1610,
+        225,
+        153
+      ]
+    },
+    "wall_blades": {
+      "atlas": "derived",
+      "rect": [
+        12,
+        1812,
+        221,
+        217
+      ]
+    },
+    "spring_plate": {
+      "atlas": "derived",
+      "rect": [
+        280,
+        1812,
+        209,
+        203
+      ]
+    },
+    "ceiling_dropper": {
+      "atlas": "derived",
+      "rect": [
+        528,
+        1806,
+        225,
+        231
       ]
     },
     "gold_ore": {
