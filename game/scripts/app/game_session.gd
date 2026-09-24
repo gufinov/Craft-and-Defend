@@ -3930,7 +3930,12 @@ func _build_gate_visual(parent: Node3D, opening: Vector2i) -> void:
 			var blocker := _add_collision_box(parent, Vector3(0.96, 0.98, 0.26), Vector3(float(x), float(y), 0.0))
 			blocker.name = "GateBlocker_%d_%d" % [x, y]
 	# One leaf filling a one-cell opening, otherwise two meeting in the middle.
-	var halves: Array[Vector2i] = [Vector2i(0, width - 1)] if width == 1 else [Vector2i(0, width / 2 - 1), Vector2i(width / 2, width - 1)]
+	var halves: Array[Vector2i] = []
+	if width == 1:
+		halves.append(Vector2i(0, 0))
+	else:
+		halves.append(Vector2i(0, width / 2 - 1))
+		halves.append(Vector2i(width / 2, width - 1))
 	var index := 0
 	for span: Vector2i in halves:
 		var leaf_cells := span.y - span.x + 1

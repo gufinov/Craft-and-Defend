@@ -1791,7 +1791,11 @@ func gate_frame_opening_offsets(entity_id: String) -> Array:
 func _gate_frame_opening_clear(entity_id: String, anchor: Vector3i, rotation_quarters: int, world_query: Callable) -> bool:
 	for offset: Vector3i in gate_frame_opening_offsets(entity_id):
 		var cell: Vector3i = anchor + footprints.rotate_offset(offset, rotation_quarters)
-		if not footprints.owner_at(cell).is_empty():
+		var owner := footprints.owner_at(cell)
+		# A leaf already hanging there is not a blockage: the Expo's reset
+		# re-raises a fortification's frame around the gate still standing in
+		# it, and a leaf can only be there because a frame was.
+		if not owner.is_empty() and not is_gate(owner):
 			return false
 		var query: Dictionary = world_query.call(cell)
 		if str(query.get("state", "")) != "LOADED" or int(query.get("voxel_id", 0)) != 0:

@@ -204,6 +204,50 @@ func _run_visual() -> void:
 	var industry_path := app.data_root.path_join("development-expo-industry.png")
 	var industry_shot := await _save_viewport(industry_path)
 	_record("T216V_INDUSTRY_VIEW", industry_shot, "rendered evidence of the Industry chain: the ore face with its Miner and Ore Bin, the rail out of the mountain and the cart on it", {"path": industry_path})
+	# Gates card 2: the Construction Yard's two new gate booths, looked at from
+	# the visitor's side, so the Great Gate's four-wide opening and the
+	# catapult parked beyond it are in one frame with the Double Gate beside.
+	var great_parcel := app.development.layout.parcel_for("cy_great_gate")
+	var double_parcel := app.development.layout.parcel_for("cy_double_gate")
+	if not great_parcel.is_empty() and not double_parcel.is_empty():
+		var great_origin: Vector3i = great_parcel["origin"]
+		var great_size: Vector3i = great_parcel["size"]
+		var double_origin: Vector3i = double_parcel["origin"]
+		var double_size: Vector3i = double_parcel["size"]
+		# Standing in the Great Gate booth's own reading cell, at eye height,
+		# looking straight through the four-wide opening at the catapult parked
+		# beyond it - with the leaves drawn back, because "a catapult fits
+		# through easily" is a claim about the OPEN gate. That is the whole
+		# claim of the size, in one frame.
+		for leaf_id: String in _stations_in(_parcel_box("cy_great_gate"), "great_gate"):
+			app.session.workstations.set_gate_open(leaf_id, true)
+		# A booth is only as deep as its parcel, so the eye stands in its
+		# reading cell and looks slightly across the opening: dead ahead at
+		# that range is a close-up of two bars and nothing else.
+		var gates_eye := Vector3(float(great_origin.x) + 4.5, float(great_origin.y) + 2.6, float(great_origin.z + great_size.z) - 0.5)
+		var gates_target := Vector3(float(great_origin.x) + 6.5, float(great_origin.y) + 1.0, float(great_origin.z) + 0.5)
+		_teleport(gates_eye)
+		if not await _wait_built("construction yard", _district_owners(["construction_yard"])):
+			return
+		_look_from(gates_eye, gates_target)
+		for _frame in range(60):
+			await get_tree().process_frame
+		_look_from(gates_eye, gates_target)
+		await get_tree().process_frame
+		var gates_path := app.data_root.path_join("development-expo-gate-family.png")
+		var gates_shot := await _save_viewport(gates_path)
+		_record("T231V_GREAT_GATE_VIEW", gates_shot, "rendered evidence of the Great Gate: the leaves drawn back to a four-wide, four-high opening with a catapult parked beyond it, seen from the booth's reading cell", {"path": gates_path})
+		var double_eye := Vector3(float(double_origin.x) + 4.5, float(double_origin.y) + 2.4, float(double_origin.z + double_size.z) - 0.5)
+		var double_target := Vector3(float(double_origin.x) + 3.5, float(double_origin.y) + 1.2, float(double_origin.z) + 1.5)
+		_teleport(double_eye)
+		_look_from(double_eye, double_target)
+		for _frame in range(60):
+			await get_tree().process_frame
+		_look_from(double_eye, double_target)
+		await get_tree().process_frame
+		var double_path := app.data_root.path_join("development-expo-double-gate.png")
+		var double_shot := await _save_viewport(double_path)
+		_record("T231V_DOUBLE_GATE_VIEW", double_shot, "rendered evidence of the Double Gate: two leaves meeting in the middle of a two-wide, three-high opening, hung shut in its own frame", {"path": double_path})
 	# The light walk, looked down the roofed gallery from the open west end.
 	var pavilion := app.development.layout.parcel_for("light_pavilion")
 	var pavilion_origin: Vector3i = pavilion["origin"]
