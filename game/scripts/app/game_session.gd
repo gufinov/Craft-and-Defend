@@ -92,6 +92,10 @@ const STARTER_IRON_MARKER := Vector3(-6.5, 0.0, 36.5)
 ## travels - one cell, straight into the frame's jamb.
 const GATE_LEAF_NODE := "GateLeaf"
 const GATE_LEAF_OPEN_X := -0.98
+## How far the aim reaches for a station, and how finely the open-gate fallback
+## samples that line (gates card 2: the close that never happened, T229).
+const STATION_REACH := 5.0
+const GATE_AIM_STEP := 0.05
 
 ## CoasterCraft (docs/COASTERCRAFT_MODE.md), set by the app before
 ## initialize(): no enemy core, no enemy-base compass, no starter markers on
@@ -4220,14 +4224,53 @@ func _update_station_visual(instance_id: String, integrity: int, max_integrity: 
 func _raycast_station(origin: Vector3, direction: Vector3) -> String:
 	if not is_inside_tree():
 		return ""
-	var query := PhysicsRayQueryParameters3D.create(origin, origin + direction.normalized() * 5.0, 1)
+	var aim := direction.normalized()
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + aim * STATION_REACH, 1)
 	query.exclude = [player.get_rid()]
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if hit.is_empty():
+	var reach := STATION_REACH
+	var hit_id := ""
+	if not hit.is_empty():
+		var collider: Object = hit.get("collider")
+		if collider != null and collider.has_meta("station_instance_id"):
+			hit_id = str(collider.get_meta("station_instance_id"))
+		var point: Vector3 = hit.get("position", origin + aim * STATION_REACH)
+		reach = minf(reach, origin.distance_to(point))
+	if not hit_id.is_empty() and not workstations.station_type(hit_id).is_empty():
+		return hit_id
+	var open_gate := _open_gate_along_aim(origin, aim, reach)
+	return open_gate if not open_gate.is_empty() else hit_id
+
+
+## The open gate leaf an aim line runs through (docs/DEFENSE_SETS.md).
+##
+## An open gate is a hole you walk through, so `_apply_gate_state` disables its
+## blockers - and those blockers are the leaf's ONLY collision, so the aim ray
+## flew straight past it and `InteractionService` found no station to toggle.
+## That is why the owner could open a gate and never close it again (T229).
+## The leaf cannot simply keep a collider: anything solid left in the opening
+## would be exactly the wall the open gate is not.
+##
+## So the aim line's own cells are read instead, only as far as the ray already
+## reached, which keeps an open gate reachable through its own opening and
+## never through the wall beside it. Only OPEN gates are looked up here; a shut
+## one is solid and the physics ray finds it as it always did.
+func _open_gate_along_aim(origin: Vector3, aim: Vector3, reach: float) -> String:
+	if workstations == null or aim == Vector3.ZERO:
 		return ""
-	var collider: Object = hit.get("collider")
-	if collider != null and collider.has_meta("station_instance_id"):
-		return str(collider.get_meta("station_instance_id"))
+	var travelled := 0.0
+	var previous := Vector3i(floori(origin.x), floori(origin.y), floori(origin.z))
+	var point := origin
+	while travelled <= reach:
+		point += aim * GATE_AIM_STEP
+		travelled += GATE_AIM_STEP
+		var cell := Vector3i(floori(point.x), floori(point.y), floori(point.z))
+		if cell == previous:
+			continue
+		previous = cell
+		var station_id := workstations.station_at_cell(cell)
+		if not station_id.is_empty() and workstations.gate_is_open(station_id):
+			return station_id
 	return ""
 
 
