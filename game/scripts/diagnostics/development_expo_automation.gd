@@ -81,6 +81,17 @@ const COASTER_FAMILIES: Array[String] = ["straight", "climb", "curve", "loop", "
 ## two long s-bends (both are shifted s_bends; only the crossing's shared cells
 ## carry a second curve).
 const COASTER_SWITCH_SHIFT := 1.0
+## Card D1 - the Expo Directory. What the owner's own example search must
+## find, the three districts a teleport is proven in (the last of them the far
+## CoasterCraft park) and how near the parcel the teleport must land.
+const DIRECTORY_SEARCH := "wall kit"
+const DIRECTORY_SEARCH_EXHIBIT := "cy_wall_kit"
+const DIRECTORY_TELEPORT_EXHIBITS: Array[String] = ["cy_wall_kit", "light_post_lantern", "grand_coaster"]
+const DIRECTORY_LANDING_CELLS := 6.0
+## The subject the notes test writes its history against.
+const NOTES_SUBJECT := "cy_wall_kit"
+const NOTES_FIRST_REMARK := "The stair at the west end leaves a gap."
+const NOTES_SECOND_REMARK := "Merlons look right after a rebuild."
 ## Frames the parked car is given to ride the whole circuit and come home.
 const RIDE_FRAME_BUDGET := 40000
 const RIDE_TIMEOUT_MSEC := 240000
@@ -140,6 +151,9 @@ func _run_gate() -> void:
 	await _test_defense_range()
 	await _test_battlefield()
 	await _test_grand_coaster()
+	_test_directory_search()
+	await _test_directory_teleport()
+	await _test_expo_notes()
 	await _settle_near_spawn()
 
 
@@ -217,6 +231,7 @@ func _run_visual() -> void:
 	_record("T217V_LIGHTING_VIEW", lighting_shot, "rendered evidence of the roofed light walk with the six light sources side by side", {"path": lighting_path})
 	await _shoot_card_e_districts()
 	await _shoot_coaster()
+	await _shoot_directory()
 	await _settle_near_spawn()
 
 
@@ -1825,3 +1840,261 @@ func _write_json(path: String, value: Variant) -> void:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:
 		file.store_string(JSON.stringify(value, "  ") + "\n")
+
+
+# --- Card D1: the Expo Directory, What's new and the test notes ---------------
+
+
+## T234. The raw key opens the panel in Development mode and is refused in the
+## ordinary game; the owner's own search ("wall kit") finds the exhibit with
+## the description its sign carries; the district and category filters narrow
+## the list; and the What's new filter shows what the manifest stamped.
+func _test_directory_search() -> void:
+	var evidence: Dictionary = {}
+	var ok := true
+	# Refused outside Development mode: the same key, with the mode's flags
+	# down, must leave the game playing and say why.
+	app._close_directory()
+	app.development.active = false
+	app.session.development = false
+	_press_key(KEY_K)
+	var refused: bool = app.state == CraftAndDefendApp.AppState.PLAYING and not app.directory_available()
+	evidence["refused_outside_development"] = refused
+	ok = ok and refused
+	app.development.active = true
+	app.session.development = true
+	_press_key(KEY_K)
+	var opened: bool = app.state == CraftAndDefendApp.AppState.DIRECTORY and app.directory_panel.visible
+	evidence["key_opens_panel"] = opened
+	ok = ok and opened
+	if not opened:
+		_record("T234_DIRECTORY_SEARCH", false, "K opens the Directory in Development mode and is refused elsewhere", evidence)
+		return
+	var model := ExpoDirectory.new(app.development.layout, app.session.registry, app.session.expo_notes)
+	var rows := model.entries()
+	evidence["entries"] = rows.size()
+	# The search field itself: typing filters live, and the panel draws what
+	# the filter answers.
+	app.directory_search.text = DIRECTORY_SEARCH
+	app._on_directory_search_changed(DIRECTORY_SEARCH)
+	var found := _directory_shown()
+	var hit: Dictionary = {}
+	for row: Dictionary in found:
+		if str(row.get("id", "")) == DIRECTORY_SEARCH_EXHIBIT:
+			hit = row
+	var described: bool = not hit.is_empty() and not str(hit.get("description", "")).is_empty()
+	evidence["wall_kit"] = {"found": not hit.is_empty(), "name": str(hit.get("name", "")),
+		"description": str(hit.get("description", "")), "district": str(hit.get("district", "")),
+		"icon": str(hit.get("icon_item", "")), "matches": found.size()}
+	# The panel really lists them (one card per row it answered).
+	var drawn: int = app.directory_list.get_child_count()
+	evidence["cards_drawn"] = drawn
+	ok = ok and described and drawn == found.size()
+	# District filter: only that district's rows come back, and the wall kit's
+	# own district still holds it.
+	var district := str(hit.get("district", "construction_yard"))
+	app._set_directory_filter("district", district)
+	var by_district := _directory_shown()
+	var district_only := not by_district.is_empty()
+	var district_holds := false
+	for row: Dictionary in by_district:
+		if str(row.get("district", "")) != district:
+			district_only = false
+		if str(row.get("id", "")) == DIRECTORY_SEARCH_EXHIBIT:
+			district_holds = true
+	evidence["district_filter"] = {"district": district, "rows": by_district.size(), "only_that_district": district_only, "holds_wall_kit": district_holds}
+	ok = ok and district_only and district_holds and by_district.size() < rows.size()
+	# Category filter, applied on its own over the whole campus.
+	app._clear_directory_filters()
+	var category := str(hit.get("category", ""))
+	app._set_directory_filter("category", category)
+	var by_category := _directory_shown()
+	var category_only := not by_category.is_empty()
+	for row: Dictionary in by_category:
+		if str(row.get("category", "")) != category:
+			category_only = false
+	evidence["category_filter"] = {"category": category, "rows": by_category.size(), "only_that_category": category_only}
+	ok = ok and category_only and by_category.size() < rows.size()
+	# What's new: the manifest's newest `added_in` stamp and nothing older.
+	app._clear_directory_filters()
+	app._toggle_directory_whats_new()
+	var newest := ExpoDirectory.newest_added_in(rows)
+	var new_rows := _directory_shown()
+	var new_ids: Array[String] = []
+	var all_newest := not new_rows.is_empty()
+	for row: Dictionary in new_rows:
+		new_ids.append(str(row.get("id", "")))
+		if str(row.get("added_in", "")) != newest:
+			all_newest = false
+	evidence["whats_new"] = {"stamp": newest, "ids": new_ids}
+	ok = ok and all_newest and new_ids.has(DIRECTORY_SEARCH_EXHIBIT)
+	app._clear_directory_filters()
+	_record("T234_DIRECTORY_SEARCH", ok, "K opens the Directory in Development mode and is refused elsewhere; a search for the owner's own words answers the wall-kit exhibit with its sign's description; the district, category and What's new filters narrow the list", evidence)
+
+
+## T235. Selecting a row puts the player on loaded ground beside that parcel,
+## looking at it - for three districts, the last of them the far CoasterCraft
+## park whose terrain has to stream in first.
+func _test_directory_teleport() -> void:
+	var evidence: Array[Dictionary] = []
+	var ok := true
+	if app.state != CraftAndDefendApp.AppState.DIRECTORY:
+		app._open_directory()
+	for exhibit_id: String in DIRECTORY_TELEPORT_EXHIBITS:
+		var parcel := app.development.layout.parcel_for(exhibit_id)
+		if parcel.is_empty():
+			evidence.append({"exhibit": exhibit_id, "parcel": false})
+			ok = false
+			continue
+		await app._directory_teleport(exhibit_id, exhibit_id)
+		var player: PlayerController = app.session.player
+		var feet := player.global_position
+		var distance := _distance_to_parcel(parcel, feet)
+		var cell := Vector3i(floori(feet.x), floori(feet.y), floori(feet.z))
+		var under := app.session.world.query_cell(cell + Vector3i(0, -1, 0))
+		var standing: bool = str(under.get("state", "")) == "LOADED" and int(under.get("voxel_id", AIR)) != AIR
+		var at_feet := app.session.world.query_cell(cell)
+		var clear: bool = str(at_feet.get("state", "")) == "LOADED" and int(at_feet.get("voxel_id", AIR)) == AIR
+		var origin: Vector3i = parcel["origin"]
+		var size: Vector3i = parcel["size"]
+		var centre := Vector3(origin) + Vector3(size) * 0.5
+		var to_centre := Vector3(centre.x, feet.y, centre.z) - feet
+		var forward := -player.global_transform.basis.z
+		var facing := Vector2(forward.x, forward.z).normalized().dot(Vector2(to_centre.x, to_centre.z).normalized())
+		var near: bool = distance <= DIRECTORY_LANDING_CELLS
+		evidence.append({"exhibit": exhibit_id, "district": str(parcel.get("district", "")),
+			"cells_from_parcel": snappedf(distance, 0.01), "standing_on_loaded_ground": standing,
+			"head_room": clear, "facing_dot": snappedf(facing, 0.01)})
+		ok = ok and near and standing and clear and facing >= 0.5
+	_record("T235_DIRECTORY_TELEPORT", ok, "selecting an exhibit stands the player on loaded, solid ground within %d cells of its parcel, looking at it, in three districts including the far CoasterCraft park" % int(DIRECTORY_LANDING_CELLS), evidence)
+
+
+## T236. A note with a status is stored, survives a save/restore, shows in the
+## panel, keeps its history, exports as the markdown table - and no snapshot
+## outside Development mode carries the notes namespace at all.
+func _test_expo_notes() -> void:
+	var evidence: Dictionary = {}
+	var ok := true
+	if app.state != CraftAndDefendApp.AppState.DIRECTORY:
+		app._open_directory()
+	var notes: ExpoNotes = app.session.expo_notes
+	notes.clear()
+	app._open_directory_notes(NOTES_SUBJECT, "Wall Kit", "exhibit")
+	app._set_directory_note_status("broken")
+	app.directory_note_edit.text = NOTES_FIRST_REMARK
+	app._add_directory_note()
+	app.directory_note_edit.text = NOTES_SECOND_REMARK
+	app._set_directory_note_status("working")
+	app._add_directory_note()
+	# A status change keeps the newest remark: no retyping.
+	app._set_directory_note_status("approved")
+	app._apply_directory_status()
+	var stored := {"status": notes.status_of(NOTES_SUBJECT), "remark": str(notes.latest_remark(NOTES_SUBJECT).get("remark", "")),
+		"history": notes.note_count(NOTES_SUBJECT)}
+	evidence["stored"] = stored
+	ok = ok and str(stored["status"]) == "approved" and str(stored["remark"]) == NOTES_SECOND_REMARK and int(stored["history"]) == 3
+	# The panel shows the newest remark and status on the row.
+	app._refresh_directory()
+	var shown_row: Dictionary = {}
+	for row: Dictionary in app._directory_rows:
+		if str(row.get("id", "")) == NOTES_SUBJECT:
+			shown_row = row
+	evidence["panel_row"] = {"status": str(shown_row.get("status", "")), "remark": str(shown_row.get("remark", "")), "notes": int(shown_row.get("notes", 0))}
+	ok = ok and str(shown_row.get("status", "")) == "approved" and str(shown_row.get("remark", "")) == NOTES_SECOND_REMARK
+	# The development save's own namespace: the snapshot carries the notes and
+	# they come back out of it unchanged.
+	var snapshot := app.session.snapshot()
+	var carried: bool = snapshot.has("expo_notes")
+	var restored := ExpoNotes.new()
+	var saved: Variant = snapshot.get("expo_notes", {})
+	restored.restore(saved if saved is Dictionary else {})
+	var round_trip: bool = restored.status_of(NOTES_SUBJECT) == "approved" \
+		and restored.note_count(NOTES_SUBJECT) == 3 \
+		and str(restored.latest_remark(NOTES_SUBJECT).get("remark", "")) == NOTES_SECOND_REMARK
+	evidence["save_round_trip"] = {"snapshot_has_notes": carried, "restored": round_trip,
+		"restored_history": restored.note_count(NOTES_SUBJECT)}
+	ok = ok and carried and round_trip
+	# And a real checkpoint on disk: the development save is written and read
+	# back the way `--expo-notes-export` reads it, with no world opened.
+	var written: Dictionary = await app.active_saves().save_session(app.session)
+	var checkpoint := app.development.saves.read_checkpoint()
+	var on_disk := ExpoNotes.new()
+	var disk_data: Variant = checkpoint.get("snapshot", {}).get("expo_notes", {})
+	on_disk.restore(disk_data if disk_data is Dictionary else {})
+	var disk_ok: bool = bool(written.get("ok", false)) and bool(checkpoint.get("ok", false)) 		and on_disk.status_of(NOTES_SUBJECT) == "approved" and on_disk.note_count(NOTES_SUBJECT) == 3
+	evidence["checkpoint"] = {"saved": bool(written.get("ok", false)), "reason": str(written.get("reason", "")),
+		"read_back": bool(checkpoint.get("ok", false)), "history": on_disk.note_count(NOTES_SUBJECT),
+		"status": on_disk.status_of(NOTES_SUBJECT)}
+	ok = ok and disk_ok
+	# No other save ever carries them: the same session, asked for an ordinary
+	# game's snapshot, writes no notes namespace at all.
+	app.session.development = false
+	var normal := app.session.snapshot()
+	app.session.development = true
+	var isolated: bool = not normal.has("expo_notes") and not normal.has("expo")
+	evidence["normal_save_untouched"] = {"expo_notes_key": normal.has("expo_notes"),
+		"development_data_root": app.development.data_root(), "game_data_root": app.saves.data_root}
+	ok = ok and isolated and app.development.data_root() != app.saves.data_root
+	# The export: the table, the newest remark and the whole history under it.
+	var exported := app.export_expo_notes(notes)
+	var path := str(exported.get("path", ""))
+	var text := ""
+	if FileAccess.file_exists(path):
+		text = FileAccess.get_file_as_string(path)
+	var table: bool = text.contains("| Subject | Status | Newest remark | Date |") \
+		and text.contains(NOTES_SUBJECT) and text.contains("Approved") \
+		and text.contains(NOTES_SECOND_REMARK) and text.contains(NOTES_FIRST_REMARK)
+	evidence["export"] = {"path": path, "bytes": text.length(), "table": table, "subjects": int(exported.get("subjects", 0))}
+	ok = ok and bool(exported.get("ok", false)) and table
+	app._close_directory()
+	_record("T236_EXPO_NOTES", ok, "a remark and a status are stored per subject, appended as a history, shown on the panel's row, carried through the development save's own namespace and written to the markdown table, with no notes namespace in an ordinary save", evidence)
+
+
+## The rows the panel is showing right now, through the same filter the panel
+## itself uses.
+func _directory_shown() -> Array[Dictionary]:
+	var model := ExpoDirectory.new(app.development.layout, app.session.registry, app.session.expo_notes)
+	var rows := model.entries()
+	return ExpoDirectory.filter(rows, app._directory_filters, ExpoDirectory.newest_added_in(rows),
+		app.session.expo_notes.last_seen_added_in())
+
+
+## Horizontal distance from a position to the nearest cell of a parcel (0 when
+## it stands inside it).
+static func _distance_to_parcel(parcel: Dictionary, position: Vector3) -> float:
+	var origin: Vector3i = parcel["origin"]
+	var size: Vector3i = parcel["size"]
+	var dx := maxf(maxf(float(origin.x) - position.x, position.x - float(origin.x + size.x)), 0.0)
+	var dz := maxf(maxf(float(origin.z) - position.z, position.z - float(origin.z + size.z)), 0.0)
+	return sqrt(dx * dx + dz * dz)
+
+
+## One raw key press through the app's own handler, so the gate exercises the
+## real key path and not a private call.
+func _press_key(keycode: Key) -> void:
+	var event := InputEventKey.new()
+	event.physical_keycode = keycode
+	event.keycode = keycode
+	event.pressed = true
+	app._unhandled_input(event)
+
+
+## T234V (=visual). The Directory open over the running world with a search
+## typed into it, so the rows, their icons and their status badges can be read
+## off the screenshot.
+func _shoot_directory() -> void:
+	if not await _walk_to_district("construction_yard"):
+		return
+	app._open_directory()
+	if app.state != CraftAndDefendApp.AppState.DIRECTORY:
+		_record("T234V_DIRECTORY_VIEW", false, "the Expo Directory panel open with results listed", {"state": app.state})
+		return
+	app.session.expo_notes.add_note(DIRECTORY_SEARCH_EXHIBIT, NOTES_FIRST_REMARK, "broken", "Wall Kit", "exhibit")
+	app.directory_search.text = "rail"
+	app._on_directory_search_changed("rail")
+	for _frame in range(30):
+		await get_tree().process_frame
+	var path := app.data_root.path_join("development-expo-directory.png")
+	var shot := await _save_viewport(path)
+	_record("T234V_DIRECTORY_VIEW", shot, "rendered evidence of the Expo Directory: the search field, the district / category / status filters and the icon-first rows with their status badges", {"path": path, "rows": app.directory_list.get_child_count()})
+	app._close_directory()

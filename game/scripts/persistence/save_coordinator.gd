@@ -61,6 +61,12 @@ func has_checkpoint() -> bool:
 	return checkpoint_status().get("ok", false)
 
 
+## The current checkpoint's snapshot without opening a session: what the
+## `--expo-notes-export` switch reads out of the development save.
+func read_checkpoint() -> Dictionary:
+	return _read_current_checkpoint()
+
+
 func set_test_failure(point: String) -> void:
 	test_failure_point = point
 

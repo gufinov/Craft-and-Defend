@@ -1,7 +1,7 @@
 class_name CraftAndDefendApp
 extends Node
 
-enum AppState { MAIN_MENU, LOADING, PLAYING, PAUSED, INVENTORY, CRAFTING, SAVING, ERROR, SIGN, BATTLEFIELD }
+enum AppState { MAIN_MENU, LOADING, PLAYING, PAUSED, INVENTORY, CRAFTING, SAVING, ERROR, SIGN, BATTLEFIELD, DIRECTORY }
 
 const DISPLAY_CONFIRM_SECONDS := 10.0
 const PRINT_SCREEN_FOCUS_WINDOW_MSEC := 2000
@@ -174,6 +174,51 @@ const BATTLEFIELD_SPAWN_DISTANCE := 28
 var battlefield_panel: Control
 var battlefield_status_label: Label
 var _battlefield_station_id := ""
+## The Expo Directory (docs/DEVELOPMENT_EXPO.md, card D1): Development mode
+## only, opened with the raw key K (docs/KEYBINDS.md).
+const DIRECTORY_KEY := KEY_K
+const DIRECTORY_HELP := "K OR ESCAPE CLOSES  ·  THE WORLD KEEPS RUNNING  ·  TELEPORT TAKES YOU THERE  ·  NOTES RECORD WHAT YOU FIND"
+## Rows drawn at once; beyond this the summary asks for a narrower search.
+const DIRECTORY_ROW_LIMIT := 60
+const DIRECTORY_REMARK_LIMIT := 240
+## Where a teleport puts the player while the column streams in, and how far
+## up and down the settled surface is looked for afterwards.
+const DIRECTORY_HOVER_HEIGHT := 3.0
+const DIRECTORY_SURFACE_RISE := 28
+const DIRECTORY_SURFACE_DROP := 10
+const DIRECTORY_NO_GROUND := -32768
+## Frames a far district's chunks are given to arrive before the teleport says
+## so instead of dropping the player into unloaded ground.
+const DIRECTORY_STREAM_FRAMES := 900
+const DIRECTORY_STATUS_COLORS := {
+	"untested": Color("8fa5af"), "verified": Color("85d5ea"), "working": Color("9fe8b0"),
+	"broken": Color("ffb0a0"), "approved": Color("ffe08a")}
+const EXPO_NOTES_FILE := "expo_notes.md"
+
+var directory_panel: Control
+var directory_search: LineEdit
+var directory_new_button: Button
+var directory_district_row: HFlowContainer
+var directory_category_row: HFlowContainer
+var directory_status_row: HFlowContainer
+var directory_list: VBoxContainer
+var directory_summary: Label
+var directory_message: Label
+var directory_notes_card: PanelContainer
+var directory_notes_title: Label
+var directory_notes_history: VBoxContainer
+var directory_note_edit: LineEdit
+var directory_note_status_buttons: Dictionary = {}
+var crafting_notes_button: Button
+var sign_notes_button: Button
+var _directory_rows: Array[Dictionary] = []
+var _directory_filters: Dictionary = {"query": "", "district": "", "category": "", "status": "", "whats_new": false}
+var _directory_subject := ""
+var _directory_subject_label := ""
+var _directory_subject_kind := ""
+var _directory_note_status := "untested"
+var _directory_teleporting := false
+
 var sign_panel: Control
 var sign_mode_buttons: Dictionary = {}
 var sign_text_a_row: HBoxContainer
@@ -381,6 +426,11 @@ func _ready() -> void:
 		var development_expo_automation := DevelopmentExpoAutomation.new()
 		add_child(development_expo_automation)
 		development_expo_automation.call_deferred("run", self, development_expo_mode)
+	if OS.get_cmdline_user_args().has("--expo-notes-export"):
+		# The Expo's test notes out of the development save and into
+		# artifacts/expo_notes.md, with no world opened (card D1).
+		call_deferred("_run_expo_notes_export")
+		return
 	if OS.get_cmdline_user_args().has("--coaster-sandbox"):
 		# Owner sandbox: CoasterCraft plus the premade demo tracks (not a diagnostic).
 		var coaster_sandbox := CoasterSandbox.new()
@@ -516,6 +566,8 @@ func _on_session_player_died() -> void:
 		_close_sign()
 	elif state == AppState.BATTLEFIELD:
 		_close_battlefield_control()
+	elif state == AppState.DIRECTORY:
+		_close_directory()
 
 
 func _resolve_data_root() -> String:
@@ -556,6 +608,7 @@ func _build_interface() -> void:
 	_build_crafting(canvas)
 	_build_sign(canvas)
 	_build_battlefield_control(canvas)
+	_build_directory(canvas)
 	_build_hud(canvas)
 	_build_display_confirmation(canvas)
 	_build_cursor_stack(canvas)
@@ -1207,6 +1260,11 @@ func _build_crafting(canvas: CanvasLayer) -> void:
 	crafting_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	crafting_title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(crafting_title_label)
+	# Development Expo only (card D1): a note on the station this panel is open
+	# on, kept against its instance id. Hidden in the ordinary game.
+	crafting_notes_button = _button("Notes", _station_notes_pressed, Vector2(130, 42))
+	crafting_notes_button.hide()
+	header.add_child(crafting_notes_button)
 	header.add_child(_button("Back to Game", _close_crafting, Vector2(180, 42)))
 	crafting_context_label = Label.new()
 	crafting_context_label.add_theme_color_override("font_color", Color("85d5ea"))
@@ -1932,6 +1990,9 @@ func _build_sign(canvas: CanvasLayer) -> void:
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
 	header.add_child(_button("Save", _save_sign, Vector2(150, 44)))
+	sign_notes_button = _button("Notes", _station_notes_pressed, Vector2(130, 44))
+	sign_notes_button.hide()
+	header.add_child(sign_notes_button)
 	header.add_child(_button("Close", _close_sign, Vector2(150, 44)))
 	sign_message = Label.new()
 	sign_message.text = "ESCAPE CLOSES  ·  THE WORLD KEEPS RUNNING  ·  SAVE WRITES THE BOARD"
@@ -2088,6 +2149,7 @@ func _show_sign(instance_id: String) -> void:
 	state = AppState.SIGN
 	session.set_menu_open(true)
 	hud_layer.hide()
+	_refresh_station_notes_buttons()
 	sign_message.text = "ESCAPE CLOSES  ·  THE WORLD KEEPS RUNNING  ·  SAVE WRITES THE BOARD"
 	_refresh_sign_panel()
 	sign_panel.show()
@@ -2355,6 +2417,569 @@ func _battlefield_reset_pressed() -> void:
 	_refresh_battlefield_panel()
 
 
+## The Expo Directory (docs/DEVELOPMENT_EXPO.md "Directory, What's new and
+## test notes", card D1). K opens it in Development mode: a search field, an
+## icon-first list of every district and exhibit grouped by district, filters
+## (district, category, What's new, status), a teleport to whatever the owner
+## picks, and the per-subject test notes with their status. It is a live panel
+## like the sign editor - the world keeps running, Escape closes it - and it
+## is built out of the same panel language, not a second UI framework.
+func _build_directory(canvas: CanvasLayer) -> void:
+	directory_panel = _full_panel(Color(0.02, 0.04, 0.055, 0.96))
+	canvas.add_child(directory_panel)
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(side, 24)
+	directory_panel.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 8)
+	margin.add_child(root)
+
+	var header := HBoxContainer.new()
+	root.add_child(header)
+	var title := _title("EXPO DIRECTORY", 30)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	header.add_child(_button("Export Notes", _export_notes_pressed, Vector2(190, 44)))
+	header.add_child(_button("Close", _close_directory, Vector2(150, 44)))
+	directory_message = Label.new()
+	directory_message.text = DIRECTORY_HELP
+	directory_message.add_theme_color_override("font_color", Color("85d5ea"))
+	root.add_child(directory_message)
+
+	var search_row := HBoxContainer.new()
+	search_row.add_theme_constant_override("separation", 10)
+	root.add_child(search_row)
+	var search_caption := Label.new()
+	search_caption.text = "SEARCH"
+	search_caption.custom_minimum_size.x = 90
+	search_caption.add_theme_color_override("font_color", Color("9fd8e8"))
+	search_row.add_child(search_caption)
+	directory_search = LineEdit.new()
+	directory_search.placeholder_text = "wall kit, turret, gate, coaster…"
+	directory_search.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	directory_search.custom_minimum_size = Vector2(420, 40)
+	directory_search.text_changed.connect(_on_directory_search_changed)
+	search_row.add_child(directory_search)
+	directory_new_button = _button("What's new", _toggle_directory_whats_new, Vector2(170, 40))
+	directory_new_button.toggle_mode = true
+	search_row.add_child(directory_new_button)
+	search_row.add_child(_button("Clear filters", _clear_directory_filters, Vector2(170, 40)))
+
+	directory_district_row = HFlowContainer.new()
+	directory_district_row.add_theme_constant_override("h_separation", 6)
+	directory_district_row.add_theme_constant_override("v_separation", 6)
+	root.add_child(directory_district_row)
+	directory_category_row = HFlowContainer.new()
+	directory_category_row.add_theme_constant_override("h_separation", 6)
+	directory_category_row.add_theme_constant_override("v_separation", 6)
+	root.add_child(directory_category_row)
+	directory_status_row = HFlowContainer.new()
+	directory_status_row.add_theme_constant_override("h_separation", 6)
+	directory_status_row.add_theme_constant_override("v_separation", 6)
+	root.add_child(directory_status_row)
+
+	var body := HBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 14)
+	root.add_child(body)
+
+	var list_card := PanelContainer.new()
+	list_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	list_card.size_flags_stretch_ratio = 2.0
+	list_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("344c5a"), 8, 12))
+	body.add_child(list_card)
+	var list_column := VBoxContainer.new()
+	list_card.add_child(list_column)
+	directory_summary = Label.new()
+	directory_summary.add_theme_color_override("font_color", Color("9fd8e8"))
+	list_column.add_child(directory_summary)
+	var list_scroll := ScrollContainer.new()
+	list_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	list_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	list_column.add_child(list_scroll)
+	directory_list = VBoxContainer.new()
+	directory_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	directory_list.add_theme_constant_override("separation", 6)
+	list_scroll.add_child(directory_list)
+
+	directory_notes_card = PanelContainer.new()
+	directory_notes_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	directory_notes_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	directory_notes_card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("101a23"), Color("4b7180"), 8, 12))
+	body.add_child(directory_notes_card)
+	var notes_column := VBoxContainer.new()
+	notes_column.add_theme_constant_override("separation", 8)
+	directory_notes_card.add_child(notes_column)
+	directory_notes_title = Label.new()
+	directory_notes_title.text = "TEST NOTES"
+	directory_notes_title.add_theme_color_override("font_color", Color("9fd8e8"))
+	notes_column.add_child(directory_notes_title)
+	var status_caption := Label.new()
+	status_caption.text = "STATUS"
+	status_caption.add_theme_font_size_override("font_size", 13)
+	status_caption.add_theme_color_override("font_color", Color("8fa5af"))
+	notes_column.add_child(status_caption)
+	var note_status_row := HFlowContainer.new()
+	note_status_row.add_theme_constant_override("h_separation", 6)
+	note_status_row.add_theme_constant_override("v_separation", 6)
+	notes_column.add_child(note_status_row)
+	for status: String in ExpoNotes.STATUSES:
+		var status_button := _button(ExpoNotes.status_label(status), _set_directory_note_status.bind(status), Vector2(140, 34))
+		status_button.toggle_mode = true
+		status_button.add_theme_font_size_override("font_size", 13)
+		directory_note_status_buttons[status] = status_button
+		note_status_row.add_child(status_button)
+	directory_note_edit = LineEdit.new()
+	directory_note_edit.placeholder_text = "What did you find? (a remark is optional)"
+	directory_note_edit.max_length = DIRECTORY_REMARK_LIMIT
+	directory_note_edit.custom_minimum_size = Vector2(320, 40)
+	notes_column.add_child(directory_note_edit)
+	var note_actions := HBoxContainer.new()
+	note_actions.add_theme_constant_override("separation", 6)
+	notes_column.add_child(note_actions)
+	note_actions.add_child(_button("Save note", _add_directory_note, Vector2(170, 38)))
+	note_actions.add_child(_button("Set status only", _apply_directory_status, Vector2(190, 38)))
+	var history_scroll := ScrollContainer.new()
+	history_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	history_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	history_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	notes_column.add_child(history_scroll)
+	directory_notes_history = VBoxContainer.new()
+	directory_notes_history.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	history_scroll.add_child(directory_notes_history)
+	directory_panel.hide()
+
+
+## True when the Directory can open: a Development-mode session with a solved
+## Expo layout behind it. Everywhere else K is refused with one line.
+func directory_available() -> bool:
+	return development != null and development.active and development.layout != null \
+		and session != null and session.development
+
+
+func _open_directory() -> void:
+	if state != AppState.PLAYING or session == null:
+		return
+	if not directory_available():
+		_set_feedback("The Expo Directory (K) is a Development mode tool.")
+		return
+	if session.is_riding():
+		_set_feedback("Leave the coaster car first (Shift).")
+		return
+	state = AppState.DIRECTORY
+	session.set_menu_open(true)
+	hud_layer.hide()
+	directory_message.text = DIRECTORY_HELP
+	directory_message.add_theme_color_override("font_color", Color("85d5ea"))
+	_refresh_directory()
+	directory_panel.show()
+	directory_search.grab_focus()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _close_directory() -> void:
+	if state != AppState.DIRECTORY:
+		return
+	# Dismissing the list is what "last seen" means: the next What's new shows
+	# whatever was stamped after this moment.
+	if _directory_filters.get("whats_new", false):
+		session.expo_notes.set_last_seen_added_in(ExpoDirectory.newest_added_in(_directory_rows))
+	directory_panel.hide()
+	hud_layer.show()
+	session.set_menu_open(false)
+	state = AppState.PLAYING
+	_directory_subject = ""
+
+
+## Rebuilds the rows from the layout and the notes, then redraws the filters,
+## the list and the notes card. Called on every filter, search and note change.
+func _refresh_directory() -> void:
+	if session == null or directory_panel == null or development.layout == null:
+		return
+	var model := ExpoDirectory.new(development.layout, session.registry, session.expo_notes)
+	_directory_rows = model.entries()
+	var newest := ExpoDirectory.newest_added_in(_directory_rows)
+	var last_seen := session.expo_notes.last_seen_added_in()
+	var shown := ExpoDirectory.filter(_directory_rows, _directory_filters, newest, last_seen)
+	_refresh_directory_filters()
+	for child in directory_list.get_children():
+		directory_list.remove_child(child)
+		child.queue_free()
+	var listed := mini(shown.size(), DIRECTORY_ROW_LIMIT)
+	for index in range(listed):
+		directory_list.add_child(_directory_row_card(shown[index]))
+	if shown.is_empty():
+		var empty := Label.new()
+		empty.text = "Nothing matches. Clear the filters, or search for part of an id or a sign's words."
+		empty.add_theme_color_override("font_color", Color("8fa5af"))
+		directory_list.add_child(empty)
+	directory_summary.text = "%d of %d entries%s  ·  newest stamp %s" % [listed, _directory_rows.size(),
+		"  ·  narrow the search to see the rest" if shown.size() > listed else "",
+		newest if not newest.is_empty() else "—"]
+	_refresh_directory_notes()
+
+
+func _refresh_directory_filters() -> void:
+	var districts: Array[Dictionary] = [{"id": "", "label": "All districts"}]
+	for district_id: String in development.layout.district_ids():
+		districts.append({"id": district_id, "label": str(development.layout.district(district_id).get("name", district_id))})
+	_fill_filter_row(directory_district_row, districts, str(_directory_filters.get("district", "")), "district")
+	var categories: Array[Dictionary] = [{"id": "", "label": "All categories"}]
+	var seen: Dictionary = {}
+	for row: Dictionary in _directory_rows:
+		var category := str(row.get("category", ""))
+		if category.is_empty() or seen.has(category):
+			continue
+		seen[category] = true
+		categories.append({"id": category, "label": ItemCategories.label_of(category)})
+	_fill_filter_row(directory_category_row, categories, str(_directory_filters.get("category", "")), "category")
+	var statuses: Array[Dictionary] = [{"id": "", "label": "Any status"}]
+	for status: String in ExpoNotes.STATUSES:
+		statuses.append({"id": status, "label": ExpoNotes.status_label(status)})
+	_fill_filter_row(directory_status_row, statuses, str(_directory_filters.get("status", "")), "status")
+	directory_new_button.button_pressed = bool(_directory_filters.get("whats_new", false))
+
+
+func _fill_filter_row(row: HFlowContainer, options: Array[Dictionary], selected: String, field: String) -> void:
+	for child in row.get_children():
+		row.remove_child(child)
+		child.queue_free()
+	for option: Dictionary in options:
+		var option_id := str(option.get("id", ""))
+		var option_button := _button(str(option.get("label", option_id)), _set_directory_filter.bind(field, option_id), Vector2(0, 32))
+		option_button.toggle_mode = true
+		option_button.button_pressed = option_id == selected
+		option_button.add_theme_font_size_override("font_size", 13)
+		row.add_child(option_button)
+
+
+## One row: the item's icon, its name, the sign's own words (so the owner
+## reads what a Wall Kit is without hunting for it), its district, category
+## and status badge, a Teleport button and its Notes button.
+func _directory_row_card(row: Dictionary) -> Control:
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", FoundationTheme.panel(Color("0d1721"), Color("2c4453"), 6, 8))
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 10)
+	card.add_child(line)
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = Vector2(44, 44)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture = ItemIconCatalog.texture_for(str(row.get("icon_item", "")))
+	line.add_child(icon)
+	var text_column := VBoxContainer.new()
+	text_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.add_child(text_column)
+	var name_label := Label.new()
+	var stamp := str(row.get("added_in", ""))
+	name_label.text = "%s%s" % [str(row.get("name", "")), "   ★ NEW %s" % stamp if not stamp.is_empty() else ""]
+	name_label.add_theme_color_override("font_color", Color("e8f2f6"))
+	name_label.add_theme_font_size_override("font_size", 16)
+	text_column.add_child(name_label)
+	var description_label := Label.new()
+	description_label.text = str(row.get("description", ""))
+	description_label.clip_text = true
+	description_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	description_label.add_theme_font_size_override("font_size", 13)
+	description_label.add_theme_color_override("font_color", Color("a8bec8"))
+	text_column.add_child(description_label)
+	var meta_label := Label.new()
+	var remark := str(row.get("remark", ""))
+	meta_label.text = "%s  ·  %s  ·  %s%s" % [str(row.get("district_name", "")),
+		str(row.get("category_label", "")) if not str(row.get("category_label", "")).is_empty() else str(row.get("kind", "")),
+		str(row.get("id", "")), "  ·  “%s”" % remark if not remark.is_empty() else ""]
+	meta_label.clip_text = true
+	meta_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	meta_label.add_theme_font_size_override("font_size", 12)
+	meta_label.add_theme_color_override("font_color", Color("7f96a1"))
+	text_column.add_child(meta_label)
+	var status := str(row.get("status", ExpoNotes.DEFAULT_STATUS))
+	var badge := Label.new()
+	badge.text = ExpoNotes.status_label(status).to_upper()
+	badge.custom_minimum_size = Vector2(110, 0)
+	badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	badge.add_theme_font_size_override("font_size", 13)
+	badge.add_theme_color_override("font_color", DIRECTORY_STATUS_COLORS.get(status, Color("8fa5af")))
+	line.add_child(badge)
+	line.add_child(_button("Teleport", _directory_teleport.bind(str(row.get("id", "")), str(row.get("name", ""))), Vector2(130, 36)))
+	var notes_count := int(row.get("notes", 0))
+	line.add_child(_button("Notes" if notes_count == 0 else "Notes (%d)" % notes_count,
+		_open_directory_notes.bind(str(row.get("id", "")), str(row.get("name", "")), str(row.get("kind", ""))), Vector2(130, 36)))
+	return card
+
+
+func _on_directory_search_changed(query: String) -> void:
+	if state != AppState.DIRECTORY:
+		return
+	_directory_filters["query"] = query
+	_refresh_directory()
+
+
+func _set_directory_filter(field: String, value: String) -> void:
+	if state != AppState.DIRECTORY:
+		return
+	_directory_filters[field] = "" if str(_directory_filters.get(field, "")) == value else value
+	_refresh_directory()
+
+
+func _toggle_directory_whats_new() -> void:
+	if state != AppState.DIRECTORY:
+		return
+	_directory_filters["whats_new"] = not bool(_directory_filters.get("whats_new", false))
+	_refresh_directory()
+
+
+func _clear_directory_filters() -> void:
+	if state != AppState.DIRECTORY:
+		return
+	_directory_filters = {"query": "", "district": "", "category": "", "status": "", "whats_new": false}
+	directory_search.text = ""
+	_refresh_directory()
+
+
+## Teleport: the visitor's standing spot for the parcel
+## (`ExpoBuilder.approach_for`, the same `entrance` resolution the boards use),
+## facing the exhibit. The ground is given time to stream in before the player
+## is put down on it - the Expo's streaming rules mean a far district's terrain
+## simply is not there yet when the panel opens
+## (docs/DEVELOPMENT_EXPO.md "Streaming and the exported build").
+func _directory_teleport(owner_id: String, label: String) -> void:
+	if state != AppState.DIRECTORY or session == null or development.expo_builder == null:
+		return
+	if _directory_teleporting:
+		return
+	var anchor := development.expo_builder.approach_for(owner_id)
+	if anchor.is_empty():
+		_directory_status("%s has no parcel to travel to." % label, false)
+		return
+	_directory_teleporting = true
+	_directory_status("Travelling to %s — waiting for the ground to stream in…" % label, true)
+	var cell: Vector3i = anchor["cell"]
+	var look_at: Vector3 = anchor["look_at"]
+	var column := Vector3i(cell.x, maxi(cell.y, development.layout.ground_y()), cell.z)
+	var player := session.player
+	player.velocity = Vector3.ZERO
+	player.global_position = Vector3(float(column.x) + 0.5, float(column.y) + DIRECTORY_HOVER_HEIGHT, float(column.z) + 0.5)
+	var feet := await _directory_ground_y(column)
+	if state != AppState.DIRECTORY or session == null:
+		_directory_teleporting = false
+		return
+	if feet == DIRECTORY_NO_GROUND:
+		_directory_status("%s has not streamed in yet — try again in a moment." % label, false)
+		_directory_teleporting = false
+		return
+	player.velocity = Vector3.ZERO
+	player.global_position = Vector3(float(column.x) + 0.5, float(feet), float(column.z) + 0.5)
+	var to_target := look_at - player.global_position
+	if absf(to_target.x) > 0.001 or absf(to_target.z) > 0.001:
+		player.rotation.y = atan2(-to_target.x, -to_target.z)
+	player.look_pitch = 0.0
+	_directory_status("You are standing at %s (%d, %d, %d), looking at it." % [label, column.x, feet, column.z], true)
+	_directory_teleporting = false
+
+
+## Waits for the column's chunk to stream in, then answers the y a player's
+## feet stand at on top of it. DIRECTORY_NO_GROUND when it never arrives.
+func _directory_ground_y(column: Vector3i) -> int:
+	var world: WorldAdapter = session.world
+	for _frame in range(DIRECTORY_STREAM_FRAMES):
+		var query := world.query_cell(column)
+		if str(query.get("state", "")) == "LOADED":
+			break
+		await get_tree().process_frame
+		if state != AppState.DIRECTORY or session == null:
+			return DIRECTORY_NO_GROUND
+	for y in range(column.y + DIRECTORY_SURFACE_RISE, column.y - DIRECTORY_SURFACE_DROP, -1):
+		var solid := world.query_cell(Vector3i(column.x, y, column.z))
+		if str(solid.get("state", "")) != "LOADED" or int(solid.get("voxel_id", ExpoBuilder.AIR)) == ExpoBuilder.AIR:
+			continue
+		var head := world.query_cell(Vector3i(column.x, y + 2, column.z))
+		var chest := world.query_cell(Vector3i(column.x, y + 1, column.z))
+		if int(chest.get("voxel_id", ExpoBuilder.AIR)) == ExpoBuilder.AIR and int(head.get("voxel_id", ExpoBuilder.AIR)) == ExpoBuilder.AIR:
+			return y + 1
+	return DIRECTORY_NO_GROUND
+
+
+func _directory_status(message: String, good: bool) -> void:
+	if directory_message == null:
+		return
+	directory_message.text = message
+	directory_message.add_theme_color_override("font_color", Color("9fe8b0") if good else Color("ffb0a0"))
+
+
+# --- Test notes ---------------------------------------------------------------
+
+
+## Opens the notes editor on one subject: an exhibit id from the list, or a
+## placed station's instance id from its own panel's Notes button.
+func _open_directory_notes(subject_id: String, label: String, kind: String) -> void:
+	if session == null:
+		return
+	if state != AppState.DIRECTORY:
+		_open_directory()
+		if state != AppState.DIRECTORY:
+			return
+	_directory_subject = subject_id
+	_directory_subject_label = label
+	_directory_subject_kind = kind
+	_directory_note_status = session.expo_notes.status_of(subject_id)
+	directory_note_edit.text = ""
+	_refresh_directory_notes()
+
+
+func _set_directory_note_status(status: String) -> void:
+	if state != AppState.DIRECTORY:
+		return
+	_directory_note_status = status
+	_refresh_directory_notes()
+
+
+func _add_directory_note() -> void:
+	if state != AppState.DIRECTORY or session == null or _directory_subject.is_empty():
+		return
+	var result := session.expo_notes.add_note(_directory_subject, directory_note_edit.text, _directory_note_status,
+		_directory_subject_label, _directory_subject_kind)
+	if result.get("ok", false):
+		directory_note_edit.text = ""
+		_directory_status("Note kept on %s (%s). Save the game to keep it on disk." % [_directory_subject_label, ExpoNotes.status_label(_directory_note_status)], true)
+	else:
+		_directory_status("Note refused: %s" % str(result.get("reason", "")).replace("_", " ").to_lower(), false)
+	_refresh_directory()
+
+
+## The status changes and the newest remark stays: no retyping.
+func _apply_directory_status() -> void:
+	if state != AppState.DIRECTORY or session == null or _directory_subject.is_empty():
+		return
+	session.expo_notes.set_status(_directory_subject, _directory_note_status, _directory_subject_label, _directory_subject_kind)
+	_directory_status("%s is now %s." % [_directory_subject_label, ExpoNotes.status_label(_directory_note_status)], true)
+	_refresh_directory()
+
+
+func _refresh_directory_notes() -> void:
+	if directory_notes_card == null or session == null:
+		return
+	var chosen := not _directory_subject.is_empty()
+	directory_notes_title.text = "TEST NOTES  ·  %s" % _directory_subject_label if chosen else "TEST NOTES  ·  PICK A ROW'S NOTES BUTTON"
+	directory_note_edit.editable = chosen
+	for status: String in directory_note_status_buttons.keys():
+		var status_button: Button = directory_note_status_buttons[status]
+		status_button.button_pressed = chosen and status == _directory_note_status
+		status_button.disabled = not chosen
+	for child in directory_notes_history.get_children():
+		directory_notes_history.remove_child(child)
+		child.queue_free()
+	if not chosen:
+		return
+	var history := session.expo_notes.history(_directory_subject)
+	var heading := Label.new()
+	heading.text = "%s  ·  %d note(s)" % [_directory_subject, history.size()]
+	heading.add_theme_font_size_override("font_size", 12)
+	heading.add_theme_color_override("font_color", Color("7f96a1"))
+	directory_notes_history.add_child(heading)
+	for index in range(history.size() - 1, -1, -1):
+		var entry: Dictionary = history[index]
+		var entry_label := Label.new()
+		var remark := str(entry.get("remark", ""))
+		entry_label.text = "%s  ·  %s%s" % [ExpoNotes.status_label(str(entry.get("status", ExpoNotes.DEFAULT_STATUS))),
+			ExpoNotes.stamp(int(entry.get("at", 0))), "" if remark.is_empty() else "\n    %s" % remark]
+		entry_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		entry_label.add_theme_font_size_override("font_size", 13)
+		entry_label.add_theme_color_override("font_color", DIRECTORY_STATUS_COLORS.get(str(entry.get("status", "")), Color("d5e2e8")))
+		directory_notes_history.add_child(entry_label)
+
+
+## The Notes button a station panel shows in Development mode: the subject is
+## the station's own instance id, so a note follows that placed fixture.
+func _station_notes_pressed() -> void:
+	if session == null:
+		return
+	var instance_id := _sign_station_id if state == AppState.SIGN else _crafting_station_id
+	if instance_id.is_empty():
+		return
+	var record: Dictionary = session.workstations.stations.get(instance_id, {})
+	var entity_id := str(record.get("entity_id", ""))
+	var label := session.registry.display_name(entity_id) if not entity_id.is_empty() else instance_id
+	if state == AppState.SIGN:
+		_close_sign()
+	elif state == AppState.CRAFTING:
+		_close_crafting()
+	_open_directory_notes(instance_id, "%s %s" % [label, instance_id], "station")
+
+
+func _refresh_station_notes_buttons() -> void:
+	var available := directory_available()
+	if crafting_notes_button != null:
+		crafting_notes_button.visible = available and not _crafting_station_id.is_empty()
+	if sign_notes_button != null:
+		sign_notes_button.visible = available
+
+
+# --- Export -------------------------------------------------------------------
+
+
+## `artifacts/expo_notes.md` beside the repository when the game runs from
+## source, and `<data root>/artifacts/expo_notes.md` from an exported build,
+## where `res://..` is inside the package.
+func expo_notes_export_path() -> String:
+	var repository := ProjectSettings.globalize_path("res://..").simplify_path().path_join("artifacts")
+	if DirAccess.dir_exists_absolute(repository):
+		return repository.path_join(EXPO_NOTES_FILE)
+	var fallback := data_root.path_join("artifacts")
+	DirAccess.make_dir_recursive_absolute(fallback)
+	return fallback.path_join(EXPO_NOTES_FILE)
+
+
+func export_expo_notes(notes: ExpoNotes) -> Dictionary:
+	if notes == null:
+		return {"ok": false, "reason": "NO_NOTES"}
+	var path := expo_notes_export_path()
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		return {"ok": false, "reason": "WRITE_FAILED", "path": path}
+	file.store_string(notes.export_markdown())
+	file.close()
+	var subjects := notes.subjects().size()
+	print("EXPO_NOTES_EXPORT %s subjects=%d" % [path, subjects])
+	return {"ok": true, "path": path, "subjects": subjects}
+
+
+func _export_notes_pressed() -> void:
+	if state != AppState.DIRECTORY or session == null:
+		return
+	var result := export_expo_notes(session.expo_notes)
+	_directory_status("Notes written to %s" % str(result.get("path", "")) if result.get("ok", false)
+		else "Export failed: %s" % str(result.get("reason", "")).replace("_", " ").to_lower(), result.get("ok", false))
+
+
+## `--expo-notes-export`: the development save's notes out to the markdown
+## table with no world opened at all, so the log can be read outside the game
+## and pasted into a handoff.
+func _run_expo_notes_export() -> void:
+	var notes := ExpoNotes.new()
+	var checkpoint := development.saves.read_checkpoint()
+	if checkpoint.get("ok", false):
+		var saved: Variant = checkpoint.get("snapshot", {}).get("expo_notes", {})
+		if saved is Dictionary:
+			notes.restore(saved)
+	else:
+		print("EXPO_NOTES_EXPORT no development checkpoint (%s)" % str(checkpoint.get("reason", "")))
+	var result := export_expo_notes(notes)
+	if result.get("ok", false):
+		print("EXPO_NOTES_EXPORT_OK")
+		get_tree().quit(0)
+	else:
+		push_error("EXPO_NOTES_EXPORT_FAIL " + str(result.get("reason", "")))
+		get_tree().quit(1)
+
+
 func _show_inventory() -> void:
 	if state != AppState.PLAYING or session == null:
 		return
@@ -2416,6 +3041,7 @@ func _show_crafting(station_id: String = "", station_type: String = "hand") -> v
 	session.set_menu_open(true)
 	hud_layer.hide()
 	crafting_message.text = ""
+	_refresh_station_notes_buttons()
 	_refresh_crafting_panel()
 	crafting_panel.show()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -4056,6 +4682,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		minimap.toggle_full_map()
 		return
 
+	# K: the Expo Directory (docs/KEYBINDS.md). A raw key like M and V, read
+	# only in the running game, refused with one line outside Development mode.
+	if state in [AppState.PLAYING, AppState.DIRECTORY] and event is InputEventKey and event.pressed and not event.echo 		and (event.physical_keycode == DIRECTORY_KEY or event.keycode == DIRECTORY_KEY):
+		get_viewport().set_input_as_handled()
+		if state == AppState.DIRECTORY:
+			_close_directory()
+		else:
+			_open_directory()
+		return
+
 	if _is_escape_press(event):
 		get_viewport().set_input_as_handled()
 		_handle_escape_recovery()
@@ -4370,7 +5006,7 @@ func _handle_close_request() -> void:
 
 
 func _hide_all_panels() -> void:
-	for panel in [menu_panel, coastercraft_menu_panel, development_menu_panel, pause_panel, coastercraft_pause_panel, development_pause_panel, development_reset_panel, keybind_panel, settings_panel, inventory_panel, crafting_panel, sign_panel, battlefield_panel, display_confirm_panel, loading_panel, hud_layer]:
+	for panel in [menu_panel, coastercraft_menu_panel, development_menu_panel, pause_panel, coastercraft_pause_panel, development_pause_panel, development_reset_panel, keybind_panel, settings_panel, inventory_panel, crafting_panel, sign_panel, battlefield_panel, directory_panel, display_confirm_panel, loading_panel, hud_layer]:
 		if panel != null:
 			panel.hide()
 

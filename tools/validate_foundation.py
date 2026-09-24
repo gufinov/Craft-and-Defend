@@ -471,6 +471,12 @@ def validate_development_expo(expo, content, root=ROOT):
                         f"expo exhibit {name}: placement of {entity_id} falls outside the footprint")
                 require(type(placement.get("rotation", 0)) is int and 0 <= placement.get("rotation", 0) <= 3,
                         f"expo exhibit {name}: invalid placement rotation")
+            # `added_in` is the What's new stamp the Expo Directory sorts on
+            # (docs/DEVELOPMENT_EXPO.md): an ISO date or a zero-padded version,
+            # compared as a string, so it has to be a non-empty string.
+            if "added_in" in exhibit:
+                require(isinstance(exhibit["added_in"], str) and exhibit["added_in"].strip(),
+                        f"expo exhibit {name}: invalid added_in stamp")
             if "reset_group" in exhibit:
                 require(isinstance(exhibit["reset_group"], str) and exhibit["reset_group"],
                         f"expo exhibit {name}: invalid reset group")

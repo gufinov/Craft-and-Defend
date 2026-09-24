@@ -110,6 +110,11 @@ var restore_skipped: Array[Dictionary] = []
 ## Development Expo: the canonical fixture version the world was built from
 ## (DevelopmentMode.EXPO_FIXTURE_VERSION), saved with the game.
 var expo_fixture_version := 0
+## Development Expo test notes (card D1). The store exists in every session so
+## nothing has to null-check it, but it is only ever read from and written to
+## the save while `development` is true: a normal or CoasterCraft save carries
+## no `expo_notes` key at all.
+var expo_notes := ExpoNotes.new()
 
 var world: WorldAdapter
 var player: PlayerController
@@ -189,6 +194,12 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	var grant: Variant = inventory_snapshot.get("grant", {})
 	if grant is Dictionary and not grant.is_empty():
 		inventory.try_transaction({}, grant)
+	# The Expo's test notes come back with the development save; a normal save
+	# has no `expo_notes` key, so the store stays empty there.
+	if development:
+		var saved_notes: Variant = snapshot.get("expo_notes", {})
+		if saved_notes is Dictionary:
+			expo_notes.restore(saved_notes)
 	crafting = CraftingService.new(registry, inventory)
 	workstations = WorkstationService.new(registry, inventory)
 	foundry = FoundryService.new(workstations, registry)
@@ -723,6 +734,9 @@ func snapshot() -> Dictionary:
 		# Development Expo: the mode and the canonical fixture the world was
 		# built from, so a later session can spot an outdated Expo.
 		saved["expo"] = {"fixture_version": expo_fixture_version}
+		# The owner's test notes live in the development save's own namespace
+		# (card D1); no other save ever carries this key.
+		saved["expo_notes"] = expo_notes.snapshot()
 	return saved
 
 
