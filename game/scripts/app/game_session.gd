@@ -1320,7 +1320,7 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_build_core_of_power_visual(body, registry.entity_attributes(entity_id))
 	elif entity_id == "enemy_core":
 		_build_enemy_core_visual(body, registry.entity_attributes(entity_id))
-	elif entity_id == WorkstationService.SIGN_ENTITY:
+	elif WorkstationService.is_sign(entity_id):
 		_build_sign_visual(body, record)
 	elif entity_id == "torch":
 		_build_torch_visual(body, registry.entity_attributes(entity_id))
@@ -3419,44 +3419,83 @@ func _add_lantern_body(parent: Node3D, centre: Vector3, iron: Material, gold: Ma
 ## Sign (docs/SIGNS.md): an oak board carrying the player's text or item list.
 ## The ground variant stands on a stone-footed oak post; the wall variant hangs
 ## flat on the block behind it with no post. Both keep every part inside the
-## sign's own logical cell, so a thin board can never cover a neighbouring one.
+## sign's own logical cells, so a board can never cover a neighbour.
 ## The board faces local +X: the wall mount rotates the body so that is away
 ## from the wall, and a ground sign turns with the ordinary build rotation.
+## The wide board (`sign_board`) is the same board two cells across - its second
+## cell is the anchor's local +Z, so the board runs from -0.5 to +1.5 in local Z
+## and stands on a post at each end.
 const SIGN_BOARD_WIDTH := 0.92
+const SIGN_WIDE_BOARD_WIDTH := 1.92
 const SIGN_BOARD_HEIGHT := 0.86
 const SIGN_BOARD_THICKNESS := 0.07
-## The smallest cap height a board will shrink its text to.
-const SIGN_MIN_LINE_HEIGHT := 0.022
+## Typography (signs card 2). A board lays its text out before it shrinks it:
+## every line is wrapped on a word boundary, a heading is sized for the board's
+## own width and nothing goes below the readable floor - content that still will
+## not fit loses whole lines, never glyph size.
+const SIGN_MIN_LINE_HEIGHT := 0.030
+## The floor for an item-grid caption: a 0.032 m cap height still reads at ~4 m.
+const SIGN_MIN_CAPTION_HEIGHT := 0.032
+## Rows sit this many cap heights apart, and this font runs about this much of
+## the cap height per character (measured generously, so a long word still
+## lands inside its column).
+const SIGN_LINE_SPACING := 1.3
+const SIGN_CHAR_RATIO := 0.62
+## The step the fitter walks down while it looks for a size that lays out.
+const SIGN_SIZE_STEP := 0.004
+
+
+## True for the wide board, which is two cells across.
+static func is_wide_sign(entity_id: String) -> bool:
+	return entity_id == WorkstationService.SIGN_BOARD_ENTITY
+
+
+## The usable width of the board `entity_id` carries.
+static func sign_board_width(entity_id: String) -> float:
+	return SIGN_WIDE_BOARD_WIDTH if is_wide_sign(entity_id) else SIGN_BOARD_WIDTH
 
 
 func _build_sign_visual(parent: Node3D, record: Dictionary) -> void:
 	var wall := str(record.get("mount", "ground")) == "wall"
+	var entity_id := str(record.get("entity_id", ""))
+	var wide := is_wide_sign(entity_id)
+	var board_width := sign_board_width(entity_id)
+	# The wide board's second cell is the anchor's local +Z, so its centre line
+	# sits half a cell along +Z; the one-cell board is centred on its anchor.
+	var board_z := 0.5 if wide else 0.0
 	var oak := _visual_material(Color("b07a41"), "res://assets/blocks/planks.svg")
 	var dark_oak := _visual_material(Color("6b3d1f"), "res://assets/blocks/log.svg")
 	var stone := _visual_material(Color("8b929d"))
 	var iron := _visual_material(Color("6f777f"))
 	var board_x := -0.34 if wall else 0.0
 	var board_y := 0.04 if wall else 0.06
-	_add_collision_box(parent, Vector3(0.24, SIGN_BOARD_HEIGHT, SIGN_BOARD_WIDTH), Vector3(board_x, board_y, 0.0))
+	var cell_z: Array[float] = [0.0]
+	if wide:
+		cell_z.append(1.0)
+	_add_collision_box(parent, Vector3(0.24, SIGN_BOARD_HEIGHT, board_width), Vector3(board_x, board_y, board_z))
 	if not wall:
-		_add_mesh_box(parent, Vector3(0.12, 0.44, 0.12), Vector3(0.0, -0.30, 0.0), dark_oak)
-		_add_mesh_box(parent, Vector3(0.44, 0.14, 0.44), Vector3(0.0, -0.45, 0.0), stone)
-		_add_collision_box(parent, Vector3(0.44, 0.60, 0.44), Vector3(0.0, -0.32, 0.0))
+		# A post under each cell: one under a sign, one at each end of a board.
+		for z: float in cell_z:
+			_add_mesh_box(parent, Vector3(0.12, 0.44, 0.12), Vector3(0.0, -0.30, z), dark_oak)
+			_add_mesh_box(parent, Vector3(0.44, 0.14, 0.44), Vector3(0.0, -0.45, z), stone)
+			_add_collision_box(parent, Vector3(0.44, 0.60, 0.44), Vector3(0.0, -0.32, z))
 	else:
-		# Two short brackets hold the board off the wall behind it.
-		for z: float in [-0.28, 0.28]:
-			_add_mesh_box(parent, Vector3(0.12, 0.10, 0.10), Vector3(-0.44, board_y, z), iron)
-	_add_mesh_box(parent, Vector3(SIGN_BOARD_THICKNESS, SIGN_BOARD_HEIGHT, SIGN_BOARD_WIDTH), Vector3(board_x, board_y, 0.0), oak)
-	for z: float in [-SIGN_BOARD_WIDTH / 2.0 + 0.04, SIGN_BOARD_WIDTH / 2.0 - 0.04]:
+		# Short brackets hold the board off the wall behind it: one pair per cell.
+		for z: float in cell_z:
+			for offset: float in [-0.28, 0.28]:
+				_add_mesh_box(parent, Vector3(0.12, 0.10, 0.10), Vector3(-0.44, board_y, z + offset), iron)
+	_add_mesh_box(parent, Vector3(SIGN_BOARD_THICKNESS, SIGN_BOARD_HEIGHT, board_width), Vector3(board_x, board_y, board_z), oak)
+	for z: float in [board_z - board_width / 2.0 + 0.04, board_z + board_width / 2.0 - 0.04]:
 		_add_mesh_box(parent, Vector3(SIGN_BOARD_THICKNESS + 0.01, SIGN_BOARD_HEIGHT, 0.07), Vector3(board_x, board_y, z), dark_oak)
 	var face := Node3D.new()
 	face.name = "SignFace"
 	# The face's own +Z is the board's +X, so its contents lay out in plain
 	# local X (board width) and Y (board height).
-	face.position = Vector3(board_x + SIGN_BOARD_THICKNESS / 2.0 + 0.012, board_y, 0.0)
+	face.position = Vector3(board_x + SIGN_BOARD_THICKNESS / 2.0 + 0.012, board_y, board_z)
 	face.rotation.y = PI / 2.0
 	parent.add_child(face)
-	_populate_sign_face(face, workstations.sanitized_sign(record.get("sign", {}) if record.get("sign") is Dictionary else {}))
+	var block: Variant = record.get("sign", {})
+	_populate_sign_face(face, workstations.sanitized_sign(block if block is Dictionary else {}), board_width)
 
 
 ## Rebuilds the board's contents after the editor (or another system) changed
@@ -3471,12 +3510,13 @@ func _refresh_sign_face(instance_id: String) -> void:
 	for child in face.get_children():
 		face.remove_child(child)
 		child.queue_free()
-	_populate_sign_face(face, workstations.sign_data(instance_id))
+	var record: Dictionary = workstations.stations.get(instance_id, {})
+	_populate_sign_face(face, workstations.sign_data(instance_id), sign_board_width(str(record.get("entity_id", ""))))
 
 
-func _populate_sign_face(face: Node3D, data: Dictionary) -> void:
+func _populate_sign_face(face: Node3D, data: Dictionary, board_width: float = SIGN_BOARD_WIDTH) -> void:
 	var mode := str(data.get("mode", "text"))
-	var width := SIGN_BOARD_WIDTH - 0.08
+	var width := board_width - 0.08
 	var height := SIGN_BOARD_HEIGHT - 0.08
 	var text_a := str(data.get("text_a", ""))
 	var text_b := str(data.get("text_b", ""))
@@ -3485,37 +3525,95 @@ func _populate_sign_face(face: Node3D, data: Dictionary) -> void:
 			var divider := _add_mesh_box(face, Vector3(0.02, height, 0.01), Vector3.ZERO, _visual_material(Color("6b3d1f")))
 			divider.rotation.y = -PI / 2.0
 			var column := width / 2.0 - 0.03
-			_add_sign_label(face, text_a, Vector3(-width / 4.0, 0.0, 0.0), column, _fitted_line_height(text_a, column, height, 0.10))
-			_add_sign_label(face, text_b, Vector3(width / 4.0, 0.0, 0.0), column, _fitted_line_height(text_b, column, height, 0.10))
+			# The heading keeps its own size; the body is the paragraph.
+			_add_sign_text(face, text_a, Vector3(-width / 4.0, 0.0, 0.0), column, height, 0.11)
+			_add_sign_text(face, text_b, Vector3(width / 4.0, 0.0, 0.0), column, height, 0.09)
 		"items":
 			_add_sign_item_grid(face, _sign_items(data), Vector3(0.0, 0.0, 0.0), width, height)
 		"header_items":
-			_add_sign_label(face, text_a, Vector3(0.0, height / 2.0 - 0.09, 0.0), width, _fitted_line_height(text_a, width, 0.18, 0.10))
-			_add_sign_item_grid(face, _sign_items(data), Vector3(0.0, -0.09, 0.0), width, height - 0.18)
+			# A heading band sized for the board, with the grid under it.
+			var band := height * 0.24
+			_add_sign_text(face, text_a, Vector3(0.0, (height - band) / 2.0, 0.0), width, band, 0.13)
+			_add_sign_item_grid(face, _sign_items(data), Vector3(0.0, -band / 2.0, 0.0), width, height - band)
 		_:
-			_add_sign_label(face, text_a, Vector3.ZERO, width, _fitted_line_height(text_a, width, height, 0.13))
+			_add_sign_text(face, text_a, Vector3.ZERO, width, height, 0.15)
 
 
-## The cap height at which `text` still wraps inside `width` x `height` on the
-## board, never bigger than `preferred`. A hand-typed heading keeps its size;
-## an authored board carrying a whole paragraph (the Expo's district and
-## exhibit signs) shrinks to fit instead of spilling off the panel.
-static func _fitted_line_height(text: String, width: float, height: float, preferred: float) -> float:
+## Lays `text` out inside `width` x `height` and adds it as one label: the
+## largest cap height at or under `preferred` whose word-wrapped lines fit,
+## never smaller than `SIGN_MIN_LINE_HEIGHT`.
+func _add_sign_text(parent: Node3D, text: String, offset: Vector3, width: float, height: float, preferred: float) -> Label3D:
+	var fitted := fitted_sign_text(text, width, height, preferred, SIGN_MIN_LINE_HEIGHT)
+	return _add_sign_label(parent, str(fitted.get("text", text)), offset, width, float(fitted.get("line_height", preferred)))
+
+
+## The board's typographer (docs/SIGNS.md). Returns the text already wrapped on
+## word boundaries plus the cap height to render it at. It steps the size down
+## from `preferred` only until the wrapped block fits the panel, and stops at
+## `minimum`: content that still does not fit loses whole lines (the last kept
+## one ends in an ellipsis) rather than shrinking into an unreadable size.
+static func fitted_sign_text(text: String, width: float, height: float, preferred: float, minimum: float) -> Dictionary:
 	if text.is_empty() or width <= 0.0 or height <= 0.0:
-		return preferred
+		return {"text": text, "line_height": preferred, "lines": 0, "truncated": false}
 	var line_height := preferred
-	while line_height > SIGN_MIN_LINE_HEIGHT:
-		# This font runs about 0.62 of the cap height per character (measured
-		# generously so a long word still lands inside the column), and the
-		# rows sit 1.3 cap heights apart.
-		var per_line := maxi(1, int(width / (line_height * 0.62)))
-		var rows := 0
-		for paragraph: String in text.split(String.chr(10)):  # newline
-			rows += maxi(1, ceili(float(paragraph.length()) / float(per_line)))
-		if float(rows) * line_height * 1.3 <= height:
-			return line_height
-		line_height -= 0.004
-	return SIGN_MIN_LINE_HEIGHT
+	while true:
+		var lines := wrap_sign_text(text, sign_chars_per_line(width, line_height))
+		if _sign_lines_fit(lines, width, height, line_height):
+			return {"text": "\n".join(lines), "line_height": line_height,
+				"lines": lines.size(), "truncated": false}
+		if line_height <= minimum:
+			break
+		line_height = maxf(minimum, line_height - SIGN_SIZE_STEP)
+	# The readable floor: keep whole lines, drop the rest.
+	var floor_lines := wrap_sign_text(text, sign_chars_per_line(width, minimum))
+	var room := maxi(1, int(height / (minimum * SIGN_LINE_SPACING)))
+	var truncated := floor_lines.size() > room
+	if truncated:
+		floor_lines = floor_lines.slice(0, room)
+		floor_lines[room - 1] = floor_lines[room - 1].strip_edges() + "..."
+	return {"text": "\n".join(floor_lines), "line_height": minimum,
+		"lines": floor_lines.size(), "truncated": truncated}
+
+
+## How many characters of this font fit across `width` at `line_height`.
+static func sign_chars_per_line(width: float, line_height: float) -> int:
+	return maxi(1, int(width / maxf(line_height * SIGN_CHAR_RATIO, 0.0001)))
+
+
+## True when every wrapped line lands inside the column and the block inside
+## the panel. A line longer than the column means a single word is too wide at
+## this size, which is a reason to step down, never to break the word.
+static func _sign_lines_fit(lines: PackedStringArray, width: float, height: float, line_height: float) -> bool:
+	if lines.is_empty():
+		return true
+	var per_line := sign_chars_per_line(width, line_height)
+	for line: String in lines:
+		if line.length() > per_line:
+			return false
+	return float(lines.size()) * line_height * SIGN_LINE_SPACING <= height
+
+
+## Greedy word wrap at `per_line` characters. Paragraph breaks in the stored
+## text are kept, and a word is never split: one that cannot fit takes a line
+## of its own (which is what makes the fitter step down a size).
+static func wrap_sign_text(text: String, per_line: int) -> PackedStringArray:
+	var lines := PackedStringArray()
+	for paragraph: String in text.split("\n"):
+		var words := paragraph.split(" ", false)
+		if words.is_empty():
+			lines.append("")
+			continue
+		var current := ""
+		for word: String in words:
+			if current.is_empty():
+				current = word
+			elif current.length() + 1 + word.length() <= per_line:
+				current += " " + word
+			else:
+				lines.append(current)
+				current = word
+		lines.append(current)
+	return lines
 
 
 func _sign_items(data: Dictionary) -> Array:
@@ -3524,14 +3622,16 @@ func _sign_items(data: Dictionary) -> Array:
 
 
 ## One line (or wrapped block) of sign text. `line_height` is the cap height in
-## metres, so the same call reads at 3-6 m whatever the board carries.
+## metres, so the same call reads at 3-6 m whatever the board carries. The text
+## arrives already wrapped; the label's own autowrap is the safety net, and it
+## wraps on words so it can never break one mid-word.
 func _add_sign_label(parent: Node3D, text: String, offset: Vector3, width: float, line_height: float) -> Label3D:
 	var label := Label3D.new()
 	label.text = text
 	label.font_size = 64
 	label.pixel_size = line_height / 64.0
 	label.width = maxf(width, 0.05) / label.pixel_size
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.modulate = Color("2a1a0c")
@@ -3546,7 +3646,9 @@ func _add_sign_label(parent: Node3D, text: String, offset: Vector3, width: float
 
 
 ## The 4-row x 2-column item grid (section 9): each entry is its icon above its
-## readable name, in the record's order, filling left column then right.
+## readable name, in the record's order, filling left column then right. The
+## caption is laid out like any other board text - wrapped on word boundaries
+## and never under the caption floor, so a wide board's grid reads at ~4 m.
 func _add_sign_item_grid(parent: Node3D, items: Array, offset: Vector3, width: float, height: float) -> void:
 	var rows := 4
 	var columns := 2
@@ -3562,7 +3664,11 @@ func _add_sign_item_grid(parent: Node3D, items: Array, offset: Vector3, width: f
 			(float(column) + 0.5) * cell_width - width / 2.0,
 			height / 2.0 - (float(row) + 0.5) * cell_height,
 			0.0)
-		var icon_height := cell_height * 0.46
+		# The icon sits at the head of the row with the name beside it, so a
+		# row that is much wider than it is tall spends its room on size
+		# instead of on empty board.
+		var icon_height := minf(cell_height * 0.88, cell_width * 0.34)
+		var caption_width := cell_width - icon_height - 0.03
 		var texture := ItemIconCatalog.texture_for(item_id) if DisplayServer.get_name() != "headless" else null
 		if texture != null:
 			var sprite := Sprite3D.new()
@@ -3571,9 +3677,12 @@ func _add_sign_item_grid(parent: Node3D, items: Array, offset: Vector3, width: f
 			sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
 			sprite.shaded = false
 			sprite.double_sided = false
-			sprite.position = centre + Vector3(0.0, cell_height * 0.20, 0.001)
+			sprite.position = centre + Vector3(-(cell_width - icon_height) / 2.0 + 0.01, 0.0, 0.001)
 			parent.add_child(sprite)
-		_add_sign_label(parent, registry.display_name(item_id), centre + Vector3(0.0, -cell_height * 0.30, 0.0), cell_width - 0.01, cell_height * 0.34)
+		var caption := fitted_sign_text(registry.display_name(item_id), caption_width,
+			cell_height * 0.92, cell_height * 0.42, SIGN_MIN_CAPTION_HEIGHT)
+		_add_sign_label(parent, str(caption.get("text", "")), centre + Vector3((cell_width - caption_width) / 2.0 - 0.01, 0.0, 0.0),
+			caption_width, float(caption.get("line_height", SIGN_MIN_CAPTION_HEIGHT)))
 
 
 ## Sign content API (docs/SIGNS.md). Other systems - the Expo's Supply Depot

@@ -209,7 +209,8 @@ the district and overlapping nothing), `connections`, `expansion_priority`,
 | `placements` | Optional `[{entity, offset, rotation}]` — fixtures pinned at manifest offsets inside the parcel (the Industry chain, the light gallery). The entity must also appear in `entities` and the offset must lie inside the footprint; the builder places these instead of its own per-entity default geometry |
 | `terrain` | What the builder authors here (see the terrain kinds below) |
 | `connections` | Which path or line the exhibit must touch |
-| `sign` | `{title, lines, item}` — the sign card renders it; `item` must exist |
+| `sign` | `{title, lines, item, board}` — the sign card renders it; `item` must exist, and `board` is `narrow` (the default) or `wide` for the two-cell board ([Signs](SIGNS.md)) |
+| `sign_anchor` | Optional: where this exhibit's board stands instead of its parcel corner — a cell offset `[x, y, z]` inside the footprint, `"centre"`, `"entrance"` (the middle of the edge the `orientation` says a visitor reads from) or `"near:<exhibit_id>"` (one cell outside that exhibit's own reading edge, reading back at it). `near:` must name an exhibit that exists |
 | `reset_group` | Optional named group for a partial rebuild |
 | `expansion_priority` | Lower = kept, higher = first to move when the campus grows |
 | `offset` | Optional anchor relative to the district origin, for terrain-bound exhibits (the mountain and everything inside it) |
@@ -308,11 +309,26 @@ on both counts reaching zero.
 | `register_reset_group(name, callable)` / `reset_group(name)` | What card A's `DevelopmentMode.reset_group` calls |
 | `progress()` / `pending_ops()` / `deferred_ops()` / `failures()` / `pending_signs()` | State for diagnostics |
 
-**Signs.** `sign_at` queues a `sign` op: the `sign` station (card B,
+**Signs.** `sign_at` queues a `sign` op: the station (card B,
 [Signs](SIGNS.md)) is placed free at the requested cell and its board is
 written through `GameSession.configure_sign`. The manifest block translates
 into the sign's own record — a block naming an `item` becomes Header + Item
-Grid, a title with body lines becomes Split Text, a bare title Single Text.
+Grid, a title with body lines becomes Split Text, a bare title Single Text —
+and `"board": "wide"` makes it the two-cell `sign_board` instead of the
+one-cell `sign` (`ExpoBuilder.sign_entity_for`). A rebuild that finds a board
+of the other width standing in the cell takes it down and lays the right one.
+The plaza's orientation board and every Supply Depot chest board are wide; a
+depot plinth is two cells wide so both of the board's cells stand on stone.
+
+**Sign anchors.** An exhibit's board would otherwise stand at its parcel's
+origin corner, which is wrong for a parcel the size of an arena. `sign_anchor`
+(above) moves it: `ExpoBuilder.sign_anchor_for(exhibit_id)` resolves the field
+to `{cell, facing}` and `place_exhibit` uses that instead of the corner, for a
+plain exhibit, a reserved parcel and an authored `build` routine alike. The
+Battlefield's arena sign is anchored `near:battlefield_fortification`, so it
+stands one cell outside the curtain wall's gate reading back at it, where a
+visitor walking out of their own core meets it face on, instead of tens of
+cells away at the corner of the field.
 The requested cell is an exhibit's corner, so it may be taken (the mine rail
 runs along it) or buried (the mountain mass is solid rock): the sign then
 takes the nearest free cell in the ring around it, climbing to the first air
@@ -702,6 +718,11 @@ suite is the milestone's home; later cards add their records to it.
   district sign are read back field by field.
 - **T215V_SIGN_VIEW** (`=visual`) — `development-expo-sign.png`, the plaza's
   orientation board framed from in front of it, close enough to read.
+- **T225_SIGN_ANCHORS** — the Battlefield's arena sign stands within four cells
+  of the gate its `sign_anchor` names (it used to stand at the corner of the
+  whole field), the plaza's orientation board and the Supply Depot's chest
+  boards are the two-cell wide board, a wide board owns both of its cells, and
+  nothing is left in the sign queue.
 - **T216_EXPO_INDUSTRY** — the chain stands (miner, ore bin, the rail chaining
   unbroken from the mountain's first cell to the yard's last, the cart, the
   warehouse, the foundry), every container and foundry slot is empty as built,

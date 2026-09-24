@@ -230,9 +230,75 @@ func _run_sign_phase1() -> void:
 	var edit_ok: bool = edited.size() == 8 and str(edited[0]) == "torch" and str(edited[1]) == "stone"
 	app._close_sign()
 	var closed_ok: bool = app.state == CraftAndDefendApp.AppState.PLAYING and not app.sign_panel.visible
-	_record("T212_SIGN_PLACEMENT_AND_EDITOR", placement_ok and modes_ok and guard_ok and round_trip_ok and migration_ok and panel_ok and edit_ok and closed_ok,
+	var wide := await _run_wide_board_phase1(grid_items)
+
+	_record("T212_SIGN_PLACEMENT_AND_EDITOR", placement_ok and modes_ok and guard_ok and round_trip_ok and migration_ok and panel_ok and edit_ok and closed_ok and bool(wide.get("ok", false)),
 		"a sign places on the ground with a post and on a wall side without one, refuses an occupied cell, keeps each of the four display modes and eight item ids across a save/restore (a record without the block migrates to an empty text sign), and right-click opens the sign editor showing exactly the stored mode, text and items",
-		{"ground": ground.get("reason"), "wall": wall.get("reason"), "blocked": blocked.get("reason"), "placement_ok": placement_ok, "modes": mode_results, "guard_ok": guard_ok, "restored": restored.get("reason"), "restored_ground": restored_ground, "restored_wall": restored_wall, "migration_ok": migration_ok, "panel_ok": panel_ok, "draft": draft, "edited": edited, "closed_ok": closed_ok})
+		{"ground": ground.get("reason"), "wall": wall.get("reason"), "blocked": blocked.get("reason"), "placement_ok": placement_ok, "modes": mode_results, "guard_ok": guard_ok, "restored": restored.get("reason"), "restored_wall": restored_wall, "restored_ground": restored_ground, "migration_ok": migration_ok, "panel_ok": panel_ok, "draft": draft, "edited": edited, "closed_ok": closed_ok, "wide_board": wide})
+
+
+## T212, the wide board (docs/SIGNS.md, signs card 2): `sign_board` is the same
+## sign two cells across. It must place on the ground and on a wall side,
+## reserve both of its cells, refuse a placement whose second cell is taken -
+## the first cell being free is not enough - and carry the same content through
+## a real save round trip.
+func _run_wide_board_phase1(grid_items: Array[String]) -> Dictionary:
+	var ws := app.session.workstations
+	var world := app.session.world
+	var entity := WorkstationService.SIGN_BOARD_ENTITY
+	var ground_anchor := Vector3i(14, 0, 34)
+	# Rotation 0 leaves the board facing +x, so its second cell is anchor + z.
+	var second_cell := ground_anchor + Vector3i(0, 0, 1)
+	var blocker_anchor := Vector3i(14, 0, 37)
+	var wall_block := Vector3i(16, 1, 34)
+	var wall_anchor := Vector3i(17, 1, 34)
+	var needed: Array[Vector3i] = [ground_anchor, second_cell, blocker_anchor, blocker_anchor + Vector3i(0, 0, 1),
+		wall_block, wall_anchor, wall_anchor + Vector3i(0, 0, 1), ground_anchor + Vector3i.DOWN]
+	if not await _wait_cells(needed):
+		return {"ok": false, "reason": "CELLS_NOT_LOADED"}
+	app.session.inventory.try_transaction({}, {"sign_board": 4, "sign": 1})
+	# Both cells of a ground board need something under them.
+	for support: Vector3i in [ground_anchor, second_cell, blocker_anchor, blocker_anchor + Vector3i(0, 0, 1)]:
+		world.set_cell(support + Vector3i.DOWN, InteractionService.DIRT)
+	var placed := ws.try_place(entity, ground_anchor, world.query_cell, AABB(), 0)
+	var board_id := str(placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	var cells: Array = placed.get("details", {}).get("occupied_cells", [])
+	var reserved_both: bool = ws.station_at_cell(ground_anchor) == board_id \
+		and ws.station_at_cell(second_cell) == board_id and cells.size() == 2
+	# A one-cell sign in the second cell of an otherwise free pair: the wide
+	# board must refuse the pair, not overlap it.
+	var blocker := ws.try_place(WorkstationService.SIGN_ENTITY, blocker_anchor + Vector3i(0, 0, 1), world.query_cell, AABB(), 0)
+	var refused := ws.try_place(entity, blocker_anchor, world.query_cell, AABB(), 0)
+	var refuses_occupied: bool = bool(blocker.get("ok", false)) and not bool(refused.get("ok", false)) \
+		and str(refused.get("reason", "")) == "OCCUPIED" and ws.station_at_cell(blocker_anchor).is_empty()
+	world.set_cell(wall_block, InteractionService.DIRT)
+	# No ground under either cell, so the board takes the wall beside it: the
+	# mount rule prefers ground whenever there is ground.
+	for below: Vector3i in [wall_anchor + Vector3i.DOWN, wall_anchor + Vector3i(0, -1, 1)]:
+		world.set_cell(below, 0)
+	var wall := ws.try_place(entity, wall_anchor, world.query_cell, AABB(), 0)
+	var wall_id := str(wall.get("details", {}).get("station", {}).get("instance_id", ""))
+	var wall_ok: bool = bool(wall.get("ok", false)) and str(wall.get("details", {}).get("mount", "")) == "wall" \
+		and ws.sign_mount(wall_id) == "wall"
+	var configured := app.session.configure_sign(board_id, {"mode": "header_items", "text_a": "SUPPLY DEPOT", "items": grid_items})
+	var snapshot: Variant = JSON.parse_string(JSON.stringify(ws.snapshot()))
+	var restored := ws.restore(snapshot if snapshot is Dictionary else {}, world.query_cell)
+	var stored := app.session.sign_data(board_id)
+	var round_trip: bool = bool(restored.get("ok", false)) and str(stored.get("mode", "")) == "header_items" \
+		and str(stored.get("text_a", "")) == "SUPPLY DEPOT" and _same_items(stored.get("items", []), grid_items) \
+		and ws.station_at_cell(second_cell) == board_id
+	# The board reads as one board: one face, laid out for two cells of width.
+	var body: Node3D = app.session._station_visuals.get(board_id, null)
+	var face: Node3D = body.get_node_or_null("SignFace") as Node3D if body != null else null
+	var rendered: bool = face != null and face.get_child_count() >= 9 \
+		and is_equal_approx(GameSession.sign_board_width(entity), GameSession.SIGN_WIDE_BOARD_WIDTH)
+	var ok: bool = bool(placed.get("ok", false)) and reserved_both and refuses_occupied and wall_ok \
+		and bool(configured.get("ok", false)) and round_trip and rendered
+	return {"ok": ok, "placed": placed.get("reason", ""), "cells": cells, "reserved_both": reserved_both,
+		"blocker": blocker.get("reason", ""), "refused": refused.get("reason", ""), "refuses_occupied": refuses_occupied,
+		"wall": wall.get("reason", ""), "wall_ok": wall_ok, "wall_mount": wall.get("details", {}).get("mount", ""),
+		"wall_record_mount": ws.sign_mount(wall_id), "stored": stored, "round_trip": round_trip,
+		"face_children": face.get_child_count() if face != null else 0, "rendered": rendered}
 
 
 	# T224 flight (owner 2026-09-23): a double tap of Right Shift toggles it;
@@ -416,6 +482,47 @@ func _run_visual() -> void:
 		_record("T212_SIGN_PRESENTATION", sign_ok, "rendered evidence shows a placed ground sign whose board carries its header line and its eight-item 4 x 2 grid of icons and names", {"path": sign_path, "placed": placed.get("reason", ""), "face_children": face_node.get_child_count() if face_node != null else 0, "items": sign_entries})
 	else:
 		_record("T212_SIGN_PRESENTATION", false, "the sign cell loaded for the capture", {"path": sign_path})
+
+	# The wide board carrying the same Supply Depot grid: the heading must sit
+	# on one line (no "DEVELO / PMENT" break) and the 4 x 2 grid must read.
+	var wide_anchor := Vector3i(14, 1, 34)
+	var wide_path := app.data_root.path_join("p3d-sign-wide-board.png")
+	# Quarter turn 1 turns the board's second cell (its local +z) onto -x, so
+	# the plinth under it runs the same way.
+	var wide_second := wide_anchor + Vector3i(-1, 0, 0)
+	if await _wait_cells([wide_anchor, wide_second, wide_anchor + Vector3i.DOWN, wide_second + Vector3i.DOWN]):
+		app.session.inventory.try_transaction({}, {"sign_board": 1})
+		for support: Vector3i in [wide_anchor + Vector3i.DOWN, wide_second + Vector3i.DOWN]:
+			app.session.world.set_cell(support, InteractionService.DIRT)
+		# Quarter turn 1 points the board's face down +Z, at the camera below.
+		var wide_placed := app.session.workstations.try_place(WorkstationService.SIGN_BOARD_ENTITY, wide_anchor, app.session.world.query_cell, AABB(), 1)
+		var wide_id := str(wide_placed.get("details", {}).get("station", {}).get("instance_id", ""))
+		var wide_configured := app.session.configure_sign(wide_id, {"mode": "header_items", "text_a": "DEVELOPMENT EXPO SUPPLY DEPOT", "items": sign_entries})
+		# The board runs from the anchor along -x at this rotation, so the
+		# camera stands off its centre line half a cell to the -x side.
+		app.session.player.global_position = Vector3(14.0, 0.05, 37.4)
+		app.session.player.look_at(Vector3(14.0, 0.05, 34.5), Vector3.UP)
+		app.session.inventory.select_hotbar(4)
+		await _settle_frames(6)
+		app.session._hide_placement_preview()
+		await _settle_frames(24)
+		var wide_body: Node3D = app.session._station_visuals.get(wide_id, null)
+		var wide_face: Node3D = wide_body.get_node_or_null("SignFace") as Node3D if wide_body != null else null
+		var heading := _find_label(wide_face)
+		# The layout is decided before the render: the heading is wrapped on
+		# word boundaries, so no rendered line is a fragment of a word.
+		var laid_out: PackedStringArray = heading.text.replace("\n", " ").split(" ", false) if heading != null else PackedStringArray()
+		var whole_words: bool = heading != null and laid_out == "DEVELOPMENT EXPO SUPPLY DEPOT".split(" ", false)
+		var wide_ok: bool = bool(wide_placed.get("ok", false)) and bool(wide_configured.get("ok", false)) \
+			and wide_face != null and wide_face.get_child_count() >= 9 and whole_words \
+			and await _save_viewport(wide_path)
+		_record("T212_SIGN_WIDE_PRESENTATION", wide_ok,
+			"rendered evidence shows the two-cell wide board carrying a Supply Depot heading that is not broken mid-word and the same eight-item 4 x 2 grid of icons and names, readable from about four metres",
+			{"path": wide_path, "placed": wide_placed.get("reason", ""), "heading": heading.text if heading != null else "",
+			"line_height": heading.pixel_size * heading.font_size if heading != null else 0.0,
+			"face_children": wide_face.get_child_count() if wide_face != null else 0})
+	else:
+		_record("T212_SIGN_WIDE_PRESENTATION", false, "the wide board cells loaded for the capture", {"path": wide_path})
 
 
 func _move_to_hotbar(item_id: String, target: int) -> int:

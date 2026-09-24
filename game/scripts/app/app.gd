@@ -2377,8 +2377,9 @@ func _show_workstation(instance_id: String, station_type: String) -> void:
 	# station type from the service so siege weapons and Chests open their
 	# own panels instead of falling back to hand crafting.
 	var resolved := station_type
-	if session != null and session.workstations != null and session.workstations.station_type(instance_id) == WorkstationService.SIGN_ENTITY:
-		# A sign has its own editor, not a crafting grid (docs/SIGNS.md).
+	if session != null and session.workstations != null and WorkstationService.is_sign(session.workstations.station_type(instance_id)):
+		# A sign has its own editor, not a crafting grid (docs/SIGNS.md). The
+		# one-cell sign and the wide board share it.
 		_show_sign(instance_id)
 		return
 	if station_type == BATTLEFIELD_CONTROL_ENTITY:

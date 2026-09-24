@@ -73,6 +73,9 @@ const STAMP_STACK: Array[String] = ["foundation_4", "tower_segment_4", "cap_4"]
 
 ## The sign entity the manifest's signs are made of (card B, docs/SIGNS.md).
 const SIGN_ENTITY := "sign"
+## The wide board (signs card 2): a manifest sign block whose `board` is
+## `"wide"` is built from the two-cell `sign_board` instead.
+const SIGN_BOARD_ENTITY := "sign_board"
 ## Where a sign may stand, best first: its own cell, then the ring around it,
 ## then one cell up - an exhibit's corner is sometimes already taken.
 const SIGN_OFFSETS: Array[Vector3i] = [
@@ -189,7 +192,8 @@ func place_exhibit(game_session: GameSession, exhibit_id: String) -> Dictionary:
 	# A reserved parcel is levelled, signed and left empty on purpose (section 6).
 	if kind == "reserved":
 		level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), "reserved:" + exhibit_id)
-		sign_at(origin, str(parcel.get("orientation", "north")), layout.sign_data(exhibit_id), exhibit_id)
+		var reserved_spot := _sign_spot(exhibit_id, origin, str(parcel.get("orientation", "north")))
+		sign_at(reserved_spot["cell"], str(reserved_spot["facing"]), layout.sign_data(exhibit_id), exhibit_id)
 		return {"ok": true, "reserved": true}
 	var orientation := str(parcel.get("orientation", "north"))
 	# An exhibit that names an authored `build` routine owns its whole parcel -
@@ -201,8 +205,8 @@ func place_exhibit(game_session: GameSession, exhibit_id: String) -> Dictionary:
 		var built := ExpoCoaster.build(self, build, exhibit_id, origin, size, layout.ground_y())
 		if not bool(built.get("ok", false)):
 			_failures.append("%s: unknown build routine %s" % [exhibit_id, build])
-		var sign_cell: Vector3i = built.get("sign_cell", origin)
-		sign_at(sign_cell, str(built.get("sign_facing", orientation)), layout.sign_data(exhibit_id), exhibit_id)
+		var built_spot := _sign_spot(exhibit_id, built.get("sign_cell", origin), str(built.get("sign_facing", orientation)))
+		sign_at(built_spot["cell"], str(built_spot["facing"]), layout.sign_data(exhibit_id), exhibit_id)
 		return built
 	_build_terrain(exhibit_id, terrain, origin, size, record)
 	# `placements` pins named fixtures at manifest offsets inside the parcel
@@ -238,7 +242,8 @@ func place_exhibit(game_session: GameSession, exhibit_id: String) -> Dictionary:
 		# A catalog booth is a plinth plus its label; the item itself is named
 		# on the sign (the sign card owns the item picker).
 		_queue_cells("booth:" + exhibit_id, [{"cell": origin + Vector3i(size.x / 2, 0, size.z / 2), "voxel": CASTLE_STONE}])
-	sign_at(origin, orientation, layout.sign_data(exhibit_id), exhibit_id)
+	var spot := _sign_spot(exhibit_id, origin, orientation)
+	sign_at(spot["cell"], str(spot["facing"]), layout.sign_data(exhibit_id), exhibit_id)
 	return {"ok": true}
 
 
@@ -464,12 +469,13 @@ func sign_at(cell: Vector3i, facing: String, data: Dictionary, owner_id: String 
 	if data.is_empty():
 		return {"ok": false, "reason": "NO_SIGN_DATA"}
 	var block := _sign_block(data)
+	var entity_id := sign_entity_for(data)
 	var request := {"owner": owner_id, "cell": cell, "facing": facing, "data": data.duplicate(true),
-		"sign": block, "instance_id": "", "ok": false, "reason": "QUEUED"}
+		"sign": block, "entity": entity_id, "instance_id": "", "ok": false, "reason": "QUEUED"}
 	_sign_requests.append(request)
-	_ops.append({"kind": "sign", "label": "sign:" + owner_id, "request": request,
+	_ops.append({"kind": "sign", "label": "sign:" + owner_id, "request": request, "entity": entity_id,
 		"anchor": cell, "rotation": _facing_rotation(facing), "passes": 0})
-	return {"ok": true, "reason": "QUEUED", "cell": cell}
+	return {"ok": true, "reason": "QUEUED", "cell": cell, "entity": entity_id}
 
 
 ## Every sign the manifest asked for, in request order, with what became of it.
@@ -513,6 +519,75 @@ static func _sign_block(data: Dictionary) -> Dictionary:
 	if body.is_empty():
 		return {"mode": "text", "text_a": title, "text_b": "", "items": items}
 	return {"mode": "split", "text_a": title, "text_b": body, "items": items}
+
+
+## Which board a manifest block asks for: `"board": "wide"` is the two-cell
+## wide board (signs card 2), anything else the one-cell sign.
+static func sign_entity_for(data: Dictionary) -> String:
+	return SIGN_BOARD_ENTITY if str(data.get("board", "narrow")) == "wide" else SIGN_ENTITY
+
+
+## Where an exhibit's board stands and which way it reads: its `sign_anchor`
+## when it names one, otherwise the caller's default (the parcel corner, or the
+## cell an authored build routine asked for).
+func _sign_spot(exhibit_id: String, default_cell: Vector3i, default_facing: String) -> Dictionary:
+	var anchored := sign_anchor_for(exhibit_id)
+	if anchored.is_empty():
+		return {"cell": default_cell, "facing": default_facing}
+	return anchored
+
+
+## An exhibit's optional `sign_anchor` (docs/DEVELOPMENT_EXPO.md section 1),
+## resolved to `{cell, facing}`:
+##
+## - `[x, y, z]` - a cell offset inside the parcel;
+## - `"centre"` - the middle of the parcel;
+## - `"entrance"` - the middle of the edge the parcel's `orientation` says a
+##   visitor reads from;
+## - `"near:<exhibit_id>"` - one cell outside that exhibit's own reading edge,
+##   reading back at it, so a board labelling a whole arena stands at the gate
+##   a visitor walks through instead of at the arena's far corner.
+##
+## Returns {} when the exhibit names no anchor, or names an unknown exhibit.
+func sign_anchor_for(exhibit_id: String) -> Dictionary:
+	if layout == null:
+		return {}
+	var record := layout.exhibit(exhibit_id)
+	var parcel := layout.parcel_for(exhibit_id)
+	if record.is_empty() or parcel.is_empty() or not record.has("sign_anchor"):
+		return {}
+	var origin: Vector3i = parcel["origin"]
+	var size: Vector3i = parcel["size"]
+	var orientation := str(parcel.get("orientation", "north"))
+	var anchor: Variant = record.get("sign_anchor")
+	if anchor is Array:
+		return {"cell": origin + _cell(anchor), "facing": orientation}
+	var name := str(anchor)
+	if name == "centre":
+		return {"cell": Vector3i(origin.x + size.x / 2, origin.y, origin.z + size.z / 2), "facing": orientation}
+	if name == "entrance":
+		return {"cell": _edge_cell(origin, size, orientation, 0), "facing": orientation}
+	if name.begins_with("near:"):
+		var target := layout.parcel_for(name.substr(5))
+		if target.is_empty():
+			return {}
+		return {"cell": _edge_cell(target["origin"], target["size"], orientation, 1),
+			"facing": _opposite(orientation)}
+	return {}
+
+
+## The middle of one edge of a box, `step` cells outside it. North is -z and
+## west is -x, the campus convention the avenues and entrance signs use.
+static func _edge_cell(origin: Vector3i, size: Vector3i, side: String, step: int) -> Vector3i:
+	match side:
+		"south":
+			return Vector3i(origin.x + size.x / 2, origin.y, origin.z + size.z - 1 + step)
+		"west":
+			return Vector3i(origin.x - step, origin.y, origin.z + size.z / 2)
+		"east":
+			return Vector3i(origin.x + size.x - 1 + step, origin.y, origin.z + size.z / 2)
+		_:
+			return Vector3i(origin.x + size.x / 2, origin.y, origin.z - step)
 
 
 ## The board faces local +X, and a station body is turned by -quarters * 90°,
@@ -928,6 +1003,7 @@ func _run_sign(op: Dictionary) -> bool:
 	if not _loaded(world, anchor) or not _loaded(world, anchor + Vector3i(0, -1, 0)):
 		return false
 	var rotation := int(op.get("rotation", 0))
+	var entity_id := str(op.get("entity", SIGN_ENTITY))
 	var last_reason := "PLACE_FAILED"
 	for offset: Vector3i in SIGN_OFFSETS:
 		var cell := _sign_stand(world, anchor + offset)
@@ -935,9 +1011,14 @@ func _run_sign(op: Dictionary) -> bool:
 			continue
 		# A rebuild (Reset Expo, a district reset group) finds its own sign
 		# already standing: rewrite that board rather than adding a second one.
-		var instance_id := _standing_sign(cell)
+		# A board of the other width standing there is taken down first, so a
+		# manifest that turns a sign into a wide board rebuilds cleanly.
+		var instance_id := _standing_sign(cell, entity_id)
 		if instance_id.is_empty():
-			var placed := session.workstations.try_place(SIGN_ENTITY, cell, world.query_cell, AABB(), rotation, {"_free": true})
+			var stale := _standing_sign(cell)
+			if not stale.is_empty():
+				session.workstations.try_dismantle(stale, world.query_cell, AABB(), false)
+			var placed := session.workstations.try_place(entity_id, cell, world.query_cell, AABB(), rotation, {"_free": true})
 			if not bool(placed.get("ok", false)):
 				last_reason = str(placed.get("reason", "PLACE_FAILED"))
 				continue
@@ -989,14 +1070,18 @@ func _same_entity_at(cell: Vector3i, entity_id: String) -> bool:
 	return str(record.get("entity_id", "")) == entity_id
 
 
-## The instance id of a `sign` already standing in `cell` ("" when the cell is
-## empty or holds something else).
-func _standing_sign(cell: Vector3i) -> String:
+## The instance id of a sign already standing in `cell` ("" when the cell is
+## empty or holds something else). `wanted` narrows it to one of the two sign
+## entities; empty accepts either.
+func _standing_sign(cell: Vector3i, wanted: String = "") -> String:
 	var instance_id := session.workstations.station_at_cell(cell)
 	if instance_id.is_empty():
 		return ""
 	var record: Dictionary = session.workstations.stations.get(instance_id, {})
-	return instance_id if str(record.get("entity_id", "")) == SIGN_ENTITY else ""
+	var entity_id := str(record.get("entity_id", ""))
+	if not WorkstationService.is_sign(entity_id):
+		return ""
+	return instance_id if wanted.is_empty() or entity_id == wanted else ""
 
 
 func _queue_columns(label: String, columns: Array[Dictionary]) -> void:
@@ -1254,22 +1339,28 @@ func _build_supply_depot(exhibit_id: String, origin: Vector3i, size: Vector3i) -
 		_supply_stands.append(record)
 		_ops.append({"kind": "stock", "label": "supply:" + exhibit_id, "anchor": anchor,
 			"items": items.duplicate(), "units": units, "stand": record, "passes": 0})
-		# The board reads back at a visitor walking in from the plaza (+z).
-		sign_at(plinth, "south", SupplyDepot.chest_sign(chest), record["sign_owner"])
+		# The board reads back at a visitor walking in from the plaza (+z). It
+		# is a wide board over a two-cell chest, so it is anchored on the
+		# plinth's +x cell: reading south, its second cell is the one at -x,
+		# and the pair sits exactly over the chest below.
+		sign_at(plinth + Vector3i(1, 0, 0), "south", SupplyDepot.chest_sign(chest), record["sign_owner"])
 	for offset in range(reserved.size()):
 		var stand_reserved := SupplyDepot.stand_at(origin, size, chests.size() + offset)
 		var reserved_plinth: Vector3i = stand_reserved["plinth"]
 		_queue_plinth("supply:" + exhibit_id, reserved_plinth)
-		sign_at(reserved_plinth, "south", SupplyDepot.reserved_sign(reserved[offset], units),
+		sign_at(reserved_plinth + Vector3i(1, 0, 0), "south", SupplyDepot.reserved_sign(reserved[offset], units),
 			"supply_reserved_" + str((reserved[offset] as Dictionary).get("category", offset)))
 
 
-## The two stone cells a supply sign stands on, so its board reads above the
-## chest in front of it rather than at the chest's own height.
+## The stone the supply sign stands on, so its board reads above the chest in
+## front of it rather than at the chest's own height. It is two cells wide,
+## like the chest and like the wide board over it, so both of the board's cells
+## have something under them.
 func _queue_plinth(label: String, base: Vector3i) -> void:
 	var cells: Array = []
-	for step in range(SupplyDepot.PLINTH_HEIGHT):
-		cells.append({"cell": base + Vector3i(0, step, 0), "voxel": STONE})
+	for column in range(2):
+		for step in range(SupplyDepot.PLINTH_HEIGHT):
+			cells.append({"cell": base + Vector3i(column, step, 0), "voxel": STONE})
 	_queue_cells(label, cells)
 
 

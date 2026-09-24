@@ -31,6 +31,11 @@ const LIGHT_RANGE := 12.0
 ## Frames one walked cell is given for the terrain around it to stream in.
 const STREAM_FRAMES := 240
 const BUILD_TIMEOUT_MSEC := 420000
+## Signs card 2 (T225): the exhibit whose board is anchored by its gate, and
+## how far from that anchor the board may end up (the builder takes the nearest
+## free cell around a requested one when the exhibit itself stands there).
+const ANCHORED_EXHIBIT := "battlefield_field"
+const SIGN_ANCHOR_TOLERANCE := 4
 ## Miner ticks T216 drives so the Ore Bin holds both an ore and its fuel.
 const INDUSTRY_MINER_TICKS := 24
 ## 1/30 s cart steps T216 allows the mine cart for one bin-to-warehouse haul.
@@ -121,6 +126,7 @@ func _run_gate() -> void:
 	_test_supply_depot()
 	await _test_mountain()
 	_test_signs()
+	_test_sign_anchors()
 	await _test_industry()
 	await _test_lighting()
 	await _test_construction_yard()
@@ -561,6 +567,55 @@ func _unassigned_probe() -> Dictionary:
 	return {"ok": not bool(catalog.get("ok", true)) and unassigned.has("expo_unclassified_probe")
 		and not stocked.has("expo_unclassified_probe"),
 		"classified": ItemCategories.classify("expo_unclassified_probe"), "unassigned": unassigned}
+
+
+## T225 (signs card 2): the manifest's `sign_anchor` puts a board where it can
+## be read instead of at its parcel's corner, and a block asking for the wide
+## board gets the two-cell `sign_board`. The Battlefield's arena sign must
+## stand within `SIGN_ANCHOR_TOLERANCE` cells of the gate it is anchored to -
+## it used to stand tens of cells away, at the corner of the whole field - and
+## the plaza's orientation board must be the wide one. Every other request is
+## still fulfilled, which T215 asserts in full.
+func _test_sign_anchors() -> void:
+	var builder: ExpoBuilder = app.development.expo_builder
+	var workstations: WorkstationService = app.session.workstations
+	var requests := builder.sign_requests()
+	var anchored := builder.sign_anchor_for(ANCHORED_EXHIBIT)
+	var arena := _sign_request_of(requests, ANCHORED_EXHIBIT)
+	var arena_cell: Vector3i = arena.get("cell", Vector3i.ZERO)
+	var anchor_cell: Vector3i = anchored.get("cell", Vector3i.ZERO)
+	var distance := (Vector3(arena_cell) - Vector3(anchor_cell)).length()
+	var arena_placed: bool = not anchored.is_empty() and bool(arena.get("ok", false))
+	var arena_ok: bool = arena_placed and distance <= float(SIGN_ANCHOR_TOLERANCE)
+	# The gate it labels, so the evidence shows the walk it saved.
+	var gate := app.development.layout.parcel_for("battlefield_fortification")
+	var corner: Vector3i = app.development.layout.parcel_for(ANCHORED_EXHIBIT).get("origin", Vector3i.ZERO)
+	var plaza := _sign_request_of(requests, "central_plaza")
+	var plaza_entity := str(workstations.stations.get(str(plaza.get("instance_id", "")), {}).get("entity_id", ""))
+	var plaza_ok: bool = bool(plaza.get("ok", false)) and plaza_entity == WorkstationService.SIGN_BOARD_ENTITY
+	# A wide board owns both of its cells: the second one answers to it too.
+	var plaza_cell: Vector3i = plaza.get("cell", Vector3i.ZERO)
+	var second: Vector3i = plaza_cell + workstations.footprints.rotate_offset(
+		Vector3i(0, 0, 1), int(workstations.stations.get(str(plaza.get("instance_id", "")), {}).get("rotation_quarters", 0)))
+	var both_cells: bool = workstations.station_at_cell(second) == str(plaza.get("instance_id", ""))
+	var depot := _sign_request_of(requests, "supply_chest_00")
+	var depot_entity := str(workstations.stations.get(str(depot.get("instance_id", "")), {}).get("entity_id", ""))
+	var depot_ok: bool = bool(depot.get("ok", false)) and depot_entity == WorkstationService.SIGN_BOARD_ENTITY
+	var ok: bool = arena_ok and plaza_ok and both_cells and depot_ok and builder.pending_signs().is_empty()
+	_record("T225_SIGN_ANCHORS", ok,
+		"an exhibit's `sign_anchor` stands its board where it is read - the Battlefield's arena sign within %d cells of the player-side gate instead of at the parcel corner - the plaza orientation board and the Supply Depot chest boards are the two-cell wide board owning both of their cells, and no sign request is left unfulfilled" % SIGN_ANCHOR_TOLERANCE,
+		{"arena_cell": arena_cell, "anchor_cell": anchor_cell, "parcel_corner": corner,
+		"gate": gate.get("origin", Vector3i.ZERO), "distance": distance, "arena_ok": arena_ok,
+		"plaza_cell": plaza_cell, "plaza_entity": plaza_entity, "second_cell": second, "both_cells": both_cells,
+		"depot_entity": depot_entity, "pending": builder.pending_signs().size()})
+
+
+## The request the builder recorded for `owner_id` ({} when there is none).
+func _sign_request_of(requests: Array[Dictionary], owner_id: String) -> Dictionary:
+	for request: Dictionary in requests:
+		if str(request.get("owner", "")) == owner_id:
+			return request
+	return {}
 
 
 ## T214 part two: the mountain's authored ore core, the lit and traversable
@@ -1431,8 +1486,13 @@ func _test_signs() -> void:
 			unfulfilled.append("%s: %s" % [owner_id, str(request.get("reason", "UNFULFILLED"))])
 			continue
 		var record: Dictionary = workstations.stations.get(instance_id, {})
-		if str(record.get("entity_id", "")) != "sign":
+		# Either board is a sign: the manifest asks for the wide one with
+		# `"board": "wide"` (docs/SIGNS.md).
+		if not WorkstationService.is_sign(str(record.get("entity_id", ""))):
 			unfulfilled.append(owner_id + ": no sign station")
+			continue
+		if str(record.get("entity_id", "")) != str(request.get("entity", "sign")):
+			mismatched.append(owner_id + ": wrong board")
 			continue
 		placed += 1
 		if not _sign_matches(workstations.sign_data(instance_id), request.get("sign", {})):

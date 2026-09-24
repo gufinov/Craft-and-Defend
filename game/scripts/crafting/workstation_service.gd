@@ -9,6 +9,11 @@ signal job_completed(result: Dictionary)
 ## to eight item ids. It is saved with the station record and never stores a
 ## label or a scene path.
 const SIGN_ENTITY := "sign"
+## The wide board (signs card 2): the same sign two cells across, its own item
+## and recipe so the placement rules stay one entity = one footprint. Both
+## entities carry the identical `sign` block and the identical editor.
+const SIGN_BOARD_ENTITY := "sign_board"
+const SIGN_ENTITIES: Array[String] = [SIGN_ENTITY, SIGN_BOARD_ENTITY]
 const SIGN_MODES: Array[String] = ["text", "split", "items", "header_items"]
 const SIGN_ITEM_SLOTS := 8
 ## What a stored text field may hold. It is longer than what the editor's own
@@ -135,7 +140,7 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		# under it; the record remembers that so restore does not ask for the
 		# support the placement never needed.
 		record["mount"] = "wall"
-	if entity_id == SIGN_ENTITY:
+	if is_sign(entity_id):
 		record["sign"] = default_sign()
 	var defense_definition: Dictionary = definition.get("defense", {})
 	if not defense_definition.is_empty():
@@ -757,6 +762,12 @@ func station_type(instance_id: String) -> String:
 	return str(registry.entity(str(record.get("entity_id", ""))).get("station_type", ""))
 
 
+## True for either sign entity (the one-cell sign and the wide board): both
+## carry the same `sign` block, the same editor and the same API.
+static func is_sign(entity_id: String) -> bool:
+	return entity_id in SIGN_ENTITIES
+
+
 ## An empty sign: one text line, no items.
 static func default_sign() -> Dictionary:
 	var items: Array[String] = []
@@ -766,7 +777,7 @@ static func default_sign() -> Dictionary:
 ## The sign block of a placed sign ({} when the station is not a sign).
 func sign_data(instance_id: String) -> Dictionary:
 	var record: Dictionary = stations.get(instance_id, {})
-	if str(record.get("entity_id", "")) != SIGN_ENTITY:
+	if not is_sign(str(record.get("entity_id", ""))):
 		return {}
 	var data: Variant = record.get("sign", default_sign())
 	return sanitized_sign(data if data is Dictionary else {})
@@ -781,7 +792,7 @@ func configure_sign(instance_id: String, data: Dictionary) -> Dictionary:
 	if not stations.has(instance_id):
 		return _result(false, "NO_ENTITY")
 	var record: Dictionary = stations[instance_id]
-	if str(record.get("entity_id", "")) != SIGN_ENTITY:
+	if not is_sign(str(record.get("entity_id", ""))):
 		return _result(false, "NOT_A_SIGN")
 	var current := sign_data(instance_id)
 	var merged := current.duplicate(true)
@@ -1503,7 +1514,7 @@ func _restored_station(value: Variant, world_query: Callable) -> Dictionary:
 		while clean_container.size() < int(definition.get("container_slots", 0)):
 			clean_container.append(_empty_stack())
 		record["container_slots"] = clean_container
-	if str(record.get("entity_id", "")) == SIGN_ENTITY:
+	if is_sign(str(record.get("entity_id", ""))):
 		# Migration: a sign saved before the editor existed (or an authored
 		# record without the block) comes back as an empty single-text sign.
 		var raw_sign: Variant = record.get("sign", default_sign())

@@ -197,11 +197,14 @@ static func chest_sign(chest: Dictionary) -> Dictionary:
 	var items: Array[String] = []
 	if chest.has("items"):
 		items = chest["items"]
-	return {"title": title, "items": items}
+	# The wide board (signs card 2): a chest is two cells across, and so is the
+	# board over it, so the 4 x 2 grid of icons and names reads from the aisle.
+	return {"title": title, "items": items, "board": "wide"}
 
 
 ## The sign block of a category the game has no items for yet.
 static func reserved_sign(reserved: Dictionary, units: int) -> Dictionary:
 	return {"title": str(reserved.get("label", "")).to_upper() + " — RESERVED",
 		"lines": ["No such item exists yet.", "This stand stays empty until one does.",
-			"A new item joins the depot with %d units of its own." % units]}
+			"A new item joins the depot with %d units of its own." % units],
+		"board": "wide"}

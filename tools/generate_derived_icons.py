@@ -49,6 +49,8 @@ DERIVED = [
     "warehouse", "foundry",
     # Development Expo (docs/DEVELOPMENT_EXPO_HANDOFF.md section 9): the Sign.
     "sign",
+    # Signs card 2 (docs/SIGNS.md): the Wide Board, two cells across.
+    "sign_board",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -488,6 +490,27 @@ def icon_sign() -> Image.Image:
     return canvas
 
 
+def icon_sign_board() -> Image.Image:
+    """The wide board: a low, two-cell oak board on a post at each end."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    oak = (166, 114, 62, 255)
+    dark = (104, 66, 32, 255)
+    ink = (58, 40, 22, 255)
+    for x in (58, 198):
+        draw.rectangle([x - 12, 158, x + 12, 236], fill=dark)
+        draw.polygon([(x - 26, 236), (x + 26, 236), (x + 16, 246), (x - 16, 246)], fill=dark)
+    draw.rectangle([14, 62, 242, 166], fill=oak, outline=dark, width=7)
+    draw.line([(14, 96), (242, 96)], fill=(148, 100, 54, 255), width=3)
+    draw.line([(44, 84), (212, 84)], fill=ink, width=9)
+    for y in (116, 140):
+        draw.line([(40, y), (124, y)], fill=ink, width=7)
+        draw.line([(140, y), (216, y)], fill=ink, width=7)
+    for x in (30, 226):
+        draw.ellipse([x - 7, 68, x + 7, 82], fill=(110, 118, 126, 255))
+    return canvas
+
+
 BUILDERS = {
     "flame_shot": icon_flame_shot, "chest": icon_chest, "cannon": icon_cannon, "cannonball": icon_cannonball,
     "turret_catapult": icon_turret_catapult, "hot_oil": icon_hot_oil, "kettle": icon_kettle, "rail": icon_rail,
@@ -503,7 +526,7 @@ BUILDERS = {
     "coastercraft_shop": icon_coastercraft_shop,
     "miner": icon_miner, "ore_bin": icon_ore_bin,
     "warehouse": icon_warehouse, "foundry": icon_foundry,
-    "sign": icon_sign,
+    "sign": icon_sign, "sign_board": icon_sign_board,
 }
 
 

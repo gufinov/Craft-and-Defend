@@ -27,6 +27,10 @@ ATTRIBUTE_MOUNTS = {"ground", "wall", "ceiling", "any_solid_top", "any_solid_top
 # empty-parcel kind the growth rule needs on top of the five exhibit scales.
 EXPO_KINDS = {"catalog", "functional", "system_demo", "environmental", "scenario", "showcase", "reserved"}
 EXPO_ORIENTATIONS = {"north", "south", "east", "west"}
+# Signs card 2: an exhibit may anchor its board instead of taking the parcel
+# corner, and a sign block may ask for the two-cell wide board.
+EXPO_SIGN_ANCHORS = {"centre", "entrance"}
+EXPO_SIGN_BOARDS = {"narrow", "wide"}
 EXPO_TERRAIN = {"level", "natural", "tree", "forest", "quarry", "coal_seam", "surface_ore",
                 "ore_face", "mountain", "tunnel", "ore_core", "chamber", "pavilion",
                 "supply_depot",
@@ -468,11 +472,17 @@ def validate_development_expo(expo, content, root=ROOT):
                 require(isinstance(exhibit["reset_group"], str) and exhibit["reset_group"],
                         f"expo exhibit {name}: invalid reset group")
             validate_expo_sign(exhibit.get("sign"), items, f"expo exhibit {name}")
+            validate_expo_sign_anchor(exhibit, f"expo exhibit {name}")
             if exhibit["kind"] == "reserved":
                 reserved += 1
                 require(not exhibit["entities"] and not exhibit["items"],
                         f"expo exhibit {name}: a reserved parcel stays empty")
                 require(exhibit.get("sign"), f"expo exhibit {name}: a reserved parcel must be signed")
+    for name, exhibit in exhibits.items():
+        anchor = exhibit.get("sign_anchor")
+        if isinstance(anchor, str) and anchor.startswith("near:"):
+            require(anchor[5:] in exhibits,
+                    f"expo exhibit {name}: sign anchor names unknown exhibit {anchor[5:]}")
     require(reserved >= 1, "expo: at least one visible reserved future-expansion parcel is required")
     boxes = expo_boxes(expo)
     for first in range(len(boxes)):
@@ -525,6 +535,22 @@ def validate_development_expo(expo, content, root=ROOT):
     require(not (set(deferred) - items), f"expo: deferral names unknown items: {sorted(set(deferred) - items)}")
 
 
+def validate_expo_sign_anchor(exhibit, label):
+    """The optional `sign_anchor` (docs/DEVELOPMENT_EXPO.md section 1): a cell
+    offset inside the footprint, `centre`, `entrance`, or `near:<exhibit id>`.
+    The named exhibit is checked after the whole manifest is read."""
+    if "sign_anchor" not in exhibit:
+        return
+    anchor = exhibit["sign_anchor"]
+    if isinstance(anchor, list):
+        require(vector(anchor), f"{label}: invalid sign anchor")
+        require(all(0 <= anchor[axis] < exhibit["footprint"][axis] for axis in range(3)),
+                f"{label}: sign anchor falls outside the footprint")
+        return
+    require(isinstance(anchor, str) and (anchor in EXPO_SIGN_ANCHORS or anchor.startswith("near:")),
+            f"{label}: invalid sign anchor {anchor}")
+
+
 def validate_expo_sign(sign, items, label):
     if sign is None:
         return
@@ -533,6 +559,8 @@ def validate_expo_sign(sign, items, label):
             and all(isinstance(line, str) for line in sign.get("lines", [])), f"{label}: invalid sign lines")
     if "item" in sign:
         require(sign["item"] in items, f"{label}: sign names unknown item {sign['item']}")
+    if "board" in sign:
+        require(sign["board"] in EXPO_SIGN_BOARDS, f"{label}: invalid sign board {sign['board']}")
 
 
 def validate_bundle(bundle):

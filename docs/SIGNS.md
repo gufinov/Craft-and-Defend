@@ -2,15 +2,37 @@
 
 Owner commission: [Development Expo handoff](DEVELOPMENT_EXPO_HANDOFF.md) section 9. A sign is an ordinary reusable gameplay asset — craftable, placeable, dismantleable, saved — not a development-only prop. The Expo's Supply Depot and district signs use the same item and the same API.
 
-## The item
+## The two boards
 
-| | |
-| --- | --- |
-| Item / entity id | `sign` (category `building`, stacks to 16) |
-| Workbench recipe | 2 Planks + 1 Stick → 1 Sign (`recipe_book_order` 218, last in the book) |
-| Footprint | one cell (`occupied_offsets` `[[0, 0, 0]]`), support below for the ground variant |
-| Integrity | 8, repaired with 2 Planks |
-| Icon | `icon_sign` in `tools/generate_derived_icons.py` (derived atlas cell 31) |
+A sign comes in two sizes. They are **two items and two entities**, not one
+item with a placement option:
+
+| | Sign | Wide Board |
+| --- | --- | --- |
+| Item / entity id | `sign` | `sign_board` |
+| Category / stack | `building`, 16 | `building`, 16 |
+| Workbench recipe | 2 Planks + 1 Stick → 1 Sign (`recipe_book_order` 218) | 4 Planks + 2 Sticks → 1 Wide Board (`recipe_book_order` 219, last in the book) |
+| Footprint | one cell (`occupied_offsets` `[[0, 0, 0]]`) | two cells (`[[0, 0, 0], [0, 0, 1]]`) |
+| Support (ground mount) | the cell below | the cell below each of the two |
+| Board | 0.92 m across, one post | 1.92 m across, a post at each end |
+| Integrity | 8, repaired with 2 Planks | 12, repaired with 2 Planks |
+| Icon | `icon_sign` (derived atlas cell 31) | `icon_sign_board` (derived atlas cell 32) |
+
+Everything else is shared: the same stored `sign` block, the same editor panel,
+the same `configure_sign` / `sign_data` API and the same board renderer.
+`WorkstationService.is_sign(entity_id)` is the one predicate that decides
+whether a record is a sign, and both ids are in
+`WorkstationService.SIGN_ENTITIES`.
+
+**Why a second item and not a rotation option.** The build rotation (W / R) is
+already the sign's facing, and which way a board reads is the whole point of a
+board, so it cannot also cycle a width. More importantly, one entity = one
+footprint is how the placement stack works: `occupied_offsets` comes from the
+entity definition and is what `preview_placement`, `try_reserve`, the saved
+record and `restore` all read. A per-placement width would have to be threaded
+through every one of them, for a choice the player makes at the workbench
+anyway. The second recipe costs two data rows and an icon and changes no
+placement code.
 
 Balance is tunable; nothing here copies an external game's asset.
 
@@ -21,9 +43,17 @@ The sign uses the existing mount rules (`WorkstationService.try_place` / `_wall_
 - **ground** — the cell below is solid: the board stands on an oak post with a stone foot, turned by the ordinary build rotation (W / R);
 - **wall** — no ground below, a solid block on one side: the board hangs flat on that block on two iron brackets, with no post, rotated to face away from the wall.
 
-The chosen mount is stored on the station record as `"mount": "wall"` (absent means ground) so a reload does not ask a wall sign for ground support. Every part of the board, post and collision stays **inside the sign's own logical cell**: a thin panel can never reach into a cell another entity owns, and a sign cannot be placed into an occupied cell (`OCCUPIED`). To hang a sign above a chest, place it in the cell above — the Expo's authored fixtures do exactly that.
+The chosen mount is stored on the station record as `"mount": "wall"` (absent means ground) so a reload does not ask a wall sign for ground support. Every part of the board, posts and collision stays **inside the sign's own logical cells**: a thin panel can never reach into a cell another entity owns, and a sign cannot be placed into an occupied cell (`OCCUPIED`). To hang a sign above a chest, place it in the cell above — the Expo's authored fixtures do exactly that.
 
 The board faces local +X, so a ground sign turns with the build rotation and a wall sign faces the room.
+
+**The wide board's second cell** is the anchor's own local +z, so it turns with
+the board exactly as `EntityFootprintService.rotate_offset` says: at rotation 0
+(reading east) it is the neighbour at +z, at rotation 1 (reading south) the
+neighbour at -x, and so on. **Both** cells are reserved, both want support under
+them on the ground mount, and a placement whose second cell is taken is refused
+`OCCUPIED` even when the anchor itself is free. The board runs from -0.5 to
++1.5 in local z, so it is centred over the pair and never overhangs it.
 
 ## Content model
 
@@ -47,7 +77,35 @@ It is saved by `workstations.snapshot()` with the rest of the record and normali
 3. **Item Grid** — up to eight entries as icon + readable name, 4 rows × 2 columns, filled left column top-to-bottom then right column.
 4. **Header + Item Grid** — `text_a` as a heading above the same grid.
 
-The board renders with `Label3D` text and `Sprite3D` item icons (the same `ItemIconCatalog` art the inventory uses), the project's existing in-world text approach. Captions carry a pale outline so the grid reads at 3–6 m. A text field's cap height is fitted to what it holds (`_fitted_line_height`): a short heading keeps its size and a whole paragraph shrinks until it wraps inside the panel rather than spilling off the board. A one-cell board carrying a long list is therefore legible only up close — a larger multi-cell board is not part of this milestone.
+The board renders with `Label3D` text and `Sprite3D` item icons (the same `ItemIconCatalog` art the inventory uses), the project's existing in-world text approach. Captions carry a pale outline so they read on the oak grain.
+
+## Typography: lay out first, shrink last
+
+`GameSession.fitted_sign_text(text, width, height, preferred, minimum)` is the
+board's typographer, and every field on a board goes through it:
+
+1. **Wrap on words.** `wrap_sign_text` packs whole words into lines that fit the
+   column; a word is never split. The `Label3D` behind it uses
+   `AUTOWRAP_WORD` rather than `AUTOWRAP_WORD_SMART`, so the renderer cannot
+   split one either. This is what ended `DEVELO / PMENT / EXPO`.
+2. **Size for the board, then step down.** The fitter starts at the field's
+   preferred cap height — a heading is sized for the board's own width — and
+   steps down only while the wrapped block does not fit the panel, or while a
+   single word is still wider than the column.
+3. **Stop at a readable size.** `SIGN_MIN_LINE_HEIGHT` (0.030 m) for text and
+   `SIGN_MIN_CAPTION_HEIGHT` (0.032 m, which still reads at about 4 m) for grid
+   captions are floors, not suggestions.
+4. **Fewer lines, not smaller glyphs.** Content that still will not fit at the
+   floor loses whole lines, and the last kept line ends in an ellipsis.
+
+The item grid lays each entry out as **its icon at the head of the row with its
+name beside it**, so a row that is much wider than it is tall spends that width
+on size instead of on empty board. On the wide board the Supply Depot's eight
+entries read at about four metres.
+
+A one-cell board carrying a six-line route list is still a one-cell board: it
+now wraps on words and keeps a readable size, and the cure for a long list is
+the wide board.
 
 ## The editor panel
 
@@ -70,4 +128,11 @@ GameSession.sign_data(instance_id) -> Dictionary              # the normalised b
 
 ## Tests
 
-`T212_SIGN_PLACEMENT_AND_EDITOR` (`--p3d-usability-automation=phase1`) and its rendered evidence `T212_SIGN_PRESENTATION` (`--p3d-usability-automation=visual`, `p3d-sign-item-grid.png`). See [the test plan](TEST_PLAN.md).
+`T212_SIGN_PLACEMENT_AND_EDITOR` (`--p3d-usability-automation=phase1`), which
+also places the wide board on the ground and on a wall, checks that it reserves
+both of its cells, refuses a pair whose second cell is taken and round-trips its
+content through a real save; the rendered evidence `T212_SIGN_PRESENTATION` and
+`T212_SIGN_WIDE_PRESENTATION` (`--p3d-usability-automation=visual`,
+`p3d-sign-item-grid.png` and `p3d-sign-wide-board.png`); and
+`T225_SIGN_ANCHORS` (`--development-expo-automation=gate`) for the Expo's use of
+both boards. See [the test plan](TEST_PLAN.md).
