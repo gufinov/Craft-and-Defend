@@ -200,14 +200,24 @@ func build_district(game_session: GameSession, district_id: String) -> Dictionar
 		var avenue_origin: Vector3i = rectangle["origin"]
 		var avenue_size: Vector3i = rectangle["size"]
 		level_area(avenue_origin, avenue_size.x, avenue_size.z, CASTLE_STONE, 4, "avenue:" + district_id)
-	var entrance := _cell(record.get("entrance", []))
 	# The entrance sign reads back at the visitor arriving from outside, so it
 	# faces away from the district centre they are walking towards.
-	sign_at(Vector3i(entrance.x, layout.ground_y() + 1, entrance.z), _opposite(_facing_to_centre(entrance, origin, size)), layout.sign_data(district_id), district_id, SIGN_BOARD_LARGE_ENTITY)
+	var spot := district_sign_spot(district_id)
+	var sign_cell: Vector3i = spot["cell"]
+	var sign_facing := str(spot["facing"])
 	if str(record.get("prepare", "connect")) != "full":
+		# A district that is only connected has nothing but its avenue: its
+		# board goes up straight away, on the ground the avenue just levelled.
+		sign_at(sign_cell, sign_facing, layout.sign_data(district_id), district_id, SIGN_BOARD_LARGE_ENTITY)
 		return {"ok": true, "prepared": "connect"}
 	if str(record.get("terrain", "level")) == "level":
 		level_area(origin, size.x, size.z, STONE, layout.clear_height(), "pad:" + district_id)
+	# Card D2: the board is queued **after** the pad, not before it. A
+	# district board wants three supported cells in a row, and before the pad
+	# is levelled the only guaranteed ground is the avenue - which is why the
+	# plaza's board used to fall back to the two-cell width. `entrance` is
+	# still where a board with no anchor of its own stands.
+	sign_at(sign_cell, sign_facing, layout.sign_data(district_id), district_id, SIGN_BOARD_LARGE_ENTITY)
 	for exhibit_id: String in layout.exhibit_ids(district_id):
 		place_exhibit(session, exhibit_id)
 	var group := "district:" + district_id
@@ -531,7 +541,8 @@ func sign_at(cell: Vector3i, facing: String, data: Dictionary, owner_id: String 
 	var block := _sign_block(data)
 	var entity_id := sign_entity_for(data, default_entity)
 	var request := {"owner": owner_id, "cell": cell, "facing": facing, "data": data.duplicate(true),
-		"sign": block, "entity": entity_id, "instance_id": "", "ok": false, "reason": "QUEUED"}
+		"sign": block, "entity": entity_id, "requested_entity": entity_id, "fell_back": false,
+		"instance_id": "", "ok": false, "reason": "QUEUED"}
 	_sign_requests.append(request)
 	_ops.append({"kind": "sign", "label": "sign:" + owner_id, "request": request, "entity": entity_id,
 		"anchor": cell, "rotation": _facing_rotation(facing), "passes": 0})
@@ -541,6 +552,17 @@ func sign_at(cell: Vector3i, facing: String, data: Dictionary, owner_id: String 
 ## Every sign the manifest asked for, in request order, with what became of it.
 func sign_requests() -> Array[Dictionary]:
 	return _sign_requests.duplicate(true)
+
+
+## Every sign that could not have the width its manifest block asked for and
+## was built one width narrower (card D2). Empty is what a healthy campus
+## looks like; a district in this list fails T233.
+func board_fallbacks() -> Array[Dictionary]:
+	var fell_back: Array[Dictionary] = []
+	for request: Dictionary in _sign_requests:
+		if bool(request.get("fell_back", false)):
+			fell_back.append(request.duplicate(true))
+	return fell_back
 
 
 ## The sign requests that have not been placed and written yet.
@@ -614,6 +636,71 @@ func _sign_spot(exhibit_id: String, default_cell: Vector3i, default_facing: Stri
 	if anchored.is_empty():
 		return {"cell": default_cell, "facing": default_facing}
 	return anchored
+
+
+## Where a district's own entrance board stands and which way it reads.
+##
+## The default is the manifest's `entrance` cell, facing back at the visitor
+## arriving from outside. A district may override it with a **district-level
+## `sign_anchor`** (card D2), resolved by exactly the same rules as an
+## exhibit's - an `[x, y, z]` offset inside the district's bounds, `"centre"`,
+## `"entrance"` or `"near:<exhibit_id>"`. The plaza uses one: its entrance
+## cell sits on the avenue, where there is no run of three supported cells for
+## the three-cell district board, so its board is anchored a few cells into
+## its own levelled pad instead of shrinking to the two-cell width.
+func district_sign_spot(district_id: String) -> Dictionary:
+	if layout == null:
+		return {"cell": Vector3i.ZERO, "facing": "north"}
+	var record := layout.district(district_id)
+	var bounds := layout.district_bounds(district_id)
+	if record.is_empty() or bounds.is_empty():
+		return {"cell": Vector3i.ZERO, "facing": "north"}
+	var origin: Vector3i = bounds["origin"]
+	var size: Vector3i = bounds["size"]
+	var entrance := _cell(record.get("entrance", []))
+	# `sign_facing` overrides which way the board reads. The plaza is the one
+	# district a visitor is already standing inside - it is the spawn - so its
+	# board reads back at the spawn rather than at an arriving traveller.
+	var default_facing := str(record.get("sign_facing", _opposite(_facing_to_centre(entrance, origin, size))))
+	var anchored := district_sign_anchor_for(district_id)
+	if anchored.is_empty():
+		return {"cell": Vector3i(entrance.x, layout.ground_y() + 1, entrance.z), "facing": default_facing}
+	var cell: Vector3i = anchored["cell"]
+	return {"cell": Vector3i(cell.x, layout.ground_y() + 1, cell.z),
+		"facing": str(anchored.get("facing", default_facing))}
+
+
+## A district's optional `sign_anchor`, resolved to `{cell, facing}` ({} when
+## it names none, or names an unknown district or exhibit). The offset form is
+## relative to the district's own origin, the way an exhibit's is relative to
+## its parcel.
+func district_sign_anchor_for(district_id: String) -> Dictionary:
+	if layout == null:
+		return {}
+	var record := layout.district(district_id)
+	var bounds := layout.district_bounds(district_id)
+	if record.is_empty() or bounds.is_empty() or not record.has("sign_anchor"):
+		return {}
+	var origin: Vector3i = bounds["origin"]
+	var size: Vector3i = bounds["size"]
+	var entrance := _cell(record.get("entrance", []))
+	var facing := str(record.get("sign_facing", _opposite(_facing_to_centre(entrance, origin, size))))
+	var anchor: Variant = record.get("sign_anchor")
+	if anchor is Array:
+		return {"cell": origin + _cell(anchor), "facing": facing}
+	var anchor_name := str(anchor)
+	if anchor_name == "centre":
+		return {"cell": Vector3i(origin.x + size.x / 2, origin.y, origin.z + size.z / 2), "facing": facing}
+	if anchor_name == "entrance":
+		return {"cell": entrance, "facing": facing}
+	if anchor_name.begins_with("near:"):
+		var target := layout.parcel_for(anchor_name.substr(5))
+		if target.is_empty():
+			return {}
+		var orientation := str(target.get("orientation", "north"))
+		return {"cell": _edge_cell(target["origin"], target["size"], orientation, 1),
+			"facing": str(record.get("sign_facing", _opposite(orientation)))}
+	return {}
 
 
 ## An exhibit's optional `sign_anchor` (docs/DEVELOPMENT_EXPO.md section 1),
@@ -1279,6 +1366,14 @@ func _place_sign_board(op: Dictionary, request: Dictionary, world: WorldAdapter,
 		request["cell"] = cell
 		request["instance_id"] = instance_id
 		request["entity"] = entity_id
+		# A board that could not have the width the manifest asked for is a
+		# loud event, not a footnote (card D2): T233 fails on a district that
+		# falls back, and the log names it either way.
+		var wanted_entity := str(request.get("requested_entity", entity_id))
+		request["fell_back"] = entity_id != wanted_entity
+		if bool(request["fell_back"]):
+			print("EXPO_SIGN_BOARD_FALLBACK owner=%s wanted=%s placed=%s cell=%s" % [
+				str(request.get("owner", "")), wanted_entity, entity_id, cell])
 		request["ok"] = bool(written.get("ok", false))
 		request["reason"] = str(written.get("reason", "OK"))
 		_entities_placed += 1

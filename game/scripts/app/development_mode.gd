@@ -145,6 +145,7 @@ func on_session_ready(fresh: bool) -> void:
 		return
 	var session: GameSession = app.session
 	session.expo_fixture_version = EXPO_FIXTURE_VERSION
+	bind_notes(session)
 	if fresh:
 		session.set_clock_time(START_TIME)
 		build_expo(session, true)
@@ -153,6 +154,28 @@ func on_session_ready(fresh: bool) -> void:
 		# still binds to it so Reset Expo and the district reset groups work.
 		build_expo(session, false)
 	_reset_requested = false
+
+
+## The test notes' own journal (card D2): every note is written through to
+## `<data root>/development/expo_notes.json` the moment it is saved, and the
+## journal is folded back in here - after the world snapshot has been
+## restored, so the store ends up holding the union of the two. This is why a
+## note survives a crash or a Quit-without-save, and why Development Start
+## finds the owner's notes whether or not the world was ever checkpointed.
+func bind_notes(session: GameSession) -> Dictionary:
+	if session == null or saves == null:
+		return {"ok": false, "reason": "NO_SESSION"}
+	var bound := session.expo_notes.bind_store(ExpoNotes.store_path_for(saves.data_root))
+	print("EXPO_NOTES_STORE %s ok=%s merged_subjects=%d merged_entries=%d" % [
+		session.expo_notes.store_path(), bound.get("ok", false),
+		int(bound.get("merged_subjects", 0)), int(bound.get("merged_entries", 0))])
+	return bound
+
+
+## The journal's path for this build's development data root, with no session
+## open: what `--expo-notes-export` reads.
+func notes_store_path() -> String:
+	return ExpoNotes.store_path_for(saves.data_root) if saves != null else ""
 
 
 func _process(_delta: float) -> void:
