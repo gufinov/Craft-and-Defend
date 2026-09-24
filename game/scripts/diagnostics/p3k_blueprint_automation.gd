@@ -63,8 +63,7 @@ func _run_gate() -> void:
 	# T111: stack foundation → segment → cap through top sockets; each stamp is
 	# one world edit plus one inventory transaction across two block types.
 	var base := Vector3i(14, 0, 44)
-	var probe: Array[Vector3i] = [base, base + Vector3i(3, 0, 3), base + Vector3i(0, 6, 0), base + Vector3i(7, 0, 7)]
-	if not await _wait_cells(probe):
+	if not await _wait_area(base, 4, 4, 7):
 		return
 	_level_area(base, 4, 4, 7)
 	_clear_inventory()
@@ -104,8 +103,7 @@ func _run_gate() -> void:
 	# T112: trimming, blocked cells and cancel. 8 planks short of a cap_8 floor;
 	# one cell pre-blocked; cancel builds nothing.
 	var far := Vector3i(-30, 0, 44)
-	var far_probe: Array[Vector3i] = [far, far + Vector3i(7, 0, 7), far + Vector3i(7, 2, 7)]
-	if not await _wait_cells(far_probe):
+	if not await _wait_area(far, 8, 8, 3):
 		return
 	_level_area(far, 8, 8, 3)
 	_clear_inventory()
@@ -163,7 +161,7 @@ func _run_wall_kit_test() -> void:
 	var ws := app.session.workstations
 	var world := app.session.world
 	var base := Vector3i(30, 0, 44)
-	if not await _wait_cells([base, base + Vector3i(7, 0, 1), base + Vector3i(0, 4, 0)]):
+	if not await _wait_area(base, 8, 2, 6):
 		return
 	_level_area(base, 8, 2, 6)
 	_clear_inventory()
@@ -245,8 +243,7 @@ func _run_visual() -> void:
 	var interaction := app.session.interaction
 	var inventory := app.session.inventory
 	var base := Vector3i(6, 0, 44)
-	var probe: Array[Vector3i] = [base, base + Vector3i(3, 0, 3), base + Vector3i(0, 6, 0)]
-	if not await _wait_cells(probe):
+	if not await _wait_area(base, 12, 8, 7):
 		return
 	_level_area(base, 12, 8, 7)
 	_clear_inventory()
@@ -313,6 +310,26 @@ func _wait_for_ghost(ghost_name: String, minimum_cells: int = 1) -> bool:
 			return true
 		await get_tree().process_frame
 	return false
+
+
+## Waits for every cell `_level_area` is about to write, not a handful of
+## corners. `_level_area` writes a floor course at **y = -1** as well as the
+## clear volume above it, and y = -1 is the top cell of the data block *below*
+## the one the site stands in - a different block, which streams in on its own
+## schedule. Waiting only for cells at y >= 0 let the floor writes be issued
+## against an unloaded block, where `set_cell` silently does nothing: the
+## levelled site came out one course short, a blueprint cell that should read
+## `unaffordable` read as something else and the stamp answered
+## `PLACEMENT_FAILED`. That made `T227_WALL_KIT` fail about two runs in five,
+## at this head and at the wave-4 head alike. Probing the whole box, floor
+## course included, is the same rule the Expo builder now follows.
+func _wait_area(base: Vector3i, width: int, depth: int, height: int) -> bool:
+	var cells: Array[Vector3i] = []
+	for x in range(width):
+		for z in range(depth):
+			for y in range(-1, height):
+				cells.append(base + Vector3i(x, y, z))
+	return await _wait_cells(cells)
 
 
 func _wait_cells(cells: Array[Vector3i]) -> bool:
