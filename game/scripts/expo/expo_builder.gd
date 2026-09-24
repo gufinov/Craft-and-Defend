@@ -64,7 +64,9 @@ const STOCK_ATTEMPTS := 600
 ## mount with its chest beside it and its target down range - so `place_exhibit`
 ## must not also drop one of each in the middle of the parcel.
 const COMPOSITE_TERRAIN: Array[String] = ["wall_demo", "blueprint_demo", "wall_kit_demo", "castle_demo",
-	"siege_booth", "field", "camp", "battery", "fortification", "magazine"]
+	"siege_booth", "field", "camp", "battery", "fortification", "magazine",
+	# Traps (docs/TRAPS.md): the Trap Range's walled spike funnel.
+	"trap_range"]
 ## Defence sets (docs/DEFENSE_SETS.md): the kit the Construction Yard's Wall
 ## Kit exhibit stamps.
 const WALL_KIT := "wall_kit_8"
@@ -1273,6 +1275,8 @@ func _build_terrain(exhibit_id: String, terrain: String, origin: Vector3i, size:
 			_build_castle_demo(exhibit_id, origin, size)
 		"siege_booth":
 			_build_siege_booth(exhibit_id, origin, size, record)
+		"trap_range":
+			_build_trap_range(exhibit_id, origin, size, record)
 		"battery":
 			_build_battery(exhibit_id, origin, size, record)
 		"fortification":
@@ -1687,6 +1691,30 @@ func _build_siege_booth(exhibit_id: String, origin: Vector3i, size: Vector3i, re
 		var chest_cell := stand + Vector3i(2, 0, 0)
 		place_entity("chest", chest_cell, 0, label)
 		stock_container(chest_cell, _ammo_for(weapon_id, items), MUNITIONS_PER_CHEST, label)
+
+
+## The Trap Range's spike funnel (docs/TRAPS.md): a lane walled on both sides
+## with three rows of Spike Traps in its floor, the Core of Power capping the
+## far end and the control pedestal standing beside the mouth. The wave the
+## pedestal musters spawns on the line north of the lane, so the only way to
+## the Core it is sent at is down the lane and over the spikes.
+func _build_trap_range(exhibit_id: String, origin: Vector3i, size: Vector3i, record: Dictionary) -> void:
+	var label := "traps:" + exhibit_id
+	level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, STONE, layout.clear_height(), label)
+	var entities: Array = record.get("entities", [])
+	var lane_x := origin.x + 4
+	# The walls start north of the spawn line so a wave spread across the
+	# parcel walks into the mouth instead of standing outside a closed box.
+	for offset: int in [-1, 3]:
+		fill_box(Vector3i(lane_x + offset, origin.y, origin.z + 5), Vector3i(1, 3, 11), CASTLE_STONE, false, label)
+	if entities.has("core_of_power"):
+		place_entity("core_of_power", Vector3i(lane_x, origin.y, origin.z + 16), 0, label)
+	if entities.has("spike_trap"):
+		for row: int in [8, 11, 14]:
+			for step in range(3):
+				place_entity("spike_trap", Vector3i(lane_x + step, origin.y, origin.z + row), 0, label)
+	if entities.has("battlefield_control"):
+		place_entity("battlefield_control", Vector3i(origin.x + 9, origin.y, origin.z + 6), 0, label)
 
 
 ## One Battlefield battery: every siege weapon the exhibit declares, in a row

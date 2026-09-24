@@ -48,6 +48,8 @@ DERIVED_ORDER = [
     "gate", "rail_turret",
     "sign_board_large",
     "double_gate_frame", "double_gate", "great_gate_frame", "great_gate",
+    # Traps wave 1 (docs/TRAPS.md): the Spike Trap.
+    "spike_trap",
 ]
 # Nominal search cells. Row heights for the item atlas follow the shipped
 # ItemIconCatalog grid; the ammunition atlas is two square halves.

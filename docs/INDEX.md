@@ -27,6 +27,7 @@ Fast path: [Status](STATUS.md) → [handoff](CODING_AGENT_HANDOFF.md) → [roadm
 - [P3J drag building](P3J_DRAG_BUILDING.md)
 - [P3K blueprints](P3K_BLUEPRINTS.md)
 - [Defence sets: gate, wall kit, rail turret](DEFENSE_SETS.md)
+- [Traps: the trap service, the Spike Trap and the two raider rules](TRAPS.md)
 - [P4a-2 weapon and chest panels](P4A2_WEAPON_AND_CHEST_PANELS.md)
 - [P4C siege units (cannon, turret catapult, kettle on rails, ballista remodel) and wave drills](P4C_SIEGE_UNITS_AND_WAVES.md)
 - [P4F enemy units: orc melee and troll ranged](P4F_ENEMY_UNITS.md)

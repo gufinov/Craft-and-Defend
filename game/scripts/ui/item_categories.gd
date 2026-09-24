@@ -93,6 +93,7 @@ const ITEM_CATEGORY := {
 	"cannon": "siege_and_defense",
 	"kettle": "siege_and_defense",
 	"rail_turret": "siege_and_defense",
+	"spike_trap": "siege_and_defense",
 	"rail": "rail_and_coaster",
 	"rail_slope": "rail_and_coaster",
 	"rail_loop": "rail_and_coaster",

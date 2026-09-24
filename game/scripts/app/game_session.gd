@@ -168,6 +168,8 @@ const HAUL_NOTICE_RANGE := 12.0
 var _haul_notice_msec := -100000
 var _held_item_view: HeldItemView
 var fire_service: FireService
+## Traps (docs/TRAPS.md): every placed entity with a `trap` block.
+var trap_service: TrapService
 ## Industry wave 1 (docs/INDUSTRY.md): miners fill ore bins.
 var miner_service: MinerService
 ## Miner visuals: instance id -> the "Drill" node spun while the miner works.
@@ -280,6 +282,11 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	add_child(fire_service)
 	fire_service.initialize(world, workstations, _fire_damage_at, int(open_data.get("snapshot", {}).get("world", {}).get("seed", 41026)))
 	fire_service.feedback.connect(_on_interaction_feedback)
+	trap_service = TrapService.new()
+	trap_service.name = "TrapService"
+	add_child(trap_service)
+	trap_service.initialize(workstations, registry, core_defense.damage_raiders_in_cell, core_defense.damage_raiders_within, core_defense.raider_nodes, snapshot.get("traps", []))
+	trap_service.feedback.connect(_on_interaction_feedback)
 	siege_defense = SiegeDefenseService.new()
 	siege_defense.name = "SiegeDefenseService"
 	add_child(siege_defense)
@@ -335,6 +342,8 @@ func _process(delta: float) -> void:
 		coaster_ride.advance(delta)
 	if fire_service != null:
 		fire_service.advance(delta, simulation_paused or saving)
+	if trap_service != null:
+		trap_service.advance(delta, simulation_paused or saving)
 	if miner_service != null:
 		miner_service.advance(delta, simulation_paused or saving or not world_ready)
 		_spin_miner_drills(delta)
@@ -566,6 +575,10 @@ func _on_spawn_area_ready() -> void:
 			print("STATION_RESTORE_SKIPPED %s" % JSON.stringify(restore_skipped))
 		for record: Dictionary in workstations.stations.values():
 			_spawn_station_visual(record)
+	if trap_service != null:
+		# The traps are placed stations: their saved clocks land once the
+		# stations themselves are back (docs/TRAPS.md).
+		trap_service.sync()
 	var defense_restore := defense.restore_after_world_ready()
 	if not defense_restore.get("ok", false):
 		# A broken drill record must never brick a save (as for the core
@@ -729,6 +742,7 @@ func snapshot() -> Dictionary:
 		"workstations": workstations.snapshot(),
 		"defense": defense.snapshot(),
 		"core_defense": core_defense.snapshot(),
+		"traps": trap_service.snapshot() if trap_service != null else [],
 		"blueprints": {"stamps": interaction.stamps_snapshot()} if interaction != null else {"stamps": []},
 		"clock": clock.snapshot(),
 		"drops": drops_snapshot(),
@@ -1343,6 +1357,13 @@ func _spawn_station_visual(record: Dictionary) -> void:
 	elif entity_id == "rail_turret":
 		_build_rail_turret_visual(body)
 		_wrap_siege_turret(body, definition)
+	elif entity_id == "spike_trap":
+		_build_spike_trap_visual(body)
+	elif not definition.get("trap", {}).is_empty():
+		# Any other trap (docs/TRAPS.md): its authored parts, and collision
+		# only when its block says it blocks movement - a trap lies flush in
+		# the floor and is walked over.
+		_add_visual_parts(body, visual.get("parts", []), material, bool(definition.get("trap", {}).get("blocks_movement", false)))
 	elif entity_id == "rail":
 		_build_rail_visual(body, record)
 	elif entity_id == CoasterRails.SLOPE:
@@ -1386,6 +1407,9 @@ func _spawn_station_visual(record: Dictionary) -> void:
 		_refresh_ore_heap(instance_id)
 	if siege_defense != null and not definition.get("siege", {}).is_empty():
 		siege_defense.register_visual(instance_id, body)
+	if trap_service != null and not definition.get("trap", {}).is_empty():
+		# The trap's armed / fired / resetting state is shown on this body.
+		trap_service.register_visual(instance_id, body)
 	if entity_id == "mine_cart" or entity_id == CoasterRails.CAR:
 		if coaster_carts == null:
 			coaster_carts = CoasterCartService.new()
@@ -4169,6 +4193,54 @@ func _apply_gate_state(instance_id: String, open: bool, animate: bool) -> void:
 				leaf.position = target
 		elif child is CollisionShape3D and str(child.name).begins_with("GateBlocker"):
 			child.disabled = open
+
+
+## The Spike Trap (docs/TRAPS.md): an oak-framed iron plate lying flush in the
+## floor - no collision, because the whole point is that attackers walk over
+## it - with the spike bed on a `TrapAction` node that TrapService drives up
+## when the trap springs and back down when its fire window closes, and a
+## `TrapLamp` bead lit only while the trap is armed.
+func _build_spike_trap_visual(parent: Node3D) -> void:
+	var oak := _visual_material(Color("6b4526"), "res://assets/blocks/planks.svg")
+	var iron := _visual_material(Color("8d959d"))
+	var iron_dark := _visual_material(Color("3c4249"))
+	# The frame and the dark pit the spikes sit in.
+	for offset in [Vector3(0.0, -0.44, 0.44), Vector3(0.0, -0.44, -0.44)]:
+		_add_mesh_box(parent, Vector3(0.96, 0.12, 0.08), offset, oak)
+	for offset in [Vector3(0.44, -0.44, 0.0), Vector3(-0.44, -0.44, 0.0)]:
+		_add_mesh_box(parent, Vector3(0.08, 0.12, 0.96), offset, oak)
+	_add_mesh_box(parent, Vector3(0.80, 0.06, 0.80), Vector3(0.0, -0.47, 0.0), iron_dark)
+	var action := Node3D.new()
+	action.name = "TrapAction"
+	# At rest the whole bed hides under the floor of its own cell (the ground
+	# voxel below it): the trap is not supposed to be readable until it fires.
+	action.position = Vector3(0.0, -1.06, 0.0)
+	parent.add_child(action)
+	# Nine spikes on the bed: tapered iron teeth, tallest in the middle.
+	for x in [-0.26, 0.0, 0.26]:
+		for z in [-0.26, 0.0, 0.26]:
+			var spike := MeshInstance3D.new()
+			var mesh := CylinderMesh.new()
+			mesh.top_radius = 0.0
+			mesh.bottom_radius = 0.075
+			mesh.height = 0.44 if x == 0.0 and z == 0.0 else 0.36
+			mesh.radial_segments = 6
+			spike.mesh = mesh
+			spike.material_override = iron
+			spike.position = Vector3(x, mesh.height * 0.5, z)
+			action.add_child(spike)
+	_add_mesh_box(action, Vector3(0.74, 0.06, 0.74), Vector3(0.0, 0.02, 0.0), iron_dark)
+	var lamp := MeshInstance3D.new()
+	lamp.name = "TrapLamp"
+	var bead := SphereMesh.new()
+	bead.radius = 0.055
+	bead.height = 0.11
+	bead.radial_segments = 8
+	bead.rings = 4
+	lamp.mesh = bead
+	lamp.material_override = _visual_material(Color("6fe08a"), "", Color("3bd45f"))
+	lamp.position = Vector3(0.40, -0.36, 0.40)
+	parent.add_child(lamp)
 
 
 func _add_collision_box(parent: Node3D, size: Vector3, offset: Vector3) -> CollisionShape3D:

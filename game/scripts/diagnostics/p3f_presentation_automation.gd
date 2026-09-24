@@ -15,6 +15,8 @@ const EXPECTED_WORKBENCH_ORDER: Array[String] = [
 	# Signs card 3 (docs/SIGNS.md): the District Board, three cells across (225).
 	"sign_board_large",
 	"great_gate",
+	# Traps wave 1 (docs/TRAPS.md): the Spike Trap (229).
+	"spike_trap",
 ]
 ## The CoasterCraft Shop's own book (docs/INDUSTRY_PLAN.md wave 1): the coaster
 ## recipes keep their workbench-era orders (194, 204-212) and live only here.

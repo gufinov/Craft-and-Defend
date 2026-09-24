@@ -122,28 +122,57 @@ func _is_solid(data: Dictionary) -> bool:
 	return str(data.get("state", "UNLOADED")) == "LOADED" and bool(data.get("solid", false))
 
 
+## The obstruction a blocked unit attacks. This runs only when no route to the
+## goal exists, which is exactly the state the owner's rule 3 describes: the
+## unit attacks the weakest obstacle it can reach.
+##
+## `capability.prefer_weakest` (docs/TRAPS.md) switches the choice from "the
+## obstruction nearest the goal" to "the one with the least integrity left,
+## whatever it is made of", and is also what makes **traps** eligible at all:
+## a trap is undetected (rule 1) and a unit that still has a route never gets
+## here. Traps are walkable cells, so they are candidates without being solid.
+## The tie-breaks are the old distance score and then the cell coordinates, so
+## the choice is deterministic and costs one pass over the visited frontier.
 func _best_attack_action(snapshot: NavigationSnapshot, visited: Array, goal: Vector3i, capability: Dictionary) -> Dictionary:
 	var damage_by_tag: Dictionary = capability.get("damage_per_hit", {})
 	if damage_by_tag.is_empty():
 		return {}
+	var prefer_weakest := bool(capability.get("prefer_weakest", false))
 	var best: Dictionary = {}
 	var best_score := INF
+	var best_integrity := INF
+	var best_cell := Vector3i.MAX
 	for value in visited:
 		var from: Vector3i = value
 		for direction: Vector3i in DIRECTIONS:
 			for height in [0, 1]:
 				var target := from + direction + Vector3i(0, height, 0)
 				var block := snapshot.query_cell(target)
-				if not _is_solid(block) or bool(block.get("protected", false)):
+				var is_trap: bool = prefer_weakest and bool(block.get("trap", false))
+				if not is_trap and not _is_solid(block):
+					continue
+				if bool(block.get("protected", false)):
+					continue
+				if prefer_weakest and not bool(block.get("damageable", true)):
+					# A placed entity with no defence sheet cannot be beaten
+					# down at all, so it is not an obstacle a blocked unit can
+					# choose - however little "integrity" its cell reports.
 					continue
 				var damage := _damage_for(block.get("tags", []), damage_by_tag)
 				if damage <= 0.0:
 					continue
 				var score := _heuristic(from, goal) + float(height) * 0.1
-				if score >= best_score:
-					continue
 				var integrity := maxf(1.0, float(block.get("integrity", 1.0)))
+				if prefer_weakest:
+					if integrity > best_integrity:
+						continue
+					if is_equal_approx(integrity, best_integrity) and not _breaks_tie(score, best_score, target, best_cell):
+						continue
+				elif score >= best_score:
+					continue
 				best_score = score
+				best_integrity = integrity
+				best_cell = target
 				best = {
 					"type": "ATTACK_OBSTRUCTION",
 					"from": from,
@@ -156,6 +185,19 @@ func _best_attack_action(snapshot: NavigationSnapshot, visited: Array, goal: Vec
 					"estimated_hits": ceili(integrity / damage),
 				}
 	return best
+
+
+## Two obstructions with the same integrity left: the nearer one to the goal
+## wins, and if that ties too the lower cell coordinate does, so the same
+## world always produces the same target.
+func _breaks_tie(score: float, best_score: float, cell: Vector3i, best_cell: Vector3i) -> bool:
+	if not is_equal_approx(score, best_score):
+		return score < best_score
+	if cell.x != best_cell.x:
+		return cell.x < best_cell.x
+	if cell.y != best_cell.y:
+		return cell.y < best_cell.y
+	return cell.z < best_cell.z
 
 
 func _damage_for(tags_value: Variant, damage_by_tag: Dictionary) -> float:

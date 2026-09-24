@@ -1441,7 +1441,11 @@ func _basic_raider_capability(node: BasicRaider = null) -> Dictionary:
 		damage["earth"] = raider_damage
 		damage["wood"] = raider_damage
 		damage["stone"] = maxi(1, raider_damage / 3)
-	return {"max_step_up": 1, "max_drop_down": 1, "damage_per_hit": damage}
+	# Owner rule (docs/TRAPS.md): a unit with no route left attacks the
+	# weakest obstacle it can reach - wall, trap or barricade, by integrity
+	# and not by type - and that is the only state in which a trap, which is
+	# otherwise undetected, may be targeted at all.
+	return {"max_step_up": 1, "max_drop_down": 1, "damage_per_hit": damage, "prefer_weakest": true}
 
 
 ## Damage taken by a breached voxel accumulates here until it breaks:

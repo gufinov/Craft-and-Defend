@@ -58,6 +58,8 @@ DERIVED = [
     # Gates card 2 (docs/DEFENSE_SETS.md): the rest of the gate family, each
     # size with the frame built for it.
     "double_gate_frame", "double_gate", "great_gate_frame", "great_gate",
+    # Traps wave 1 (docs/TRAPS.md): the Spike Trap.
+    "spike_trap",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -653,6 +655,30 @@ def icon_rail_turret() -> Image.Image:
     return canvas
 
 
+def icon_spike_trap() -> Image.Image:
+    """An iron floor plate seen from above the lane, its spikes standing up."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    iron = (150, 158, 166, 255)
+    iron_dark = (74, 80, 87, 255)
+    oak = (150, 102, 56, 255)
+    oak_dark = (96, 62, 30, 255)
+    shadow = (40, 44, 49, 255)
+    # The pit under the plate.
+    draw.rectangle([24, 150, 232, 232], fill=shadow)
+    # Spikes standing out of it.
+    for index in range(5):
+        x = 42 + index * 44
+        draw.polygon([(x - 15, 178), (x + 15, 178), (x, 58)], fill=iron, outline=iron_dark, width=4)
+        draw.polygon([(x - 15, 178), (x, 178), (x, 58)], fill=iron_dark)
+    # The oak frame the plate sits in.
+    draw.rectangle([16, 168, 240, 200], fill=oak, outline=oak_dark, width=5)
+    draw.rectangle([16, 200, 240, 236], fill=oak_dark, outline=(62, 40, 20, 255), width=5)
+    for x in range(34, 234, 40):
+        draw.rectangle([x, 204, x + 12, 232], fill=iron_dark)
+    return canvas
+
+
 BUILDERS = {
     "flame_shot": icon_flame_shot, "chest": icon_chest, "cannon": icon_cannon, "cannonball": icon_cannonball,
     "turret_catapult": icon_turret_catapult, "hot_oil": icon_hot_oil, "kettle": icon_kettle, "rail": icon_rail,
@@ -673,6 +699,7 @@ BUILDERS = {
     "gate": icon_gate, "rail_turret": icon_rail_turret,
     "double_gate_frame": icon_double_gate_frame, "double_gate": icon_double_gate,
     "great_gate_frame": icon_great_gate_frame, "great_gate": icon_great_gate,
+    "spike_trap": icon_spike_trap,
 }
 
 

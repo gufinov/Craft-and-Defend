@@ -559,6 +559,7 @@ func _run_gate() -> void:
 	core.clear_for_other_mode()
 	await _run_unstuck_tests()
 	await _run_defense_set_tests()
+	await _run_trap_tests()
 
 
 ## Wave 1 "raiders unstuck" (T196-T198). Each drill runs on its own levelled
@@ -1119,6 +1120,255 @@ func _run_rail_turret_test() -> void:
 
 ## Levels a raider plate at `origin` (waits for the terrain to be editable)
 ## and places the Core of Power that centres the drill on it.
+## Traps (docs/TRAPS.md): the owner's three rules, on their own raider plates.
+## T237 the Spike Trap itself, T238 a trap is never a target while a route
+## remains, T239 a raider with no route attacks the weakest obstacle it can
+## reach. Castle stone is voxel 8 (integrity 90 to the planner).
+const TRAP_CASTLE_STONE := 8
+
+
+func _run_trap_tests() -> void:
+	var normal_ticks := Engine.physics_ticks_per_second
+	Engine.physics_ticks_per_second = int(60.0 * RAIDER_TIME_SCALE)
+	Engine.time_scale = RAIDER_TIME_SCALE
+	await _run_spike_trap_test()
+	await _run_traps_untargeted_test()
+	Engine.time_scale = 1.0
+	Engine.physics_ticks_per_second = normal_ticks
+	await get_tree().process_frame
+	await _run_blocked_raider_test()
+
+
+## T237: a raider that walks onto an armed Spike Trap takes its damage; the
+## trap disarms and re-arms itself after `reset_seconds` (it is furniture, not
+## a charge); a second raider standing on it inside the reset window is
+## unharmed; and the clocks are in the save snapshot and come back from it.
+func _run_spike_trap_test() -> void:
+	var core := app.session.core_defense
+	var ws := app.session.workstations
+	var traps := app.session.trap_service
+	var origin := Vector3i(-40, 0, 4)
+	var plate := await _raider_plate(origin)
+	var core_id := str(plate.get("core_id", ""))
+	var trap_cell := origin + Vector3i(7, 0, 8)
+	app.session.inventory.try_transaction({}, {"spike_trap": 1})
+	var placed := ws.try_place("spike_trap", trap_cell, app.session.world.query_cell, AABB(), 0)
+	var trap_id := str(placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	await get_tree().physics_frame
+	traps.sync()
+	var armed_at_rest := traps.is_armed(trap_id)
+	var drill := core.start_prototype({"raiders": 2})
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	for node in core.raider_nodes():
+		node.active = false
+	var lead: BasicRaider = core.raider
+	var second: BasicRaider = core.extra_raiders[0].node if core.extra_raiders.size() > 0 else null
+	var parking := origin + Vector3i(7, 0, 12)
+	if second != null:
+		second.global_position = Vector3(parking) + Vector3(0.5, 0.9, 0.5)
+
+	# The lead raider steps onto the armed trap.
+	lead.global_position = Vector3(trap_cell) + Vector3(0.5, 0.9, 0.5)
+	await _trap_seconds(traps, 0.4)
+	var lead_health := core.raider_health
+	var disarmed: bool = not traps.is_armed(trap_id)
+	var reset_left := float(traps.state_of(trap_id).get("reset_seconds_left", 0.0))
+
+	# A second raider inside the reset window walks over it untouched.
+	lead.global_position = Vector3(parking) + Vector3(0.5, 0.9, 0.5)
+	if second != null:
+		second.global_position = Vector3(trap_cell) + Vector3(0.5, 0.9, 0.5)
+	await _trap_seconds(traps, 2.0)
+	var second_health := int(core.extra_raiders[0].health) if core.extra_raiders.size() > 0 else -1
+	var still_disarmed: bool = not traps.is_armed(trap_id)
+
+	# It re-arms on its own clock and springs on the next body to stand on it.
+	if second != null:
+		second.global_position = Vector3(parking) + Vector3(0.5, 0.9, 0.5)
+	await _trap_seconds(traps, 5.0)
+	var rearmed := traps.is_armed(trap_id)
+	if second != null:
+		second.global_position = Vector3(trap_cell) + Vector3(0.5, 0.9, 0.5)
+	await _trap_seconds(traps, 0.4)
+	var second_health_after := int(core.extra_raiders[0].health) if core.extra_raiders.size() > 0 else -1
+	var fired_twice: bool = int(traps.state_of(trap_id).get("fired_count", 0)) == 2
+
+	# The clocks ride in the save snapshot: the mid-reset state is written, the
+	# live service is forced back to armed, and the saved record put back on it.
+	var saved: Variant = app.session.snapshot().get("traps", [])
+	var saved_reset := float(traps.state_of(trap_id).get("reset_seconds_left", 0.0))
+	traps.traps[trap_id]["armed"] = true
+	traps.traps[trap_id]["reset_seconds_left"] = 0.0
+	traps.traps[trap_id]["fired_count"] = 0
+	traps.restore(saved)
+	var restored_state := traps.state_of(trap_id)
+	var restored: bool = not bool(restored_state.get("armed", true)) \
+		and is_equal_approx(float(restored_state.get("reset_seconds_left", -1.0)), snappedf(saved_reset, 0.01)) \
+		and int(restored_state.get("fired_count", 0)) == 2
+	var ok: bool = drill.get("ok", false) and not core_id.is_empty() and placed.get("ok", false) \
+		and armed_at_rest and lead_health == core.raider_max_health - 8 and disarmed \
+		and reset_left > 5.0 and reset_left <= 6.0 and second_health == 20 and still_disarmed \
+		and rearmed and second_health_after == 12 and fired_twice and restored
+	_record("T237_SPIKE_TRAP", ok,
+		"a raider standing on an armed Spike Trap takes its 8 damage and the trap disarms for its 6 s reset; a second raider standing on it inside that window is unharmed; the trap re-arms itself and springs on the next body; and the armed state, the reset clock and the fired count are in the session save snapshot and restore from it",
+		{"drill": drill.get("reason"), "plate": plate, "placed": placed.get("reason"), "trap": trap_id,
+		"armed_at_rest": armed_at_rest, "lead_health": lead_health, "disarmed": disarmed,
+		"reset_left": snappedf(reset_left, 0.01), "second_health_in_window": second_health,
+		"still_disarmed": still_disarmed, "rearmed": rearmed, "second_health_after": second_health_after,
+		"fired_count": int(traps.state_of(trap_id).get("fired_count", 0)), "restored": restored_state})
+	core.clear_for_other_mode()
+	ws.try_damage(trap_id, 9999)
+	ws.try_damage(core_id, 9999)
+	await get_tree().process_frame
+
+
+## T238: a trap is undetected. A raider with a route walks over one - here the
+## only gap in a wall across its lane is the trap's own cell - without ever
+## naming it a target and without taking a single point off it; the trap
+## still springs on the way past.
+func _run_traps_untargeted_test() -> void:
+	var core := app.session.core_defense
+	var ws := app.session.workstations
+	var world := app.session.world
+	var traps := app.session.trap_service
+	var origin := Vector3i(-60, 0, 56)
+	var plate := await _raider_plate(origin)
+	var core_id := str(plate.get("core_id", ""))
+	var trap_cell := origin + Vector3i(7, 0, 8)
+	for x in range(RAIDER_PLATE_SIZE.x):
+		if x == 7:
+			continue
+		for y in range(2):
+			world.set_cell(origin + Vector3i(x, y, 8), TRAP_CASTLE_STONE)
+	app.session.inventory.try_transaction({}, {"spike_trap": 1})
+	var placed := ws.try_place("spike_trap", trap_cell, world.query_cell, AABB(), 0)
+	var trap_id := str(placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	await get_tree().physics_frame
+	traps.sync()
+	var drill := core.start_prototype()
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	var route := core.last_route_reason
+	var targets: Dictionary = {}
+	var crossed := false
+	var seconds := 0.0
+	while seconds < 30.0 and core.state != CoreDefenseService.ATTACKING_CORE:
+		await get_tree().physics_frame
+		seconds += 1.0 / 60.0
+		traps.advance(1.0 / 60.0, false)
+		targets[core.active_target_type + ":" + core.active_target_id] = true
+		if is_instance_valid(core.raider) and core.raider.feet_cell() == trap_cell:
+			crossed = true
+	var reached: bool = core.state == CoreDefenseService.ATTACKING_CORE
+	var integrity := int(ws.defense_status(trap_id).get("details", {}).get("integrity", -1))
+	var sprang: bool = int(traps.state_of(trap_id).get("fired_count", 0)) >= 1
+	var named_trap := false
+	for key: String in targets:
+		if key.ends_with(":" + trap_id):
+			named_trap = true
+	var ok: bool = drill.get("ok", false) and not core_id.is_empty() and placed.get("ok", false) \
+		and route == "OK" and crossed and reached and not named_trap and integrity == 24 and sprang \
+		and core.raider_health == core.raider_max_health - 8
+	_record("T238_TRAPS_UNTARGETED", ok,
+		"a raider whose only way through a wall is over a Spike Trap routes straight over it, never names the trap (or the wall) as a target, takes the trap's damage in passing and reaches the core with the trap still at full integrity",
+		{"drill": drill.get("reason"), "plate": plate, "route": route, "targets": targets.keys(),
+		"crossed": crossed, "reached": reached, "trap_integrity": integrity, "fired": sprang,
+		"raider_health": core.raider_health, "seconds": snappedf(seconds, 0.01), "state": core.state})
+	core.clear_for_other_mode()
+	ws.try_damage(trap_id, 9999)
+	ws.try_damage(core_id, 9999)
+	for x in range(RAIDER_PLATE_SIZE.x):
+		for y in range(2):
+			world.set_cell(origin + Vector3i(x, y, 8), 0)
+	await get_tree().process_frame
+
+
+## T239: a raider sealed in a castle-stone box with no route attacks the
+## weakest thing it can reach, by integrity and not by type. With a Spike Trap
+## (24) and a Wood Barricade (30) in reach it goes for the trap; with the
+## barricade beaten down to 5 it goes for the barricade instead.
+func _run_blocked_raider_test() -> void:
+	var core := app.session.core_defense
+	var ws := app.session.workstations
+	var world := app.session.world
+	var traps := app.session.trap_service
+	var origin := Vector3i(-60, 0, 4)
+	var plate := await _raider_plate(origin)
+	var core_id := str(plate.get("core_id", ""))
+	var spawn := origin + Vector3i(7, 0, 3)
+	var trap_cell := spawn + Vector3i(1, 0, 0)
+	var barricade_cell := spawn + Vector3i(0, 0, -2)
+	var box: Array[Vector3i] = []
+	for x in range(-2, 3):
+		for z in range(-2, 3):
+			if absi(x) != 2 and absi(z) != 2:
+				continue
+			var cell := spawn + Vector3i(x, 0, z)
+			if cell == barricade_cell:
+				continue
+			box.append(cell)
+			for y in range(2):
+				world.set_cell(cell + Vector3i(0, y, 0), TRAP_CASTLE_STONE)
+	app.session.inventory.try_transaction({}, {"spike_trap": 1, "wood_barricade": 1})
+	var trap_placed := ws.try_place("spike_trap", trap_cell, world.query_cell, AABB(), 0)
+	var barricade_placed := ws.try_place("wood_barricade", barricade_cell, world.query_cell, AABB(), 0)
+	var trap_id := str(trap_placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	var barricade_id := str(barricade_placed.get("details", {}).get("station", {}).get("instance_id", ""))
+	await get_tree().physics_frame
+	traps.sync()
+	var drill := core.start_prototype()
+	core.warning_remaining = 0.0
+	core._begin_attack()
+	if is_instance_valid(core.raider):
+		core.raider.active = false
+	var weakest_reason := core.last_route_reason
+	var weakest_target := core.active_target_id
+	var weakest_type := core.active_target_type
+	var before := int(ws.defense_status(trap_id).get("details", {}).get("integrity", -1))
+	core._attack_structure()
+	var after := int(ws.defense_status(trap_id).get("details", {}).get("integrity", -1))
+
+	# The same box with the barricade beaten down below the trap: the raider
+	# switches to the barricade, because it compares integrity and not type.
+	ws.restore_integrity(trap_id)
+	ws.try_damage(barricade_id, 25)
+	var barricade_left := int(ws.defense_status(barricade_id).get("details", {}).get("integrity", -1))
+	core._plan_from_raider()
+	var second_reason := core.last_route_reason
+	var second_target := core.active_target_id
+	var ok: bool = drill.get("ok", false) and not core_id.is_empty() and trap_placed.get("ok", false) \
+		and barricade_placed.get("ok", false) and weakest_reason == "ATTACK_OBSTRUCTION" \
+		and weakest_type == "structure" and weakest_target == trap_id and before == 24 \
+		and after == 24 - core.raider_damage and barricade_left == 5 \
+		and second_reason == "ATTACK_OBSTRUCTION" and second_target == barricade_id
+	_record("T239_BLOCKED_RAIDER", ok,
+		"a raider sealed in castle stone with no route picks the weakest obstacle it can reach: the Spike Trap at 24 over the Wood Barricade at 30 and the 90-integrity stone, and it really damages it; once the barricade is beaten down to 5 the same raider picks the barricade instead",
+		{"drill": drill.get("reason"), "plate": plate, "reason": weakest_reason, "type": weakest_type,
+		"target": weakest_target, "trap": trap_id, "barricade": barricade_id,
+		"trap_integrity_before": before, "trap_integrity_after": after,
+		"barricade_left": barricade_left, "second_reason": second_reason, "second_target": second_target,
+		"box_cells": box.size(), "traps_known": traps.traps.size()})
+	core.clear_for_other_mode()
+	ws.try_damage(trap_id, 9999)
+	ws.try_damage(barricade_id, 9999)
+	ws.try_damage(core_id, 9999)
+	for cell in box:
+		for y in range(2):
+			world.set_cell(cell + Vector3i(0, y, 0), 0)
+	await get_tree().process_frame
+
+
+## Runs `seconds` of trap simulation: the service is ticked by hand at the
+## rate GameSession would, because the gate holds the session paused.
+func _trap_seconds(traps: TrapService, seconds: float) -> void:
+	var elapsed := 0.0
+	while elapsed < seconds:
+		await get_tree().physics_frame
+		elapsed += 1.0 / 60.0
+		traps.advance(1.0 / 60.0, false)
+
+
 func _raider_plate(origin: Vector3i) -> Dictionary:
 	var ws := app.session.workstations
 	var world := app.session.world

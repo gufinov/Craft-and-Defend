@@ -89,6 +89,23 @@ Eating is a struggle. *Proposal:* hunger meter that drains with time and sprinti
 - **P4a-3 supply**: a **Chest** entity (2×1 like the trough) and an **auto-reload** rule: an empty weapon takes ammunition from the nearest chest within `supply_radius` that holds its `ammo_item`. Same rule later feeds foundry queues — "auto-distribution" is this rule generalised to any consumer with a need list.
 - **P4a-4 shot types**: `stone_shot` (impact damage) and `flame_shot` (impact fire). Fire is a world effect: a burning cell lights, damages entities on it, expires after `burn_seconds` on non-flammable material, and on `flammable` material (planks, log, barricade, gate) consumes the block over `fuel_seconds` then spreads to flammable neighbours with probability per tick. Needs the voxel-breaching path (P4c) since fire removes blocks.
 
+## 12. Traps (owner direction 2026-09-24, implemented)
+
+Traps are **undetected**: an attacker with a route never targets one and never
+damages one walking over it. They are **persistent, not consumable** — each has
+a balanced reset time after it fires, like Orcs Must Die. An attacker a trap
+leaves with no route to the core **attacks the weakest obstacle it can reach**,
+comparing integrity and not type, and that is the only state in which a trap is
+attacked at all.
+
+The wave-1 card built the whole spine — `TrapService`, the Spike Trap, both
+raider rules and a Trap Range in the Development Expo — with every trap's
+tuning in a `trap` attribute block on its content sheet, so tar, wall blades, a
+spring plate and a ceiling dropper are content. See [Traps](TRAPS.md). (The
+card named a `DIRECTION_DEFENCE_AND_RTS.md` sections C and F; that document
+does not exist in the repository, so this section and TRAPS.md carry the
+direction.)
+
 ## 8. Suggested sequencing
 
 1. **P3I** Furnace auto-processing (small; also needed so refining gold is hands-off).

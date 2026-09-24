@@ -170,10 +170,19 @@ const BATTLEFIELD_WAVE := 6
 const BATTLEFIELD_BRUTES := 2
 const BATTLEFIELD_TROLLS := 2
 const BATTLEFIELD_SPAWN_DISTANCE := 28
+## Traps (docs/TRAPS.md): the Trap Range's own scenario. The same pedestal
+## entity stands in it, and the panel drives whichever scenario the pedestal
+## the player opened belongs to - a short lane wants a small wave on the line
+## just north of it, not the Battlefield's mixed assault.
+const TRAP_RANGE_RESET_GROUP := "trap_range"
+const TRAP_RANGE_WAVE := 3
+const TRAP_RANGE_SPAWN_DISTANCE := 8
 ## Development Expo Battlefield control station (docs/DEVELOPMENT_EXPO.md):
 ## the two buttons the in-world pedestal opens.
 var battlefield_panel: Control
 var battlefield_status_label: Label
+var battlefield_title_label: Label
+var battlefield_reset_button: Button
 var _battlefield_station_id := ""
 ## The Expo Directory (docs/DEVELOPMENT_EXPO.md, card D1): Development mode
 ## only, opened with the raw key K (docs/KEYBINDS.md).
@@ -2324,14 +2333,16 @@ func _build_battlefield_control(canvas: CanvasLayer) -> void:
 	battlefield_panel = _full_panel(Color(0.05, 0.03, 0.035, 0.94))
 	canvas.add_child(battlefield_panel)
 	var box := _centered_box(battlefield_panel, Vector2(720, 520))
-	box.add_child(_title("BATTLEFIELD CONTROL", 30))
+	battlefield_title_label = _title("BATTLEFIELD CONTROL", 30)
+	box.add_child(battlefield_title_label)
 	battlefield_status_label = _centered_label("")
 	battlefield_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	battlefield_status_label.custom_minimum_size = Vector2(640, 0)
 	battlefield_status_label.add_theme_font_size_override("font_size", 18)
 	box.add_child(battlefield_status_label)
 	box.add_child(_button("START ATTACK", _battlefield_start_pressed))
-	box.add_child(_button("RESET BATTLEFIELD", _battlefield_reset_pressed))
+	battlefield_reset_button = _button("RESET BATTLEFIELD", _battlefield_reset_pressed)
+	box.add_child(battlefield_reset_button)
 	box.add_child(_spacer(6))
 	box.add_child(_button("Close", _close_battlefield_control))
 
@@ -2365,24 +2376,42 @@ func _refresh_battlefield_panel() -> void:
 	if battlefield_status_label == null or session == null:
 		return
 	var core_defense: CoreDefenseService = session.core_defense
+	var group := control_group()
+	var trap_range: bool = group == TRAP_RANGE_RESET_GROUP
+	if battlefield_title_label != null:
+		battlefield_title_label.text = "TRAP RANGE CONTROL" if trap_range else "BATTLEFIELD CONTROL"
+	if battlefield_reset_button != null:
+		battlefield_reset_button.text = "RESET TRAP RANGE" if trap_range else "RESET BATTLEFIELD"
 	var lines := "ESCAPE CLOSES  ·  THE WORLD KEEPS RUNNING"
 	if core_defense != null and core_defense.is_active():
 		lines += "\n\n" + core_defense.hud_text()
+	elif trap_range:
+		lines += "\n\nNo attack is running. START ATTACK musters %d attackers on the line north of the lane and sends them down it at this Core. Watch the Spike Traps: an attacker with a route walks over them and never turns on them." % TRAP_RANGE_WAVE
 	else:
 		lines += "\n\nNo attack is running. START ATTACK musters %d attackers on the far line — %d brutes, %d trolls, the rest orcs — and sends them at this Core." % [BATTLEFIELD_WAVE, BATTLEFIELD_BRUTES, BATTLEFIELD_TROLLS]
-	lines += "\n\nRESET BATTLEFIELD restores this arena and nothing else: the attackers go, both cores, the fortification, the batteries and their ammunition come back. Every other district is left exactly as it stands."
+	if trap_range:
+		lines += "\n\nRESET TRAP RANGE restores this lane and nothing else: the attackers go, the Core, the walls and every Spike Trap come back at full integrity. Every other district is left exactly as it stands."
+	else:
+		lines += "\n\nRESET BATTLEFIELD restores this arena and nothing else: the attackers go, both cores, the fortification, the batteries and their ammunition come back. Every other district is left exactly as it stands."
 	battlefield_status_label.text = lines
 
 
 ## START ATTACK: a representative mixed assault on the Battlefield's own Core,
 ## through the ordinary core-defense drill. No new wave code and no ambient
 ## pressure anywhere else in the Expo.
-func battlefield_start_attack() -> Dictionary:
+func battlefield_start_attack(group: String = "") -> Dictionary:
 	if session == null or session.core_defense == null:
 		return {"ok": false, "reason": "NO_SESSION"}
-	var core_id := battlefield_core_station_id()
+	var scenario := group if not group.is_empty() else control_group()
+	var core_id := battlefield_core_station_id(scenario)
 	if core_id.is_empty():
 		return {"ok": false, "reason": "NO_BATTLEFIELD_CORE"}
+	if scenario == TRAP_RANGE_RESET_GROUP:
+		# The Trap Range (docs/TRAPS.md): a small wave on the short line, no
+		# brutes or trolls - the point of the lane is the traps, not the mix.
+		return session.core_defense.start_prototype({
+			"raiders": TRAP_RANGE_WAVE, "spawn_distance": TRAP_RANGE_SPAWN_DISTANCE,
+			"core_station_id": core_id})
 	return session.core_defense.start_prototype({
 		"raiders": BATTLEFIELD_WAVE, "brutes": BATTLEFIELD_BRUTES, "trolls": BATTLEFIELD_TROLLS,
 		"spawn_distance": BATTLEFIELD_SPAWN_DISTANCE, "core_station_id": core_id})
@@ -2390,16 +2419,36 @@ func battlefield_start_attack() -> Dictionary:
 
 ## RESET BATTLEFIELD: the `battlefield` scenario reset group (ExpoResetService),
 ## reached through card A's `DevelopmentMode.reset_group` seam.
-func battlefield_reset() -> Dictionary:
+func battlefield_reset(group: String = "") -> Dictionary:
 	if session == null or development == null:
 		return {"ok": false, "reason": "NO_SESSION"}
-	return development.reset_group(session, BATTLEFIELD_RESET_GROUP)
+	return development.reset_group(session, group if not group.is_empty() else control_group())
+
+
+## The scenario the open control pedestal belongs to: the reset group whose
+## boundary contains it. Since the traps card the Expo has two pedestals (the
+## Battlefield and the Trap Range) and one panel drives either of them; with
+## no pedestal open (the gates call these directly) it is the Battlefield.
+func control_group() -> String:
+	if session == null or development == null or development.expo_builder == null or _battlefield_station_id.is_empty():
+		return BATTLEFIELD_RESET_GROUP
+	var record: Dictionary = session.workstations.station(_battlefield_station_id)
+	if record.is_empty():
+		return BATTLEFIELD_RESET_GROUP
+	var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+	var service: ExpoResetService = development.expo_builder.reset_service
+	for group: String in service.groups():
+		if group.begins_with("district:"):
+			continue
+		if service.contains(group, anchor):
+			return group
+	return BATTLEFIELD_RESET_GROUP
 
 
 ## The Core of Power standing inside the Battlefield's reset boundary. The Expo
 ## has more than one core (the plaza's is the other), so the drill is told
 ## which one this scenario is about instead of taking the first one placed.
-func battlefield_core_station_id() -> String:
+func battlefield_core_station_id(group: String = BATTLEFIELD_RESET_GROUP) -> String:
 	if session == null or session.workstations == null or development == null or development.expo_builder == null:
 		return ""
 	var service: ExpoResetService = development.expo_builder.reset_service
@@ -2407,7 +2456,7 @@ func battlefield_core_station_id() -> String:
 		var record: Dictionary = session.workstations.stations[instance_id]
 		if str(record.get("entity_id", "")) != CoreDefenseService.CORE_ENTITY:
 			continue
-		if service.contains(BATTLEFIELD_RESET_GROUP, record.get("anchor", Vector3i.ZERO)):
+		if service.contains(group, record.get("anchor", Vector3i.ZERO)):
 			return instance_id
 	return ""
 
@@ -2416,7 +2465,7 @@ func _battlefield_start_pressed() -> void:
 	if state != AppState.BATTLEFIELD:
 		return
 	var started := battlefield_start_attack()
-	_set_feedback("A mixed wave is mustering on the far line." if started.get("ok", false)
+	_set_feedback("A wave is mustering on the line." if started.get("ok", false)
 		else "Attack refused: %s" % str(started.get("reason", "")).replace("_", " ").to_lower())
 	_refresh_battlefield_panel()
 
@@ -2425,7 +2474,7 @@ func _battlefield_reset_pressed() -> void:
 	if state != AppState.BATTLEFIELD:
 		return
 	var done := battlefield_reset()
-	_set_feedback("Battlefield restored; the rest of the Expo is untouched." if done.get("ok", false)
+	_set_feedback("Scenario restored; the rest of the Expo is untouched." if done.get("ok", false)
 		else "Reset refused: %s" % str(done.get("reason", "")).replace("_", " ").to_lower())
 	_refresh_battlefield_panel()
 
