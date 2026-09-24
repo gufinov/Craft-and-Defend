@@ -92,6 +92,10 @@ const RIDE_TIMEOUT_MSEC := 240000
 var app: CraftAndDefendApp
 var failures: Array[String] = []
 var records: Array[Dictionary] = []
+## Gates card 2: what the Construction Yard's two new gate booths looked like
+## when the player was standing in that district. T231 is recorded later, once
+## RESET BATTLEFIELD has had its say about the fortification's gate.
+var _gate_booths: Dictionary = {}
 
 
 func run(application: CraftAndDefendApp, mode: String) -> void:
@@ -135,6 +139,7 @@ func _run_gate() -> void:
 	await _test_industry()
 	await _test_lighting()
 	await _test_construction_yard()
+	_survey_gate_booths()
 	await _test_coaster_gallery()
 	# The live scenarios need the services running: the Defense Range's reload
 	# is `siege_defense.advance` doing its ordinary work, the Battlefield is a
@@ -144,6 +149,7 @@ func _run_gate() -> void:
 	app.session.simulation_paused = false
 	await _test_defense_range()
 	await _test_battlefield()
+	await _test_gate_family()
 	await _test_grand_coaster()
 	await _settle_near_spawn()
 
@@ -205,6 +211,50 @@ func _run_visual() -> void:
 	var industry_path := app.data_root.path_join("development-expo-industry.png")
 	var industry_shot := await _save_viewport(industry_path)
 	_record("T216V_INDUSTRY_VIEW", industry_shot, "rendered evidence of the Industry chain: the ore face with its Miner and Ore Bin, the rail out of the mountain and the cart on it", {"path": industry_path})
+	# Gates card 2: the Construction Yard's two new gate booths, looked at from
+	# the visitor's side, so the Great Gate's four-wide opening and the
+	# catapult parked beyond it are in one frame with the Double Gate beside.
+	var great_parcel := app.development.layout.parcel_for("cy_great_gate")
+	var double_parcel := app.development.layout.parcel_for("cy_double_gate")
+	if not great_parcel.is_empty() and not double_parcel.is_empty():
+		var great_origin: Vector3i = great_parcel["origin"]
+		var great_size: Vector3i = great_parcel["size"]
+		var double_origin: Vector3i = double_parcel["origin"]
+		var double_size: Vector3i = double_parcel["size"]
+		# Standing in the Great Gate booth's own reading cell, at eye height,
+		# looking straight through the four-wide opening at the catapult parked
+		# beyond it - with the leaves drawn back, because "a catapult fits
+		# through easily" is a claim about the OPEN gate. That is the whole
+		# claim of the size, in one frame.
+		for leaf_id: String in _stations_in(_parcel_box("cy_great_gate"), "great_gate"):
+			app.session.workstations.set_gate_open(leaf_id, true)
+		# A booth is only as deep as its parcel, so the eye stands in its
+		# reading cell and looks slightly across the opening: dead ahead at
+		# that range is a close-up of two bars and nothing else.
+		var gates_eye := Vector3(float(great_origin.x) + 4.5, float(great_origin.y) + 2.6, float(great_origin.z + great_size.z) - 0.5)
+		var gates_target := Vector3(float(great_origin.x) + 6.5, float(great_origin.y) + 1.0, float(great_origin.z) + 0.5)
+		_teleport(gates_eye)
+		if not await _wait_built("construction yard", _district_owners(["construction_yard"])):
+			return
+		_look_from(gates_eye, gates_target)
+		for _frame in range(60):
+			await get_tree().process_frame
+		_look_from(gates_eye, gates_target)
+		await get_tree().process_frame
+		var gates_path := app.data_root.path_join("development-expo-gate-family.png")
+		var gates_shot := await _save_viewport(gates_path)
+		_record("T231V_GREAT_GATE_VIEW", gates_shot, "rendered evidence of the Great Gate: the leaves drawn back to a four-wide, four-high opening with a catapult parked beyond it, seen from the booth's reading cell", {"path": gates_path})
+		var double_eye := Vector3(float(double_origin.x) + 4.5, float(double_origin.y) + 2.4, float(double_origin.z + double_size.z) - 0.5)
+		var double_target := Vector3(float(double_origin.x) + 3.5, float(double_origin.y) + 1.2, float(double_origin.z) + 1.5)
+		_teleport(double_eye)
+		_look_from(double_eye, double_target)
+		for _frame in range(60):
+			await get_tree().process_frame
+		_look_from(double_eye, double_target)
+		await get_tree().process_frame
+		var double_path := app.data_root.path_join("development-expo-double-gate.png")
+		var double_shot := await _save_viewport(double_path)
+		_record("T231V_DOUBLE_GATE_VIEW", double_shot, "rendered evidence of the Double Gate: two leaves meeting in the middle of a two-wide, three-high opening, hung shut in its own frame", {"path": double_path})
 	# The light walk, looked down the roofed gallery from the open west end.
 	var pavilion := app.development.layout.parcel_for("light_pavilion")
 	var pavilion_origin: Vector3i = pavilion["origin"]
@@ -1054,6 +1104,79 @@ func _test_construction_yard() -> void:
 		"wall_kit": {"stone": kit_stone, "walk": kit_walk, "merlons": kit_merlons, "stairs": kit_stairs},
 		"castle": {"stone": castle_stone, "gate": castle_gate, "platform": castle_platform, "stairs": castle_stairs},
 		"reserved_empty": reserved_empty})
+
+
+## Gates card 2 (docs/DEFENSE_SETS.md): the Double Gate and the Great Gate get
+## a booth each in the Construction Yard, and a catapult is parked beyond the
+## Great Gate so the four-wide claim is something the owner can see rather than
+## read. Surveyed here, while the player is in the district; recorded by
+## `_test_gate_family` once the Battlefield has been reset.
+func _survey_gate_booths() -> void:
+	var workstations: WorkstationService = app.session.workstations
+	var double_box := _parcel_box("cy_double_gate")
+	var great_box := _parcel_box("cy_great_gate")
+	var double_leaves := _stations_in(double_box, "double_gate")
+	var great_leaves := _stations_in(great_box, "great_gate")
+	var catapults := _stations_in(great_box, "catapult")
+	var span_ok := false
+	if not great_leaves.is_empty() and not catapults.is_empty():
+		# The parked catapult is narrower than the opening and sits inside it.
+		var leaf_anchor: Vector3i = workstations.station(great_leaves[0]).get("anchor", Vector3i.ZERO)
+		var opening: Vector2i = workstations.gate_opening("great_gate")
+		var catapult_anchor: Vector3i = workstations.station(catapults[0]).get("anchor", Vector3i.ZERO)
+		var width := 0
+		for offset: Vector3i in workstations._vector_list(app.session.registry.entity("catapult").get("occupied_offsets", [])):
+			width = maxi(width, offset.x + 1)
+		span_ok = catapult_anchor.x >= leaf_anchor.x and catapult_anchor.x + width <= leaf_anchor.x + opening.x \
+			and opening.x - width >= 2
+	_gate_booths = {
+		"double_framed": not _stations_in(double_box, "double_gate_frame").is_empty(),
+		"double_hung": not double_leaves.is_empty(),
+		"double_shut": not double_leaves.is_empty() and not workstations.gate_is_open(double_leaves[0]),
+		"double_signed": _sign_placed("cy_double_gate"),
+		"great_framed": not _stations_in(great_box, "great_gate_frame").is_empty(),
+		"great_hung": not great_leaves.is_empty(),
+		"great_shut": not great_leaves.is_empty() and not workstations.gate_is_open(great_leaves[0]),
+		"great_signed": _sign_placed("cy_great_gate"),
+		"catapult_beyond": not catapults.is_empty(),
+		"catapult_fits_opening": span_ok,
+	}
+
+
+## T231: the two new booths stand signed in the Construction Yard with a
+## catapult parked beyond the Great Gate, and the Battlefield's own gate is
+## still hung shut again by RESET BATTLEFIELD now that a gate is a family
+## rather than one entity id.
+func _test_gate_family() -> void:
+	var workstations: WorkstationService = app.session.workstations
+	var reset_service: ExpoResetService = app.development.expo_builder.reset_service
+	var bounds: Dictionary = reset_service.group_bounds("battlefield")
+	var battlefield_gates: Array[String] = []
+	for instance_id: String in workstations.stations.keys():
+		if workstations.is_gate(instance_id) and _inside(bounds, workstations.stations[instance_id].get("anchor", Vector3i.ZERO)):
+			battlefield_gates.append(instance_id)
+	var opened: Array[bool] = []
+	for instance_id: String in battlefield_gates:
+		workstations.set_gate_open(instance_id, true)
+		opened.append(workstations.gate_is_open(instance_id))
+	var reset := app.battlefield_reset()
+	if not await _wait_built("battlefield gate reset", _district_owners(["battlefield"])):
+		return
+	var shut_again := true
+	for instance_id: String in battlefield_gates:
+		if workstations.gate_is_open(instance_id):
+			shut_again = false
+	app.session.core_defense.clear_for_other_mode()
+	var booths_ok := true
+	for key: String in _gate_booths.keys():
+		if not bool(_gate_booths[key]):
+			booths_ok = false
+	var ok: bool = booths_ok and not battlefield_gates.is_empty() and not opened.has(false) \
+		and bool(reset.get("ok", false)) and shut_again
+	_record("T231_GATE_EXPO", ok,
+		"the Construction Yard stands a signed Double Gate booth and a signed Great Gate booth, each with its own frame and its leaf hung shut, and a catapult parked beyond the Great Gate whose two-cell width sits inside the four-cell opening with room to spare; and every gate inside the Battlefield reset group - now that a gate is a family of sizes rather than one entity id - is hung shut again by RESET BATTLEFIELD",
+		{"booths": _gate_booths, "battlefield_gates": battlefield_gates, "opened": opened,
+		"reset": reset.get("reason"), "shut_again": shut_again})
 
 
 ## T219: every Defense Range booth (seven since the defence sets card added

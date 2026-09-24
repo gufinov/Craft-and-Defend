@@ -70,6 +70,105 @@ released, the frame stands, and the gateway is open.
   cell outside the frame, through whatever stands there. Sliding into the jamb
   is honest and stays inside the frame's own footprint.
 
+## 1b. The gate family, and the close that never happened
+
+Owner, 2026-09-24: *"I could open the gate, but not close it."* and *"There need
+to be more than 1 type of gate. We need big gates too. Very big, so a catapult
+can fit through easily 4 blocks wide."*
+
+### Why the close never happened
+
+`_apply_gate_state` disables the leaf's `GateBlocker` shapes when the gate
+opens — and those shapes are the leaf's **only** collision. `_raycast_station`
+is a physics ray, so with the blockers off the aim flew straight through the
+opening, `InteractionService.secondary_press_from_view` found no station at
+all and fell through to a placement (`UNSUPPORTED`). `toggle_gate` was never
+reached. The gate was not stuck: it was **unaimable**. T226 never saw it
+because it called `toggle_gate` directly.
+
+The leaf cannot simply keep a collider — anything solid left in the opening is
+exactly the wall an open gate is not. So `_raycast_station` now falls back to
+reading the aim line's own cells for an **open** gate, and only as far as the
+physics ray already reached: reachable through its own opening, never through
+the wall beside it. A shut gate is solid and is found by the ray as it always
+was. **T229_GATE_TOGGLE** drives the real interact path both ways, twice.
+
+### Three sizes, one behaviour
+
+`WorkstationService` no longer knows `"gate"` as an entity id but as a family
+(`GATE_ENTITIES`, `GATE_FRAME_ENTITIES` — the idiom `SIGN_ENTITIES` already
+used), and every rule reads the leaf's own footprint through `gate_opening()`
+instead of the 1 × 2 the first gate happened to be. **A size is a row in
+`contracts/content.json`, not code.** That was the smaller change: three
+entities over one shared behaviour, against one entity carrying a
+`gate_width` attribute that every rule would still have had to branch on.
+
+| | Gate | Double Gate | Great Gate |
+|---|---|---|---|
+| Opening | 1 × 2 | 2 × 3 | **4 × 4** |
+| Leaves | one, into the jamb | two, meeting in the middle | two, meeting in the middle |
+| Frame | `gate_frame` 3 × 3 | `double_gate_frame` 4 × 4 | `great_gate_frame` 8 × 5 |
+| Jamb | 1 cell | 1 cell | 2 cells |
+| Integrity | 120 | 260 | 480 |
+| Recipe order | 220 (frame 120) | 223 (frame 222) | 226 (frame 224) |
+
+**A frame's jambs are half a leaf thick.** That is the whole geometry rule: an
+open leaf slides its own half-width sideways and ends up *inside real frame
+geometry*, at every size, so nothing ever pokes out through the wall beside the
+gateway. It is why the Great Gate's frame is eight cells wide for a four-cell
+opening. The bars, the blockers and the slide are all generated from
+`gate_opening()`, so `_build_gate_visual` has no size in it.
+
+**A frame refuses a blocked site.** The opening is deliberately not part of the
+frame's footprint — you walk through it — so nothing would have stopped a
+player raising a gateway around a boulder and only finding out when the leaf
+refused to hang. `gate_frame_opening_offsets()` derives the opening from the
+frame's own socket offset and footprint, and placement refuses with
+`OPENING_BLOCKED`.
+
+**The size claim is testable, not asserted.** A catapult is two cells wide and
+one high. The Great Gate's opening is four by four: a clear cell each side and
+three of headroom. **T230_GATE_SIZES** measures both footprints from the
+content rather than hard-coding them, and parks a real catapult in the opening's
+span.
+
+### Calls made
+
+- **Recipe orders run 222-224 and 226, one past the allocated 222-224 block.**
+  The family needs four recipes (two leaves and two frames), and the card
+  allocated three. The card flagged it for the merge rather than renumbering
+  anything existing; the merge settled the clash with the signs card by leaving
+  the District Board at 225 and moving the Great Gate's leaf to 226, so the
+  book reads frame, leaf, frame, District Board, Great Gate.
+- **Costs are capped by the crafting grid.** A workbench recipe may total nine
+  items (`validate_foundation`), so a Great Gate cannot cost proportionally
+  more than a Gate. The ramp is within that ceiling: 9 castle stone for the
+  Double Gate's frame, 8 + 1 iron for the Great Gate's, 5 + 3 iron and
+  4 + 5 iron for the leaves.
+- **Integrity is flattened, not proportional.** 16 cells of Great Gate at the
+  small gate's 60 per cell would be 960, which a basic raider chews at 2 per
+  hit. 480 keeps it a serious obstacle without being an immortal wall.
+- **`station_type` is each gate's own id**, not a shared `"gate"`:
+  `validate_foundation` requires `station_type == entity["id"]`. Nothing
+  compares against the literal - `GameSession` routes a right-click by
+  `is_gate_entity`, and the UI only needs the type to be non-empty.
+- **The wide gates do not swing or lift.** Swinging puts collision a cell
+  outside the frame; lifting a four-high portcullis needs a gatehouse above the
+  lintel that the placement rules would then have to find room for. Parting
+  into two-cell jambs stays inside the frame's own footprint, which is the rule
+  the one-cell gate already followed.
+
+### Expo
+
+| District | Exhibit | Shows |
+|---|---|---|
+| Construction Yard | `cy_double_gate` | The 2 × 3 gate hung shut in its own frame |
+| Construction Yard | `cy_great_gate` | The 4 × 4 gate with a **catapult parked beyond it**, so the width claim is something you look through rather than read |
+
+Both boards stand at the opening (`sign_anchor`). **T231_GATE_EXPO** checks
+both booths and that RESET BATTLEFIELD still hangs every gate in the reset
+group shut now that `is_gate` covers a family.
+
 ## 2. The wall kit
 
 `wall_kit_8` is a new blueprint in the existing catalogue
@@ -168,7 +267,10 @@ side, where nothing else stands.
 
 ## Acceptance
 
-- `--p4-siege-units-automation=gate`: **T226_GATE**, **T228_RAIL_TURRET**
+- `--p4-siege-units-automation=gate`: **T226_GATE**, **T228_RAIL_TURRET**,
+  **T229_GATE_TOGGLE** (the close, through the real interact path),
+  **T230_GATE_SIZES** (the family)
+- `--development-expo-automation=gate`: **T231_GATE_EXPO**
 - `--p3k-blueprint-automation=gate`: **T227_WALL_KIT**
 - `python -m unittest discover -s tests` guards the kit blueprint's entity rows
   and the finished section's contents; `python tools/validate_foundation.py`
@@ -176,8 +278,10 @@ side, where nothing else stands.
 
 ## Boundary and next
 
-No lever, plate or drawbridge; no gate wider than one cell; no portcullis that
-drops on a timer. The wall kit is a single eight-cell length — no dragged run
+No lever, plate or drawbridge; no portcullis that drops on a timer. The gate
+family stops at three sizes and the widest is four cells; there is no dragged
+run of gates and no player-authored size. The two wide gates share the small
+gate's presentation vocabulary (a slide, not a swing or a lift). The wall kit is a single eight-cell length — no dragged run
 of kits, and no player-authored kits. The rail turret does not route through
 loop or slope joints any better than the kettle does, and its rail position is
 still not saved (it re-homes to its anchor on load, as the kettle always has).

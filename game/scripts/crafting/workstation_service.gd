@@ -22,6 +22,17 @@ const SIGN_ENTITIES: Array[String] = [SIGN_ENTITY, SIGN_BOARD_ENTITY, SIGN_BOARD
 ## frame's opening. Right-click toggles it; closed it is solid to pathing and
 ## breachable like the rest of the castle kit, open it is a hole in the wall.
 const GATE_ENTITY := "gate"
+## Gates card 2 (owner 2026-09-24): "There need to be more than 1 type of gate.
+## We need big gates too. Very big, so a catapult can fit through easily 4
+## blocks wide." Three sizes, ONE behaviour - every rule below reads the leaf's
+## own footprint instead of the 1 x 2 the first gate happened to be, so a size
+## is content (a row in `contracts/content.json`), not code.
+const DOUBLE_GATE_ENTITY := "double_gate"
+const GREAT_GATE_ENTITY := "great_gate"
+const GATE_ENTITIES: Array[String] = [GATE_ENTITY, DOUBLE_GATE_ENTITY, GREAT_GATE_ENTITY]
+## The frame each size hangs in. Its jambs are half a leaf thick, so an open
+## leaf slides entirely inside the frame's own footprint however wide it is.
+const GATE_FRAME_ENTITIES: Array[String] = ["gate_frame", "double_gate_frame", "great_gate_frame"]
 ## How long the leaf takes to slide clear (presentation only; the pathing
 ## change is immediate, as a pulled lever would be).
 const GATE_SLIDE_SECONDS := 0.55
@@ -71,6 +82,8 @@ func preview_placement(entity_id: String, anchor: Vector3i, rotation_quarters: i
 	var validated := footprints.validate_placement("preview", anchor, _vector_list(definition.get("occupied_offsets", [])), rotation_quarters, world_query, player_aabb, [] if wall_side != Vector3i.ZERO else _vector_list(definition.get("support_offsets", [])))
 	if not validated.get("ok", false):
 		return validated
+	if not _gate_frame_opening_clear(entity_id, anchor, rotation_quarters, world_query):
+		return _result(false, "OPENING_BLOCKED")
 	if wall_side != Vector3i.ZERO:
 		return _result(true, "OK", {"mount": "wall", "wall_side": wall_side, "rotation_quarters": rotation_quarters})
 	return _validate_mount(definition, anchor, rotation_quarters, world_query)
@@ -148,6 +161,8 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		mount_result = _validate_mount(definition, anchor, rotation_quarters, world_query)
 	if not mount_result.get("ok", false):
 		return mount_result
+	if not _gate_frame_opening_clear(entity_id, anchor, rotation_quarters, world_query):
+		return _result(false, "OPENING_BLOCKED")
 	var instance_id := "%s_%04d" % [entity_id, _next_instance]
 	var reserved := footprints.try_reserve(instance_id, anchor, _vector_list(definition.get("occupied_offsets", [])), rotation_quarters, world_query, player_aabb, [] if wall_side != Vector3i.ZERO else _vector_list(definition.get("support_offsets", [])))
 	if not reserved.get("ok", false):
@@ -178,9 +193,9 @@ func try_place(entity_id: String, anchor: Vector3i, world_query: Callable, playe
 		record["mount"] = "wall"
 	if is_sign(entity_id):
 		record["sign"] = default_sign()
-	if entity_id == GATE_ENTITY:
-		# A gate is hung closed: the wall it completes is a wall until the
-		# owner opens it.
+	if is_gate_entity(entity_id):
+		# A gate is hung closed, whatever its size: the wall it completes is a
+		# wall until the owner opens it.
 		record["gate_open"] = false
 	var defense_definition: Dictionary = definition.get("defense", {})
 	if not defense_definition.is_empty():
@@ -1312,7 +1327,28 @@ func commit_siege_shot(instance_id: String) -> Dictionary:
 
 ## Defence sets: is this station a gate, and is its leaf drawn back?
 func is_gate(instance_id: String) -> bool:
-	return str(stations.get(instance_id, {}).get("entity_id", "")) == GATE_ENTITY
+	return is_gate_entity(str(stations.get(instance_id, {}).get("entity_id", "")))
+
+
+## Any size of leaf in the gate family (Gate, Double Gate, Great Gate).
+static func is_gate_entity(entity_id: String) -> bool:
+	return entity_id in GATE_ENTITIES
+
+
+## Any size of gate frame.
+static func is_gate_frame_entity(entity_id: String) -> bool:
+	return entity_id in GATE_FRAME_ENTITIES
+
+
+## A leaf's opening in cells, read from its own footprint: 1 x 2 Gate,
+## 2 x 3 Double Gate, 4 x 4 Great Gate. Nothing about a size is hard-coded.
+func gate_opening(entity_id: String) -> Vector2i:
+	var width := 0
+	var height := 0
+	for offset: Vector3i in _vector_list(registry.entity(entity_id).get("occupied_offsets", [])):
+		width = maxi(width, offset.x + 1)
+		height = maxi(height, offset.y + 1)
+	return Vector2i(maxi(1, width), maxi(1, height))
 
 
 func gate_is_open(instance_id: String) -> bool:
@@ -1348,13 +1384,13 @@ func set_gate_open(instance_id: String, open: bool) -> Dictionary:
 		return _result(false, "NOT_A_GATE")
 	var record: Dictionary = stations[instance_id]
 	record["gate_open"] = open
-	var definition := registry.entity(GATE_ENTITY)
+	var definition := registry.entity(str(record.get("entity_id", GATE_ENTITY)))
 	var cells: Array[Vector3i] = []
 	for offset: Vector3i in _vector_list(definition.get("occupied_offsets", [])):
 		cells.append(record.anchor + footprints.rotate_offset(offset, int(record.rotation_quarters)))
 	var result := _result(true, "GATE_OPENED" if open else "GATE_CLOSED", {
 		"instance_id": instance_id,
-		"entity_id": GATE_ENTITY,
+		"entity_id": str(record.get("entity_id", GATE_ENTITY)),
 		"anchor": record.anchor,
 		"gate_open": open,
 		"occupied_cells": cells,
@@ -1620,7 +1656,7 @@ func _restored_station(value: Variant, world_query: Callable) -> Dictionary:
 		# record without the block) comes back as an empty single-text sign.
 		var raw_sign: Variant = record.get("sign", default_sign())
 		record["sign"] = sanitized_sign(raw_sign if raw_sign is Dictionary else {})
-	if str(record.get("entity_id", "")) == GATE_ENTITY:
+	if is_gate_entity(str(record.get("entity_id", ""))):
 		# Defence sets: a gate remembers whether it stands open. A record from
 		# before the field existed comes back shut, which is the safe reading.
 		record["gate_open"] = bool(record.get("gate_open", false))
@@ -1731,6 +1767,50 @@ func _aligned_rotation(entity_id: String, anchor: Vector3i, requested: int) -> i
 		if not neighbour.is_empty() and str(stations[neighbour].get("entity_id", "")) == entity_id:
 			return 0
 	return requested
+
+
+## A gate frame's opening: the cells between its jambs and under its lintel.
+## They are deliberately NOT part of the frame - you walk through them - so
+## nothing else would have stopped a player from raising a gateway around a
+## boulder, or around another building, and only finding out when the leaf
+## refused to hang. Gates card 2 asks placement to refuse the site instead, so
+## the frame checks its own opening is clear before it goes up.
+func gate_frame_opening_offsets(entity_id: String) -> Array:
+	var offsets: Array = []
+	if not is_gate_frame_entity(entity_id):
+		return offsets
+	var definition := registry.entity(entity_id)
+	var sockets: Array = definition.get("mount_sockets", [])
+	if sockets.is_empty():
+		return offsets
+	var socket_offset: Array = (sockets[0] as Dictionary).get("offset", [])
+	if socket_offset.size() < 1:
+		return offsets
+	var jamb := int(roundf(float(socket_offset[0])))
+	var width := 0
+	var height := 0
+	for offset: Vector3i in _vector_list(definition.get("occupied_offsets", [])):
+		width = maxi(width, offset.x + 1)
+		height = maxi(height, offset.y + 1)
+	for x in range(jamb, width - jamb):
+		for y in range(height - 1):
+			offsets.append(Vector3i(x, y, 0))
+	return offsets
+
+
+func _gate_frame_opening_clear(entity_id: String, anchor: Vector3i, rotation_quarters: int, world_query: Callable) -> bool:
+	for offset: Vector3i in gate_frame_opening_offsets(entity_id):
+		var cell: Vector3i = anchor + footprints.rotate_offset(offset, rotation_quarters)
+		var owner := footprints.owner_at(cell)
+		# A leaf already hanging there is not a blockage: the Expo's reset
+		# re-raises a fortification's frame around the gate still standing in
+		# it, and a leaf can only be there because a frame was.
+		if not owner.is_empty() and not is_gate(owner):
+			return false
+		var query: Dictionary = world_query.call(cell)
+		if str(query.get("state", "")) != "LOADED" or int(query.get("voxel_id", 0)) != 0:
+			return false
+	return true
 
 
 func _validate_mount(definition: Dictionary, anchor: Vector3i, rotation_quarters: int, world_query: Callable) -> Dictionary:

@@ -716,6 +716,215 @@ func _run_unstuck_tests() -> void:
 func _run_defense_set_tests() -> void:
 	await _run_gate_test()
 	await _run_rail_turret_test()
+	await _run_gate_toggle_test()
+	await _run_gate_sizes_test()
+
+
+## T229: the gate toggles BOTH ways through the path a player actually uses -
+## `InteractionService.secondary_press_from_view` from a standing position,
+## which right-clicks through `GameSession._raycast_station`. T226 only ever
+## called `toggle_gate` directly, which is why the owner could open a gate and
+## not close it: an open leaf's blockers are disabled, so the aim ray flew
+## through the opening and no station was ever found to toggle back.
+func _run_gate_toggle_test() -> void:
+	var ws := app.session.workstations
+	var world := app.session.world
+	var core := app.session.core_defense
+	var interaction := app.session.interaction
+	var origin := Vector3i(60, 0, 72)
+	_level_ground(origin, 9, 9)
+	await get_tree().physics_frame
+	var wall_z := origin.z + 4
+	for x in range(9):
+		if x >= 4 and x <= 6:
+			continue
+		for y in range(2):
+			world.set_cell(Vector3i(origin.x + x, origin.y + y, wall_z), 8)
+	await get_tree().physics_frame
+	app.session.inventory.try_transaction({}, {"gate_frame": 1, "gate": 1})
+	var frame := ws.try_place("gate_frame", Vector3i(origin.x + 4, origin.y, wall_z), world.query_cell, AABB(), 0)
+	var gate_cell := Vector3i(origin.x + 5, origin.y, wall_z)
+	var gate := ws.try_place("gate", gate_cell, world.query_cell, AABB(), 0)
+	var gate_id := str(gate.get("details", {}).get("station", {}).get("instance_id", ""))
+	await get_tree().physics_frame
+
+	# A standing player two cells in front of the leaf, eye height, looking at
+	# the middle of it. Nothing is held, so a missed aim would try to place.
+	var eye := Vector3(gate_cell) + Vector3(0.5, 1.6, 2.5)
+	var aim := ((Vector3(gate_cell) + Vector3(0.5, 0.9, 0.5)) - eye).normalized()
+	var steps: Array[Dictionary] = []
+	var states: Array[bool] = []
+	for _press in range(4):
+		var pressed := interaction.secondary_press_from_view(eye, aim)
+		await get_tree().physics_frame
+		steps.append({"reason": str(pressed.get("reason", "")), "id": str(pressed.get("changes", {}).get("instance_id", ""))})
+		states.append(ws.gate_is_open(gate_id))
+	# Open, shut, open, shut - twice each way from the same standing position.
+	var expected_states: Array[bool] = [true, false, true, false]
+	var toggles_both_ways: bool = states == expected_states
+	var always_the_gate := true
+	for step: Dictionary in steps:
+		if str(step.get("reason", "")) != "OPEN_STATION" or str(step.get("id", "")) != gate_id:
+			always_the_gate = false
+
+	# A closed gate blocks a raider's route and an open one passes it, and the
+	# re-plan happens on the same press (the toggle emits `station_changed`).
+	var planner := LocalGridPathfinder.new()
+	var snapshot := NavigationSnapshot.new()
+	var region := AABB(Vector3(origin) + Vector3(0.0, -1.0, 0.0), Vector3(9.0, 4.0, 9.0))
+	var start := Vector3i(origin.x + 5, origin.y, wall_z + 3)
+	var goal := Vector3i(origin.x + 5, origin.y, wall_z - 3)
+	snapshot.capture(region, core._query_navigation_cell, 11)
+	var shut_route := planner.find_route(snapshot, start, goal, core._basic_raider_capability())
+	interaction.secondary_press_from_view(eye, aim)
+	await get_tree().physics_frame
+	snapshot.capture(region, core._query_navigation_cell, 12)
+	var open_route := planner.find_route(snapshot, start, goal, core._basic_raider_capability())
+	var open_through := false
+	for cell in open_route.get("path", []):
+		if cell == gate_cell:
+			open_through = true
+	# And shut again through the same path, from the same place.
+	var shut_again := interaction.secondary_press_from_view(eye, aim)
+	await get_tree().physics_frame
+	snapshot.capture(region, core._query_navigation_cell, 13)
+	var reshut_route := planner.find_route(snapshot, start, goal, core._basic_raider_capability())
+
+	# The state survives a save round trip, and still toggles after it.
+	ws.set_gate_open(gate_id, true)
+	var saved: Variant = JSON.parse_string(JSON.stringify(ws.snapshot()))
+	var restored := ws.restore(saved if saved is Dictionary else {}, world.query_cell)
+	await get_tree().physics_frame
+	var restored_open := ws.gate_is_open(gate_id)
+	var after_restore := interaction.secondary_press_from_view(eye, aim)
+	await get_tree().physics_frame
+	var shut_after_restore := not ws.gate_is_open(gate_id)
+
+	var ok: bool = frame.get("ok", false) and gate.get("ok", false) and toggles_both_ways and always_the_gate \
+		and not shut_route.get("ok", false) and open_route.get("ok", false) and open_through \
+		and not reshut_route.get("ok", false) \
+		and str(shut_again.get("reason", "")) == "OPEN_STATION" \
+		and restored.get("ok", false) and restored_open \
+		and str(after_restore.get("reason", "")) == "OPEN_STATION" and shut_after_restore
+	_record("T229_GATE_TOGGLE", ok,
+		"right-clicking a gate from a normal standing position toggles it BOTH ways, twice: four presses at the same aim give open, shut, open, shut and every press resolves to the gate itself; a shut gate leaves a raider no route and an open one routes straight through the gate cell in the same frame; the state survives a save round trip and the restored gate still shuts on the next right-click",
+		{"presses": steps, "states": states, "shut_route": shut_route.get("reason"), "open_route": open_route.get("reason"),
+		"open_through": open_through, "reshut_route": reshut_route.get("reason"), "shut_again": shut_again.get("reason"),
+		"restored": restored.get("reason"), "restored_open": restored_open,
+		"after_restore": after_restore.get("reason"), "shut_after_restore": shut_after_restore})
+
+
+## T230: the gate family. Each size hangs only in the frame built for it, a
+## shut gate reports every one of its cells solid, and the Great Gate's opening
+## really does clear a catapult's footprint.
+func _run_gate_sizes_test() -> void:
+	var ws := app.session.workstations
+	var world := app.session.world
+	var interaction := app.session.interaction
+	var inventory := app.session.inventory
+	var origin := Vector3i(60, 0, 88)
+	_level_ground(origin, 26, 10)
+	await get_tree().physics_frame
+	var line_z := origin.z + 5
+	inventory.try_transaction({}, {"gate_frame": 1, "gate": 1, "double_gate_frame": 1, "double_gate": 1,
+		"great_gate_frame": 2, "great_gate": 1, "catapult": 1, "castle_stone": 8})
+
+	# Every size hangs in the frame built for it, and in no other.
+	var small_frame := ws.try_place("gate_frame", Vector3i(origin.x, origin.y, line_z), world.query_cell, AABB(), 0)
+	var double_frame := ws.try_place("double_gate_frame", Vector3i(origin.x + 4, origin.y, line_z), world.query_cell, AABB(), 0)
+	var great_frame := ws.try_place("great_gate_frame", Vector3i(origin.x + 10, origin.y, line_z), world.query_cell, AABB(), 0)
+	var wrong_size := ws.try_place("great_gate", Vector3i(origin.x + 1, origin.y, line_z), world.query_cell, AABB(), 0)
+	var wrong_small := ws.try_place("gate", Vector3i(origin.x + 12, origin.y, line_z), world.query_cell, AABB(), 0)
+	var small := ws.try_place("gate", Vector3i(origin.x + 1, origin.y, line_z), world.query_cell, AABB(), 0)
+	# Held at a quarter turn the player never chose: the mount's automatic
+	# facing turns the leaf to its own frame's jambs, at every size.
+	var double := ws.try_place("double_gate", Vector3i(origin.x + 5, origin.y, line_z), world.query_cell, AABB(), 2)
+	var great := ws.try_place("great_gate", Vector3i(origin.x + 12, origin.y, line_z), world.query_cell, AABB(), 0)
+	await get_tree().physics_frame
+	var mounts := {"gate": str(small.get("details", {}).get("mount", "")),
+		"double_gate": str(double.get("details", {}).get("mount", "")),
+		"great_gate": str(great.get("details", {}).get("mount", ""))}
+	var double_faced := int(ws.station(str(double.get("details", {}).get("station", {}).get("instance_id", ""))).get("rotation_quarters", -1))
+	var mounts_ok: bool = str(mounts["gate"]) == "gate_mount" and str(mounts["double_gate"]) == "double_gate_mount" \
+		and str(mounts["great_gate"]) == "great_gate_mount"
+
+	# A site whose whole opening does not fit is refused: one boulder standing
+	# where the Great Gate's opening would be is enough.
+	world.set_cell(Vector3i(origin.x + 21, origin.y, line_z), 8)
+	await get_tree().physics_frame
+	var blocked := ws.try_place("great_gate_frame", Vector3i(origin.x + 19, origin.y, line_z), world.query_cell, AABB(), 0)
+	world.set_cell(Vector3i(origin.x + 21, origin.y, line_z), 0)
+	await get_tree().physics_frame
+
+	# Shut, every cell of every leaf is solid, breachable fortification; open,
+	# every one of those cells is air. Integrity rises with the size.
+	var sizes := {"gate": small, "double_gate": double, "great_gate": great}
+	var solid_when_shut := true
+	var air_when_open := true
+	var cells_counted := {}
+	var integrities := {}
+	for entity_id: String in sizes.keys():
+		var leaf_result: Dictionary = sizes[entity_id]
+		var instance_id := str(leaf_result.get("details", {}).get("station", {}).get("instance_id", ""))
+		var record := ws.station(instance_id)
+		var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
+		var opening: Vector2i = ws.gate_opening(entity_id)
+		cells_counted[entity_id] = opening.x * opening.y
+		integrities[entity_id] = int(ws.defense_status(instance_id).get("details", {}).get("max_integrity", 0))
+		for x in range(opening.x):
+			for y in range(opening.y):
+				var cell := anchor + Vector3i(x, y, 0)
+				var owner := ws.station_at_cell(cell)
+				var data := ws.navigation_cell_data(owner)
+				var tags: Array = data.get("tags", [])
+				if owner != instance_id or not bool(data.get("solid", false)) or not tags.has("fortification"):
+					solid_when_shut = false
+		ws.set_gate_open(instance_id, true)
+		for x in range(opening.x):
+			for y in range(opening.y):
+				var open_cell := anchor + Vector3i(x, y, 0)
+				if bool(ws.navigation_cell_data(ws.station_at_cell(open_cell)).get("solid", true)):
+					air_when_open = false
+		ws.set_gate_open(instance_id, false)
+	var openings_ok: bool = int(cells_counted.get("gate", 0)) == 2 and int(cells_counted.get("double_gate", 0)) == 6 \
+		and int(cells_counted.get("great_gate", 0)) == 16
+	var integrity_scales: bool = int(integrities.get("gate", 0)) < int(integrities.get("double_gate", 0)) \
+		and int(integrities.get("double_gate", 0)) < int(integrities.get("great_gate", 0))
+
+	# The size claim, tested: a catapult is two cells wide and one high, and the
+	# Great Gate's opening is four wide and four high, so it rolls through with
+	# a clear cell on each side and headroom over it.
+	var catapult_footprint := Vector2i(0, 0)
+	for offset: Vector3i in ws._vector_list(app.session.registry.entity("catapult").get("occupied_offsets", [])):
+		catapult_footprint = Vector2i(maxi(catapult_footprint.x, offset.x + 1), maxi(catapult_footprint.y, offset.y + 1))
+	var great_opening := ws.gate_opening("great_gate")
+	var room_to_spare: bool = great_opening.x - catapult_footprint.x >= 2 and great_opening.y > catapult_footprint.y
+	# And a real catapult parked in the approach sits inside the opening's span.
+	var great_record := ws.station(str(great.get("details", {}).get("station", {}).get("instance_id", "")))
+	var great_anchor: Vector3i = great_record.get("anchor", Vector3i.ZERO)
+	var parked := ws.try_place("catapult", Vector3i(great_anchor.x + 1, origin.y, line_z + 1), world.query_cell, AABB(), 0)
+	var parked_inside: bool = parked.get("ok", false)
+
+	# The wall kit and the castle pieces sit flush either side of a Great Gate.
+	var west := interaction.try_place_item(Vector3i(great_anchor.x - 3, origin.y, line_z), "castle_stone", -1, 0)
+	var east := interaction.try_place_item(Vector3i(great_anchor.x + 6, origin.y, line_z), "castle_stone", -1, 0)
+
+	var ok: bool = small_frame.get("ok", false) and double_frame.get("ok", false) and great_frame.get("ok", false) \
+		and small.get("ok", false) and double.get("ok", false) and great.get("ok", false) and mounts_ok \
+		and not wrong_size.get("ok", false) and not wrong_small.get("ok", false) \
+		and str(blocked.get("reason", "")) == "OPENING_BLOCKED" \
+		and solid_when_shut and air_when_open and openings_ok and integrity_scales \
+		and room_to_spare and parked_inside and west.get("ok", false) and east.get("ok", false) \
+		and double_faced == 0
+	_record("T230_GATE_SIZES", ok,
+		"the gate family is three sizes over one behaviour: the Gate (1x2), the Double Gate (2x3) and the Great Gate (4x4) each hang only in the frame built for them and no other, turning themselves to their own frame's jambs from whatever quarter turn the player happens to hold; a frame whose opening is blocked is refused outright (OPENING_BLOCKED); shut, every cell of every leaf reports solid breachable fortification and integrity rises with the size; open, every one of those cells is air; the Great Gate's four-wide opening clears a catapult's two-wide footprint with a cell to spare each side and headroom over it, and a real catapult parks inside that span; and castle stone lays flush against both jambs",
+		{"frames": {"gate": small_frame.get("reason"), "double": double_frame.get("reason"), "great": great_frame.get("reason")},
+		"leaves": {"gate": small.get("reason"), "double": double.get("reason"), "great": great.get("reason")},
+		"mounts": mounts, "double_faced": double_faced, "wrong_size": wrong_size.get("reason"), "wrong_small": wrong_small.get("reason"),
+		"blocked": blocked.get("reason"), "solid_when_shut": solid_when_shut, "air_when_open": air_when_open,
+		"cells": cells_counted, "integrity": integrities, "catapult": catapult_footprint,
+		"opening": great_opening, "parked": parked.get("reason"),
+		"flanks": {"west": west.get("reason"), "east": east.get("reason")}})
 
 
 ## T226: a gate leaf hung in a gate frame's opening. Closed it is a wall -

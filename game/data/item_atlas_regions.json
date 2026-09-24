@@ -20,7 +20,7 @@
       "file": "derived_atlas_p4.png",
       "size": [
         1536,
-        1536
+        1792
       ]
     },
     "gold": {
@@ -588,6 +588,42 @@
         1300,
         241,
         153
+      ]
+    },
+    "double_gate_frame": {
+      "atlas": "derived",
+      "rect": [
+        26,
+        1562,
+        205,
+        205
+      ]
+    },
+    "double_gate": {
+      "atlas": "derived",
+      "rect": [
+        282,
+        1562,
+        205,
+        205
+      ]
+    },
+    "great_gate_frame": {
+      "atlas": "derived",
+      "rect": [
+        538,
+        1600,
+        205,
+        128
+      ]
+    },
+    "great_gate": {
+      "atlas": "derived",
+      "rect": [
+        794,
+        1600,
+        205,
+        128
       ]
     },
     "gold_ore": {
