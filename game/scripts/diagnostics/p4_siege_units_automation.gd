@@ -836,12 +836,15 @@ func _run_gate_sizes_test() -> void:
 	var wrong_size := ws.try_place("great_gate", Vector3i(origin.x + 1, origin.y, line_z), world.query_cell, AABB(), 0)
 	var wrong_small := ws.try_place("gate", Vector3i(origin.x + 12, origin.y, line_z), world.query_cell, AABB(), 0)
 	var small := ws.try_place("gate", Vector3i(origin.x + 1, origin.y, line_z), world.query_cell, AABB(), 0)
-	var double := ws.try_place("double_gate", Vector3i(origin.x + 5, origin.y, line_z), world.query_cell, AABB(), 0)
+	# Held at a quarter turn the player never chose: the mount's automatic
+	# facing turns the leaf to its own frame's jambs, at every size.
+	var double := ws.try_place("double_gate", Vector3i(origin.x + 5, origin.y, line_z), world.query_cell, AABB(), 2)
 	var great := ws.try_place("great_gate", Vector3i(origin.x + 12, origin.y, line_z), world.query_cell, AABB(), 0)
 	await get_tree().physics_frame
 	var mounts := {"gate": str(small.get("details", {}).get("mount", "")),
 		"double_gate": str(double.get("details", {}).get("mount", "")),
 		"great_gate": str(great.get("details", {}).get("mount", ""))}
+	var double_faced := int(ws.station(str(double.get("details", {}).get("station", {}).get("instance_id", ""))).get("rotation_quarters", -1))
 	var mounts_ok: bool = str(mounts["gate"]) == "gate_mount" and str(mounts["double_gate"]) == "double_gate_mount" \
 		and str(mounts["great_gate"]) == "great_gate_mount"
 
@@ -911,12 +914,13 @@ func _run_gate_sizes_test() -> void:
 		and not wrong_size.get("ok", false) and not wrong_small.get("ok", false) \
 		and str(blocked.get("reason", "")) == "OPENING_BLOCKED" \
 		and solid_when_shut and air_when_open and openings_ok and integrity_scales \
-		and room_to_spare and parked_inside and west.get("ok", false) and east.get("ok", false)
+		and room_to_spare and parked_inside and west.get("ok", false) and east.get("ok", false) \
+		and double_faced == 0
 	_record("T230_GATE_SIZES", ok,
-		"the gate family is three sizes over one behaviour: the Gate (1x2), the Double Gate (2x3) and the Great Gate (4x4) each hang only in the frame built for them and in no other; a frame whose opening is blocked is refused outright (OPENING_BLOCKED); shut, every cell of every leaf reports solid breachable fortification and integrity rises with the size; open, every one of those cells is air; the Great Gate's four-wide opening clears a catapult's two-wide footprint with a cell to spare each side and headroom over it, and a real catapult parks inside that span; and castle stone lays flush against both jambs",
+		"the gate family is three sizes over one behaviour: the Gate (1x2), the Double Gate (2x3) and the Great Gate (4x4) each hang only in the frame built for them and no other, turning themselves to their own frame's jambs from whatever quarter turn the player happens to hold; a frame whose opening is blocked is refused outright (OPENING_BLOCKED); shut, every cell of every leaf reports solid breachable fortification and integrity rises with the size; open, every one of those cells is air; the Great Gate's four-wide opening clears a catapult's two-wide footprint with a cell to spare each side and headroom over it, and a real catapult parks inside that span; and castle stone lays flush against both jambs",
 		{"frames": {"gate": small_frame.get("reason"), "double": double_frame.get("reason"), "great": great_frame.get("reason")},
 		"leaves": {"gate": small.get("reason"), "double": double.get("reason"), "great": great.get("reason")},
-		"mounts": mounts, "wrong_size": wrong_size.get("reason"), "wrong_small": wrong_small.get("reason"),
+		"mounts": mounts, "double_faced": double_faced, "wrong_size": wrong_size.get("reason"), "wrong_small": wrong_small.get("reason"),
 		"blocked": blocked.get("reason"), "solid_when_shut": solid_when_shut, "air_when_open": air_when_open,
 		"cells": cells_counted, "integrity": integrities, "catapult": catapult_footprint,
 		"opening": great_opening, "parked": parked.get("reason"),
