@@ -53,6 +53,9 @@ DERIVED = [
     "sign_board",
     # Defence sets (docs/DEFENSE_SETS.md): the gate leaf and the rail turret.
     "gate", "rail_turret",
+    # Gates card 2 (docs/DEFENSE_SETS.md): the rest of the gate family, each
+    # size with the frame built for it.
+    "double_gate_frame", "double_gate", "great_gate_frame", "great_gate",
 ]
 
 # Owner-drawn reference art (docs/reference/owner_art, transparent WebP). When
@@ -540,6 +543,70 @@ def icon_gate() -> Image.Image:
     return canvas
 
 
+def gate_family_icon(opening_w: int, opening_h: int, jamb: int, leaves: int) -> Image.Image:
+    """A gate of the family, drawn from its real proportions: an opening
+    `opening_w` x `opening_h` cells between jambs `jamb` cells thick, under a
+    one-cell lintel, with `leaves` portcullis leaves hanging in it (0 for the
+    bare frame)."""
+    canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    stone = (200, 206, 212, 255)
+    mortar = (132, 139, 147, 255)
+    shadow = (36, 40, 45, 255)
+    iron = (118, 126, 134, 255)
+    iron_dark = (72, 78, 85, 255)
+    total_w = opening_w + 2 * jamb
+    total_h = opening_h + 1
+    scale = min(204.0 / total_w, 214.0 / total_h)
+    x0 = (CELL - scale * total_w) / 2.0
+    y0 = (CELL - scale * total_h) / 2.0
+
+    def px(cx: float) -> float:
+        return x0 + cx * scale
+
+    def py(cy: float) -> float:
+        return y0 + cy * scale
+
+    draw.rectangle([px(0), py(1), px(jamb), py(total_h)], fill=stone, outline=mortar, width=4)
+    draw.rectangle([px(jamb + opening_w), py(1), px(total_w), py(total_h)], fill=stone, outline=mortar, width=4)
+    draw.rectangle([px(jamb), py(1), px(jamb + opening_w), py(total_h)], fill=shadow)
+    draw.rectangle([px(0), py(0), px(total_w), py(1)], fill=stone, outline=mortar, width=4)
+    bar = max(4.0, scale * 0.13)
+    for leaf in range(leaves):
+        leaf_w = opening_w / float(leaves)
+        left = jamb + leaf * leaf_w
+        bars = max(3, int(round(leaf_w * 3)))
+        for index in range(bars):
+            centre = px(left + (index + 0.5) * leaf_w / bars)
+            draw.rectangle([centre - bar / 2, py(1) + 3, centre + bar / 2, py(total_h) - 2],
+                           fill=iron, outline=iron_dark, width=2)
+        for rail in range(opening_h + 1):
+            top = py(1) + 3 + (py(total_h) - py(1) - bar - 8) * rail / opening_h
+            draw.rectangle([px(left) + 3, top, px(left + leaf_w) - 3, top + bar],
+                           fill=iron, outline=iron_dark, width=2)
+    return canvas
+
+
+def icon_double_gate_frame() -> Image.Image:
+    """Two wide, three high, open in the middle."""
+    return gate_family_icon(2, 3, 1, 0)
+
+
+def icon_double_gate() -> Image.Image:
+    """Two leaves meeting in the middle of a two-wide opening."""
+    return gate_family_icon(2, 3, 1, 2)
+
+
+def icon_great_gate_frame() -> Image.Image:
+    """Four wide, four high, on two-cell jambs the leaves draw back into."""
+    return gate_family_icon(4, 4, 2, 0)
+
+
+def icon_great_gate() -> Image.Image:
+    """The four-wide leaves a catapult rolls between when they part."""
+    return gate_family_icon(4, 4, 2, 2)
+
+
 def icon_rail_turret() -> Image.Image:
     """The pedestal catapult's throwing arm on an iron carriage riding a rail."""
     base = fit(source_region("catapult"), 168)
@@ -580,6 +647,8 @@ BUILDERS = {
     "warehouse": icon_warehouse, "foundry": icon_foundry,
     "sign": icon_sign, "sign_board": icon_sign_board,
     "gate": icon_gate, "rail_turret": icon_rail_turret,
+    "double_gate_frame": icon_double_gate_frame, "double_gate": icon_double_gate,
+    "great_gate_frame": icon_great_gate_frame, "great_gate": icon_great_gate,
 }
 
 

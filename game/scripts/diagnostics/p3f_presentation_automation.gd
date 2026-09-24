@@ -8,6 +8,9 @@ const EXPECTED_WORKBENCH_ORDER: Array[String] = [
 	"sign", "sign_board",
 	# Defence sets (docs/DEFENSE_SETS.md): the gate leaf and the rail turret.
 	"gate", "rail_turret",
+	# Gates card 2 (docs/DEFENSE_SETS.md): the rest of the gate family, each
+	# size with the frame built for it.
+	"double_gate_frame", "double_gate", "great_gate_frame", "great_gate",
 ]
 ## The CoasterCraft Shop's own book (docs/INDUSTRY_PLAN.md wave 1): the coaster
 ## recipes keep their workbench-era orders (194, 204-212) and live only here.

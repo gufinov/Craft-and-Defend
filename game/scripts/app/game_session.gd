@@ -23,6 +23,7 @@ const REASON_TEXT := {
 	"OCCUPIED": "Placement rejected — that cell is occupied.",
 	"PLAYER_OVERLAP": "Placement rejected — move out of the target cell.",
 	"UNSUPPORTED": "Placement rejected — attach the block to a solid neighboring face.",
+	"OPENING_BLOCKED": "Placement rejected — the gateway's whole opening has to be clear.",
 	"WRONG_TOOL": "That block needs a different tool.",
 	"OUT_OF_REACH": "That target is out of reach.",
 	"NO_RESOURCE": "The selected item is not available to place.",
@@ -1195,8 +1196,9 @@ func _on_interaction_result(result: Dictionary) -> void:
 			# A miner has no menu: right-click reports what it is doing.
 			_on_interaction_feedback(miner_status_line(str(changes.get("instance_id", ""))))
 			return
-		if str(station_record.get("entity_id", "")) == WorkstationService.GATE_ENTITY:
-			# Defence sets: a gate has no menu - right-click works the leaf.
+		if WorkstationService.is_gate_entity(str(station_record.get("entity_id", ""))):
+			# Defence sets: a gate has no menu - right-click works the leaf,
+			# at every size in the family.
 			var toggled := workstations.toggle_gate(str(changes.get("instance_id", "")))
 			_on_interaction_feedback(str(toggled.get("reason", "NOT_A_GATE")))
 			return
@@ -1322,8 +1324,8 @@ func _spawn_station_visual(record: Dictionary) -> void:
 	elif entity_id == "kettle":
 		_build_kettle_visual(body)
 		_wrap_siege_turret(body, definition)
-	elif entity_id == WorkstationService.GATE_ENTITY:
-		_build_gate_visual(body)
+	elif WorkstationService.is_gate_entity(entity_id):
+		_build_gate_visual(body, workstations.gate_opening(entity_id))
 	elif entity_id == "rail_turret":
 		_build_rail_turret_visual(body)
 		_wrap_siege_turret(body, definition)
@@ -3903,30 +3905,63 @@ func _add_mesh_cone(parent: Node3D, radius: float, height: float, offset: Vector
 	return mesh_instance
 
 
-## Defence sets (docs/DEFENSE_SETS.md): a portcullis leaf filling the gate
-## frame's one-cell opening. Every mesh hangs under a `GateLeaf` pivot so the
-## open/close slide moves one node (the station-visual idiom `_wrap_siege_turret`
-## and `KettlePot` use); the two blocking boxes stay direct children of the
-## StaticBody3D, because Godot only reads a CollisionShape3D there, and are
-## disabled instead of moved while the gate stands open.
-func _build_gate_visual(parent: Node3D) -> void:
+## Defence sets (docs/DEFENSE_SETS.md) and gates card 2: a portcullis leaf
+## filling its frame's opening, at whatever size the entity says it is - the
+## 1 x 2 Gate, the 2 x 3 Double Gate, the 4 x 4 Great Gate. Nothing here knows
+## a size: the bars, the blockers and the slide all come from `opening`.
+##
+## A one-cell-wide leaf is one leaf that slides into the jamb beside it (as it
+## always did). A wider one is TWO leaves that part to the sides, each half the
+## opening wide and each sliding its own half-width into its own jamb - which
+## is why a frame's jambs are half a leaf thick. So an open leaf is always
+## inside the frame's own footprint and never sticks out through the wall.
+##
+## Each leaf hangs under a `GateLeaf_*` pivot so the slide moves one node (the
+## station-visual idiom `_wrap_siege_turret` and `KettlePot` use); the blocking
+## boxes stay direct children of the StaticBody3D, because Godot only reads a
+## CollisionShape3D there, and are disabled while the gate stands open.
+func _build_gate_visual(parent: Node3D, opening: Vector2i) -> void:
 	var iron := _visual_material(Color("6f7780"))
 	var dark_iron := _visual_material(Color("3f454c"))
-	for cell in range(2):
-		var blocker := _add_collision_box(parent, Vector3(0.96, 0.98, 0.26), Vector3(0.0, float(cell), 0.0))
-		blocker.name = "GateBlocker_%d" % cell
-	var leaf := Node3D.new()
-	leaf.name = GATE_LEAF_NODE
-	leaf.position = Vector3(0.0, 0.5, 0.0)
-	parent.add_child(leaf)
-	# Three stiles, three cross rails and a row of spiked feet.
-	for x in [-0.34, 0.0, 0.34]:
-		_add_mesh_box(leaf, Vector3(0.13, 1.96, 0.22), Vector3(x, 0.0, 0.0), iron)
-		_add_mesh_box(leaf, Vector3(0.09, 0.16, 0.16), Vector3(x, -1.02, 0.0), dark_iron)
-	for y in [-0.88, 0.0, 0.88]:
-		_add_mesh_box(leaf, Vector3(0.94, 0.13, 0.22), Vector3(0.0, y, 0.0), dark_iron)
-	# The channel the leaf runs in, so a closed gate reads as fitted, not stacked.
-	_add_mesh_box(leaf, Vector3(1.0, 0.12, 0.3), Vector3(0.0, 1.04, 0.0), dark_iron)
+	var width := maxi(1, opening.x)
+	var height := maxi(1, opening.y)
+	for x in range(width):
+		for y in range(height):
+			var blocker := _add_collision_box(parent, Vector3(0.96, 0.98, 0.26), Vector3(float(x), float(y), 0.0))
+			blocker.name = "GateBlocker_%d_%d" % [x, y]
+	# One leaf filling a one-cell opening, otherwise two meeting in the middle.
+	var halves: Array[Vector2i] = [Vector2i(0, width - 1)] if width == 1 else [Vector2i(0, width / 2 - 1), Vector2i(width / 2, width - 1)]
+	var index := 0
+	for span: Vector2i in halves:
+		var leaf_cells := span.y - span.x + 1
+		var closed := Vector3(float(span.x + span.y) * 0.5, float(height - 1) * 0.5, 0.0)
+		var slide := GATE_LEAF_OPEN_X if width == 1 else float(leaf_cells) * (-1.0 if span.x == 0 else 1.0)
+		var leaf := Node3D.new()
+		leaf.name = "%s_%d" % [GATE_LEAF_NODE, index]
+		leaf.position = closed
+		leaf.set_meta("gate_closed_position", closed)
+		leaf.set_meta("gate_open_position", closed + Vector3(slide, 0.0, 0.0))
+		parent.add_child(leaf)
+		_build_gate_leaf(leaf, leaf_cells, height, iron, dark_iron)
+		index += 1
+
+
+## One leaf: three stiles per cell of width, a cross rail per cell of height
+## plus one, a row of spiked feet, and the channel cap that makes a shut gate
+## read as fitted rather than stacked.
+func _build_gate_leaf(leaf: Node3D, cells_wide: int, cells_high: int, iron: Material, dark_iron: Material) -> void:
+	var span := float(cells_wide) * 0.96
+	var rise := float(cells_high) * 0.98
+	var stiles := cells_wide * 3
+	for index in range(stiles):
+		var x := -span * 0.5 + (float(index) + 0.5) * span / float(stiles)
+		_add_mesh_box(leaf, Vector3(0.13, rise - 0.02, 0.22), Vector3(x, 0.0, 0.0), iron)
+		_add_mesh_box(leaf, Vector3(0.09, 0.16, 0.16), Vector3(x, -rise * 0.5 - 0.04, 0.0), dark_iron)
+	var rails := cells_high + 1
+	for index in range(rails):
+		var y := -rise * 0.5 + 0.1 + (rise - 0.2) * float(index) / float(rails - 1)
+		_add_mesh_box(leaf, Vector3(span - 0.02, 0.13, 0.22), Vector3(0.0, y, 0.0), dark_iron)
+	_add_mesh_box(leaf, Vector3(span + 0.04, 0.12, 0.3), Vector3(0.0, rise * 0.5 + 0.06, 0.0), dark_iron)
 
 
 ## Defence sets: the turret catapult on a rail carriage. The arm, bucket and
@@ -3966,24 +4001,23 @@ func _build_rail_turret_visual(parent: Node3D) -> void:
 	bucket.add_child(muzzle)
 
 
-## Defence sets: the leaf slides clear of the opening (into the frame's jamb)
-## and drops back. Pathing has already changed by the time this runs - the
-## slide is presentation, the blockers switch with the state.
+## Defence sets: the leaves slide clear of the opening (into the frame's jambs)
+## and drop back. Pathing has already changed by the time this runs - the slide
+## is presentation, the blockers switch with the state.
 func _apply_gate_state(instance_id: String, open: bool, animate: bool) -> void:
 	var body: Node3D = _station_visuals.get(instance_id)
 	if body == null or not is_instance_valid(body):
 		return
-	var leaf: Node3D = body.get_node_or_null(GATE_LEAF_NODE)
-	if leaf == null:
-		return
-	var target := Vector3(GATE_LEAF_OPEN_X if open else 0.0, 0.5, 0.0)
-	if animate:
-		var tween := create_tween()
-		tween.tween_property(leaf, "position", target, WorkstationService.GATE_SLIDE_SECONDS).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	else:
-		leaf.position = target
 	for child in body.get_children():
-		if child is CollisionShape3D and str(child.name).begins_with("GateBlocker"):
+		if child is Node3D and str(child.name).begins_with(GATE_LEAF_NODE):
+			var leaf: Node3D = child
+			var target: Vector3 = leaf.get_meta("gate_open_position" if open else "gate_closed_position", leaf.position)
+			if animate:
+				var tween := create_tween()
+				tween.tween_property(leaf, "position", target, WorkstationService.GATE_SLIDE_SECONDS).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			else:
+				leaf.position = target
+		elif child is CollisionShape3D and str(child.name).begins_with("GateBlocker"):
 			child.disabled = open
 
 
