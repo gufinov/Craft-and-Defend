@@ -172,6 +172,8 @@ var fire_service: FireService
 var trap_service: TrapService
 ## Industry wave 1 (docs/INDUSTRY.md): miners fill ore bins.
 var miner_service: MinerService
+## Minion encampments: the game's first ambient pressure (docs/ENCAMPMENTS.md).
+var encampments: EncampmentService
 ## Miner visuals: instance id -> the "Drill" node spun while the miner works.
 var _miner_drills: Dictionary = {}
 ## Set by the app before initialize(): Settings > Graphics terrain view distance.
@@ -299,6 +301,16 @@ func initialize(session_data: Dictionary) -> Dictionary:
 	miner_service.name = "MinerService"
 	add_child(miner_service)
 	miner_service.initialize(world, workstations, registry)
+	# Minion encampments (docs/ENCAMPMENTS.md): ambient pressure in a normal
+	# game only. Development and CoasterCraft carry authored camps that stay
+	# inert until a control pedestal starts them (T211).
+	encampments = EncampmentService.new()
+	encampments.name = "EncampmentService"
+	add_child(encampments)
+	encampments.initialize(world, registry, workstations, core_defense, clock, snapshot.get("encampments", {}))
+	encampments.player = player
+	encampments.ambient = not coastercraft and not development
+	encampments.feedback.connect(_on_interaction_feedback)
 	interaction = InteractionService.new(world, inventory, player.get_body_aabb, registry, workstations, _raycast_station, _defense_interact)
 	interaction.restore_stamps(open_data.get("snapshot", {}).get("blueprints", {}).get("stamps", []))
 	_restore_drops(open_data.get("snapshot", {}).get("drops", []))
@@ -348,6 +360,9 @@ func _process(delta: float) -> void:
 	if miner_service != null:
 		miner_service.advance(delta, simulation_paused or saving or not world_ready)
 		_spin_miner_drills(delta)
+	if encampments != null:
+		encampments.world_ready = world_ready
+		encampments.advance(delta, simulation_paused or saving or not world_ready)
 	if not simulation_paused and not saving and world_ready:
 		_advance_drops(delta)
 	if not simulation_paused:
@@ -744,6 +759,7 @@ func snapshot() -> Dictionary:
 		"defense": defense.snapshot(),
 		"core_defense": core_defense.snapshot(),
 		"traps": trap_service.snapshot() if trap_service != null else [],
+		"encampments": encampments.snapshot() if encampments != null else {},
 		"blueprints": {"stamps": interaction.stamps_snapshot()} if interaction != null else {"stamps": []},
 		"clock": clock.snapshot(),
 		"drops": drops_snapshot(),

@@ -87,6 +87,14 @@
       "clearing_radius": 10,
       "blend": 10,
       "margin": 24
+    },
+    "encampments": {
+      "count": 3,
+      "min_distance": 70,
+      "max_distance": 140,
+      "min_separation": 48,
+      "margin": 24,
+      "home_clear_radius": 40
     }
   },
   "layers": [

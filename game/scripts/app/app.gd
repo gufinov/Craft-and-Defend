@@ -177,12 +177,17 @@ const BATTLEFIELD_SPAWN_DISTANCE := 28
 const TRAP_RANGE_RESET_GROUP := "trap_range"
 const TRAP_RANGE_WAVE := 3
 const TRAP_RANGE_SPAWN_DISTANCE := 8
+## Minion encampments (docs/ENCAMPMENTS.md): the Frontier's own scenario. Its
+## pedestal starts no wave at all - it lights the exhibit's encampment, which
+## then patrols, discovers the rail line and sabotages it on its own.
+const FRONTIER_RESET_GROUP := "frontier"
 ## Development Expo Battlefield control station (docs/DEVELOPMENT_EXPO.md):
 ## the two buttons the in-world pedestal opens.
 var battlefield_panel: Control
 var battlefield_status_label: Label
 var battlefield_title_label: Label
 var battlefield_reset_button: Button
+var battlefield_start_button: Button
 var _battlefield_station_id := ""
 ## The Expo Directory (docs/DEVELOPMENT_EXPO.md, card D1): Development mode
 ## only, opened with the raw key K (docs/KEYBINDS.md).
@@ -1878,6 +1883,9 @@ func _on_session_ready() -> void:
 		development.on_session_ready(not bool(session.open_data.get("continued", false)))
 	if minimap != null:
 		minimap.show_enemy_base = not coastercraft.active and not development.active
+		# Camp dots follow the same rule as the enemy base: only the mode that
+		# actually carries ambient pressure shows them.
+		minimap.encampments = session.encampments if not coastercraft.active and not development.active else null
 	defense_label.visible = not coastercraft.active and not development.active
 	state = AppState.PLAYING
 	loading_panel.hide()
@@ -2352,7 +2360,8 @@ func _build_battlefield_control(canvas: CanvasLayer) -> void:
 	battlefield_status_label.custom_minimum_size = Vector2(640, 0)
 	battlefield_status_label.add_theme_font_size_override("font_size", 18)
 	box.add_child(battlefield_status_label)
-	box.add_child(_button("START ATTACK", _battlefield_start_pressed))
+	battlefield_start_button = _button("START ATTACK", _battlefield_start_pressed)
+	box.add_child(battlefield_start_button)
 	battlefield_reset_button = _button("RESET BATTLEFIELD", _battlefield_reset_pressed)
 	box.add_child(battlefield_reset_button)
 	box.add_child(_spacer(6))
@@ -2390,11 +2399,25 @@ func _refresh_battlefield_panel() -> void:
 	var core_defense: CoreDefenseService = session.core_defense
 	var group := control_group()
 	var trap_range: bool = group == TRAP_RANGE_RESET_GROUP
+	var frontier: bool = group == FRONTIER_RESET_GROUP
 	if battlefield_title_label != null:
-		battlefield_title_label.text = "TRAP RANGE CONTROL" if trap_range else "BATTLEFIELD CONTROL"
+		battlefield_title_label.text = "FRONTIER CONTROL" if frontier else ("TRAP RANGE CONTROL" if trap_range else "BATTLEFIELD CONTROL")
 	if battlefield_reset_button != null:
-		battlefield_reset_button.text = "RESET TRAP RANGE" if trap_range else "RESET BATTLEFIELD"
+		battlefield_reset_button.text = "RESET FRONTIER" if frontier else ("RESET TRAP RANGE" if trap_range else "RESET BATTLEFIELD")
+	if battlefield_start_button != null:
+		battlefield_start_button.text = "START ENCAMPMENT" if frontier else "START ATTACK"
 	var lines := "ESCAPE CLOSES  ·  THE WORLD KEEPS RUNNING"
+	if frontier:
+		var camp: Dictionary = session.encampments.camp(ExpoBuilder.FRONTIER_CAMP_ID) if session.encampments != null else {}
+		if bool(camp.get("started", false)) and not bool(camp.get("cleared", false)):
+			lines += "\n\nThe encampment is lit. By day its garrison patrols the radius zone and looks for anything you built; at dusk they walk back and sit at the fire. The rail line inside the zone is the first thing they find: the sabotage table says break_one, so one piece goes and the patrol leaves."
+		elif bool(camp.get("cleared", false)):
+			lines += "\n\nThis camp is cleared — the garrison is down and the fire is out. RESET FRONTIER puts the exhibit back."
+		else:
+			lines += "\n\nNo ambient pressure is running. START lights this encampment's fire and musters its garrison; nothing else in the Expo is touched."
+		lines += "\n\nRESET FRONTIER restores this clearing and nothing else: the garrison goes, the fire goes out, the camp is inert again and the rail line is whole. Every other district is left exactly as it stands."
+		battlefield_status_label.text = lines
+		return
 	if core_defense != null and core_defense.is_active():
 		lines += "\n\n" + core_defense.hud_text()
 	elif trap_range:
@@ -2415,6 +2438,13 @@ func battlefield_start_attack(group: String = "") -> Dictionary:
 	if session == null or session.core_defense == null:
 		return {"ok": false, "reason": "NO_SESSION"}
 	var scenario := group if not group.is_empty() else control_group()
+	if scenario == FRONTIER_RESET_GROUP:
+		# The Frontier pedestal musters nothing: it lights the exhibit's own
+		# encampment, which patrols and sabotages on its own (T211 keeps the
+		# rest of the Expo free of ambient pressure).
+		if session.encampments == null:
+			return {"ok": false, "reason": "NO_ENCAMPMENTS"}
+		return session.encampments.start_camp(ExpoBuilder.FRONTIER_CAMP_ID)
 	var core_id := battlefield_core_station_id(scenario)
 	if core_id.is_empty():
 		return {"ok": false, "reason": "NO_BATTLEFIELD_CORE"}
@@ -2476,9 +2506,11 @@ func battlefield_core_station_id(group: String = BATTLEFIELD_RESET_GROUP) -> Str
 func _battlefield_start_pressed() -> void:
 	if state != AppState.BATTLEFIELD:
 		return
+	var frontier := control_group() == FRONTIER_RESET_GROUP
 	var started := battlefield_start_attack()
-	_set_feedback("A wave is mustering on the line." if started.get("ok", false)
-		else "Attack refused: %s" % str(started.get("reason", "")).replace("_", " ").to_lower())
+	var good := "The encampment's fire is lit and its garrison is out." if frontier else "A wave is mustering on the line."
+	_set_feedback(good if started.get("ok", false)
+		else "Refused: %s" % str(started.get("reason", "")).replace("_", " ").to_lower())
 	_refresh_battlefield_panel()
 
 

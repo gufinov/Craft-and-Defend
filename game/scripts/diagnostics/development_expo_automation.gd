@@ -169,6 +169,7 @@ func _run_gate() -> void:
 	app.session.simulation_paused = false
 	await _test_defense_range()
 	await _test_trap_range()
+	await _test_frontier()
 	await _test_battlefield()
 	await _test_gate_family()
 	await _test_grand_coaster()
@@ -1476,6 +1477,58 @@ func _test_trap_range() -> void:
 		"mouth_plates": plates.size(), "bays": bay_report, "bay_problems": bay_problems,
 		"combo_plates": combo_plates, "combo_spikes": combo_spikes, "combo_ok": combo_ok,
 		"scenario_core": scenario_core, "battlefield_core": battlefield_core})
+
+
+## T253 (the Expo half of the encampments card, docs/ENCAMPMENTS.md): the
+## Frontier's exhibit stands as the manifest describes it — a signed camp
+## clearing with its rail line and its control pedestal — and it is **inert**:
+## the camp is registered but nothing is lit, nothing patrols and no fire
+## burns until the pedestal's START, which is what keeps Development mode free
+## of ambient pressure (T211). RESET FRONTIER puts it back to inert.
+func _test_frontier() -> void:
+	if not await _walk_to_district("frontier"):
+		return
+	var box := _parcel_box("fr_encampment")
+	if box.is_empty():
+		_record("T253_FRONTIER_ENCAMPMENT", false, "the Frontier encampment has a parcel", {})
+		return
+	var encampments: EncampmentService = app.session.encampments
+	var rails := _stations_in(box, "rail")
+	var pedestals := _stations_in(box, CraftAndDefendApp.BATTLEFIELD_CONTROL_ENTITY)
+	var signed: bool = _sign_placed("fr_encampment")
+	var before: Dictionary = encampments.camp(ExpoBuilder.FRONTIER_CAMP_ID)
+	var inert: bool = not before.is_empty() and not bool(before.get("started", false)) \
+		and not bool(before.get("spawned", false)) and str(before.get("fire_id", "")).is_empty() \
+		and encampments.garrison_nodes().is_empty() and _stations_in(box, "campfire").is_empty()
+	# The camp is the only ambient pressure in the Expo, so nothing else may
+	# have lit one either.
+	var other_camps := encampments.camp_ids().size()
+	# START through the pedestal's own path: the group the pedestal belongs to.
+	app._battlefield_station_id = pedestals[0] if not pedestals.is_empty() else ""
+	var group := app.control_group()
+	var started := app.battlefield_start_attack()
+	# `camp()` hands back the live record, so what the start proved has to be
+	# read out now - the reset below empties the very same dictionary.
+	var lit: Dictionary = encampments.camp(ExpoBuilder.FRONTIER_CAMP_ID)
+	var lit_started: bool = bool(lit.get("started", false))
+	var fire_standing: bool = app.session.workstations.stations.has(str(lit.get("fire_id", "")))
+	var garrison := encampments.garrison_nodes().size()
+	var reset := app.battlefield_reset(CraftAndDefendApp.FRONTIER_RESET_GROUP)
+	if not await _wait_built("frontier reset", _district_owners(["frontier"])):
+		return
+	var after: Dictionary = encampments.camp(ExpoBuilder.FRONTIER_CAMP_ID)
+	var back_to_inert: bool = not bool(after.get("started", false)) and not bool(after.get("spawned", false)) \
+		and encampments.garrison_nodes().is_empty() and (after.get("members", []) as Array).is_empty()
+	app._battlefield_station_id = ""
+	var ok: bool = rails.size() == ExpoBuilder.FRONTIER_RAIL_LENGTH and pedestals.size() == 1 and signed \
+		and inert and other_camps == 1 and group == CraftAndDefendApp.FRONTIER_RESET_GROUP \
+		and started.get("ok", false) and fire_standing and garrison == 3 and lit_started \
+		and reset.get("ok", false) and back_to_inert
+	_record("T253_FRONTIER_ENCAMPMENT", ok,
+		"the Frontier exhibit stands signed with its %d-piece rail line and its control pedestal, and the encampment inside it is registered but inert - no fire, no garrison, nothing patrolling - until that pedestal's START lights it (fire standing, three garrison bodies); RESET FRONTIER puts it straight back to inert" % ExpoBuilder.FRONTIER_RAIL_LENGTH,
+		{"rails": rails.size(), "pedestals": pedestals.size(), "signed": signed, "inert": inert,
+		"camps_registered": other_camps, "group": group, "started": started, "fire_standing": fire_standing,
+		"garrison": garrison, "lit_started": lit_started, "reset": reset, "back_to_inert": back_to_inert})
 
 
 ## T220: the Battlefield scenario end to end. START ATTACK sends a mixed wave

@@ -14,6 +14,8 @@ var items: Dictionary = {}
 var entities: Dictionary = {}
 var recipes: Dictionary = {}
 var munitions: Dictionary = {}
+## The `encampments` block of content.json (docs/ENCAMPMENTS.md).
+var encampments: Dictionary = {}
 var load_error := ""
 
 
@@ -46,6 +48,11 @@ func load_registry(path: String = REGISTRY_PATH) -> Dictionary:
 	balance = balance_value.duplicate(true)
 	var munition_value: Variant = document.get("munitions", {})
 	munitions = munition_value.duplicate(true) if munition_value is Dictionary else {}
+	# Minion encampments (docs/ENCAMPMENTS.md): the whole difficulty sheet -
+	# patrol and sight radius, garrison, timings and the sabotage table - is
+	# content, not code, so the owner retunes ambient pressure without a build.
+	var encampment_value: Variant = document.get("encampments", {})
+	encampments = encampment_value.duplicate(true) if encampment_value is Dictionary else {}
 	inventory_slots = int(inventory.get("slots", 0))
 	hotbar_slots = int(inventory.get("hotbar_slots", 0))
 	if content_version.is_empty() or inventory_slots < 1 or hotbar_slots < 1 or hotbar_slots > inventory_slots:

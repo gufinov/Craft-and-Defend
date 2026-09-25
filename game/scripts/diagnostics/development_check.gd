@@ -70,8 +70,23 @@ func exercise(application: CraftAndDefendApp) -> Dictionary:
 	for _frame in range(180):
 		await get_tree().process_frame
 	var still_quiet := not app.session.core_defense.is_active() and not app.session.defense.is_active() and app.session.core_defense.state == CoreDefenseService.IDLE
-	evidence["waves"] = {"state": app.session.core_defense.state, "enemy_cores": enemy_core_stations}
-	_check("no_ambient_waves", quiet and still_quiet, "no wave is scheduled and no enemy core is placed after three seconds of play (%s)" % JSON.stringify(evidence["waves"]))
+	# Minion encampments (docs/ENCAMPMENTS.md) are the game's first ambient
+	# pressure, so the Expo must carry none of it running: the Frontier's camp
+	# is registered and inert, nothing patrols, and no camp is world generated.
+	var encampments: EncampmentService = app.session.encampments
+	var camps_running := 0
+	var garrison := 0
+	if encampments != null:
+		garrison = encampments.garrison_nodes().size()
+		for camp_id: String in encampments.camp_ids():
+			var record: Dictionary = encampments.camp(camp_id)
+			if bool(record.get("started", false)) or bool(record.get("spawned", false)):
+				camps_running += 1
+	var camps_quiet: bool = encampments != null and not encampments.ambient and camps_running == 0 and garrison == 0
+	evidence["waves"] = {"state": app.session.core_defense.state, "enemy_cores": enemy_core_stations,
+		"camps": encampments.camp_ids() if encampments != null else [], "camps_running": camps_running,
+		"camp_garrison": garrison, "ambient_camps": encampments.ambient if encampments != null else true}
+	_check("no_ambient_waves", quiet and still_quiet and camps_quiet, "no wave is scheduled, no enemy core is placed and no minion encampment is lit or patrolling after three seconds of play (%s)" % JSON.stringify(evidence["waves"]))
 	_check("hud_lines", app.defense_label.text.is_empty() and not app.defense_label.visible and app.navigation_label.text.begins_with("DEVELOPMENT EXPO") and not app.navigation_label.text.contains("ENEMY BASE") and app.minimap != null and not app.minimap.show_enemy_base, "the drill line is hidden and the navigation line names the Expo without the enemy base (%s | %s)" % [app.defense_label.text, app.navigation_label.text])
 	var minutes: int = app.session.clock.current_minutes()
 	evidence["clock_minutes"] = minutes
