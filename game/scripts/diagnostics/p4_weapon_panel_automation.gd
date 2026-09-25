@@ -177,6 +177,13 @@ func _run_visual() -> void:
 	app._on_start_pressed()
 	if not await _wait_ready():
 		return
+	# The panel is read as a still, so the simulation is held the way _run_gate
+	# holds it. Left running, `siege_defense.advance` reloads the Catapult from
+	# the chest four blocks away ("Catapult reloaded 5 stone shot from a nearby
+	# chest") between the fixture and the click, and T123's ammunition counts
+	# then measure the storage network's reflexes instead of the click's:
+	# `ammo_after_click: 5` instead of 4, seen once in a sweep on 2026-09-25.
+	app.session.simulation_paused = true
 	var fixture := _place_fixture()
 	var catapult_id := str(fixture.catapult_id)
 	var chest_id := str(fixture.chest_id)
