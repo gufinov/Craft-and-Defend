@@ -150,7 +150,7 @@ func _run_gate() -> void:
 	if not await _wait_built("plaza", _district_owners(["central_plaza", "supply_depot", "future_expansion", "day_one", "equipment", "resources"])):
 		return
 	await _test_plaza_and_day_one()
-	await _test_supply_depot()
+	_test_supply_depot()
 	await _test_mountain()
 	_test_signs()
 	_test_sign_anchors()
@@ -549,7 +549,7 @@ func _test_plaza_and_day_one() -> void:
 		if origin.z < previous.z or (origin.z == previous.z and origin.x <= previous.x):
 			order_ok = false
 		previous = origin
-		if await _exhibit_present(exhibit_id, origin, parcel["size"]):
+		if _exhibit_present(exhibit_id, origin, parcel["size"]):
 			present.append(exhibit_id)
 	var stations_ok: bool = present.has("day_one_workbench") and present.has("day_one_furnace")
 	var ok: bool = sampled > 0 and solid == sampled and clear == sampled and core_ok and order_ok and present.size() == chain.size() and stations_ok
@@ -627,7 +627,7 @@ func _test_supply_depot() -> void:
 	for item_id: String in stocked:
 		if item_id not in expected and item_id not in extra:
 			extra.append(item_id)
-	var walk := await _walk_to_depot()
+	var walk := _walk_to_depot()
 	var probe := _unassigned_probe()
 	var ok: bool = bool(catalog.get("ok", false)) and (catalog.get("unassigned", []) as Array).is_empty() \
 		and not stands.is_empty() and problems.is_empty() and duplicates.is_empty() \
@@ -680,17 +680,6 @@ func _walk_to_depot() -> Dictionary:
 		cells.append(Vector3i(int(floor(spawn.x)), feet_y, z))
 	for x in range(size.x):
 		cells.append(Vector3i(origin.x + x, feet_y, aisle_z))
-	# The avenue is longer than one streaming region, so the steps at the depot
-	# end are routinely still arriving when the player is standing at the
-	# spawn. `ok` demands every step be readable, so reading without this wait
-	# scored an unstreamed aisle as a blocked walk (`checked 53 of 82`,
-	# `blocked 0`) and failed T223 about half the exported runs.
-	var wanted: Array[Vector3i] = []
-	for cell: Vector3i in cells:
-		wanted.append(cell)
-		wanted.append(cell + Vector3i(0, 1, 0))
-		wanted.append(cell + Vector3i(0, -1, 0))
-	await _await_loaded(world, wanted, STREAM_FRAMES)
 	var blocked: Array[Vector3i] = []
 	var checked := 0
 	for cell: Vector3i in cells:
@@ -2305,29 +2294,17 @@ func _light_positions() -> Array[Vector3]:
 
 ## A built exhibit: its parcel carries a station, or the terrain under it is no
 ## longer the untouched surface (a plinth, a plant, an ore face).
-##
-## An exhibit whose only evidence is terrain — the Day One ore faces
-## `day_one_stone` and `day_one_iron` are the whole of that class — can only be
-## read once its parcel has streamed in. `_wait_built` drains the BUILD queue,
-## which is a different thing: the ops all ran, and the far end of the Day One
-## row can still be unreadable when the player is standing at the spawn. Read
-## without this wait, an unread parcel was scored "exhibit not built" and T214
-## failed about half the exported runs. An unread cell is not a missing one.
 func _exhibit_present(exhibit_id: String, origin: Vector3i, size: Vector3i) -> bool:
 	var world: WorldAdapter = app.session.world
-	var columns: Array[Vector3i] = []
 	for x in range(size.x):
 		for z in range(size.z):
 			var column := Vector3i(origin.x + x, origin.y, origin.z + z)
 			if not app.session.workstations.station_at_cell(column).is_empty():
 				return true
-			columns.append(column)
-	await _await_loaded(world, columns, STREAM_FRAMES)
-	for column: Vector3i in columns:
-		for y in range(maxi(1, size.y)):
-			var query := world.query_cell(column + Vector3i(0, y, 0))
-			if str(query.get("state", "")) == "LOADED" and int(query.get("voxel_id", AIR)) != AIR:
-				return true
+			for y in range(maxi(1, size.y)):
+				var query := world.query_cell(column + Vector3i(0, y, 0))
+				if str(query.get("state", "")) == "LOADED" and int(query.get("voxel_id", AIR)) != AIR:
+					return true
 	failures.append("exhibit not built: " + exhibit_id)
 	return false
 
