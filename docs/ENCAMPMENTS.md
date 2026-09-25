@@ -148,6 +148,8 @@ The pedestal is the existing `battlefield_control` entity and the existing panel
 
 `--development-expo-automation=gate`: **T253_FRONTIER_ENCAMPMENT** — the exhibit stands signed with its rail line and its pedestal, the camp is registered and **inert**, the pedestal's START lights it (fire standing, three bodies out) and **RESET FRONTIER** puts it straight back to inert.
 
+`--development-expo-automation=visual`: **T253V_FRONTIER_VIEW** (`development-expo-frontier.png`) — the clearing with the camp lit by its pedestal: the fire burning, the garrison out, the rail line standing inside the zone.
+
 `--development-check`: `no_ambient_waves` now also asserts that no camp is lit or patrolling and that ambient generation is off in Development mode (T211).
 
 ## Boundary and next
