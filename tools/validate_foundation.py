@@ -54,7 +54,11 @@ EXPO_TERRAIN = {"level", "natural", "tree", "forest", "quarry", "coal_seam", "su
                 "trap_range",
                 # Traps card 2: one bay per new trap, built from that trap's own
                 # mount, and the Spring-Plate-into-Spike-Trap combo bay.
-                "trap_bay", "trap_combo"}
+                "trap_bay", "trap_combo",
+                # Minion encampments (docs/ENCAMPMENTS.md): the Frontier's camp
+                # clearing with its patrol ground, a player rail line inside the
+                # radius and the control pedestal that lights the fire.
+                "frontier_camp"}
 # Supply Depot (docs/DEVELOPMENT_EXPO.md, handoff sections 8 and 9). The
 # categories and the item -> category map are read out of the one runtime
 # source, `game/scripts/ui/item_categories.gd`, rather than copied here: the
@@ -659,6 +663,49 @@ def validate_expo_sign(sign, items, label):
         require(sign["board"] in EXPO_SIGN_BOARDS, f"{label}: invalid sign board {sign['board']}")
 
 
+ENCAMPMENT_VERBS = {"break_one", "destroy", "ignore"}
+ENCAMPMENT_KINDS = {"raider", "brute", "troll"}
+
+
+def validate_encampments(sheet, entities):
+    """The `encampments` block of content.json (docs/ENCAMPMENTS.md).
+
+    Every difficulty knob for ambient pressure is content, so the block itself
+    is the contract: the radii and timings are positive numbers, the garrison
+    names only enemy kinds that exist, and the sabotage table names only real
+    entities with a verb the service knows. A target that is not `ignore` must
+    carry a `defense` sheet, or the patrol would walk to something it can never
+    break.
+    """
+    require(isinstance(sheet, dict) and sheet, "missing encampments block")
+    require(isinstance(sheet.get("enabled"), bool), "encampments: invalid enabled flag")
+    for field in ("patrol_radius", "sight_radius"):
+        require(integer(sheet.get(field), 1), f"encampments: invalid {field}")
+    for field in ("notice_range", "active_range", "patrol_leg_seconds", "patrol_interval_seconds",
+                  "sabotage_cooldown_seconds", "attack_interval_seconds"):
+        require(type(sheet.get(field)) in (int, float) and sheet[field] > 0, f"encampments: invalid {field}")
+    garrison = sheet.get("garrison")
+    require(isinstance(garrison, list) and garrison, "encampments: the garrison needs at least one row")
+    for row in garrison:
+        require(isinstance(row, dict) and row.get("kind") in ENCAMPMENT_KINDS and integer(row.get("count"), 1),
+                f"encampments: invalid garrison row {row}")
+    placement = sheet.get("world")
+    require(isinstance(placement, dict), "encampments: missing world placement block")
+    for field in ("count", "min_distance", "max_distance", "min_separation", "margin", "home_clear_radius"):
+        require(integer(placement.get(field), 0), f"encampments: invalid world {field}")
+    require(placement["min_distance"] < placement["max_distance"], "encampments: empty distance band")
+    require(sheet["active_range"] >= sheet["notice_range"],
+            "encampments: active_range must cover notice_range, or a camp could break something "
+            "the HUD promises to report and never run at all")
+    table = sheet.get("sabotage")
+    require(isinstance(table, dict) and table, "encampments: the sabotage table cannot be empty")
+    for entity_id, verb in table.items():
+        require(entity_id in entities, f"encampments: sabotage names unknown entity {entity_id}")
+        require(verb in ENCAMPMENT_VERBS, f"encampments: unknown sabotage verb {verb} for {entity_id}")
+        require(verb == "ignore" or entities[entity_id].get("defense"),
+                f"encampments: {entity_id} has no defense sheet and cannot be sabotaged")
+
+
 def validate_bundle(bundle):
     for name, data in bundle.items():
         require(data["schema_version"] == 1, f"{name}: unsupported schema")
@@ -681,6 +728,7 @@ def validate_bundle(bundle):
                 for recipe in content["recipes"]), "furnace fuel must be an explicit recipe input")
     harvesting_balance = balance.get("harvesting", {})
     require(integer(harvesting_balance.get("maximum_connected_trunk_blocks"), 1), "invalid harvesting balance")
+    validate_encampments(content.get("encampments"), entities)
     for section_name, integer_fields, number_fields in (
         ("practice_defense", ("wall_integrity", "repair_amount", "raider_health", "raider_damage", "ballista_damage", "ballista_starting_bolts"),
          ("warning_seconds", "raider_attack_interval_seconds", "ballista_interval_seconds", "ballista_maximum_range")),

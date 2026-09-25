@@ -666,6 +666,25 @@ levelled when its own district is built, and CoasterCraft is built after the
 Trap Range, so a lane under that avenue had its walls cleared away again.
 
 ---
+## 6c. District — the Frontier (encampments card)
+
+`frontier` (x 104..160, z 60..86, east of the Trap Range's corridor), one
+`scenario` exhibit and one reserved parcel. Its `frontier_camp` composite
+terrain authors a levelled dirt clearing with a camp site in the middle, a
+twelve-piece player **rail line** eight cells away — inside the camp's sight
+radius — and a `battlefield_control` pedestal beside the entrance. The reserved
+parcel is signed for the next ambient-pressure card.
+
+The encampment is **registered, not lit**. `ExpoBuilder` calls
+`EncampmentService.register_camp` for it and nothing else: no fire burns, no
+garrison exists and nothing patrols until the pedestal's **START ENCAMPMENT**,
+which is what keeps Development mode free of ambient pressure (T211). The same
+pedestal entity and the same panel serve it — `control_group()` resolves to
+`frontier`, so the panel reads FRONTIER CONTROL with START ENCAMPMENT and
+RESET FRONTIER — and `ExpoResetService` now stops every camp inside a reset
+group's boundary before rebuilding its fixture. See [Encampments](ENCAMPMENTS.md).
+
+---
 
 ## 7. Districts — CoasterCraft: the component gallery and the Grand Coaster (§7, card F)
 

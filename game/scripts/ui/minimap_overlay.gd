@@ -20,6 +20,10 @@ var workstations: WorkstationService
 var full_map := false
 ## CoasterCraft hides the enemy base (no raids in that mode).
 var show_enemy_base := true
+## Minion encampments (docs/ENCAMPMENTS.md): a camp the player has actually met
+## (its fire is standing) is drawn as an orange dot. Never set in the modes
+## without ambient pressure, so nothing new appears there.
+var encampments: EncampmentService
 
 var _heights: Dictionary = {}
 var _texture_rect: TextureRect
@@ -205,6 +209,10 @@ func _draw_markers() -> void:
 			if entity_id == "core_of_power" or entity_id == "enemy_core":
 				var anchor: Vector3i = record.get("anchor", Vector3i.ZERO)
 				_marker_layer.draw_circle(_to_map(Vector2i(anchor.x + 1, anchor.z + 1)), maxf(4.0, scale * 3.0), Color("4c9dff") if entity_id == "core_of_power" else Color("ff3030"))
+	# Minion encampments the player has met: an orange camp dot each.
+	if encampments != null and is_instance_valid(encampments):
+		for cell in encampments.known_camp_cells():
+			_marker_layer.draw_circle(_to_map(Vector2i(cell.x, cell.z)), maxf(3.0, scale * 2.0), Color("ff8a30"))
 	# Player arrow along its heading (yaw about y; forward is -z).
 	var position := _to_map(_player_column())
 	var yaw := player.rotation.y

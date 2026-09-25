@@ -263,6 +263,24 @@
       ]
     },
     {
+      "id": "frontier",
+      "name": "FRONTIER",
+      "owner_card": "E",
+      "prepare": "full",
+      "origin": [104, -1, 60],
+      "size": [56, 14, 26],
+      "entrance": [104, 0, 72],
+      "terrain": "level",
+      "expansion_corridor": {"origin": [160, -1, 60], "size": [7, 14, 26]},
+      "connections": ["trap_range"],
+      "expansion_priority": 4,
+      "sign": {"title": "FRONTIER", "lines": ["Ambient pressure.", "A minion encampment and what it does to your line."]},
+      "exhibits": [
+        {"id": "fr_encampment", "kind": "scenario", "footprint": [34, 8, 20], "clearance": 1, "orientation": "north", "offset": [3, 1, 3], "entities": ["campfire", "rail", "battlefield_control"], "items": ["rail"], "terrain": "frontier_camp", "connections": ["frontier_line"], "reset_group": "frontier", "expansion_priority": 4, "added_in": "2026-09-25", "sign": {"title": "MINION ENCAMPMENT", "lines": ["Ambient pressure: nobody called this wave.", "By day the garrison patrols its radius zone;", "at dusk it walks back and sits at the fire.", "A patrol that notices something you built acts", "on the sabotage table: a rail is ONE piece", "broken and gone, a tower is attacked until it", "falls, anything unlisted is ignored.", "Kill the garrison and break the fire and the", "camp is gone for good.", "The pedestal lights this camp. Development mode", "carries no ambient pressure otherwise."], "item": "rail", "board": "wide"}, "sign_anchor": "entrance"},
+        {"id": "fr_more_camps_reserved", "kind": "reserved", "footprint": [12, 6, 20], "clearance": 1, "orientation": "north", "offset": [40, 1, 3], "entities": [], "items": [], "terrain": "level", "connections": ["frontier_line"], "expansion_priority": 5, "added_in": "2026-09-25", "sign": {"title": "RESERVED - MORE CAMPS", "lines": ["Kept empty for the next ambient-pressure card."]}}
+      ]
+    },
+    {
       "id": "battlefield",
       "name": "BATTLEFIELD",
       "owner_card": "E",

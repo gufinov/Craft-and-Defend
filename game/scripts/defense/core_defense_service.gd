@@ -126,6 +126,12 @@ const HOP_NEIGHBOURS: Array[Vector3i] = [
 	Vector3i(-1, 0, -1), Vector3i(1, 0, -1), Vector3i(-1, 0, 1), Vector3i(1, 0, 1),
 ]
 var _capture_wide := false
+## Ambient pressure seam (docs/ENCAMPMENTS.md). `EncampmentService` registers
+## its garrison bodies here so the player's weapons, traps and siege splash
+## reach them through this service's one damage API. Neither callable is ever
+## consulted by the drill's own state machine.
+var foreign_damage: Callable = Callable()
+var foreign_nodes: Callable = Callable()
 var stall_warnings := 0
 var stalled_out_count := 0
 
@@ -600,6 +606,13 @@ func try_damage_raider_node(node: Node, amount: int, source: String = "player") 
 				feedback.emit("%s defeated a %s. %d left." % [source.replace("_", " ").capitalize(), str(entry.kind), living_raider_count()])
 		_emit_state()
 		return {"ok": true, "reason": "RAIDER_DEFEATED" if int(entry.health) <= 0 else "RAIDER_DAMAGED", "handled": true, "changes": {"health_before": before, "health": int(entry.health), "damage": amount, "source": source}}
+	# Bodies another service owns (an encampment garrison): the drill never
+	# counts them towards WON, but the player's sword, a trap and a siege
+	# splash reach them through the one damage API (docs/ENCAMPMENTS.md).
+	if foreign_damage.is_valid():
+		var foreign: Variant = foreign_damage.call(node, amount, source)
+		if foreign is Dictionary and bool((foreign as Dictionary).get("ok", false)):
+			return foreign
 	return {"ok": false, "reason": "NO_RAIDER"}
 
 
@@ -695,7 +708,7 @@ func entry_range(ranged: bool) -> float:
 ## `point`. Returns the number of raiders hit.
 func damage_raiders_within(point: Vector3, radius: float, amount: int, source: String = "siege", provoker: String = "") -> int:
 	var hits := 0
-	for node in raider_nodes():
+	for node in _damageable_bodies():
 		var position := node.global_position + Vector3.UP * 0.65
 		if Vector2(position.x - point.x, position.z - point.z).length() <= radius and absf(position.y - point.y) <= 3.0:
 			if try_damage_raider_node(node, amount, source).get("ok", false):
@@ -708,13 +721,29 @@ func damage_raiders_within(point: Vector3, radius: float, amount: int, source: S
 ## Fire: damages raiders whose feet stand in `cell` (or a cell above/below it).
 func damage_raiders_in_cell(cell: Vector3i, amount: int, source: String = "fire") -> int:
 	var hits := 0
-	for node in raider_nodes():
+	for node in _damageable_bodies():
 		var position := node.global_position
 		var feet := Vector3i(floori(position.x), floori(position.y - 0.5), floori(position.z))
 		if feet == cell or feet == cell + Vector3i(0, 1, 0) or feet == cell - Vector3i(0, 1, 0):
 			if try_damage_raider_node(node, amount, source).get("ok", false):
 				hits += 1
 	return hits
+
+
+## Every body area damage may reach: this drill's raiders plus whatever bodies
+## another service registered through `foreign_nodes` (an encampment garrison).
+## `raider_nodes()` stays the drill's own list, so WON, the HUD and the wave
+## snapshot are untouched by ambient pressure.
+func _damageable_bodies() -> Array[BasicRaider]:
+	var nodes := raider_nodes()
+	if not foreign_nodes.is_valid():
+		return nodes
+	var extra: Variant = foreign_nodes.call()
+	if extra is Array:
+		for value in extra as Array:
+			if value is BasicRaider and not (value as BasicRaider).dead and not nodes.has(value):
+				nodes.append(value)
+	return nodes
 
 
 ## Every living raider body, primary first.
@@ -1496,6 +1525,18 @@ func _basic_raider_capability(node: BasicRaider = null) -> Dictionary:
 	return {"max_step_up": 1, "max_drop_down": 1, "damage_per_hit": damage, "prefer_weakest": true}
 
 
+## Public seam for other services that drive a `BasicRaider` body over the same
+## planner (the encampments): the walking capability of one raider kind.
+func raider_capability(kind: String = BasicRaider.KIND_RAIDER) -> Dictionary:
+	var damage := raider_damage
+	if kind == BasicRaider.KIND_BRUTE:
+		damage = brute_damage
+	elif kind == BasicRaider.KIND_TROLL:
+		damage = troll_damage
+	return {"max_step_up": 1, "max_drop_down": 1, "prefer_weakest": true,
+		"damage_per_hit": {"breachable_wood": damage, "fortification": damage if kind == BasicRaider.KIND_BRUTE else maxi(1, damage / 3)}}
+
+
 ## Damage taken by a breached voxel accumulates here until it breaks:
 ## cell -> damage so far (voxels carry no integrity of their own).
 var _voxel_damage: Dictionary = {}
@@ -1536,6 +1577,14 @@ func _capture_navigation() -> void:
 func _query_navigation_cell(cell: Vector3i) -> Dictionary:
 	if cell == _core_cell() and not _uses_placed_core():
 		return {"state": "LOADED", "solid": true, "voxel_id": -1, "material_id": "strategic_core_prototype", "source": "core", "source_id": "strategic_core_prototype", "tags": [], "integrity": core_integrity, "protected": true}
+	return world_navigation_cell(cell)
+
+
+## The same cell reading without the drill's prototype-core special case: the
+## entity record if one owns the cell, else the voxel with its breach tags.
+## `EncampmentService` plans over this, so a patrol obeys exactly the breach
+## rules a wave does (docs/ENCAMPMENTS.md).
+func world_navigation_cell(cell: Vector3i) -> Dictionary:
 	var instance_id := workstations.station_at_cell(cell)
 	if not instance_id.is_empty():
 		return workstations.navigation_cell_data(instance_id)

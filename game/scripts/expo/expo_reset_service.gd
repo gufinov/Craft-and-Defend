@@ -128,13 +128,19 @@ func reset(session: GameSession, group: String) -> Dictionary:
 ## somewhere else in the Expo is not this scenario's business and is left
 ## running.
 func _clear_live_state(session: GameSession, bounds: Dictionary) -> bool:
+	# Minion encampments (docs/ENCAMPMENTS.md): a camp inside this boundary is
+	# put back to inert - garrison gone, fire out - before the fixture is
+	# rebuilt, so RESET FRONTIER leaves the exhibit exactly as it opens.
+	var camps_stopped := 0
+	if session.encampments != null and not bounds.is_empty():
+		camps_stopped = session.encampments.stop_camps_within(bounds.get("origin", Vector3i.ZERO), bounds.get("size", Vector3i.ZERO))
 	var core_defense: CoreDefenseService = session.core_defense
 	if core_defense == null:
-		return false
+		return camps_stopped > 0
 	if not core_defense.is_active() and core_defense.living_raider_count() == 0:
-		return false
+		return camps_stopped > 0
 	if not _box_contains(bounds, core_defense.arena_center):
-		return false
+		return camps_stopped > 0
 	core_defense.clear_for_other_mode()
 	return true
 

@@ -67,7 +67,20 @@ const COMPOSITE_TERRAIN: Array[String] = ["wall_demo", "blueprint_demo", "wall_k
 	"siege_booth", "field", "camp", "battery", "fortification", "magazine",
 	# Traps (docs/TRAPS.md): the Trap Range's walled spike funnel, the bay the
 	# range builds from a trap's own mount, and the combo bay.
-	"trap_range", "trap_bay", "trap_combo"]
+	"trap_range", "trap_bay", "trap_combo",
+	# Minion encampments (docs/ENCAMPMENTS.md): the Frontier's camp clearing.
+	"frontier_camp"]
+## The Expo's one authored encampment. It is registered with
+## `EncampmentService` at build time and stays inert - no fire, no garrison -
+## until the Frontier pedestal's START, because Development mode carries no
+## ambient pressure (T211).
+const FRONTIER_CAMP_ID := "expo_frontier"
+## Patrol and sight radius of the exhibit camp, small enough that the loop and
+## the rail line both stay inside the parcel.
+const FRONTIER_PATROL_RADIUS := 8
+const FRONTIER_SIGHT_RADIUS := 10.0
+## How long the exhibit's rail line is.
+const FRONTIER_RAIL_LENGTH := 12
 ## Defence sets (docs/DEFENSE_SETS.md): the kit the Construction Yard's Wall
 ## Kit exhibit stamps.
 const WALL_KIT := "wall_kit_8"
@@ -1514,6 +1527,8 @@ func _build_terrain(exhibit_id: String, terrain: String, origin: Vector3i, size:
 			_build_trap_bay(exhibit_id, origin, size, record)
 		"trap_combo":
 			_build_trap_combo(exhibit_id, origin, size, record)
+		"frontier_camp":
+			_build_frontier_camp(exhibit_id, origin, size, record)
 		"battery":
 			_build_battery(exhibit_id, origin, size, record)
 		"fortification":
@@ -1958,6 +1973,42 @@ func _build_trap_range(exhibit_id: String, origin: Vector3i, size: Vector3i, rec
 			place_entity("spring_plate", Vector3i(lane_x + step, origin.y, origin.z + 6), 1, label)
 	if entities.has("battlefield_control"):
 		place_entity("battlefield_control", Vector3i(origin.x + 9, origin.y, origin.z + 6), 0, label)
+
+
+## The Frontier's minion encampment (docs/ENCAMPMENTS.md): an open dirt
+## clearing with the camp site in the middle, a length of player rail inside
+## the camp's sight radius and the control pedestal beside the entrance. The
+## camp itself is **registered, not lit**: nothing patrols and no fire burns
+## until the pedestal's START, so Development mode still opens with no ambient
+## pressure at all.
+func _build_frontier_camp(exhibit_id: String, origin: Vector3i, size: Vector3i, record: Dictionary) -> void:
+	var label := "frontier:" + exhibit_id
+	level_area(Vector3i(origin.x, layout.ground_y(), origin.z), size.x, size.z, DIRT, layout.clear_height(), label)
+	var entities: Array = record.get("entities", [])
+	var camp_cell := Vector3i(origin.x + 10, origin.y, origin.z + size.z / 2)
+	if entities.has("rail"):
+		# The line the camp's patrol finds: `break_one` costs the player one
+		# piece and stops whatever was riding it.
+		var rail_x := camp_cell.x + 8
+		var rail_z := origin.z + (size.z - FRONTIER_RAIL_LENGTH) / 2
+		for step in range(FRONTIER_RAIL_LENGTH):
+			place_entity("rail", Vector3i(rail_x, origin.y, rail_z + step), 0, label)
+	if entities.has("battlefield_control"):
+		place_entity("battlefield_control", Vector3i(origin.x + size.x - 5, origin.y, origin.z + 3), 0, label)
+	if entities.has("campfire"):
+		queue_action(label + ":camp", _register_frontier_camp.bind(camp_cell))
+
+
+func _register_frontier_camp(camp_cell: Vector3i) -> void:
+	if session == null or session.encampments == null:
+		return
+	var registered := session.encampments.register_camp(FRONTIER_CAMP_ID, camp_cell,
+		{"patrol_radius": FRONTIER_PATROL_RADIUS, "sight_radius": FRONTIER_SIGHT_RADIUS})
+	if not registered.get("ok", false):
+		# A rebuild finds the camp already registered; that is not a fault, the
+		# reset has already put it back to inert.
+		return
+	build_reported.emit("Frontier: the encampment site is registered and inert (%s)." % str(camp_cell))
 
 
 ## Traps card 2 (docs/TRAPS.md): one bay per new trap. What the bay builds is
