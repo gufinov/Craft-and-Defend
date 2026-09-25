@@ -6,7 +6,7 @@
 
 **EXPECT:** in a normal game, three camps stand 70–140 cells from home; walk to one and by day its garrison patrols a 14-cell radius, at dusk they sit at the fire. Build a rail line, a machine or a tower inside a camp's zone and a patrol that notices it acts on the table — one rail piece broken and gone, a tower beaten down — with a HUD line naming what and roughly where. In Development mode nothing is lit until the Frontier pedestal is pressed.
 
-**LIMITATIONS:** no line of sight; camps do not chase or attack the player, do not spread, do not rebuild, do not garrison what they took; siege weapons do not auto-target camp minions (a splash still hurts them); no wave scheduler. Not exported and not playtested.
+**LIMITATIONS:** a camp only runs while the player is within `active_range` (96 m) of it — measured, not assumed: three generated camps all inside the default view distance were each taking a 30k-cell navigation capture at 160–880 ms, enough to fail `T199_LIVE_UNDER_MODALS`, so a camp out of range now stands still and automation far from you is still safe; no line of sight; camps do not chase or attack the player, do not spread, do not rebuild, do not garrison what they took; siege weapons do not auto-target camp minions (a splash still hurts them); no wave scheduler. Not exported and not playtested.
 
 ---
 

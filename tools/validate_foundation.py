@@ -681,7 +681,7 @@ def validate_encampments(sheet, entities):
     require(isinstance(sheet.get("enabled"), bool), "encampments: invalid enabled flag")
     for field in ("patrol_radius", "sight_radius"):
         require(integer(sheet.get(field), 1), f"encampments: invalid {field}")
-    for field in ("notice_range", "patrol_leg_seconds", "patrol_interval_seconds",
+    for field in ("notice_range", "active_range", "patrol_leg_seconds", "patrol_interval_seconds",
                   "sabotage_cooldown_seconds", "attack_interval_seconds"):
         require(type(sheet.get(field)) in (int, float) and sheet[field] > 0, f"encampments: invalid {field}")
     garrison = sheet.get("garrison")
@@ -694,6 +694,9 @@ def validate_encampments(sheet, entities):
     for field in ("count", "min_distance", "max_distance", "min_separation", "margin", "home_clear_radius"):
         require(integer(placement.get(field), 0), f"encampments: invalid world {field}")
     require(placement["min_distance"] < placement["max_distance"], "encampments: empty distance band")
+    require(sheet["active_range"] >= sheet["notice_range"],
+            "encampments: active_range must cover notice_range, or a camp could break something "
+            "the HUD promises to report and never run at all")
     table = sheet.get("sabotage")
     require(isinstance(table, dict) and table, "encampments: the sabotage table cannot be empty")
     for entity_id, verb in table.items():

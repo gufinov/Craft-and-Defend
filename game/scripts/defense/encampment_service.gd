@@ -31,11 +31,18 @@ signal camp_changed(camp_id: String, state: String)
 const SNAPSHOT_VERSION := 1
 ## Chebyshev distance from the fire a camper stands at.
 const FIRE_RING := 2
-## A re-plan reuses a capture younger than this many seconds.
-const CAPTURE_SECONDS := 2.0
-## Vertical half-height of the navigation capture around a camp.
-const CAPTURE_DEPTH := 8
-const CAPTURE_HEIGHT := 22
+## A camp's navigation capture is the one expensive thing here - a box of
+## ~16k cells read through `world_navigation_cell`, tens of milliseconds - so
+## it is taken at most this often and shared by the whole garrison. A patrol
+## leg is longer than this, so a camp pays for about one capture a leg.
+const CAPTURE_SECONDS := 12.0
+## After a failed capture (a camp whose ground is still streaming in) the next
+## attempt waits this long instead of retrying every tick.
+const CAPTURE_RETRY_SECONDS := 2.0
+## Vertical extent of the capture around a camp: a patrol walks its own level,
+## so it needs far less height than a wave marching over a hill.
+const CAPTURE_DEPTH := 4
+const CAPTURE_HEIGHT := 12
 ## A patrol leg or a walk to a target is abandoned after this long without
 ## arriving, so nothing can hold a minion away from its camp for ever.
 const LEG_LIMIT_SECONDS := 40.0
@@ -102,7 +109,7 @@ func _resolved_rules() -> Dictionary:
 	var sheet: Dictionary = registry.encampments.duplicate(true) if registry != null else {}
 	var defaults := {
 		"enabled": true, "patrol_radius": 14, "sight_radius": 10, "notice_range": 80.0,
-		"patrol_leg_seconds": 18.0, "patrol_interval_seconds": 6.0,
+		"active_range": 96.0, "patrol_leg_seconds": 18.0, "patrol_interval_seconds": 6.0,
 		"sabotage_cooldown_seconds": 45.0, "attack_interval_seconds": 1.4,
 	}
 	for key: String in defaults.keys():
@@ -241,7 +248,7 @@ func _new_camp(camp_id: String, cell: Vector3i, scripted: bool) -> Dictionary:
 		"cooldowns": {},
 		"snapshot": [],
 		"capture": null,
-		"capture_age": 0.0,
+		"capture_due": 0.0,
 		"garrison_plan": rules.get("garrison", []),
 	}
 
@@ -322,11 +329,27 @@ func advance(delta: float, paused: bool = false) -> void:
 		_materialise_timer = MATERIALISE_SECONDS
 		for camp_id: String in camps.keys():
 			var record: Dictionary = camps[camp_id]
-			if bool(record.get("started", false)) and not bool(record.get("cleared", false)) and not bool(record.get("spawned", false)):
+			if bool(record.get("started", false)) and not bool(record.get("cleared", false)) and not bool(record.get("spawned", false)) and is_awake(record):
 				_materialise(record)
 	var daylight := is_day()
 	for camp_id: String in camps.keys():
-		_advance_camp(camps[camp_id], delta, daylight)
+		var record: Dictionary = camps[camp_id]
+		if is_awake(record):
+			_advance_camp(record, delta, daylight)
+
+
+## A camp only runs while the player is inside `active_range` of it. Ambient
+## pressure the player could never be told about would still cost a navigation
+## capture and three walking bodies every few seconds, on every camp the
+## streamer happens to have loaded — so a camp out of range stands still. The
+## range is wider than `notice_range`, so everything the HUD could report is
+## simulated (docs/ENCAMPMENTS.md, "Calls made").
+func is_awake(record: Dictionary) -> bool:
+	if player == null or not is_instance_valid(player):
+		return true
+	var cell: Vector3i = record.get("cell", Vector3i.ZERO)
+	var offset := player.global_position - Vector3(cell)
+	return Vector2(offset.x, offset.z).length() <= float(rules.get("active_range", 96.0))
 
 
 func is_day() -> bool:
@@ -511,7 +534,7 @@ func _advance_camp(record: Dictionary, delta: float, daylight: bool) -> void:
 	var cooldowns: Dictionary = record.get("cooldowns", {})
 	for key: String in cooldowns.keys():
 		cooldowns[key] = maxf(0.0, float(cooldowns[key]) - delta)
-	record["capture_age"] = float(record.get("capture_age", 0.0)) + delta
+	record["capture_due"] = maxf(0.0, float(record.get("capture_due", 0.0)) - delta)
 	var wanted := "patrolling" if daylight else "camping"
 	if str(record.get("state", "")) != wanted:
 		record["state"] = wanted
@@ -754,8 +777,8 @@ func _route_to(record: Dictionary, entry: Dictionary, node: BasicRaider, goal: V
 
 func _capture(record: Dictionary) -> NavigationSnapshot:
 	var cached: Variant = record.get("capture")
-	if cached is NavigationSnapshot and float(record.get("capture_age", 0.0)) < CAPTURE_SECONDS:
-		return cached
+	if float(record.get("capture_due", 0.0)) > 0.0:
+		return cached if cached is NavigationSnapshot else null
 	var cell: Vector3i = record.get("cell", Vector3i.ZERO)
 	var reach: int = int(record.get("radius", patrol_radius())) + 4
 	var snapshot := NavigationSnapshot.new()
@@ -763,11 +786,12 @@ func _capture(record: Dictionary) -> NavigationSnapshot:
 		Vector3(cell + Vector3i(-reach, -CAPTURE_DEPTH, -reach)),
 		Vector3(float(reach * 2 + 1), float(CAPTURE_HEIGHT), float(reach * 2 + 1)))
 	var result := snapshot.capture(region, core_defense.world_navigation_cell, world.revision)
-	record["capture_age"] = 0.0
 	if not result.get("ok", false):
 		record["capture"] = null
+		record["capture_due"] = CAPTURE_RETRY_SECONDS
 		return null
 	record["capture"] = snapshot
+	record["capture_due"] = CAPTURE_SECONDS
 	return snapshot
 
 

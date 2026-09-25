@@ -79,6 +79,7 @@ The table as it ships:
 | `patrol_radius` | `14` | How far a patrol loop wanders from the fire. |
 | `sight_radius` | `10` | How far a patrolling minion notices something built. |
 | `notice_range` | `80.0` | How far from the player a discovery or a break still puts a line on the HUD. |
+| `active_range` | `96.0` | How far from the player a camp still runs at all. Beyond it a camp stands still and costs nothing. Must be at least `notice_range`, which the validator enforces. |
 | `patrol_leg_seconds` | `18.0` | How long one leg of a patrol loop may take before a new one is picked. |
 | `patrol_interval_seconds` | `6.0` | How often a patrolling minion looks around. |
 | `sabotage_cooldown_seconds` | `45.0` | How long a camp leaves a kind alone after a `break_one`. |
@@ -92,7 +93,7 @@ The table as it ships:
 
 `EncampmentService.world_sites()` draws `count` sites from an RNG seeded off the world seed: a bearing and a distance in the band, clamped inside the bounds by `margin`, rejected when the column is water, when it is nearer the home clearing than `home_clear_radius`, or within `min_separation` of the enemy base or another camp. The same seed always yields the same camps.
 
-A site is **materialised lazily**, exactly the way `GameSession._ensure_enemy_core` places the enemy core: every two seconds the service checks whether the 3 × 3 pad under a camp has streamed in, and only then levels it, lights the fire and musters the garrison. A camp the player has never walked near costs nothing.
+A site is **materialised lazily**, exactly the way `GameSession._ensure_enemy_core` places the enemy core: every two seconds the service checks whether a camp is inside `active_range` of the player and whether the 3 × 3 pad under it has streamed in, and only then levels it, lights the fire and musters the garrison. A camp the player has never walked near costs nothing, and a camp that has gone out of range again stands still.
 
 ## Clearing a camp for good
 
@@ -129,7 +130,8 @@ The pedestal is the existing `battlefield_control` entity and the existing panel
 - **The garrison does not count towards a drill.** `CoreDefenseService.raider_nodes()` is still the drill's own list, so WON, the HUD line and the wave snapshot are untouched; only `damage_raiders_within`, `damage_raiders_in_cell` and `try_damage_raider_node` see camp bodies, through `foreign_nodes` / `foreign_damage`.
 - **Siege weapons do not auto-target camp minions.** `nearest_raider_position` is deliberately left drill-only, so a turret does not start shooting at a patrol crossing its arc. A splash that lands on one still hurts it. Deferred to the wave-scheduler card.
 - **A stuck patrol just picks another leg.** No sidestep, no wide re-capture, no unstick hop: a patrol has nowhere it must be.
-- **The navigation capture is per camp and cached** for two seconds (`CAPTURE_SECONDS`), a box of `radius + 4` cells a side and 22 high. Re-plans are rare (one per patrol leg), so the cost is small.
+- **A camp only runs while the player is inside `active_range` (96 m).** This is not decoration: the capture below costs tens of milliseconds, and every camp the streamer happened to load would pay it every few seconds forever. Measured before the gate: three camps generated 70–140 cells out were all inside the default 128-block view distance, each taking a 30 118-cell capture at 160–880 ms, and the cost was enough to fail `T199_LIVE_UNDER_MODALS` (a furnace job that must finish 3 s of work in a 4 s window). The range is deliberately wider than `notice_range`, so nothing the HUD promises to report can happen in a camp that is asleep. The consequence to know: **a camp more than 96 m from you does not patrol or sabotage.** Automation far from where you are standing is safe for now; tightening that is a later card's job (it needs a cheap off-screen model, not a full simulation).
+- **The navigation capture is per camp and shared by its whole garrison**, a box of `radius + 4` cells a side and 12 high (~16k cells), taken at most every `CAPTURE_SECONDS` (12 s — longer than a patrol leg), with a 2 s retry after a capture that failed because the ground was still streaming in. Before that cache a failed capture was retaken on every tick.
 - **Camps do not fight the player.** They do not chase, and they do not attack the player's body. Aggro on a camp minion is deferred to the next card; killing one is entirely the player's choice for now.
 
 ## Tests
@@ -150,4 +152,4 @@ The pedestal is the existing `battlefield_control` entity and the existing panel
 
 ## Boundary and next
 
-No wave scheduler (separate card). No new enemy classes. No espionage UI and no player-issued unit commands. Camps do not spread, do not rebuild what they broke, do not garrison a tower they took, and do not grow between days — "spreading through the land" is world generation for now, not a live process. No line of sight. No aggro from a camp onto the player. Next: camps that react to being attacked, camps that spread, and the wave scheduler that decides when a camp escalates into a raid.
+No wave scheduler (separate card). No new enemy classes. No espionage UI and no player-issued unit commands. Camps do not spread, do not rebuild what they broke, do not garrison a tower they took, and do not grow between days — "spreading through the land" is world generation for now, not a live process. No line of sight. No aggro from a camp onto the player. A camp more than `active_range` (96 m) from the player does not run at all, so automation far from where you are standing is still safe; an off-screen model is a later card. Next: camps that react to being attacked, camps that spread, and the wave scheduler that decides when a camp escalates into a raid.
