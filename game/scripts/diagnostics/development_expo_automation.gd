@@ -335,6 +335,7 @@ func _shoot_card_e_districts() -> void:
 	await _shoot_sign("defense_range", "T233V_DISTRICT_BOARD_VIEW", "development-expo-district-board.png",
 		"rendered evidence that the Defense Range's district board reads from standing distance: header, subheader and body stacked, at head height on a full post")
 	await _shoot_trap_range()
+	await _shoot_frontier()
 	var core_parcel := app.development.layout.parcel_for("battlefield_player_core")
 	var core_origin: Vector3i = core_parcel["origin"]
 	if not await _walk_to(core_origin + Vector3i(1, 0, 8), "battlefield"):
@@ -375,6 +376,29 @@ func _shoot_trap_range() -> void:
 		"development-expo-trap-range.png",
 		"rendered evidence of the Trap Range: the walled lane with three rows of Spike Traps in its floor, the Core of Power at the far end, the control pedestal beside the mouth and a wave coming down the lane")
 	app.session.core_defense.clear_for_other_mode()
+
+
+## Minion encampments (docs/ENCAMPMENTS.md): the Frontier clearing with its
+## camp lit, looked across from above the entrance — the fire burning, the
+## garrison out on patrol, the player's rail line inside the camp's zone and
+## the control pedestal that started it.
+func _shoot_frontier() -> void:
+	var parcel := app.development.layout.parcel_for("fr_encampment")
+	if parcel.is_empty():
+		return
+	var origin: Vector3i = parcel["origin"]
+	var size: Vector3i = parcel["size"]
+	if not await _walk_to(origin + Vector3i(2, 0, size.z / 2), "frontier"):
+		return
+	app.battlefield_start_attack(CraftAndDefendApp.FRONTIER_RESET_GROUP)
+	for _frame in range(180):
+		await get_tree().process_frame
+	await _shoot("T253V_FRONTIER_VIEW",
+		Vector3(origin) + Vector3(2.0, 7.0, float(size.z) / 2.0),
+		Vector3(origin) + Vector3(14.0, 1.0, float(size.z) / 2.0),
+		"development-expo-frontier.png",
+		"rendered evidence of the Frontier: the minion encampment lit by its pedestal — the campfire burning in the clearing, its garrison out on patrol in the radius zone, and the player's rail line standing inside that zone")
+	app.battlefield_reset(CraftAndDefendApp.FRONTIER_RESET_GROUP)
 
 
 func _shoot(test_id: String, eye: Vector3, target: Vector3, file_name: String, expected: String) -> void:
