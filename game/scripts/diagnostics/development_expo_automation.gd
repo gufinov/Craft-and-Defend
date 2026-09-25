@@ -30,6 +30,11 @@ const TUNNEL_WALK := 56
 const LIGHT_RANGE := 12.0
 ## Frames one walked cell is given for the terrain around it to stream in.
 const STREAM_FRAMES := 240
+
+## How much of the depot walk is read from one standpoint. The session's
+## VoxelViewer keeps 48 voxels around the body loaded, so a stretch read from
+## its middle has to be well inside that.
+const WALK_STRETCH := 24
 ## Frames T244 gives one sampled cell's chunk to arrive after standing on it.
 const VERIFY_FRAMES := 120
 ## Fewer sampled cells than this and the write audit has not proved anything.
@@ -150,7 +155,7 @@ func _run_gate() -> void:
 	if not await _wait_built("plaza", _district_owners(["central_plaza", "supply_depot", "future_expansion", "day_one", "equipment", "resources"])):
 		return
 	await _test_plaza_and_day_one()
-	_test_supply_depot()
+	await _test_supply_depot()
 	await _test_mountain()
 	_test_signs()
 	_test_sign_anchors()
@@ -518,6 +523,14 @@ func _test_plaza_and_day_one() -> void:
 	var solid := 0
 	var clear := 0
 	var sampled := 0
+	var plaza_cells: Array[Vector3i] = []
+	for x in range(-6, 7, 2):
+		for z in range(-6, 7, 2):
+			plaza_cells.append(spawn_cell + Vector3i(x, 0, z))
+	# `_drive_build` leaves the body over whichever district finished the queue,
+	# and terrain outside the viewer's radius is dropped again - so even the
+	# spawn plaza is not guaranteed readable by the time this runs.
+	await _stand_and_load(plaza_cells, 1.6)
 	for x in range(-6, 7, 2):
 		for z in range(-6, 7, 2):
 			var floor_cell := spawn_cell + Vector3i(x, 0, z)
@@ -549,7 +562,7 @@ func _test_plaza_and_day_one() -> void:
 		if origin.z < previous.z or (origin.z == previous.z and origin.x <= previous.x):
 			order_ok = false
 		previous = origin
-		if _exhibit_present(exhibit_id, origin, parcel["size"]):
+		if await _exhibit_present(exhibit_id, origin, parcel["size"]):
 			present.append(exhibit_id)
 	var stations_ok: bool = present.has("day_one_workbench") and present.has("day_one_furnace")
 	var ok: bool = sampled > 0 and solid == sampled and clear == sampled and core_ok and order_ok and present.size() == chain.size() and stations_ok
@@ -627,7 +640,7 @@ func _test_supply_depot() -> void:
 	for item_id: String in stocked:
 		if item_id not in expected and item_id not in extra:
 			extra.append(item_id)
-	var walk := _walk_to_depot()
+	var walk := await _walk_to_depot()
 	var probe := _unassigned_probe()
 	var ok: bool = bool(catalog.get("ok", false)) and (catalog.get("unassigned", []) as Array).is_empty() \
 		and not stands.is_empty() and problems.is_empty() and duplicates.is_empty() \
@@ -681,20 +694,39 @@ func _walk_to_depot() -> Dictionary:
 	for x in range(size.x):
 		cells.append(Vector3i(origin.x + x, feet_y, aisle_z))
 	var blocked: Array[Vector3i] = []
+	var unreadable: Array[Vector3i] = []
 	var checked := 0
-	for cell: Vector3i in cells:
-		var feet := _read_voxel(world, cell)
-		var head := _read_voxel(world, cell + Vector3i(0, 1, 0))
-		# The ground cell is in the data block below this one; an unread ground
-		# is an unread step, not a missing floor.
-		var ground := _read_voxel(world, cell + Vector3i(0, -1, 0))
-		if feet < 0 or head < 0 or ground < 0:
-			continue
-		checked += 1
-		if feet != AIR or head != AIR or ground == AIR:
-			blocked.append(cell)
+	# The walk is longer than the streaming radius, so no single standpoint can
+	# hold all of it. It is read the way it is walked: stand on a stretch of it,
+	# let that stretch arrive, read it, move on.
+	var index := 0
+	while index < cells.size():
+		var stretch: Array[Vector3i] = []
+		var wanted: Array[Vector3i] = []
+		while stretch.size() < WALK_STRETCH and index < cells.size():
+			var step: Vector3i = cells[index]
+			stretch.append(step)
+			wanted.append(step)
+			wanted.append(step + Vector3i(0, 1, 0))
+			# The ground cell is in the data block below this one; an unread
+			# ground is an unread step, not a missing floor.
+			wanted.append(step + Vector3i(0, -1, 0))
+			index += 1
+		await _stand_and_load(wanted, 1.6)
+		for cell: Vector3i in stretch:
+			var feet := _read_voxel(world, cell)
+			var head := _read_voxel(world, cell + Vector3i(0, 1, 0))
+			var ground := _read_voxel(world, cell + Vector3i(0, -1, 0))
+			if feet < 0 or head < 0 or ground < 0:
+				unreadable.append(cell)
+				continue
+			checked += 1
+			if feet != AIR or head != AIR or ground == AIR:
+				blocked.append(cell)
 	return {"ok": checked == cells.size() and blocked.is_empty(), "cells": cells.size(),
-		"checked": checked, "blocked": blocked.size(), "first_blocked": blocked[0] if not blocked.is_empty() else Vector3i.ZERO}
+		"checked": checked, "blocked": blocked.size(), "unreadable": unreadable.size(),
+		"first_unreadable": unreadable[0] if not unreadable.is_empty() else Vector3i.ZERO,
+		"first_blocked": blocked[0] if not blocked.is_empty() else Vector3i.ZERO}
 
 
 ## Drives the classifier directly: a registry carrying one item nobody has
@@ -2294,19 +2326,61 @@ func _light_positions() -> Array[Vector3]:
 
 ## A built exhibit: its parcel carries a station, or the terrain under it is no
 ## longer the untouched surface (a plinth, a plant, an ore face).
+##
+## An exhibit whose only evidence is terrain - the Day One ore faces
+## `day_one_stone` and `day_one_iron` are the whole of that class - can only be
+## scored from a parcel that is streamed in, and a parcel the builder left
+## behind is dropped again once the body walks away from it. So a parcel that
+## reads as empty is visited before it is believed, and a parcel that is still
+## unreadable after the visit is reported as unreadable, never as unbuilt.
 func _exhibit_present(exhibit_id: String, origin: Vector3i, size: Vector3i) -> bool:
 	var world: WorldAdapter = app.session.world
+	var columns: Array[Vector3i] = []
 	for x in range(size.x):
 		for z in range(size.z):
 			var column := Vector3i(origin.x + x, origin.y, origin.z + z)
 			if not app.session.workstations.station_at_cell(column).is_empty():
 				return true
-			for y in range(maxi(1, size.y)):
-				var query := world.query_cell(column + Vector3i(0, y, 0))
-				if str(query.get("state", "")) == "LOADED" and int(query.get("voxel_id", AIR)) != AIR:
-					return true
+			columns.append(column)
+	if _solid_in_columns(world, columns, size):
+		return true
+	await _stand_and_load(columns, float(maxi(1, size.y)) + 1.6)
+	if _solid_in_columns(world, columns, size):
+		return true
+	for column: Vector3i in columns:
+		if _read_voxel(world, column) < 0:
+			failures.append("exhibit unreadable: " + exhibit_id)
+			return false
 	failures.append("exhibit not built: " + exhibit_id)
 	return false
+
+
+## True when any cell of the parcel's columns is read, and is not air.
+static func _solid_in_columns(world: WorldAdapter, columns: Array[Vector3i], size: Vector3i) -> bool:
+	for column: Vector3i in columns:
+		for y in range(maxi(1, size.y)):
+			if _read_voxel(world, column + Vector3i(0, y, 0)) > AIR:
+				return true
+	return false
+
+
+## Stands the body over `cells` and waits for them to arrive.
+##
+## Waiting on its own cannot bring a far parcel back: the terrain streams
+## around the `VoxelViewer` the body carries, and drops what falls outside its
+## radius, so nothing is asking for a cell the body is not near. Every read of
+## terrain the build left behind has to be taken from a standpoint that keeps
+## it loaded. Answers whether every cell is readable when the wait ends.
+func _stand_and_load(cells: Array[Vector3i], eye: float) -> bool:
+	if cells.is_empty():
+		return true
+	var world: WorldAdapter = app.session.world
+	var centre := Vector3.ZERO
+	for cell: Vector3i in cells:
+		centre += Vector3(cell)
+	centre /= float(cells.size())
+	_teleport(Vector3(centre.x + 0.5, float(cells[0].y) + eye, centre.z + 0.5))
+	return await _await_loaded(world, cells, STREAM_FRAMES)
 
 
 func _teleport(position: Vector3) -> void:
