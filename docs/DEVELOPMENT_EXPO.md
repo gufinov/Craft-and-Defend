@@ -491,6 +491,49 @@ back ~325 cells across 15 districts, and has never found a mismatch or an
 unreadable cell. If the Expo gate ever fails on authored terrain again, T244's
 evidence is what says whether the world lost a write or the gate misread one.
 
+**A far cell is not made readable by waiting; it is made readable by being
+there** (`a094171`). The wave-6 merge turned the exported gate into a coin flip
+— 3 PASS / 3 FAIL in six runs, always `exhibit not built: day_one_stone;
+day_one_iron` and `checked 53 of 82` on the depot walk, with the builder
+reporting `pending 0`, `deferred 0`, `failures []`. Those reads were not too
+early, they were too late. `set_cell` refuses an unloaded cell and the builder
+logged no failures, so every authored cell *was* streamed in when it was
+written; terrain streams around the `VoxelViewer` the body carries (48 voxels,
+`game_session.gd`) and is dropped again when the body leaves. `_drive_build`
+returns the instant the queue drains, leaving the body over whichever district
+finished last, so T214 and T223 were reading residue — cells still resident
+from the build drive, being evicted as the checks ran. The Day One row is 60–100
+cells from the spawn and the depot aisle runs out to x = -48, both far outside
+48: exactly the 29 of 82 steps that went unread.
+
+The first repair tried — awaiting `_await_loaded` over those cells — was
+measured at **0 / 5** exported runs, worse than the coin flip it replaced, and
+that is the proof of the mechanism: nothing was requesting the cells, so the
+wait could never succeed, and the frames it spent only gave the unloader more
+time. **Rule for a new check: read a stretch of terrain from a standpoint that
+keeps it loaded** — stand, let it arrive, read, move on, which is what T244 has
+always done. `_walk_to_depot` reads the avenue in `WALK_STRETCH` (24) cell
+stretches and reports `unreadable` separately from `blocked`; `_exhibit_present`
+visits a parcel that reads empty before believing it and reports "exhibit
+unreadable" rather than "exhibit not built" if it is still unreadable after the
+visit. Never add a sleep, and never let an unread cell count as air.
+
+**The exported runners cannot see an uncommitted change** (the trap that cost
+the previous attempt its answer). `tools\runners\*.cmd` call
+`tools\start_game.ps1 -PrepareOnly`, and `Test-BuildCurrent` requires
+`git status --porcelain -- game` to be **empty**. With anything modified under
+`game/`, the script rebuilds, the rebuilt provenance still does not match, and
+it throws `The Windows build completed, but its provenance does not match the
+current clean game tree.` The runner then reports `DEVELOPMENT EXPO TEST: FAIL`
+at the prepare step, **before the game runs at all**, and writes no
+`artifacts\manual-development-expo-*` folder — so the newest evidence folder is
+still the previous run's, byte for byte. A change under `game/` must be
+committed before any exported measurement means anything. Note also that the
+rebuild it does perform packs the *working tree* while the manifest records
+`HEAD:game`: after reverting the edit the stale package is treated as current,
+so delete `builds\CraftAndDefend\build_manifest.json` to force an honest
+rebuild if that happens.
+
 ---
 
 ## 4. Districts — the western campus (§7)
